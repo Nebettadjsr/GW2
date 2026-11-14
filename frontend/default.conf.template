@@ -1,12 +1,24 @@
 # Static frontend + same-origin /api forwarding (ADR-011). Rendered by the Nginx image's
 # envsubst entrypoint; only ${GW2_BACKEND_ORIGIN} is substituted.
+# Minimal access log: method, path WITHOUT the query string, status, sizes and timing. No client
+# address, Referer, User-Agent, Cookie, Origin, X-GW2-API-Key, X-Account-Context or bodies are logged.
+map $request_uri $gw2_log_path {
+    "~^(?<p>[^?]*)" $p;
+    default "-";
+}
+log_format gw2_minimal '$request_method $gw2_log_path $status $body_bytes_sent ${request_time}s';
+
 server {
     listen 8080;
+    access_log /dev/stdout gw2_minimal;
+    # Nginx appends request/query/referrer context even to emerg allocation errors. Discard this
+    # server's raw error stream at every level; keep the global startup/process log and the
+    # query-free access status/size/time diagnostics above.
+    error_log /dev/null;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
 
-    # Never log request headers (X-GW2-API-Key is a credential); the default format has none.
     server_tokens off;
 
     # Default non-indexable boundary. `add_header` in a location replaces every inherited one, so the

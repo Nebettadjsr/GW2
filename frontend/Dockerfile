@@ -14,6 +14,15 @@ RUN npm ci
 COPY index.html tsconfig.json vite.config.ts ./
 COPY public/ public/
 COPY src/ src/
+# Optional public operator facts (src/shell/operatorFacts.ts) baked into the static pages. Unset/empty
+# means "not configured". Only these public values are accepted; no .env file is copied (see
+# Dockerfile.dockerignore) and no legal text is invented here.
+ARG VITE_OPERATOR_NAME=
+ARG VITE_OPERATOR_ADDRESS=
+ARG VITE_OPERATOR_COUNTRY=
+ARG VITE_HOSTING_REGION=
+ARG VITE_PUBLIC_DOMAIN=
+ARG VITE_CONTACT_EMAIL=
 # `npm run build` is the existing reproducible type check followed by `vite build`.
 RUN npm run build
 
