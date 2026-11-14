@@ -96,6 +96,10 @@ The informational Performance workflow publishes separate application-process an
 
 The key card offers **Delete cached data** for a verified connected account (STORY-DELETE-002), separate from Disconnect. Confirmation uses a small native modal. A `204` removes only that GUID's Material Protection record and shadow, resets the current connection locally without `/session/logout`, and broadcasts a GUID-only invalidation to other same-origin tabs (`BroadcastChannel`, `storage` event fallback). Every received signal cleans the specified GUID, including inactive shadows; only a matching active account disconnects. `ACCOUNT_DATA_DELETED` also cleans that GUID without generic `SESSION_REQUIRED` re-proof. A late deletion response cannot disconnect a newer explicit connection; a retained same-GUID connection keeps empty, ready selection controls. Other accounts stay intact. Final local Product Owner visual approval is still outstanding.
 
+An expired or displaced tab context never causes an automatic DELETE retry. The modal asks for a new
+confirmation; the next explicit attempt rechecks the retained key before deleting. Authoritative
+`ACCOUNT_DATA_DELETED` remains a final local invalidation rather than this recoverable path.
+
 ## Current limitations
 
 - Account datasets are GUID-scoped. One account is active per shared-cookie browser session; independent accounts in such tabs are not promised.

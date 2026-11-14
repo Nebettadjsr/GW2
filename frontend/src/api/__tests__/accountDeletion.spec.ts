@@ -108,6 +108,34 @@ describe('deleteAccountData', () => {
     expect(messages).toEqual([{ type: 'account-data-deleted', accountId: A }])
     expect(JSON.stringify(messages)).not.toMatch(/KEY|ctx/)
   })
+
+  it.each([
+    [401, 'SESSION_REQUIRED'],
+    [403, 'ACCESS_CONTEXT_MISMATCH'],
+    [403, 'ACCOUNT_ACCESS_DENIED']
+  ])('a %s %s rechecks the lease only on a new explicit deletion confirmation', async (status, code) => {
+    await connectKey('KEY')
+    const mp = useMaterialProtection()
+    mp.setPending([5])
+    mp.commit()
+    calls.length = 0
+    let refused = true
+    handler = call => {
+      if (call.method === 'DELETE') return refused ? json({ error: code, message: 'Context changed' }, status) : new Response(null, { status: 204 })
+      return proof()
+    }
+    expect(await deleteAccountData()).toBe('reconfirm')
+    expect(calls.map(c => c.method)).toEqual(['DELETE'])
+    expect(connection.phase).toBe('connected')
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY')
+    expect(mp.state.committed).toEqual([5])
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).not.toBeNull()
+    refused = false
+    expect(await deleteAccountData()).toBe('deleted')
+    expect(calls.map(c => [c.path, c.method])).toEqual([
+      ['/api/account/data', 'DELETE'], ['/api/session', 'POST'], ['/api/account/data', 'DELETE']
+    ])
+  })
 })
 
 describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {

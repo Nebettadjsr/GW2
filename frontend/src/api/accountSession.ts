@@ -365,7 +365,7 @@ function localDeletionReset(notice: string): void {
   connection.deletionNotice = notice
 }
 
-export type DeleteAccountDataResult = 'deleted' | 'already-deleted' | 'work-in-progress' | 'failed' | 'stale'
+export type DeleteAccountDataResult = 'deleted' | 'already-deleted' | 'work-in-progress' | 'reconfirm' | 'failed' | 'stale'
 
 /** Authoritative deletion of one GUID: its saved browser state goes first, then (if still current) the session. */
 function applyDeletion(accountId: string, notice: string, stillCurrent: boolean): void {
@@ -408,6 +408,15 @@ export async function deleteAccountData(): Promise<DeleteAccountDataResult> {
     return wasCurrent ? 'already-deleted' : 'stale'
   }
   if (!current()) return 'stale'
+  const lapsed = error.status === 401 && error.code === 'SESSION_REQUIRED'
+  const mismatched = error.status === 403 &&
+    (error.code === 'ACCOUNT_ACCESS_DENIED' || error.code === 'ACCESS_CONTEXT_MISMATCH')
+  if (lapsed || mismatched) {
+    // Recheck the retained key before the next explicit confirmation. Never replay DELETE as part
+    // of error recovery, and never reuse a context another tab's shared cookie has displaced.
+    lease = null
+    return 'reconfirm'
+  }
   return error.code === 'ACCOUNT_WORK_IN_PROGRESS' ? 'work-in-progress' : 'failed'
 }
 

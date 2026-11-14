@@ -114,6 +114,8 @@ async function confirmDelete(): Promise<void> {
       document.getElementById('gw2-api-key')?.focus()
     } else if (result === 'work-in-progress') {
       deleteError.value = 'Account work is still finishing, so nothing was deleted. Confirm again when it has finished.'
+    } else if (result === 'reconfirm') {
+      deleteError.value = 'Your connection needs to be refreshed. Confirm again to delete cached data.'
     } else {
       deleteError.value = 'The deletion could not be confirmed. Please try again.'
     }
