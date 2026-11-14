@@ -160,7 +160,7 @@ describe('account connection flow', () => {
     const app = await open()
 
     await enterKey(app, 'KEY-A')
-    expect(app.find('[data-test="connection-status"]').text()).toMatch(/Connected/)
+    expect(app.find('[data-test="disconnect"]').exists()).toBe(true)
     await goTo(app, 'bank')
 
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-A')
@@ -178,7 +178,7 @@ describe('account connection flow', () => {
     const app = await open('#/bank')
     await goTo(app, 'synchronization')
 
-    expect(app.find('[data-test="connection-status"]').text()).toMatch(/Connected/)
+    expect(app.find('[data-test="disconnect"]').exists()).toBe(true)
     const paths = seen.map((request) => request.path)
     expect(paths[0]).toBe('/api/session')
     expect(paths.indexOf('/api/account/bank')).toBeGreaterThan(0)

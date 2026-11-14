@@ -38,10 +38,9 @@ onBeforeUnmount(() => {
 const isConnected = computed(() => connection.phase === 'connected')
 const isWorking = computed(() => busy.value || connection.phase === 'restoring' || connection.phase === 'connecting')
 
+/** Routine connected/not-connected states are not narrated; only working and outage states are. */
 const statusText = computed(() => {
   switch (connection.phase) {
-    case 'connected':
-      return 'Connected to your Guild Wars 2 account.'
     case 'restoring':
       return 'Reconnecting with the key kept in this browser session…'
     case 'connecting':
@@ -49,7 +48,7 @@ const statusText = computed(() => {
     case 'unavailable':
       return 'The saved key could not be checked right now.'
     default:
-      return 'Not connected. Enter a read-only GW2 API key to load your account data.'
+      return ''
   }
 })
 
@@ -70,34 +69,36 @@ async function onDisconnect(): Promise<void> {
 </script>
 
 <template>
-  <section class="connection-panel" aria-labelledby="connection-heading" data-test="connection-panel">
+  <section class="connection-panel card" aria-labelledby="connection-heading" data-test="connection-panel">
     <h2 id="connection-heading" class="connection-panel__title">GW2 API key</h2>
-    <p class="connection-panel__status" role="status" data-test="connection-status">{{ statusText }}</p>
+    <p class="connection-panel__help-links">
+      <button
+        :ref="(el) => (helpTriggers.create = el as HTMLButtonElement | null)"
+        type="button"
+        class="link-button"
+        aria-haspopup="dialog"
+        data-test="help-create"
+        @click="openHelp('create')"
+      >
+        How do I get an API key?
+      </button>
+      <button
+        :ref="(el) => (helpTriggers.safety = el as HTMLButtonElement | null)"
+        type="button"
+        class="link-button"
+        aria-haspopup="dialog"
+        data-test="help-safety"
+        @click="openHelp('safety')"
+      >
+        Is my API key safe here?
+      </button>
+    </p>
+    <p v-if="statusText" class="connection-panel__status" role="status" data-test="connection-status">
+      {{ statusText }}
+    </p>
 
     <form class="connection-panel__form" @submit.prevent="submit">
       <label for="gw2-api-key">{{ isConnected ? 'Replace with another key' : 'API key' }}</label>
-      <span class="connection-panel__help-links">
-        <button
-          :ref="(el) => (helpTriggers.create = el as HTMLButtonElement | null)"
-          type="button"
-          class="link-button"
-          aria-haspopup="dialog"
-          data-test="help-create"
-          @click="openHelp('create')"
-        >
-          How do I get an API key?
-        </button>
-        <button
-          :ref="(el) => (helpTriggers.safety = el as HTMLButtonElement | null)"
-          type="button"
-          class="link-button"
-          aria-haspopup="dialog"
-          data-test="help-safety"
-          @click="openHelp('safety')"
-        >
-          Is my API key safe here?
-        </button>
-      </span>
       <span class="connection-panel__field">
         <input
           id="gw2-api-key"
@@ -124,26 +125,28 @@ async function onDisconnect(): Promise<void> {
           </svg>
         </button>
       </span>
-      <button type="submit" :disabled="isWorking" data-test="connect">
-        {{ isConnected ? 'Replace key' : 'Connect' }}
-      </button>
-      <button
-        v-if="connection.phase === 'unavailable'"
-        type="button"
-        :disabled="isWorking"
-        data-test="retry-connection"
-        @click="retryConnection()"
-      >
-        Try again
-      </button>
-      <button
-        v-if="isConnected || connection.phase === 'unavailable'"
-        type="button"
-        data-test="disconnect"
-        @click="onDisconnect"
-      >
-        Disconnect
-      </button>
+      <span class="connection-panel__actions" data-test="key-actions">
+        <button type="submit" :disabled="isWorking" data-test="connect">
+          {{ isConnected ? 'Replace key' : 'Connect' }}
+        </button>
+        <button
+          v-if="connection.phase === 'unavailable'"
+          type="button"
+          :disabled="isWorking"
+          data-test="retry-connection"
+          @click="retryConnection()"
+        >
+          Try again
+        </button>
+        <button
+          v-if="isConnected || connection.phase === 'unavailable'"
+          type="button"
+          data-test="disconnect"
+          @click="onDisconnect"
+        >
+          Disconnect
+        </button>
+      </span>
     </form>
 
     <dialog
@@ -155,46 +158,55 @@ async function onDisconnect(): Promise<void> {
       data-test="help-dialog"
       @close="onHelpClosed"
     >
-      <h3 id="api-key-help-title">{{ help === 'create' ? 'How to get an API key' : 'Is my API key safe here?' }}</h3>
+      <h3 id="api-key-help-title">{{ help === 'create' ? 'Get your API key' : 'Your key is read-only' }}</h3>
       <template v-if="help === 'create'">
-        <p>
-          Sign in to the ArenaNet account you use to play Guild Wars 2. If you normally sign in through Steam or
-          Epic, choose that platform’s sign-in option.
-        </p>
-        <p>
-          Open <strong>Applications → New Key</strong>, give the key a recognizable name, and select these
-          permissions: <strong>account, inventories, characters, unlocks, progression, and builds</strong>.
-        </p>
-        <p>Copy the generated key, paste it here, and choose <strong>Connect</strong>.</p>
-        <p>
-          <a href="https://account.arena.net/applications" target="_blank" rel="noopener noreferrer"
-            >Open your ArenaNet applications page</a
-          >
-        </p>
+        <ol class="help-steps">
+          <li>
+            <strong>Sign in</strong> at ArenaNet with the account you play on.
+            <small class="help-note">Steam or Epic player? Choose that sign-in option.</small>
+          </li>
+          <li>
+            Open <strong>Applications → New Key</strong> and choose permissions:
+            <ul class="help-chips" data-test="permission-list">
+              <li>account</li>
+              <li>inventories</li>
+              <li>characters</li>
+              <li>unlocks</li>
+              <li>progression</li>
+              <li>builds</li>
+            </ul>
+          </li>
+          <li><strong>Copy</strong> the key, paste it here and choose <strong>Connect</strong>.</li>
+        </ol>
+        <footer class="help-footer">
+          <a href="https://account.arena.net/applications" target="_blank" rel="noopener noreferrer">Open ArenaNet</a>
+          <button type="button" data-test="help-close" @click="closeHelp">Close</button>
+        </footer>
       </template>
       <template v-else>
-        <p>
-          An API key gives <strong>read-only access to the game data</strong> you select. It is not your
-          password and cannot sign in, trade, spend gold or change your account.
-        </p>
-        <p>
-          This tab remembers the key so a reload can reconnect. The server uses it only to check your account
-          and fetch your data, and does not save it, but may keep fetched game data.
-          <strong>Disconnect</strong> forgets the key here without deleting that data;
-          <strong>Replace key</strong> checks the new key.
-        </p>
-        <p>
-          Revoking a key stops future access, but does not delete kept data or instantly stop work under way.
-          <a href="https://wiki.guildwars2.com/wiki/API:API_key" target="_blank" rel="noopener noreferrer"
-            >About API keys</a
-          >
-          ·
-          <a href="https://account.arena.net/applications" target="_blank" rel="noopener noreferrer"
-            >Manage keys</a
-          >
-        </p>
+        <ul class="help-facts" data-test="safety-facts">
+          <li><strong>Cannot play,</strong> move items or spend gold</li>
+          <li><strong>Shares only</strong> the game data you allow</li>
+          <li><strong>Revoke it</strong> anytime on ArenaNet</li>
+        </ul>
+        <details class="help-details" data-test="safety-details">
+          <summary>What this app stores</summary>
+          <ul>
+            <li><strong>Browser:</strong> kept in this tab so a reload can reconnect.</li>
+            <li><strong>Server:</strong> used briefly to check your account and fetch data; never saved.</li>
+            <li><strong>Disconnect:</strong> removes the key here; saved game data stays.</li>
+            <li><strong>Replace key:</strong> checks the new key and switches account if needed.</li>
+            <li><strong>Revoking:</strong> stops future access; it does not erase saved data or instantly stop work already running.</li>
+          </ul>
+        </details>
+        <footer class="help-footer">
+          <span class="help-links">
+            <a href="https://account.arena.net/applications" target="_blank" rel="noopener noreferrer">Manage keys</a>
+            <a href="https://wiki.guildwars2.com/wiki/API:API_key" target="_blank" rel="noopener noreferrer">API key information</a>
+          </span>
+          <button type="button" data-test="help-close" @click="closeHelp">Close</button>
+        </footer>
       </template>
-      <button type="button" data-test="help-close" @click="closeHelp">Close</button>
     </dialog>
 
     <p v-if="connection.error" class="connection-panel__error" role="alert" data-test="connection-error">

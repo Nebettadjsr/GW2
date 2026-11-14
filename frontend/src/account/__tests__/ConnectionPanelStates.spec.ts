@@ -33,14 +33,15 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const status = (w: ReturnType<typeof mount>) => w.get('[data-test="connection-status"]').text()
+const status = (w: ReturnType<typeof mount>) => w.find('[data-test="connection-status"]').exists() ? w.get('[data-test="connection-status"]').text() : ''
 
+// Routine connected/disconnected states are not narrated; working and outage states are.
 it.each([
   ['restoring', 'Reconnecting with the key kept in this browser session…'],
   ['connecting', 'Checking the key…'],
   ['unavailable', 'The saved key could not be checked right now.'],
-  ['connected', 'Connected to your Guild Wars 2 account.'],
-  ['disconnected', 'Not connected. Enter a read-only GW2 API key to load your account data.']
+  ['connected', ''],
+  ['disconnected', '']
 ] as const)('says in words that the connection is %s', async (phase, text) => {
   const w = mount(ConnectionPanel)
   connection.phase = phase
@@ -79,7 +80,8 @@ it('offers a retry after an outage and connects when it succeeds, then disconnec
   const w = mount(ConnectionPanel)
   await w.get('[data-test="retry-connection"]').trigger('click')
   await flushPromises()
-  expect(status(w)).toBe('Connected to your Guild Wars 2 account.')
+  expect(status(w)).toBe('')
+  expect(w.find('[data-test="disconnect"]').exists()).toBe(true)
   await w.get('[data-test="api-key-input"]').setValue('half typed')
   await w.get('[data-test="disconnect"]').trigger('click')
   await flushPromises()
@@ -110,9 +112,14 @@ it('opens one modal help dialog at a time, with the official links, and closes b
   const dialog = w.get('[data-test="help-dialog"]')
   expect(dialog.element.tagName).toBe('DIALOG')
   expect(dialog.attributes('open')).toBeDefined()
-  expect(dialog.text()).toContain('account, inventories, characters, unlocks, progression, and builds')
+  expect(dialog.get('h3').text()).toBe('Get your API key')
+  expect(dialog.findAll('ol > li')).toHaveLength(3)
+  expect(dialog.findAll('[data-test="permission-list"] li').map((l) => l.text())).toEqual([
+    'account', 'inventories', 'characters', 'unlocks', 'progression', 'builds'
+  ])
   expect(dialog.text()).toContain('Steam or Epic')
   expect(dialog.findAll('a').map((a) => a.attributes('href'))).toEqual(['https://account.arena.net/applications'])
+  expect(dialog.get('a').text()).toBe('Open ArenaNet')
   expect(dialog.get('a').attributes('rel')).toContain('noopener')
 
   await w.get('[data-test="help-close"]').trigger('click')
@@ -122,11 +129,24 @@ it('opens one modal help dialog at a time, with the official links, and closes b
   await w.get('[data-test="help-safety"]').trigger('click')
   expect(w.findAll('[data-test="help-dialog"]')).toHaveLength(1)
   const safety = w.get('[data-test="help-dialog"]')
-  expect(safety.text()).toContain('read-only access')
-  expect(safety.text().split(/\s+/).length).toBeLessThanOrEqual(140)
-  expect(safety.findAll('a').map((a) => a.attributes('href'))).toEqual([
-    'https://wiki.guildwars2.com/wiki/API:API_key',
-    'https://account.arena.net/applications'
+  expect(safety.get('h3').text()).toBe('Your key is read-only')
+  expect(safety.findAll('[data-test="safety-facts"] li').map((l) => l.text())).toEqual([
+    'Cannot play, move items or spend gold',
+    'Shares only the game data you allow',
+    'Revoke it anytime on ArenaNet'
+  ])
+  const details = safety.get('[data-test="safety-details"]')
+  expect(details.attributes('open')).toBeUndefined()
+  expect(details.get('summary').text()).toBe('What this app stores')
+  // The initial (collapsed) view stays brief: everything outside the collapsed details.
+  const visible = safety.text().replace(details.text(), '')
+  expect(visible.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(65)
+  expect(details.text()).toContain('Disconnect')
+  expect(details.text()).toContain('Replace key')
+  expect(details.text()).toContain('Revoking')
+  expect(safety.findAll('.help-footer a').map((a) => [a.text(), a.attributes('href')])).toEqual([
+    ['Manage keys', 'https://account.arena.net/applications'],
+    ['API key information', 'https://wiki.guildwars2.com/wiki/API:API_key']
   ])
   // The native Escape behaviour closes a modal dialog and fires `close`.
   ;(safety.element as HTMLDialogElement).close()
@@ -248,4 +268,13 @@ it('never fills the field from a restored or retained key', async () => {
   expect(w.html()).not.toContain('KEY-SECRET')
   await w.get('[data-test="help-safety"]').trigger('click')
   expect(w.html()).not.toContain('KEY-SECRET')
+})
+
+it('keeps the help links, field and actions in separate rows of one card', () => {
+  const w = mount(ConnectionPanel)
+  const children = [...w.get('form').element.children].map((c) => c.getAttribute('data-test') ?? c.tagName)
+  expect(children).toEqual(['LABEL', 'SPAN', 'key-actions'])
+  expect(w.get('form').find('[data-test="help-create"]').exists()).toBe(false)
+  expect(w.get('.connection-panel__field').find('a, [data-test^="help"]').exists()).toBe(false)
+  expect(w.get('[data-test="key-actions"]').findAll('button').map((b) => b.text())).toEqual(['Connect'])
 })

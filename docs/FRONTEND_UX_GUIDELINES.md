@@ -122,6 +122,8 @@ Use WCAG 2.2 Level AA as the general baseline where reasonably applicable. Use s
 
 Provide sufficient text/control contrast in the dark theme, readable text at browser zoom, and meaningful reflow at narrow widths. Do not rely on hover or color alone. Announce relevant status changes without repeatedly interrupting the user. If a dialog is used, manage entry/return focus, keyboard dismissal and focus containment appropriately. Prefer ordinary semantic controls over custom widgets when they meet the interaction need.
 
+**Scannable help and modals.** Help must be scannable at a glance: a short heading, a few short separated facts or numbered steps (semantic lists, bold only a short leading phrase), and detail behind a collapsed native `<details>`; never a paragraph wall. Keep actions and official links in a footer apart from prose. A help popup is a true modal: native `<dialog>` with `showModal()` and a dimmed, lightly blurred `::backdrop`, centered, about 30rem wide, at least 1.25rem padding, 1.5 line-height, constrained to the viewport and scrolling inside only when needed. Background is inert, focus stays inside, and Escape or Close returns focus to the trigger. Opening or closing must cause zero layout shift: no background element, scroll offset or page width may move (use `scrollbar-gutter: stable`), and nothing is inserted inline. Replace routine status sentences with state-bearing controls; keep sentences for errors, retries and working states.
+
 Record concrete accessibility limitations; do not claim full conformance from an automated checker alone.
 
 ## 8. Applying and verifying the rules
