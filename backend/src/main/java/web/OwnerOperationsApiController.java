@@ -166,6 +166,11 @@ public class OwnerOperationsApiController {
     }
 
     private static ResponseEntity<ApiErrorResponse> denied(OwnerOperationsService.Denial denial) {
+        if (denial == OwnerOperationsService.Denial.CONTEXT_MISMATCH) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(new ApiErrorResponse("ACCESS_CONTEXT_MISMATCH",
+                            "The account access context changed. Prove your key again to continue."));
+        }
         if (denial == OwnerOperationsService.Denial.DELETED) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).header(HttpHeaders.CACHE_CONTROL, "no-store")
                     .body(new ApiErrorResponse("ACCOUNT_DATA_DELETED",

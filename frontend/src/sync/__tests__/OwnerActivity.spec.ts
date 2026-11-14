@@ -82,7 +82,7 @@ describe('OwnerActivity', () => {
 
   it('showsPartialAndTruncatedLowerBoundsAndOverflowAsOverFiveSeconds', async () => {
     const truncated = await mountWith(summary({ foregroundAccounts: { state: 'TRUNCATED', exactCount: null, lowerBound: 10000 } }))
-    expect(text(truncated, 'activity-5min')).toContain('≥ 10,000')
+    expect(text(truncated, 'activity-5min')).toContain(`≥ ${(10_000).toLocaleString()}`)
     expect(text(truncated, 'activity-5min')).toContain('lower bound')
     const partial = await mountWith(summary({ foregroundAccounts: { state: 'PARTIAL_STARTUP', exactCount: 3, lowerBound: null } }))
     expect(text(partial, 'activity-5min')).toContain('≥ 3')
@@ -118,6 +118,19 @@ describe('OwnerActivity', () => {
     const paged = await mountWith(summary({ minutes: many }))
     expect(paged.findAll('[data-test="activity-row"]')).toHaveLength(10)
     expect(paged.find('[data-test="activity-pager"]').text()).toContain('Page 1 of 3')
+  })
+
+  it('refreshReturnsToTheNewestPageWhenTheRetainedWindowShrinks', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => minute(`2026-11-14T11:${String(i).padStart(2, '0')}:00Z`))
+    const w = await mountWith(summary({ minutes: many }))
+    await w.find('[data-test="activity-pager"] button:last-child').trigger('click')
+    await w.find('[data-test="activity-pager"] button:last-child').trigger('click')
+    expect(text(w, 'activity-pager')).toContain('Page 3 of 3')
+    vi.mocked(systemApi.readOperationsSummary).mockResolvedValue(summary({ minutes: many.slice(0, 3) }))
+    await w.find('[data-test="activity-refresh"]').trigger('click')
+    await flushPromises()
+    expect(w.findAll('[data-test="activity-row"]')).toHaveLength(3)
+    expect(w.find('[data-test="activity-pager"]').exists()).toBe(false)
   })
 
   it('showsConfiguredOracleLinkOrTheTruthfulUnconfiguredText', async () => {

@@ -143,6 +143,26 @@ class OwnerOperationsApiControllerTest {
     }
 
     @Test
+    void contextMismatchRemainsRecoverableAndDistinctFromNonOwnerForEveryActivityRoute() throws Exception {
+        var m = mvc(OWNER, null);
+        var owner = session(OWNER);
+        var ordinary = session(OTHER);
+        touched.set(0);
+        storeCalls.set(0);
+        for (String path : List.of("/api/system/operations/summary", "/api/system/operations/periods",
+                "/api/system/operations/download?selection=x", "/api/system/operations/download")) {
+            m.perform(get(path).cookie(new Cookie(AccountAccessHttp.SESSION_COOKIE, owner.sessionId()))
+                            .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, "previous-tab-context"))
+                    .andExpect(status().isForbidden()).andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.error").value("ACCESS_CONTEXT_MISMATCH"));
+            m.perform(as(get(path), ordinary)).andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error").value("OWNER_REQUIRED"));
+        }
+        assertEquals(0, touched.get());
+        assertEquals(0, storeCalls.get());
+    }
+
+    @Test
     void deletedOwnerReceivesDeletionOutcomeBeforeAnySummaryOrFileAccess() throws Exception {
         var m = mvc(OWNER, null);
         var owner = session(OWNER);

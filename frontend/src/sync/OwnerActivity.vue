@@ -81,6 +81,7 @@ async function load(): Promise<void> {
       throw new Error('Unexpected activity response')
     }
     summary.value = result
+    page.value = 0
     applyManifest(manifest)
     error.value = null
   } catch (cause) {
