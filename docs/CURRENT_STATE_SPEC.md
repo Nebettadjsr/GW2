@@ -92,6 +92,10 @@ Development uses GitHub issues, PRs, Maven/Vitest CI and native Codex review. Ea
 
 The informational Performance workflow publishes separate application-process and three-container resource reports, including CPU/memory observations, HTTP/database figures, startup and image sizes where measured. Failures and unavailable metrics remain visible and nonblocking; container global-read samples do not establish crafting capacity. [Performance Measurements](PERFORMANCE_MEASUREMENTS.md) owns invocation, units, workload versions and comparison limits; GitHub run artifacts hold the measurements.
 
+## Account data deletion (backend only)
+
+`DELETE /api/account/data` deletes the verified account's cached data (UD-016: no backup or tombstone). It answers `204` on success, `409 ACCOUNT_WORK_IN_PROGRESS` while a refresh is unfinished, `503 DATA_STORE_UNAVAILABLE` when the account is busy, the wait bound passes, or the delete fails (nothing is changed), and `401 ACCOUNT_DATA_DELETED` for a session that a deletion has invalidated, on every session-authenticated route including owner, task, status and renew. A fresh explicit Connect afterwards creates a normal session. There is no frontend button yet. Operational note: a failed deletion leaves data intact and may simply be retried; the gate is process-local and reopens on every failure path.
+
 ## Current limitations
 
 - Account datasets are GUID-scoped. One account is active per shared-cookie browser session; independent accounts in such tabs are not promised.

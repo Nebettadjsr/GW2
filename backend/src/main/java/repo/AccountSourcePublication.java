@@ -126,7 +126,7 @@ public final class AccountSourcePublication {
      * would make every ordinary authorized read (which updates {@code last_seen_at}) wait for a
      * running publication. The key is a 64-bit digest of the whole GUID; see {@link #writerLockKey}.
      */
-    private static void lockAccount(Connection con, AccountScope scope) throws SQLException {
+    static void lockAccount(Connection con, AccountScope scope) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
             ps.setLong(1, writerLockKey(scope));
             try (ResultSet rs = ps.executeQuery()) {
