@@ -112,24 +112,30 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             }
             context = resolution.context();
         }
-        if (!context.assertsSameAccount(assertedAccountId(request))) {
-            release(request);
-            return deny(response, HttpStatus.FORBIDDEN);
-        }
-        AccountOperation operation = operationFor(path);
-        if (operation != null && !context.permits(operation)) {
-            release(request);
-            return deny(response, HttpStatus.FORBIDDEN);
-        }
+        try {
+            if (!context.assertsSameAccount(assertedAccountId(request))) {
+                release(request);
+                return deny(response, HttpStatus.FORBIDDEN);
+            }
+            AccountOperation operation = operationFor(path);
+            if (operation != null && !context.permits(operation)) {
+                release(request);
+                return deny(response, HttpStatus.FORBIDDEN);
+            }
 
-        RequestAccountContext.publish(request, context);
-        response.setHeader(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext());
-        if (answerAuthorizedRequestsFromFixtures && !deletionRoute) {
+            RequestAccountContext.publish(request, context);
+            response.setHeader(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext());
+            if (answerAuthorizedRequestsFromFixtures && !deletionRoute) {
+                release(request);
+                writeAuthorizedFixtureAnswer(response, context);
+                return false;
+            }
+            return true;
+        } catch (IOException | RuntimeException failed) {
+            // Spring skips afterCompletion when preHandle throws, so the admission must not leak.
             release(request);
-            writeAuthorizedFixtureAnswer(response, context);
-            return false;
+            throw failed;
         }
-        return true;
     }
 
     @Override
