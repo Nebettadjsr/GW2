@@ -166,6 +166,11 @@ public class OwnerOperationsApiController {
     }
 
     private static ResponseEntity<ApiErrorResponse> denied(OwnerOperationsService.Denial denial) {
+        if (denial == OwnerOperationsService.Denial.DELETED) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .body(new ApiErrorResponse("ACCOUNT_DATA_DELETED",
+                            "Cached account data was deleted. Connect again to continue."));
+        }
         boolean unauth = denial == OwnerOperationsService.Denial.UNAUTHENTICATED;
         return ResponseEntity.status(unauth ? HttpStatus.UNAUTHORIZED : HttpStatus.FORBIDDEN)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")

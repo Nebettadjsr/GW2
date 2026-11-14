@@ -143,6 +143,23 @@ class OwnerOperationsApiControllerTest {
     }
 
     @Test
+    void deletedOwnerReceivesDeletionOutcomeBeforeAnySummaryOrFileAccess() throws Exception {
+        var m = mvc(OWNER, null);
+        var owner = session(OWNER);
+        access.invalidateAccountSessions(OWNER);
+        touched.set(0);
+        storeCalls.set(0);
+        for (String path : List.of("/api/system/operations/summary", "/api/system/operations/periods",
+                "/api/system/operations/download?selection=x", "/api/system/operations/download")) {
+            m.perform(as(get(path), owner)).andExpect(status().isUnauthorized())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.error").value("ACCOUNT_DATA_DELETED"));
+        }
+        assertEquals(0, touched.get(), "deleted authority must precede history and database access");
+        assertEquals(0, storeCalls.get(), "deleted authority must precede period resolution");
+    }
+
+    @Test
     void ownerSummaryIsNoStoreFiltersByElapsedWindowAndCarriesOracleLinkState() throws Exception {
         minutes.add(minute(NOW.minusSeconds(7 * 3600).truncatedTo(java.time.temporal.ChronoUnit.MINUTES)));
         minutes.add(minute(Instant.parse("2026-11-14T12:00:00Z")));
