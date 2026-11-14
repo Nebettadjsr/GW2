@@ -194,4 +194,36 @@ class FileHistoryStoreTest {
             assertEquals(List.of("minute-history.jsonl"), files.map(p -> p.getFileName().toString()).toList());
         }
     }
+
+    @Test
+    void completeLastRecordWithoutNewlineStaysSeparateAfterAppendAndRestart() throws Exception {
+        Path file = dir.resolve("minute-history.jsonl");
+        Files.writeString(file, mapper.writeValueAsString(minute(0, 1)));
+        var store = new FileHistoryStore(dir, mapper);
+        store.appendMinute(minute(1, 1));
+
+        var restarted = new FileHistoryStore(dir, mapper);
+        assertTrue(restarted.snapshot().available());
+        assertEquals(List.of(minute(0, 1), minute(1, 1)), restarted.snapshot().minutes());
+        assertEquals(2, Files.readAllLines(file).size());
+    }
+
+    @Test
+    void failedAppendDoesNotReuseAnUnknownFileTailWhenWritingResumes() throws Exception {
+        Path file = dir.resolve("minute-history.jsonl");
+        var store = new FileHistoryStore(dir, mapper);
+        store.appendMinute(minute(0, 1));
+        Files.delete(file);
+        Files.createDirectory(file);
+        store.appendMinute(minute(1, 1));
+        assertFalse(store.snapshot().available());
+
+        Files.delete(file);
+        Files.writeString(file, "{\"unfinished\":");
+        store.appendMinute(minute(2, 1));
+
+        var restarted = new FileHistoryStore(dir, mapper);
+        assertTrue(restarted.snapshot().available());
+        assertEquals(List.of(minute(0, 1), minute(1, 1), minute(2, 1)), restarted.snapshot().minutes());
+    }
 }

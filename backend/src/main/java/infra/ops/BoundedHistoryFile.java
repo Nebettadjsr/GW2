@@ -80,7 +80,8 @@ public final class BoundedHistoryFile<T> {
                 }
             }
             fileBytes = Files.size(file);
-            if (fileLines > retained.size() || fileBytes > maxBytes) rewrite();
+            // Retained bytes include each newline; a shorter final line needs normalization before append.
+            if (fileLines > retained.size() || fileBytes != retainedBytes) rewrite();
         } catch (IOException | RuntimeException e) {
             retained.clear();
             retainedBytes = 0;
@@ -97,7 +98,7 @@ public final class BoundedHistoryFile<T> {
             retain(bucket, bytes);
             // The file mirrors the retained buckets: any eviction (count or bytes) rewrites it without them.
             boolean overflow = fileBytes + bytes > maxBytes || fileLines + 1 > retained.size();
-            if (overflow || !Files.exists(file)) {
+            if (unavailable || overflow || !Files.exists(file)) {
                 rewrite();
             } else {
                 Files.writeString(file, text + "\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
