@@ -205,7 +205,16 @@ a {
   font-weight: 600;
 }
 
+/* The footer stays in normal flow below the content; short pages grow `.page` to push it down. */
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 .page {
+  flex: 1 0 auto;
+  width: 100%;
   max-width: var(--page-max);
   margin: 0 auto;
   padding: var(--space-5) var(--space-4) var(--space-7);
@@ -892,3 +901,38 @@ html {
 .owner-activity__export label { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 0.25rem; min-width: 0; }
 .owner-activity__export .notice { grid-column: 1 / -1; margin: 0; }
 .owner-activity > .meta { margin: var(--space-3) 0 0; }
+
+/* ------------------------------------------------------------------------------ site footer ---- */
+
+.site-footer {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.site-footer__nav {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+}
+
+.site-footer__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--space-1) var(--space-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-wrap: balance;
+}
+
+.site-footer__link {
+  display: inline-block;
+  padding: var(--space-1) 0;
+  color: var(--color-text);
+}
+
+.site-footer__link[aria-current="page"] {
+  font-weight: 600;
+  text-decoration-color: var(--color-highlight);
+}

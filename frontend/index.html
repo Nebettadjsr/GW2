@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Default non-indexable boundary; the Nginx X-Robots-Tag header repeats it. Not an access control. -->
+    <meta name="robots" content="noindex, nofollow" />
     <!--
       The browser tab icon. The href is written against the build's configured base path, so the
       served URL stays correct if the application is ever hosted below the origin root. The file it

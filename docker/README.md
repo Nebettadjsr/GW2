@@ -65,3 +65,10 @@ docker compose up --build --wait
 The `gw2-postgres` volume holds PostgreSQL data and `gw2-icons` holds downloaded icons. Both are disposable caches. These commands target the `gw2` Compose project; if you set another project name with `-p`, use that name consistently.
 
 This is the local HTTP stack. Public hosting and TLS are described separately in the [roadmap](../docs/ROADMAP.md). For automated verification, see [current architecture](../docs/CURRENT_ARCHITECTURE.md#docker-compose-stack-story-infra-008) and [compose smoke](../scripts/compose-smoke.sh).
+
+## Search-engine indexing (noindex)
+
+The frontend image sends `X-Robots-Tag: noindex, nofollow` on every response (including errors and
+`/api/`), and `index.html` carries the matching meta tag. There is no `robots.txt` Disallow, because
+crawlers must fetch a page to see `noindex`, and no sitemap. These are indexing instructions only:
+they are not access control, confidentiality or an anti-scraping guarantee.

@@ -8,7 +8,9 @@ import MaterialsScreen from './account/MaterialsScreen.vue'
 import CraftingDiscoveryScreen from './crafting/CraftingDiscoveryScreen.vue'
 import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
 import EctoSalvageScreen from './ecto/EctoSalvageScreen.vue'
-import { DESTINATIONS, type DestinationId } from './shell/destinations'
+import { DESTINATIONS, isInfoDestination, type DestinationId } from './shell/destinations'
+import InfoPage from './shell/InfoPage.vue'
+import SiteFooter from './shell/SiteFooter.vue'
 import SiteHeader from './shell/SiteHeader.vue'
 import PageHeader from './shell/PageHeader.vue'
 import { useHashRoute } from './shell/useHashRoute'
@@ -36,6 +38,7 @@ const sync = provideSyncOperations()
 const bootstrap = useAccountBootstrap()
 const isConnected = computed(() => connection.phase === 'connected')
 const isConnecting = computed(() => connection.phase === 'restoring' || connection.phase === 'connecting')
+const onInfoPage = computed(() => isInfoDestination(route.current.value))
 const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
 const onCraftingPage = computed(() => ['crafting', 'discovery'].includes(route.current.value.id))
 const craftingReady = computed(() => !['checking', 'syncing'].includes(bootstrap.phase.value))
@@ -95,7 +98,9 @@ watch(
     -->
     <SyncScreen v-if="onSystemStatus" />
 
-    <section v-if="!onSystemStatus && !isConnected" class="account-needed">
+    <InfoPage v-if="onInfoPage" :page="route.current.value.id" />
+
+    <section v-if="!onInfoPage && !onSystemStatus && !isConnected" class="account-needed">
     <PageHeader :heading="route.current.value.label" />
     <p role="status" data-test="connection-needed">
       <template v-if="isConnecting">Checking your GW2 API key…</template>
@@ -106,7 +111,7 @@ watch(
     </p>
     </section>
 
-    <template v-if="isConnected">
+    <template v-if="isConnected && !onInfoPage">
     <p v-if="onCraftingPage && bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
       Loading crafting data…
     </p>
@@ -146,4 +151,6 @@ watch(
     <MaterialsScreen v-else-if="route.current.value.id === 'materials'" />
     </template>
   </main>
+
+  <SiteFooter :current-id="route.current.value.id" @navigate="onNavigate" />
 </template>
