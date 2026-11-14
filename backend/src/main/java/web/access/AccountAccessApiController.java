@@ -57,6 +57,9 @@ public class AccountAccessApiController {
             return credentialRejected();
         } catch (ProofUnavailableException e) {
             return proofUnavailable(e);
+        } catch (application.access.AccountLifecycleGate.Unavailable e) {
+            return error(HttpStatus.SERVICE_UNAVAILABLE, "DATA_STORE_UNAVAILABLE",
+                    "The account is busy; try again shortly");
         }
     }
 
@@ -78,6 +81,7 @@ public class AccountAccessApiController {
                 access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
             case NO_SESSION, EXPIRED -> { return sessionRequired(); }
+            case DELETION_INVALIDATED -> { return dataDeleted(); }
             case CONTEXT_MISMATCH -> { return contextRejected(); }
             case AUTHENTICATED -> { /* fall through to renewal */ }
         }
@@ -90,6 +94,9 @@ public class AccountAccessApiController {
             return proofUnavailable(e);
         } catch (AccountAccessService.AccountMismatchException e) {
             return accountRejected();
+        } catch (application.access.AccountLifecycleGate.Unavailable e) {
+            return error(HttpStatus.SERVICE_UNAVAILABLE, "DATA_STORE_UNAVAILABLE",
+                    "The account is busy; try again shortly");
         }
     }
 
@@ -108,6 +115,7 @@ public class AccountAccessApiController {
                 access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         return switch (resolution.outcome()) {
             case NO_SESSION, EXPIRED -> sessionRequired();
+            case DELETION_INVALIDATED -> dataDeleted();
             case CONTEXT_MISMATCH -> contextRejected();
             case AUTHENTICATED -> {
                 access.logout(presented.get());
@@ -158,6 +166,11 @@ public class AccountAccessApiController {
 
     private static ResponseEntity<?> sessionRequired() {
         return error(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED", "Prove a GW2 API key to continue");
+    }
+
+    private static ResponseEntity<?> dataDeleted() {
+        return error(HttpStatus.UNAUTHORIZED, "ACCOUNT_DATA_DELETED",
+                "This account's data was deleted; connect again to continue");
     }
 
     private static ResponseEntity<?> contextRejected() {

@@ -3,6 +3,8 @@ package web.access;
 import application.access.AccountAccessService;
 import application.access.AccountContext;
 import application.access.AccountGrant;
+import application.access.AccountLifecycleGate;
+import java.util.UUID;
 import application.access.AccountOperation;
 import application.access.AccountSessions;
 import jakarta.servlet.http.HttpServletRequest;
@@ -49,6 +51,7 @@ import java.util.Locale;
 public final class AccountAccessInterceptor implements HandlerInterceptor {
 
     private static final String ACCOUNT_PATH_PREFIX = "/api/account/";
+    private static final String ADMISSION_ATTRIBUTE = AccountAccessInterceptor.class.getName() + ".admission";
     private static final String ASSERTED_ACCOUNT_PARAMETER = "accountId";
 
     private final AccountAccessService access;
@@ -75,8 +78,9 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws IOException {
         String path = authorizationPath(request);
+        boolean deletionRoute = isDeletionRoute(path);
         boolean craftingRoute = isScopedCraftingRoute(path) || isScopedAccountRead(path)
-                || isScopedAccountSync(path);
+                || isScopedAccountSync(path) || deletionRoute;
         if (!path.startsWith(ACCOUNT_PATH_PREFIX) && !craftingRoute) return true;
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         // The crafting routes have no unscoped implementation left to fall back to (the versioned
@@ -85,30 +89,91 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
 
         var presented = AccountAccessHttp.presentedSessionId(request);
         if (presented.isEmpty()) return deny(response, HttpStatus.UNAUTHORIZED);
-        AccountSessions.Resolution resolution =
-                access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
-        switch (resolution.outcome()) {
-            case NO_SESSION, EXPIRED -> { return deny(response, HttpStatus.UNAUTHORIZED); }
-            case CONTEXT_MISMATCH -> { return deny(response, HttpStatus.FORBIDDEN); }
-            case AUTHENTICATED -> { /* checked below against the operation */ }
-        }
+        String asserted = AccountAccessHttp.assertedAccessContext(request);
+        AccountSessions.Resolution resolution = access.resolve(presented.get(), asserted);
+        if (!resolution.authenticated()) return denyResolution(response, resolution, deletionRoute);
 
         AccountContext context = resolution.context();
+        if (!deletionRoute) {
+            // The shared admission is held for the whole request, so deletion cannot commit while
+            // this request may still record authorized use. Authority is rechecked after admission:
+            // a session deleted while this request waited must not resume as an authorized one.
+            AccountLifecycleGate.Admission admission;
+            try {
+                admission = access.lifecycle().enter(UUID.fromString(context.accountId()));
+            } catch (AccountLifecycleGate.Unavailable busy) {
+                return unavailable(response);
+            }
+            request.setAttribute(ADMISSION_ATTRIBUTE, admission);
+            resolution = access.resolve(presented.get(), asserted);
+            if (!resolution.authenticated()) {
+                release(request);
+                return denyResolution(response, resolution, false);
+            }
+            context = resolution.context();
+        }
         if (!context.assertsSameAccount(assertedAccountId(request))) {
+            release(request);
             return deny(response, HttpStatus.FORBIDDEN);
         }
         AccountOperation operation = operationFor(path);
         if (operation != null && !context.permits(operation)) {
+            release(request);
             return deny(response, HttpStatus.FORBIDDEN);
         }
 
         RequestAccountContext.publish(request, context);
         response.setHeader(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext());
-        if (answerAuthorizedRequestsFromFixtures) {
+        if (answerAuthorizedRequestsFromFixtures && !deletionRoute) {
+            release(request);
             writeAuthorizedFixtureAnswer(response, context);
             return false;
         }
         return true;
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler,
+                                Exception ex) {
+        release(request);
+    }
+
+    private static void release(HttpServletRequest request) {
+        if (request.getAttribute(ADMISSION_ATTRIBUTE) instanceof AccountLifecycleGate.Admission held) {
+            request.removeAttribute(ADMISSION_ATTRIBUTE);
+            held.close();
+        }
+    }
+
+    private boolean denyResolution(HttpServletResponse response, AccountSessions.Resolution resolution,
+                                   boolean deletionRoute) throws IOException {
+        return switch (resolution.outcome()) {
+            case DELETION_INVALIDATED -> writeError(response, HttpStatus.UNAUTHORIZED,
+                    new ApiErrorResponse("ACCOUNT_DATA_DELETED", "This account's data was deleted; connect again to continue"));
+            case CONTEXT_MISMATCH -> deletionRoute
+                    ? writeError(response, HttpStatus.FORBIDDEN, new ApiErrorResponse("ACCESS_CONTEXT_MISMATCH",
+                            "This request's access context does not belong to the authenticated session"))
+                    : deny(response, HttpStatus.FORBIDDEN);
+            default -> deny(response, HttpStatus.UNAUTHORIZED);
+        };
+    }
+
+    private boolean unavailable(HttpServletResponse response) throws IOException {
+        return writeError(response, HttpStatus.SERVICE_UNAVAILABLE,
+                new ApiErrorResponse("DATA_STORE_UNAVAILABLE", "The account is busy; try again shortly"));
+    }
+
+    private boolean writeError(HttpServletResponse response, HttpStatus status, ApiErrorResponse body)
+            throws IOException {
+        response.setStatus(status.value());
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.getWriter().write(mapper.writeValueAsString(body));
+        return false;
+    }
+
+    static boolean isDeletionRoute(String path) {
+        return path.equals("/api/account/data");
     }
 
     static boolean isDiscoveryRoute(String path) {

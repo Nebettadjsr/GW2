@@ -73,7 +73,7 @@ public final class OwnerOperationsService {
         if (sessionId == null || sessionId.isBlank() || access == null) return Denial.UNAUTHENTICATED;
         AccountSessions.Resolution resolution = access.resolve(sessionId, assertedAccessContext);
         return switch (resolution.outcome()) {
-            case NO_SESSION, EXPIRED -> Denial.UNAUTHENTICATED;
+            case NO_SESSION, EXPIRED, DELETION_INVALIDATED -> Denial.UNAUTHENTICATED;
             case CONTEXT_MISMATCH -> Denial.FORBIDDEN;
             case AUTHENTICATED -> owner != null && owner.isOwner(resolution.context()) ? null : Denial.FORBIDDEN;
         };

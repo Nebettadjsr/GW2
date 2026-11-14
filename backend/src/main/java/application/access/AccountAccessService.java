@@ -12,10 +12,28 @@ public final class AccountAccessService {
 
     private final AccountProofPort proof;
     private final AccountSessions sessions;
+    private final AccountLifecycleGate lifecycle = new AccountLifecycleGate();
 
     public AccountAccessService(AccountProofPort proof, AccountSessions sessions) {
         this.proof = proof;
         this.sessions = sessions;
+    }
+
+    /** The one per-GUID lifecycle gate shared by sessions, refresh admission and deletion. */
+    public AccountLifecycleGate lifecycle() {
+        return lifecycle;
+    }
+
+    /** Session installation participates in the account gate, so deletion cannot miss a new session. */
+    private AccountSessions.Issued install(AccountProof proved) {
+        try (var ignored = lifecycle.enter(java.util.UUID.fromString(proved.accountId()))) {
+            return sessions.establish(proved);
+        }
+    }
+
+    /** Deletion-invalidates every session of the account; call only after the deletion committed. */
+    public int invalidateAccountSessions(String accountId) {
+        return sessions.invalidateAccount(accountId);
     }
 
     /** Raised when a proved key resolves to an account other than the one already authorized. */
@@ -44,7 +62,7 @@ public final class AccountAccessService {
         if (!proved.grants().contains(AccountGrant.ACCOUNT)) {
             throw new InvalidCredentialException("the credential has no account identity permission");
         }
-        return sessions.establish(proved);
+        return install(proved);
     }
 
     /**
@@ -78,7 +96,7 @@ public final class AccountAccessService {
         if (!proved.accountId().equalsIgnoreCase(current.context().accountId())) {
             throw new AccountMismatchException("the credential resolves to a different account");
         }
-        return sessions.establish(proved);
+        return install(proved);
     }
 
     /** Resolves a presented cookie and asserted context; no upstream call, so an outage is fine. */

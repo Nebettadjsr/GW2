@@ -98,6 +98,12 @@ public class Gw2ApiApplication {
                 key -> url -> api.Gw2ApiClient.getAuth(url, key));
     }
 
+    @Bean
+    public application.AccountDataDeletionService accountDataDeletionService(
+            AccountAccessService access, ScopedAccountRefreshCoordinator coordinator) {
+        return new application.AccountDataDeletionService(access, coordinator);
+    }
+
     /** Production reader behind the System Status own-account projection; connects only when called. */
     @Bean
     public SystemStatusApiController.AccountStateReader accountStateReader() {

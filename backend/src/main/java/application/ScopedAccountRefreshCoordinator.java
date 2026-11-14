@@ -254,6 +254,9 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
         for (String source : sources) grants.addAll(operationFor(source).requiredGrants());
 
         synchronized (this) {
+            // Checked atomically with registering the run: deletion closes the gate before it asks
+            // hasUnfinishedWork, so one of the two sees the other.
+            access.lifecycle().requireOpen(scope.accountId());
             Run run = active.get(scope.accountId());
             if (run != null) {
                 if (!run.covered.containsAll(sources)) {
@@ -507,6 +510,21 @@ public class ScopedAccountRefreshCoordinator implements CharacterRosterService.R
             if (operation == null || !context.permits(operation)) return false;
         }
         return true;
+    }
+
+    /** True while the account has an active, queued or coalesced run (a run exists until its worker finishes). */
+    public synchronized boolean hasUnfinishedWork(AccountScope scope) {
+        return active.containsKey(scope.accountId());
+    }
+
+    /**
+     * Drops this account's coordinator state and task associations. Called only after a committed
+     * deletion; it never interrupts a worker.
+     */
+    public synchronized void forgetAccount(AccountScope scope) {
+        history.remove(scope.accountId());
+        unrepaired.remove(scope.accountId());
+        records.removeIf(r -> r.accountId().equalsIgnoreCase(scope.id()));
     }
 
     public synchronized Set<String> outstandingSources(AccountScope scope) {

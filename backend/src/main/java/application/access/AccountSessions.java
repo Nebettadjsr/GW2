@@ -68,7 +68,13 @@ public final class AccountSessions {
         /** Known but past its absolute expiry; removed on this read. New proof required. */
         EXPIRED,
         /** Live session, but the asserted access context is missing or belongs elsewhere. */
-        CONTEXT_MISMATCH
+        CONTEXT_MISMATCH,
+        /**
+         * The account's cached data was deleted while this session was live. Distinct from
+         * {@link #NO_SESSION} so a client does not silently re-prove its retained key; an explicit
+         * later proof still establishes a normal session.
+         */
+        DELETION_INVALIDATED
     }
 
     /** {@code context} is non-null only for {@link Outcome#AUTHENTICATED}. */
@@ -90,7 +96,7 @@ public final class AccountSessions {
         AccountContext context = new AccountContext(proof.accountId(), proof.grants(),
                 proof.endpointRestrictions(), accessContext, expiresAt);
         purgeExpired(now);
-        byVerifier.put(verifierOf(sessionId), new SessionEntry(context, now));
+        byVerifier.put(verifierOf(sessionId), new SessionEntry(context, now, false));
         return new Issued(sessionId, context);
     }
 
@@ -107,11 +113,32 @@ public final class AccountSessions {
             byVerifier.remove(verifier);
             return new Resolution(Outcome.EXPIRED, null);
         }
+        if (entry.invalidated()) return new Resolution(Outcome.DELETION_INVALIDATED, null);
         if (assertedContext == null || assertedContext.isBlank()
                 || !constantTimeEquals(entry.context().accessContext(), assertedContext)) {
             return new Resolution(Outcome.CONTEXT_MISMATCH, null);
         }
         return new Resolution(Outcome.AUTHENTICATED, entry.context());
+    }
+
+    /**
+     * Deletion-invalidates every live session of {@code accountId}. The verifier is kept only until
+     * the session's original expiry (and within the same bounded map), so this is not a tombstone
+     * for the account: a later explicit proof issues a normal new session.
+     *
+     * @return how many sessions were invalidated
+     */
+    public synchronized int invalidateAccount(String accountId) {
+        purgeExpired(clock.instant());
+        int count = 0;
+        for (var e : byVerifier.entrySet()) {
+            SessionEntry entry = e.getValue();
+            if (entry.context().accountId().equalsIgnoreCase(accountId)) {
+                e.setValue(new SessionEntry(entry.context(), entry.provedAt(), true));
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
@@ -174,5 +201,5 @@ public final class AccountSessions {
     }
 
     /** @param provedAt validation time, kept for diagnostics; the authority on lifetime is the expiry. */
-    private record SessionEntry(AccountContext context, Instant provedAt) {}
+    private record SessionEntry(AccountContext context, Instant provedAt, boolean invalidated) {}
 }

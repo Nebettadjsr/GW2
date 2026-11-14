@@ -96,6 +96,7 @@ public class SyncTaskApiController {
         if (presented.isEmpty()) return denied(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED");
         var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
+            case DELETION_INVALIDATED -> { return denied(HttpStatus.UNAUTHORIZED, "ACCOUNT_DATA_DELETED"); }
             case NO_SESSION, EXPIRED -> { return denied(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED"); }
             case CONTEXT_MISMATCH -> { return denied(HttpStatus.FORBIDDEN, "ACCOUNT_ACCESS_DENIED"); }
             case AUTHENTICATED -> { /* ownership checked below */ }

@@ -31,7 +31,7 @@ public final class OwnerAccess {
         if (presented.isEmpty() || access == null) return denied(HttpStatus.UNAUTHORIZED);
         var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
-            case NO_SESSION, EXPIRED -> { return denied(HttpStatus.UNAUTHORIZED); }
+            case NO_SESSION, EXPIRED, DELETION_INVALIDATED -> { return denied(HttpStatus.UNAUTHORIZED); }
             case CONTEXT_MISMATCH -> { return denied(HttpStatus.FORBIDDEN); }
             case AUTHENTICATED -> { /* owner check below */ }
         }

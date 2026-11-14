@@ -128,6 +128,8 @@ public class SystemStatusApiController {
         }
         var resolution = access.resolve(presented.get(), AccountAccessHttp.assertedAccessContext(request));
         switch (resolution.outcome()) {
+            case DELETION_INVALIDATED -> { return denied(HttpStatus.UNAUTHORIZED, "ACCOUNT_DATA_DELETED",
+                    "This account's data was deleted; connect again to continue"); }
             case NO_SESSION, EXPIRED -> { return denied(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED",
                     "Prove a GW2 API key to continue"); }
             case CONTEXT_MISMATCH -> { return denied(HttpStatus.FORBIDDEN, "ACCOUNT_ACCESS_DENIED",
