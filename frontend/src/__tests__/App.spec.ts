@@ -402,6 +402,27 @@ describe('App shell', () => {
     expect(open.findAll('[data-test="profit-row"]')).toHaveLength(rowsBefore)
   })
 
+  it('keepsTheCraftingSelectionAndPostsNoCalculationWhenVisitingFooterInformationPagesAndBack', async () => {
+    const open = await openApp()
+    await open.find('[data-test="search"]').setValue('Iron')
+    await open.find('[data-test="filter-zero-craftable"]').setValue(false)
+    await flushPromises()
+    const calculationsBefore = pathsOf('/api/crafting/profit').length
+    const requestsBefore = requested.length
+
+    await open.find('[data-test="footer-link-privacy"]').trigger('click')
+    await flushPromises()
+    expect(open.find('[data-test="page-heading"]').text()).toBe('Privacy')
+    await open.find('[data-test="footer-link-storage"]').trigger('click')
+    await flushPromises()
+    expect(requested.length).toBe(requestsBefore)
+    await navigateTo(open, 'crafting')
+
+    expect(pathsOf('/api/crafting/profit')).toHaveLength(calculationsBefore)
+    expect((open.find('[data-test="search"]').element as HTMLInputElement).value).toBe('Iron')
+    expect((open.find('[data-test="filter-zero-craftable"]').element as HTMLInputElement).checked).toBe(false)
+  })
+
   it('keepsTheProfitSelectionWhenFollowingTheProtectionLinksToBankAndMaterialsAndBack', async () => {
     connection.accountId = 'aaaaaaaa-0000-0000-0000-000000000001'
     const protection = useMaterialProtection()

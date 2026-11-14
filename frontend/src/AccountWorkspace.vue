@@ -111,7 +111,7 @@ watch(
     </p>
     </section>
 
-    <template v-if="isConnected && !onInfoPage">
+    <template v-if="isConnected">
     <p v-if="onCraftingPage && bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
       Loading crafting data…
     </p>
@@ -124,8 +124,10 @@ watch(
       because their results belong to a scope and settings the user chose: re-mounting one would both
       discard that selection and post the calculation again, which navigation must never do. They are
       two independent `KeepAlive` boundaries, so each keeps its own scope, settings, search, sort and
-      selection and neither is re-created by opening the other. Bank and Materials have no such input,
-      so each keeps reading its own route when opened (STORY-WEB-003).
+      selection and neither is re-created by opening the other. Opening a public information page only
+      deactivates the open screen (its route id no longer matches); the boundaries stay mounted so
+      returning neither resets the selection nor posts a calculation. Bank and Materials have no such
+      input, so each keeps reading its own route when opened (STORY-WEB-003).
     -->
     <KeepAlive>
       <CraftingProfitScreen v-if="route.current.value.id === 'crafting' && craftingReady" />

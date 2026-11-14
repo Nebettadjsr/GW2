@@ -121,3 +121,5 @@ confirmation; the next explicit attempt rechecks the retained key before deletin
 - [Known Problems](KNOWN_PROBLEMS.md): confirmed open defects and risks.
 - [Test Strategy](TEST_STRATEGY.md): verification layers and procedures.
 - [Crafting Glossary](crafting/GLOSSARY.md): player-facing terms and UI-label mapping.
+
+- Public information pages (STORY-LAUNCH-002, local preview): a footer on every destination links **Legal notice** (`#/legal`), **Privacy** (`#/privacy`) and **Cookies & browser storage** (`#/storage`), outside the main navigation. Opening one issues no account request; restoring a retained session key is deferred until an application destination is opened, and a connected session is left untouched. The open screens' `KeepAlive` caches stay mounted while an information page is shown, so returning keeps selections and posts no new calculation. Operator facts come from optional `VITE_OPERATOR_*` configuration; unset facts show "To be completed" under one local-preview notice. All routes default to `noindex` (HTML meta and frontend Nginx `X-Robots-Tag`); noindex is not access control. Final content validation belongs to STORY-LAUNCH-004.
