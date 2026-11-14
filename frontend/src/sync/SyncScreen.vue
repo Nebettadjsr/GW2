@@ -246,11 +246,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
 
     <ConnectionPanel />
 
-    <p v-if="!isConnected" class="meta" role="status" data-test="status-needs-connection">
-      Connect an API key to see account data and run refreshes.
-    </p>
-
-    <template v-else>
+    <template v-if="isConnected">
     <p v-if="!systemStatusLoaded" class="meta" role="status">Loading status…</p>
     <p v-else-if="systemStatusError" class="notice notice--error" role="alert">
       Status unavailable: {{ systemStatusError }}
