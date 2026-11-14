@@ -389,6 +389,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     if (state.accountId === accountId) {
       editVersion += 1
       reset()
+      // A late deletion can belong to an older intent while a newer explicit connection is retained.
+      // Keep its controls usable with empty preferences, without re-reading the deleted record.
+      if (currentAccountId() === accountId) apply(accountId, null, null, false)
     }
   }
 

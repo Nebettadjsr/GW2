@@ -245,6 +245,13 @@ describe('deletion cleanup of the captured GUID and deferred races', () => {
     expect(connection.deletionNotice).toBeNull()
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull()
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).not.toBeNull()
+    const mp = useMaterialProtection()
+    expect(mp.state.status).toBe('ready')
+    expect(mp.beginRequest()?.accountId).toBe(A)
+    mp.setPending([8], 'bank')
+    expect(mp.state.pending).toEqual([8])
+    mp.commit()
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toContain('8')
   })
 
   it('a delayed 204 does not reset a replacement account but still cleans the deleted GUID', async () => {

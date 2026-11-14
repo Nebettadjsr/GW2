@@ -90,9 +90,11 @@ Development uses GitHub issues, PRs, Maven/Vitest CI and native Codex review. Ea
 
 The informational Performance workflow publishes separate application-process and three-container resource reports, including CPU/memory observations, HTTP/database figures, startup and image sizes where measured. Failures and unavailable metrics remain visible and nonblocking; container global-read samples do not establish crafting capacity. [Performance Measurements](PERFORMANCE_MEASUREMENTS.md) owns invocation, units, workload versions and comparison limits; GitHub run artifacts hold the measurements.
 
-## Account data deletion (backend only)
+## Account data deletion
 
-`DELETE /api/account/data` deletes the verified account's cached data (UD-016: no backup or tombstone). It answers `204` on success, `409 ACCOUNT_WORK_IN_PROGRESS` while a refresh is unfinished, `503 DATA_STORE_UNAVAILABLE` when the account is busy, the wait bound passes, or the delete fails (nothing is changed), and `401 ACCOUNT_DATA_DELETED` for a session that a deletion has invalidated, on every session-authenticated route including owner, task, status and renew. A fresh explicit Connect afterwards creates a normal session. There is no frontend button yet. Operational note: a failed deletion leaves data intact and may simply be retried; the gate is process-local and reopens on every failure path.
+`DELETE /api/account/data` deletes the verified account's cached data (UD-016: no backup or tombstone). It answers `204` on success, `409 ACCOUNT_WORK_IN_PROGRESS` while a refresh is unfinished, `503 DATA_STORE_UNAVAILABLE` when the account is busy, the wait bound passes, or the delete fails, and `401 ACCOUNT_DATA_DELETED` for a session that a deletion has invalidated, on every session-authenticated route including owner, task, status and renew. A fresh explicit Connect afterwards creates a normal session. The process-local gate reopens on every failure path; a network failure alone cannot confirm whether the server committed deletion.
+
+The key card offers **Delete cached data** for a verified connected account (STORY-DELETE-002), separate from Disconnect. Confirmation uses a small native modal. A `204` removes only that GUID's Material Protection record and shadow, resets the current connection locally without `/session/logout`, and broadcasts a GUID-only invalidation to other same-origin tabs (`BroadcastChannel`, `storage` event fallback). Every received signal cleans the specified GUID, including inactive shadows; only a matching active account disconnects. `ACCOUNT_DATA_DELETED` also cleans that GUID without generic `SESSION_REQUIRED` re-proof. A late deletion response cannot disconnect a newer explicit connection; a retained same-GUID connection keeps empty, ready selection controls. Other accounts stay intact. Final local Product Owner visual approval is still outstanding.
 
 ## Current limitations
 
@@ -113,7 +115,3 @@ The informational Performance workflow publishes separate application-process an
 - [Known Problems](KNOWN_PROBLEMS.md): confirmed open defects and risks.
 - [Test Strategy](TEST_STRATEGY.md): verification layers and procedures.
 - [Crafting Glossary](crafting/GLOSSARY.md): player-facing terms and UI-label mapping.
-
-## Delete cached data (browser)
-
-The key card offers **Delete cached data** for a verified connected account (STORY-DELETE-002). Confirmation uses a native modal; a `204` removes only that GUID's Material Protection record and in-memory state, resets the connection locally without calling `/session/logout`, and broadcasts a GUID-only invalidation to other same-origin tabs (`BroadcastChannel`, `storage` event fallback). `ACCOUNT_DATA_DELETED` bypasses the generic `SESSION_REQUIRED` re-proof. Final local Product Owner visual approval is still outstanding.
