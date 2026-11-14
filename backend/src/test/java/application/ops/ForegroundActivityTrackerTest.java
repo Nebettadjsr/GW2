@@ -135,4 +135,22 @@ class ForegroundActivityTrackerTest {
         assertEquals(1, t.snapshot().exactCount());
         assertEquals(ForegroundAccounts.State.COMPLETE, t.snapshot().state());
     }
+
+    @Test
+    void clockDiscontinuityResetsExpiryWatermarkSoFreshWindowsAreReported() {
+        var t = tracker(10);
+        warm();
+        t.record(id(1));
+        t.snapshot(); // advances the expiry watermark to (now - 5 min)
+        clock.jumpWall(Duration.ofHours(-1));
+        clock.advance(Duration.ofMinutes(1));
+        // First call detects the discontinuity; the fresh boundary must not be suppressed by the old watermark.
+        var fresh = t.snapshotAt(clock.instant());
+        assertEquals(ForegroundAccounts.State.PARTIAL_STARTUP, fresh.state());
+        assertNull(fresh.exactCount());
+        clock.advance(Duration.ofMinutes(5));
+        var complete = t.snapshotAt(clock.instant());
+        assertEquals(ForegroundAccounts.State.COMPLETE, complete.state());
+        assertEquals(0, complete.exactCount());
+    }
 }

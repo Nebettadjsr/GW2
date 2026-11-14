@@ -120,6 +120,7 @@ public final class ForegroundActivityTracker {
         if (wall.minus(mono).abs().compareTo(DISCONTINUITY_TOLERANCE) > 0) {
             latest.clear();
             lastOmission = null;
+            expiredBefore = Instant.MIN;
             continuousSince = now;
         }
         lastWall = now;
