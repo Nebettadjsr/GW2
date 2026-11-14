@@ -21,7 +21,7 @@ import java.sql.SQLException;
  */
 public final class AccountDataDeletionService {
 
-    public enum Result { DELETED, WORK_IN_PROGRESS, UNAVAILABLE, SESSION_INVALIDATED }
+    public enum Result { DELETED, WORK_IN_PROGRESS, UNAVAILABLE, SESSION_INVALIDATED, SESSION_REQUIRED, CONTEXT_MISMATCH }
 
     /** The transactional deletion primitive; the default opens a real transaction. */
     @FunctionalInterface
@@ -54,6 +54,19 @@ public final class AccountDataDeletionService {
      *                        earlier deletion must not delete again on a session that deletion ended
      */
     public Result delete(AccountScope scope, int ownAdmissions, java.util.function.BooleanSupplier stillAuthorized) {
+        return deleteResolving(scope, ownAdmissions,
+                () -> stillAuthorized.getAsBoolean() ? application.access.AccountSessions.Outcome.AUTHENTICATED
+                        : application.access.AccountSessions.Outcome.DELETION_INVALIDATED);
+    }
+
+    /**
+     * Like {@link #delete(AccountScope, int, java.util.function.BooleanSupplier)} but the recheck
+     * carries the real resolution, so only a committed deletion reports {@code SESSION_INVALIDATED};
+     * a naturally ended session reports {@code SESSION_REQUIRED} and a context mismatch
+     * {@code CONTEXT_MISMATCH}. Nothing is deleted on any denied recheck.
+     */
+    public Result deleteResolving(AccountScope scope, int ownAdmissions,
+                                  java.util.function.Supplier<application.access.AccountSessions.Outcome> recheck) {
         AccountLifecycleGate.DeletionAttempt attempt = access.lifecycle().beginDeletion(
                 scope.accountId(), () -> coordinator.hasUnfinishedWork(scope), ownAdmissions);
         switch (attempt.start()) {
@@ -62,7 +75,12 @@ public final class AccountDataDeletionService {
             case ENTERED -> { /* proceed */ }
         }
         try (var ignored = attempt.exclusive()) {
-            if (!stillAuthorized.getAsBoolean()) return Result.SESSION_INVALIDATED;
+            switch (recheck.get()) {
+                case AUTHENTICATED -> { /* proceed */ }
+                case DELETION_INVALIDATED -> { return Result.SESSION_INVALIDATED; }
+                case CONTEXT_MISMATCH -> { return Result.CONTEXT_MISMATCH; }
+                case NO_SESSION, EXPIRED -> { return Result.SESSION_REQUIRED; }
+            }
             try {
                 deleter.delete(scope);
             } catch (SQLException | RuntimeException failure) {

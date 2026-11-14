@@ -279,4 +279,27 @@ class AccountDataDeletionServiceTest {
             pool.shutdownNow();
         }
     }
+
+    @Test
+    void aDeniedRecheckReportsItsRealReasonAndNeverDeletes() throws Exception {
+        AccountSessions.Issued a = session("a1");
+        var svc = service(s -> deletes.incrementAndGet());
+        // wrong asserted context
+        assertEquals(AccountDataDeletionService.Result.CONTEXT_MISMATCH, svc.deleteResolving(scope(A), 0,
+                () -> access.resolve(a.sessionId(), "not-the-context").outcome()));
+        // natural expiry while waiting: advance the controllable clock past the absolute expiry
+        now.set(now.get().plus(Duration.ofDays(400)));
+        assertEquals(AccountDataDeletionService.Result.SESSION_REQUIRED, svc.deleteResolving(scope(A), 0,
+                () -> access.resolve(a.sessionId(), a.context().accessContext()).outcome()));
+        // never-known session
+        assertEquals(AccountDataDeletionService.Result.SESSION_REQUIRED, svc.deleteResolving(scope(A), 0,
+                () -> access.resolve("unknown", "x").outcome()));
+        assertEquals(0, deletes.get());
+        // only a real deletion invalidation maps to SESSION_INVALIDATED
+        AccountSessions.Issued b = session("a1");
+        access.invalidateAccountSessions(A);
+        assertEquals(AccountDataDeletionService.Result.SESSION_INVALIDATED, svc.deleteResolving(scope(A), 0,
+                () -> access.resolve(b.sessionId(), b.context().accessContext()).outcome()));
+        assertEquals(0, deletes.get());
+    }
 }

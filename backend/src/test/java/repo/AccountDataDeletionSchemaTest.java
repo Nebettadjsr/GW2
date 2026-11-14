@@ -81,8 +81,17 @@ class AccountDataDeletionSchemaTest {
 
     @AfterEach
     void tearDown() throws Exception {
-        for (Connection c : open) try { if (!c.isClosed()) { c.rollback(); c.close(); } } catch (SQLException ignored) { }
-        try (Connection admin = connect(false); Statement st = admin.createStatement()) {
+        for (Connection c : open) {
+            try {
+                if (!c.isClosed() && !c.getAutoCommit()) c.rollback(); // only an active transaction
+            } catch (SQLException ignored) {
+                // closing below still happens
+            } finally {
+                try { c.close(); } catch (SQLException ignored) { }
+            }
+        }
+        // autocommit: the DROP takes effect without a commit, and the connection is always closed
+        try (Connection admin = connect(true); Statement st = admin.createStatement()) {
             st.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
         }
     }

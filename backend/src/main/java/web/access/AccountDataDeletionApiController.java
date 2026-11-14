@@ -37,9 +37,13 @@ public class AccountDataDeletionApiController {
         var scope = RequestAccountContext.scopeOf(request);
         var presented = AccountAccessHttp.presentedSessionId(request).orElse("");
         String asserted = AccountAccessHttp.assertedAccessContext(request);
-        return switch (deletion.delete(scope, 0, () -> access.resolve(presented, asserted).authenticated())) {
+        return switch (deletion.deleteResolving(scope, 0, () -> access.resolve(presented, asserted).outcome())) {
             case SESSION_INVALIDATED -> error(HttpStatus.UNAUTHORIZED, "ACCOUNT_DATA_DELETED",
                     "This account's data was deleted; connect again to continue");
+            case SESSION_REQUIRED -> error(HttpStatus.UNAUTHORIZED, "SESSION_REQUIRED",
+                    "Prove a GW2 API key to continue");
+            case CONTEXT_MISMATCH -> error(HttpStatus.FORBIDDEN, "ACCESS_CONTEXT_MISMATCH",
+                    "This request does not belong to the verified account context");
             case DELETED -> ResponseEntity.status(HttpStatus.NO_CONTENT)
                     .header(HttpHeaders.CACHE_CONTROL, "no-store").build();
             case WORK_IN_PROGRESS -> error(HttpStatus.CONFLICT, "ACCOUNT_WORK_IN_PROGRESS",

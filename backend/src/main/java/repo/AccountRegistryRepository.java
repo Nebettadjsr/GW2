@@ -132,6 +132,21 @@ public final class AccountRegistryRepository {
     public boolean recordAuthorizedUse(Connection con, AccountScope scope, Instant seenAt) throws SQLException {
         if (seenAt == null) throw new IllegalArgumentException("activity instant is required");
         ManagedSchema.requireManagedAccountSchema(con, "account activity (last_seen_at)");
+        if (con.getAutoCommit()) {
+            // Existing root on the production autocommit path: one short statement, no advisory lock.
+            // It cannot create a root, so it needs no writer serialization; against a concurrent
+            // deletion it waits on the row lock and then matches nothing (READ COMMITTED), falling
+            // through to the locked path below, which the deletion's lock/lifecycle fence governs.
+            // A publisher holding the advisory lock mid-write therefore never blocks a read.
+            try (PreparedStatement ps = con.prepareStatement("""
+                    UPDATE account_registry SET last_seen_at = GREATEST(last_seen_at, ?)
+                    WHERE account_id = ?
+                    """)) {
+                ps.setTimestamp(1, Timestamp.from(seenAt));
+                ps.setObject(2, scope.accountId());
+                if (ps.executeUpdate() == 1) return true;
+            }
+        }
         return underWriterLock(con, scope, () -> {
             try (PreparedStatement ps = con.prepareStatement("""
                     INSERT INTO account_registry (account_id, last_seen_at) VALUES (?, ?)

@@ -51,18 +51,18 @@ class AccountDataDeletionContractTest {
     @Test
     void deletionMapsEveryOutcomeAsNoStoreWithFixedCodes() throws Exception {
         var a = prove("fixture-key-a");
-        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.DELETED);
+        when(deletion.deleteResolving(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.DELETED);
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()))
                 .andExpect(status().isNoContent()).andExpect(header().string("Cache-Control", containsString("no-store")));
 
-        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.WORK_IN_PROGRESS);
+        when(deletion.deleteResolving(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.WORK_IN_PROGRESS);
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("ACCOUNT_WORK_IN_PROGRESS"))
                 .andExpect(header().string("Cache-Control", containsString("no-store")));
 
-        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.UNAVAILABLE);
+        when(deletion.deleteResolving(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.UNAVAILABLE);
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.error").value("DATA_STORE_UNAVAILABLE"))
@@ -82,25 +82,25 @@ class AccountDataDeletionContractTest {
                 .andExpect(header().string("Cache-Control", containsString("no-store")));
         http.perform(delete("/api/account/data").cookie(a.cookie()).header("X-Account-Context", a.context()))
                 .andExpect(status().isForbidden());
-        verify(deletion, never()).delete(any(), anyInt(), any());
+        verify(deletion, never()).deleteResolving(any(), anyInt(), any());
     }
 
     @Test
     void callerSuppliedAccountIdentityCannotRedirectTheTarget() throws Exception {
         var a = prove("fixture-key-a");
-        when(deletion.delete(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.DELETED);
+        when(deletion.deleteResolving(any(), anyInt(), any())).thenReturn(AccountDataDeletionService.Result.DELETED);
         // A query asserting another account is refused at the guard...
         http.perform(delete("/api/account/data").param("accountId", ACCOUNT_B).header("Origin", ORIGIN)
                         .cookie(a.cookie()).header("X-Account-Context", a.context()))
                 .andExpect(status().isForbidden());
-        verify(deletion, never()).delete(any(), anyInt(), any());
+        verify(deletion, never()).deleteResolving(any(), anyInt(), any());
         // ...and a body naming one is ignored: the target is the session's own account.
         http.perform(delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
                         .header("X-Account-Context", a.context()).contentType("application/json")
                         .content("{\"accountId\":\"" + ACCOUNT_B + "\"}"))
                 .andExpect(status().isNoContent());
         var captor = org.mockito.ArgumentCaptor.forClass(model.AccountScope.class);
-        verify(deletion).delete(captor.capture(), org.mockito.ArgumentMatchers.eq(0), any());
+        verify(deletion).deleteResolving(captor.capture(), org.mockito.ArgumentMatchers.eq(0), any());
         org.junit.jupiter.api.Assertions.assertEquals(a.accountId().toLowerCase(), captor.getValue().id().toLowerCase());
     }
 
