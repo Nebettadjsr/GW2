@@ -113,11 +113,13 @@ public final class AccountSessions {
             byVerifier.remove(verifier);
             return new Resolution(Outcome.EXPIRED, null);
         }
-        if (entry.invalidated()) return new Resolution(Outcome.DELETION_INVALIDATED, null);
         if (assertedContext == null || assertedContext.isBlank()
                 || !constantTimeEquals(entry.context().accessContext(), assertedContext)) {
             return new Resolution(Outcome.CONTEXT_MISMATCH, null);
         }
+        // A different tab may have replaced the shared cookie. Report deletion only to the context
+        // of the invalidated session, never to an unrelated account that must recover its own lease.
+        if (entry.invalidated()) return new Resolution(Outcome.DELETION_INVALIDATED, null);
         return new Resolution(Outcome.AUTHENTICATED, entry.context());
     }
 

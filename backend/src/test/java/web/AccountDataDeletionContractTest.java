@@ -105,6 +105,30 @@ class AccountDataDeletionContractTest {
     }
 
     @Test
+    void deletedCookieFromAnotherTabReturnsContextMismatchAndDoesNotDeleteTheCurrentAccount() throws Exception {
+        var a = prove("fixture-key-a");
+        var b = prove("fixture-key-b");
+        access.invalidateAccountSessions(a.accountId());
+        for (var request : new org.springframework.test.web.servlet.RequestBuilder[] {
+                delete("/api/account/data").header("Origin", ORIGIN).cookie(a.cookie())
+                        .header("X-Account-Context", b.context()),
+                post("/api/session/renew").header("Origin", ORIGIN).cookie(a.cookie())
+                        .header("X-Account-Context", b.context()).header("X-GW2-API-Key", "fixture-key-b")}) {
+            http.perform(request).andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error").value("ACCESS_CONTEXT_MISMATCH"))
+                    .andExpect(header().string("Cache-Control", containsString("no-store")));
+        }
+        for (String path : java.util.List.of("/api/account/luck", "/api/system/status")) {
+            http.perform(get(path).cookie(a.cookie()).header("X-Account-Context", b.context()))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.error").value("ACCOUNT_ACCESS_DENIED"))
+                    .andExpect(header().string("Cache-Control", containsString("no-store")));
+        }
+        verify(deletion, never()).deleteResolving(any(), anyInt(), any());
+        http.perform(get("/api/account/luck").cookie(b.cookie()).header("X-Account-Context", b.context()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void deletionInvalidatedSessionGetsFixedCodeAndAnExplicitConnectStillWorks() throws Exception {
         var a = prove("fixture-key-a");
         var b = prove("fixture-key-b");

@@ -113,6 +113,32 @@ describe('deleteAccountData', () => {
 describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {
   beforeEach(() => installAccountTransport(null))
 
+  it('recovers a different tabs invalidated-cookie context without deleting this accounts preferences', async () => {
+    installAccountSession()
+    account = B
+    await connectKey('KEY-B')
+    const mp = useMaterialProtection()
+    mp.setPending([9])
+    mp.commit()
+    const saved = window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)
+    let reads = 0
+    handler = call => {
+      if (call.path.includes('/account/inventory')) {
+        if (++reads === 1) return json({ error: 'ACCESS_CONTEXT_MISMATCH', message: 'Different tab cookie' }, 403)
+        return json({ items: [] })
+      }
+      return proof()
+    }
+    expect(await getJson('/account/inventory')).toEqual({ items: [] })
+    expect(reads).toBe(2)
+    expect(connection.accountId).toBe(B)
+    expect(connection.phase).toBe('connected')
+    expect(connection.deletionNotice).toBeNull()
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-B')
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).toBe(saved)
+    expect(mp.state.committed).toEqual([9])
+  })
+
   it('resets locally without proof or retry, and an explicit connect still works', async () => {
     installAccountSession()
     await connectKey('KEY')
