@@ -148,7 +148,9 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
         }
         truncatedDays.retainAll(days.keySet());
         trimLoss();
-        while (!days.isEmpty() && overBounds(0)) evictOldest(null);
+        while (!days.isEmpty() && overBounds(0)) {
+            if (!evictOldest(null)) break;
+        }
         if (repairedAtStart || (metadataUncertain && !days.isEmpty())) writeIndex();
     }
 
@@ -226,7 +228,11 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
 
     /** Keeps loss metadata bounded by dropping the oldest flagged days. */
     private void trimLoss() {
-        while (lossDays.size() > MAX_LOSS_DAYS) lossDays.pollFirst();
+        while (lossDays.size() > MAX_LOSS_DAYS) {
+            LocalDate discard = lossDays.stream().filter(d -> !days.containsKey(d)).findFirst().orElse(null);
+            if (discard == null) break; // retained-day flags stay attached to their surviving rows
+            lossDays.remove(discard);
+        }
     }
 
     // ---- writing ---------------------------------------------------------------------------------------------

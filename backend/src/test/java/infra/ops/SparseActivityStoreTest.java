@@ -29,6 +29,51 @@ class SparseActivityStoreTest {
 
     private SparseActivityStore store() { return new SparseActivityStore(dir, clock); }
 
+    @Test
+    void startupStopsWhenAnOverLimitFileCannotBeDeleted() throws Exception {
+        var initial = store();
+        initial.appendMinute(minute("2026-11-10T10:00:00Z", RouteGroup.CRAFTING));
+        initial.appendMinute(minute("2026-11-11T10:00:00Z", RouteGroup.CRAFTING));
+        Path oldest = dir.resolve("activity-2026-11-10.csv");
+        boolean posix = Files.getFileStore(dir).supportsFileAttributeView("posix");
+        java.util.Set<java.nio.file.attribute.PosixFilePermission> permissions = posix
+                ? Files.getPosixFilePermissions(dir) : null;
+        try {
+            if (posix) {
+                Files.setPosixFilePermissions(dir, java.nio.file.attribute.PosixFilePermissions.fromString("r-x------"));
+                org.junit.jupiter.api.Assumptions.assumeFalse(Files.isWritable(dir), "permissions are not enforced for this user");
+            } else {
+                org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("os.name").startsWith("Windows"));
+                Files.setAttribute(oldest, "dos:readonly", true);
+            }
+            var recovered = assertTimeoutPreemptively(java.time.Duration.ofSeconds(2),
+                    () -> new SparseActivityStore(dir, clock, 1, 1 << 20, 32L << 20, 1024));
+            assertFalse(recovered.periods().available(), "failed eviction is unavailable, not an endless startup");
+            assertTrue(Files.exists(oldest), "failed unlink remains accounted for");
+        } finally {
+            if (posix) Files.setPosixFilePermissions(dir, permissions);
+            else Files.setAttribute(oldest, "dos:readonly", false);
+        }
+    }
+
+    @Test
+    void pendingFailuresCannotEvictLossFlagsFromRetainedPartialDays() throws Exception {
+        var s = store();
+        var full = minute("2026-11-10T10:00:00Z", RouteGroup.CRAFTING);
+        s.appendMinute(new MinuteBucket(full.startUtc(), 37, MinuteBucket.Completeness.PARTIAL,
+                full.foregroundAccounts(), full.routeGroups()));
+        for (int i = 1; i <= SparseActivityStore.MAX_LOSS_DAYS + 2; i++) {
+            var date = java.time.LocalDate.parse("2026-11-10").plusDays(i);
+            Path obstructed = dir.resolve("activity-" + date + ".csv");
+            Files.createDirectory(obstructed);
+            Files.writeString(obstructed.resolve("blocker"), "controlled first-append failure");
+            now = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+            s.appendMinute(minute(date + "T10:00:00Z", RouteGroup.CRAFTING));
+        }
+        var retained = find(s, PeriodDescriptor.Kind.DAY, "2026-11-10T00:00:00Z");
+        assertEquals(PeriodDescriptor.Coverage.PARTIAL, retained.coverage());
+    }
+
     private static MinuteBucket minute(String utc, RouteGroup... groups) { return minute(utc, 1, groups); }
 
     private static MinuteBucket minute(String utc, long width, RouteGroup... groups) {
