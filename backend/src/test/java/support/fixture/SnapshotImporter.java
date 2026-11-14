@@ -1,4 +1,4 @@
-package perf;
+package support.fixture;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

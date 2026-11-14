@@ -1,4 +1,4 @@
-package perf;
+package support.fixture;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
 
 /**
- * Safe, aggregate fixture/topology/provenance identity for the existing JSON/Markdown reports. It holds
+ * Safe, aggregate fixture/topology/provenance identity for fixture readiness checks. It holds
  * revision, version/kind, checksums, row counts and states only: never a GUID, name, key or path.
  * Local results are always "not-qualified" for Oracle; reports built from different fixture identities
  * are explicitly not comparable.

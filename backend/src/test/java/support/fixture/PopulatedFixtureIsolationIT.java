@@ -1,4 +1,4 @@
-package perf;
+package support.fixture;
 
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -144,7 +144,7 @@ class PopulatedFixtureIsolationIT {
     }
 
     @Test
-    void optionalLocalSnapshotImportsIntoAFreshSchemaAndWritesSafeReadiness() throws Exception {
+    void optionalLocalSnapshotImportsIntoAFreshSchema() throws Exception {
         SnapshotImporter.Result r = SnapshotImporter.fromConfiguration();
         Assumptions.assumeTrue(r.available(), "no local snapshot opted in: " + r.unavailableReason());
         String schema = "kpi_" + UUID.randomUUID().toString().replace("-", "");
@@ -154,11 +154,5 @@ class PopulatedFixtureIsolationIT {
         } finally {
             drop(schema);
         }
-        java.nio.file.Path out = java.nio.file.Path.of("target", "perf");
-        java.nio.file.Files.createDirectories(out);
-        MeasurementReport report = new MeasurementReport(ApplicationBenchmarkHarness.commit(), java.time.Instant.now(), r.snapshot().version(), Map.of());
-        report.setFixtureProvenance(FixtureProvenance.of(r.snapshot()));
-        java.nio.file.Files.writeString(out.resolve("snapshot-readiness.json"), report.toJsonString());
-        java.nio.file.Files.writeString(out.resolve("snapshot-readiness.md"), report.toMarkdown());
     }
 }

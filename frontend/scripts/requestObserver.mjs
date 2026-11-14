@@ -1,10 +1,10 @@
 /**
- * A transparent recording proxy in front of the backend, used by the live icon checks
+ * A transparent request-observing proxy in front of the backend, used by the live icon check
  * (`STORY-WEB-010`).
  *
  * The dev/preview server is pointed at this process instead of at the backend, so every request the
  * browser really sent through application API routing — and every answer the backend really gave —
- * is written down: path, status, whether it carried a validator, and how long it took. That is what
+ * is written down: path, status and whether it carried a validator. That is what
  * makes "the browser used its own cache" an observation (the backend saw nothing) rather than an
  * inference from a picture being on screen.
  *
@@ -17,13 +17,12 @@ import { createServer, request as httpRequest } from 'node:http'
  * @param {number} options.port            port to listen on (127.0.0.1 only)
  * @param {string} options.backendOrigin   e.g. http://127.0.0.1:8091
  */
-export async function startRecordingProxy({ port, backendOrigin }) {
+export async function startRequestObserver({ port, backendOrigin }) {
   const backend = new URL(backendOrigin)
   /** One entry per request that reached the backend. */
   const records = []
 
   const server = createServer((clientRequest, clientResponse) => {
-    const started = Date.now()
     const forwarded = httpRequest(
       {
         host: backend.hostname,
@@ -40,8 +39,7 @@ export async function startRecordingProxy({ port, backendOrigin }) {
           conditional: clientRequest.headers['if-none-match'] !== undefined,
           cacheControl: backendResponse.headers['cache-control'] ?? null,
           contentType: backendResponse.headers['content-type'] ?? null,
-          etag: backendResponse.headers.etag ?? null,
-          ms: Date.now() - started
+          etag: backendResponse.headers.etag ?? null
         })
         clientResponse.writeHead(backendResponse.statusCode, backendResponse.headers)
         backendResponse.pipe(clientResponse)
@@ -52,8 +50,7 @@ export async function startRecordingProxy({ port, backendOrigin }) {
         method: clientRequest.method,
         path: clientRequest.url.split('?')[0],
         status: 0,
-        error: error.code ?? error.message,
-        ms: Date.now() - started
+        error: error.code ?? error.message
       })
       clientResponse.writeHead(502, { 'Content-Type': 'application/json' })
       clientResponse.end(JSON.stringify({ error: 'BACKEND_UNREACHABLE', message: String(error.code) }))
@@ -63,18 +60,18 @@ export async function startRecordingProxy({ port, backendOrigin }) {
 
   await new Promise((resolve, reject) => {
     server.once('error', (error) =>
-      reject(new Error(`The recording proxy could not take 127.0.0.1:${port} (${error.code ?? error.message}).`))
+      reject(new Error(`The request observer could not take 127.0.0.1:${port} (${error.code ?? error.message}).`))
     )
     server.listen(port, '127.0.0.1', () => resolve(undefined))
   })
 
   return {
-    origin: `http://127.0.0.1:${port}`,
+    origin: `http://127.0.0.1:${server.address().port}`,
     records,
     /** Everything recorded since `mark`, so a phase can be counted on its own. */
     since: (mark) => records.slice(mark),
     mark: () => records.length,
     imagesSince: (mark) => records.slice(mark).filter((entry) => /\/api\/items\/\d+\/icon\//.test(entry.path)),
-    close: () => server.close()
+    close: () => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
   }
 }

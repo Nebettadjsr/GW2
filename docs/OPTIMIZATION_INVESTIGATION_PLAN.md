@@ -1,3 +1,5 @@
+> **Historical, programme ended, not a launch requirement.** The capacity/resource programme was retired by STORY-LAUNCH-001; commands named below no longer exist and results are not passed gates.
+
 # Resource, correctness and user-experience investigation
 
 Status: proposed investigation plan, not an approved implementation roadmap. Prepared 2026-10-26 for [#116](https://github.com/Nebettadjsr/GW2/issues/116).

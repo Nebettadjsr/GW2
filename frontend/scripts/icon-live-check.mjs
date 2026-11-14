@@ -8,7 +8,7 @@
  *     every one of them has to be on the page's own origin and, for images, on
  *     `/api/items/{id}/icon/{key}.{ext}`. Not one request to ArenaNet.
  *   - **Development routing forwards image paths.** The page is served by the Vite dev server, which
- *     proxies `/api` to a recording proxy in this process, which forwards to the backend. An image
+ *     proxies `/api` to a request observer in this process, which forwards to the backend. An image
  *     appearing in those records *is* the proof that the dev server forwarded it.
  *   - **Browser caching is observed, not inferred.** The reload phase asserts the backend saw no
  *     image request at all, and the revalidation phase forces a conditional reload and asserts the
@@ -16,8 +16,7 @@
  *   - **Upstream requests are counted.** The backend runs behind `scripts/upstream-proxy.mjs`, so
  *     "zero upstream image requests" is a line count in that proxy's log and not a guess.
  *
- * It measures nothing: no timing here is an `TARGET_ARCHITECTURE.md` §33 claim. That is
- * `profit-page-perf.mjs`.
+ * It measures nothing: no timing here is a performance claim.
  *
  * Phases (run one per invocation, because the backend restart between them is external):
  *   pre-restart     cold browser profile → first delivery, warm-browser reload, forced revalidation
@@ -26,7 +25,7 @@
  *
  * Environment:
  *   GW2_LIVE_PAGE_URL        the page origin (a dev server that proxies /api here)
- *   GW2_LIVE_RECORDER_PORT   port this script's recording proxy listens on
+ *   GW2_LIVE_RECORDER_PORT   port this script's request observer listens on
  *   GW2_LIVE_BACKEND_ORIGIN  the backend the recorder forwards to
  *   GW2_LIVE_PROFILE_DIR     the browser profile directory — an isolated, disposable location, never
  *                            the user's own browser profile or cache
@@ -38,7 +37,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
-import { startRecordingProxy } from './recordingProxy.mjs'
+import { startRequestObserver } from './requestObserver.mjs'
 
 const PHASE = process.argv[2] ?? 'pre-restart'
 const PAGE_URL = process.env.GW2_LIVE_PAGE_URL ?? 'http://127.0.0.1:5178'
@@ -130,7 +129,7 @@ async function openView(page, view) {
 async function run() {
   check(PROFILE_DIR !== undefined, 'GW2_LIVE_PROFILE_DIR must name a disposable browser profile directory.')
   const browserPath = resolveBrowserPath()
-  const recorder = await startRecordingProxy({ port: RECORDER_PORT, backendOrigin: BACKEND_ORIGIN })
+  const recorder = await startRequestObserver({ port: RECORDER_PORT, backendOrigin: BACKEND_ORIGIN })
 
   console.log(`Phase   : ${PHASE}`)
   console.log(`Browser : ${browserPath}`)
@@ -165,7 +164,7 @@ async function run() {
     const backendFirst = recorder.since(firstMark)
     check(
       backendFirst.some((entry) => entry.path === '/api/account/bank'),
-      'The page did not reach the backend through the recording proxy at all — the dev server is ' +
+      'The page did not reach the backend through the request observer at all — the dev server is ' +
         'pointed somewhere else, so nothing here was measured.'
     )
     const imagesFirst = recorder.imagesSince(firstMark)
