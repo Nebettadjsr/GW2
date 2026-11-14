@@ -374,6 +374,38 @@ public class Gw2ApiApplication {
                 new repo.CharacterInventoryLayoutRepository(), Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
     }
 
+    /** Bounded disposable operational history (STORY-OPS-001): two small files under {@code OPS_HISTORY_DIR}. */
+    @Bean
+    public application.ops.OperationalHistoryService operationalHistoryService(
+            @Value("${gw2.ops.history-dir}") String directory, tools.jackson.databind.ObjectMapper mapper) {
+        Clock clock = Clock.systemUTC();
+        return new application.ops.OperationalHistoryService(clock,
+                new application.ops.ForegroundActivityTracker(clock),
+                new infra.ops.FileHistoryStore(Path.of(directory), mapper));
+    }
+
+    @Bean
+    public application.ops.DatabaseSizeService databaseSizeService() {
+        return new application.ops.DatabaseSizeService(new repo.DatabaseSizeRepository(repo.Db::open), Clock.systemUTC());
+    }
+
+    @Bean
+    public application.ops.OwnerOperationsService ownerOperationsService(
+            AccountAccessService access, application.access.OwnerPolicy policy,
+            application.ops.OperationalHistoryService history, application.ops.DatabaseSizeService databaseSize) {
+        return new application.ops.OwnerOperationsService(access, policy, history, databaseSize, Clock.systemUTC());
+    }
+
+    @Bean
+    public org.springframework.boot.web.servlet.FilterRegistrationBean<OperationalObservationFilter>
+            operationalObservationFilter(application.ops.OperationalHistoryService history) {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(
+                new OperationalObservationFilter(history));
+        registration.addUrlPatterns("/api/*");
+        registration.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE);
+        return registration;
+    }
+
     /** Optional owner identity; malformed nonblank configuration fails startup clearly. */
     @Bean
     public application.access.OwnerPolicy ownerPolicy(@Value("${gw2.owner.account-guid:}") String ownerGuid) {
