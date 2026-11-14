@@ -413,8 +413,7 @@ export async function deleteAccountData(): Promise<DeleteAccountDataResult> {
 
 // Another tab deleted the account this tab is connected to: clear locally, never prove or log out.
 onDeletionSignal((deletedId) => {
-  if (connection.accountId === null || connection.accountId !== deletedId) return
-  applyDeletion(deletedId, DELETION_NOTICE, true)
+  applyDeletion(deletedId, DELETION_NOTICE, connection.accountId === deletedId)
 })
 
 /* ------------------------------------------------------------------------- transport --- */

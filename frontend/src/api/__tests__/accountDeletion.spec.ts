@@ -161,6 +161,32 @@ describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull()
     expect(connection.deletionNotice).not.toBeNull()
   })
+
+  it('forgets an inactive GUID shadow on a signal while preserving the current different account', async () => {
+    await connectKey('KEY-A')
+    const mp = useMaterialProtection()
+    mp.setPending([5])
+    mp.commit()
+    account = B
+    await connectKey('KEY-B')
+    mp.setPending([9])
+    mp.commit()
+    const bPreference = window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)
+    calls.length = 0
+
+    const sender = new BroadcastChannel(DELETION_CHANNEL)
+    sender.postMessage({ type: 'account-data-deleted', accountId: A })
+    await vi.waitFor(() => expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toBeNull())
+    sender.close()
+    expect(connection.accountId).toBe(B)
+    expect(connection.phase).toBe('connected')
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-B')
+    expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).toBe(bPreference)
+    expect(calls).toEqual([])
+    account = A
+    await connectKey('KEY-A')
+    expect(mp.state.committed).toEqual([])
+  })
 })
 
 describe('deletion cleanup of the captured GUID and deferred races', () => {
