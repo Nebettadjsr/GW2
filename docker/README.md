@@ -45,6 +45,20 @@ docker compose --env-file compose.env up --build --wait
 
 The local configuration file is gitignored. The repository-root development `.env` and its database credentials or GW2 key are not passed to these containers. Changing the database password after initialization requires resetting this stack's cache volume so PostgreSQL initializes with the new password.
 
+## Production-preparation configuration
+
+[`compose.production.yaml`](compose.production.yaml) is a standalone alternative to `compose.yaml` (never combine them). `GW2_STACK_DB_PASSWORD` is required: unset or blank makes Compose refuse to render, and there is no `gw2-local-only` fallback. Only the explicit variables in the file reach the containers; a developer's `DATABASE_*` or `GW2_API_KEY` is not forwarded. Supply the settings with `--env-file` from a file outside the repository:
+
+```sh
+docker compose -f compose.production.yaml --env-file /path/to/production.env config   # static check, no daemon
+```
+
+It publishes only the frontend, on loopback by default, over plain HTTP. This is preparation, not a finished HTTPS deployment: the real host, domain, TLS/edge and legal values are not configured, and `Forwarded`/`X-Forwarded-*` headers are deliberately not trusted.
+
+Both Compose files also forward optional `GW2_OWNER_ACCOUNT_GUID` (blank grants nobody; a malformed value fails backend startup), pass the optional public `VITE_OPERATOR_*`/`VITE_HOSTING_REGION`/`VITE_PUBLIC_DOMAIN`/`VITE_CONTACT_EMAIL` values to the frontend build (unset stays "not configured"), and bound each container's stdout/stderr with `GW2_STACK_LOG_MAX_SIZE` (default `10m`) and `GW2_STACK_LOG_MAX_FILE` (default `3`). These are size and file-count bounds, not a time guarantee. The proxy access log records only method, path without query string, status, size and timing; its error log is limited to critical events because upstream-failure lines echo the request line. Activity and performance come from the existing owner operations aggregates, and CPU/RAM from Oracle metrics.
+
+Checks: `python -m unittest discover -s .github/scripts` renders both files with synthetic values and a poisoned environment and runs a throwaway nginx for the logging check. A running production-style stack, TLS/origin/cookie behavior through the real edge, owner separation, CSV export, deletion and restart/volume checks remain target-environment evidence not yet run.
+
 ## Status, logs and shutdown
 
 ```sh
