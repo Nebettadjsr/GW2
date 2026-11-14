@@ -6,8 +6,8 @@
  * answer — the page data and the image bytes — comes from this process. That is what lets it assert
  * the cases a real backend will not produce on demand: a 503, a 404, an image that arrives late, and
  * bytes that are not a decodable image. It evidences the browser's own behaviour around those cases
- * and nothing about real data, real delivery or page-load performance — `smoke:icons:live` and the
- * `profit-page-perf` measurement own those.
+ * and nothing about real data, real delivery or page-load performance. `check:icons:live` covers real
+ * delivery and cache behavior; neither check establishes page-load performance.
  *
  * What it pins:
  *   1. every request the page makes goes to this application's own origin, and every image goes to

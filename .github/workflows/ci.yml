@@ -98,7 +98,7 @@ jobs:
           GW2_API_KEY: ci-placeholder-no-live-api-calls
           ICON_CACHE_DIR: ${{ runner.temp }}/gw2-icons
         # The default Surefire run: *Test classes only. *IT classes (Layer 4
-        # live GW2 API smoke, real-database perf/equivalence
+        # live GW2 API smoke, real-database equivalence
         # checks) stay excluded by their naming convention, exactly as locally.
         working-directory: backend
         run: ./mvnw -B -ntp test jacoco:report

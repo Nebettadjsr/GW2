@@ -559,36 +559,17 @@ class FullCatalogSyncTest {
         assertEquals("99,99", scalar("SELECT string_agg(buy_unit_price::text, ',' ORDER BY item_id) FROM tp_prices"));
     }
 
-    // ------------------------------------------------------------------ resource evidence
+    // ------------------------------------------------------------------ multi-batch correctness
 
     /**
-     * Controlled multi-batch fixture (4000 items = 20 detail batches of 200). Heap and RSS are the
-     * workload-window peaks from the existing 20 ms {@link perf.ProcessProbe.PeakSampler} (a lower
-     * bound: a spike shorter than the interval can be missed; heap is shared with the whole test JVM,
-     * RSS is the process, so neither isolates this task). Database growth is the before/after total
-     * relation size of {@code items} only (side tables are not measured). No live API call; the upstream is an in-memory fake.
+     * Controlled multi-batch fixture (4000 items = 20 detail batches of 200): every batch is requested
+     * and every item stored. No live API call; the upstream is an in-memory fake.
      */
     @Test
-    void resourceEvidence_recordsBoundsCardinalityRequestsElapsedPeakMemoryAndGrowth() throws Exception {
+    void multiBatchCatalog_requestsEveryDetailBatchAndStoresEveryItem() throws Exception {
         int n = 4000;
         ItemSync.fetcher = url -> { urls.add(url); return url.endsWith("/v2/items") ? json(ids(1, n)) : itemsFor(url, "R"); };
-        long bytesBefore = Long.parseLong(scalar("SELECT pg_total_relation_size('items')"));
-        long t0 = System.nanoTime();
-        long heapPeak;
-        long rssPeak;
-        try (var heap = new perf.ProcessProbe.PeakSampler("heap", perf.ProcessProbe::heapUsedBytes, 20);
-             var rss = new perf.ProcessProbe.PeakSampler("rss", perf.ProcessProbe::rssBytes, 20)) {
-            ItemSync.syncAllItemsFull(TaskDeadline.start());
-            heapPeak = heap.peak();
-            rssPeak = rss.peak();
-        }
-        long ms = (System.nanoTime() - t0) / 1_000_000;
-        long bytesAfter = Long.parseLong(scalar("SELECT pg_total_relation_size('items')"));
-        System.out.printf("FULL-CATALOG-EVIDENCE bounds=connect %ds/request %ds/task %dmin; items fixture=%d ids in %d detail batches, "
-                        + "requests=%d, elapsed=%d ms, peak heap=%d KiB, peak rss=%d KiB (20 ms workload-window samples, lower bound), "
-                        + "items relation size %d -> %d bytes (growth %d)%n",
-                TaskDeadline.CONNECT_SECONDS, TaskDeadline.REQUEST_SECONDS, TaskDeadline.TASK_MINUTES,
-                n, urls.size() - 1, urls.size(), ms, heapPeak / 1024, rssPeak / 1024, bytesBefore, bytesAfter, bytesAfter - bytesBefore);
+        ItemSync.syncAllItemsFull(TaskDeadline.start());
         assertEquals(1 + 20, urls.size());
         assertEquals(String.valueOf(n), scalar("SELECT count(*) FROM items"));
     }

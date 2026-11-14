@@ -1,3 +1,5 @@
+> **Historical, programme ended, not a launch requirement.** The capacity/resource programme was retired by STORY-LAUNCH-001; commands named below no longer exist and results are not passed gates.
+
 # Resource and improvement investigation: first-round findings
 
 **Measured first-round findings; full deployment qualification is not complete.** Parent issue: #116. No adoption, merge, database replacement or deployment is authorized by this report. The Product Owner decides which recommendations to implement.

@@ -1,4 +1,4 @@
-package perf;
+package support.fixture;
 
 import application.access.AccountGrant;
 import application.access.AccountProof;

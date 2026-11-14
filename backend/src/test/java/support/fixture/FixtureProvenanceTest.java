@@ -1,32 +1,25 @@
-package perf;
+package support.fixture;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class FixtureProvenanceTest {
 
     @Test
-    void reportWithoutProvenanceStaysCompatibleAndSaysAbsent() {
-        MeasurementReport r = new MeasurementReport("c", Instant.EPOCH, "f", Map.of());
-        JsonNode json = r.toJson();
-        assertEquals("1", json.get("schemaVersion").asText());
-        assertEquals("absent", json.get("fixtureProvenance").get("state").asText());
-        assertTrue(json.get("fixtureProvenance").get("comparison").asText().startsWith("noncomparable"));
-        assertTrue(r.toMarkdown().contains("Fixture provenance: absent"));
+    void absentProvenanceSaysAbsentAndIsNeverComparable() {
+        ObjectNode absent = FixtureProvenance.absent("none");
+        assertEquals("absent", absent.get("state").asText());
+        assertTrue(absent.get("comparison").asText().startsWith("noncomparable"));
+        assertFalse(FixtureProvenance.comparable(absent, absent.deepCopy()));
     }
 
     @Test
     void syntheticProvenanceCarriesVersionTopologyCoverageAndIdentities() {
         FixtureSnapshot s = SyntheticFixtures.build();
-        MeasurementReport r = new MeasurementReport("c", Instant.EPOCH, "f", Map.of());
-        r.setFixtureProvenance(FixtureProvenance.of(s));
-        JsonNode p = r.toJson().get("fixtureProvenance");
+        JsonNode p = FixtureProvenance.of(s);
         assertEquals("synthetic-populated", p.get("fixtureKind").asText());
         assertEquals(SyntheticFixtures.VERSION, p.get("fixtureVersion").asText());
         assertEquals(s.identity(), p.get("fixtureIdentity").asText());
@@ -35,7 +28,7 @@ class FixtureProvenanceTest {
         assertEquals("unavailable", p.get("topology").get("publicOnlyCapture").asText());
         assertEquals(5, p.get("coverage").get("accounts").asInt());
         assertEquals("not-qualified", p.get("oracleQualification").asText());
-        assertTrue(r.toMarkdown().contains("Topology: synthetic"));
+        assertTrue(FixtureProvenance.markdown(FixtureProvenance.of(s)).contains("Topology: synthetic"));
         assertTrue(FixtureProvenance.comparable(FixtureProvenance.of(s), FixtureProvenance.of(SyntheticFixtures.build())));
     }
 

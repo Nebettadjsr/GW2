@@ -42,8 +42,7 @@ crafting_graph_cache.json
 __pycache__/
 *.py[cod]
 
-# Owner-local interaction recordings (scripts/interaction-record.mjs); may hold ordinary character labels.
+# Historical local experiment output may contain account-derived labels; keep it out of Git.
 frontend/.interaction-recordings/
-
-# Owner-local journey run artifacts (frontend/scripts/journey-runner.mjs); may hold account-derived labels.
 frontend/.journey-runs/
+

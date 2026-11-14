@@ -55,7 +55,7 @@ System Status currently shows account refresh status/time, shared price-cache fr
 
 The owner layout also has an **Application activity** section (STORY-OPS-002; pending Product Owner visual approval): active accounts in the last 5 minutes (estimate, separate from the existing 60-minute value), total PostgreSQL size with available/stale/unavailable states, recent requests/minute, backend p50/p95 (`>5 s` for overflow, not browser time), 4xx/5xx/failed counts, a collapsed paginated recent-minute (6 h) history with explicit no-stored-activity gaps and partial/truncated markers, one grouped Days/Weeks dropdown (newest first, latest nonempty day preselected) with a single Download of the server-described CSV period (no range or format controls), and an optional configured Oracle Console link. It is read once and on an explicit Refresh, never polled. Retrieval steps: `OPERATIONS_RUNBOOK.md`.
 
-The generic `/api/system/status` also returns an optional own-account `accountOverview` (characters, unlocked account recipes, material types and 64-bit total quantity) per permitted source with `CURRENT|STALE|NOT_LOADED|UNAVAILABLE` states (`DOMAIN_SPEC.md` section 57). Ordinary users see these in the Account data card plus one compact shared-service line. Both ordinary and owner layouts are visually accepted; preserve the approved baseline. Capacity-discovery work and the 2-second usable-page reference are planned in ROADMAP; no new load capacity has yet been measured.
+The generic `/api/system/status` also returns an optional own-account `accountOverview` (characters, unlocked account recipes, material types and 64-bit total quantity) per permitted source with `CURRENT|STALE|NOT_LOADED|UNAVAILABLE` states (`DOMAIN_SPEC.md` section 57). Ordinary users see these in the Account data card plus one compact shared-service line. Both ordinary and owner layouts are visually accepted; preserve the approved baseline. Production preparation follows ROADMAP. The capacity-test programme is ended; no supported-user capacity is claimed.
 
 ## Persistence and generated data
 
@@ -90,7 +90,7 @@ Backend tests run with `./mvnw test` in `backend/`; JaCoCo reports are generated
 
 Development uses GitHub issues, PRs, Maven/Vitest CI and native Codex review. Each explicit Claude workflow dispatch selects one ready auto issue; the normal turn limit is 40 (configurable) and the job bound is 45 minutes. An authorized supervisor may dispatch/review subsequent runs. There is no usage-percentage gate or independent background supervisor. Small nonblocking follow-ups may be recorded by review. The retired Python service is recoverable at pre-github-flow.
 
-The informational Performance workflow publishes separate application-process and three-container resource reports, including CPU/memory observations, HTTP/database figures, startup and image sizes where measured. Failures and unavailable metrics remain visible and nonblocking; container global-read samples do not establish crafting capacity. [Performance Measurements](PERFORMANCE_MEASUREMENTS.md) owns invocation, units, workload versions and comparison limits; GitHub run artifacts hold the measurements.
+The informational Performance workflow, resource collectors and capacity journeys were retired by STORY-LAUNCH-001; earlier measurement reports are historical evidence only (see [Performance Measurements](PERFORMANCE_MEASUREMENTS.md)).
 
 ## Account data deletion
 
