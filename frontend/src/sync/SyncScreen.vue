@@ -6,6 +6,7 @@ import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
 import ConnectionPanel from '@/account/ConnectionPanel.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import OwnerCatalogControl from './OwnerCatalogControl.vue'
+import OwnerActivity from './OwnerActivity.vue'
 import type { OwnerOperationKey, SyncOperationKey } from './operations'
 import { useSharedSyncOperations } from './provideSyncOperations'
 import { describeOperationStatus } from './statusPresentation'
@@ -246,11 +247,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
 
     <ConnectionPanel />
 
-    <p v-if="!isConnected" class="meta" role="status" data-test="status-needs-connection">
-      Connect an API key to see account data and run refreshes.
-    </p>
-
-    <template v-else>
+    <template v-if="isConnected">
     <p v-if="!systemStatusLoaded" class="meta" role="status">Loading status…</p>
     <p v-else-if="systemStatusError" class="notice notice--error" role="alert">
       Status unavailable: {{ systemStatusError }}
@@ -389,6 +386,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </details>
       </article>
     </section>
+    <OwnerActivity v-if="ownerState === 'owner' && ownerDetails" :active-last60-minutes="ownerDetails.accounts?.activeLast60Minutes ?? null" @denied="withdrawOwner('not-owner', true)" />
     </template>
   </div>
 </template>

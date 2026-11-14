@@ -284,7 +284,9 @@ class WorkflowConfigTest(unittest.TestCase):
     def test_trigger_and_nonblocking_configuration(self):
         text = self.path.read_text()
         self.assertIn("workflow_dispatch:", text)
-        self.assertIn("push:", text)
+        on_block = text.split("\non:\n")[1].split("\n\n")[0]
+        self.assertNotIn("push:", on_block)
+        self.assertNotIn("pull_request", on_block)
         self.assertNotIn("schedule:", text)
         self.assertIn("continue-on-error: true", text)
         self.assertIn("name: Performance report (informational)", text)

@@ -88,7 +88,7 @@ class AccountSyncApiControllerTest {
             .standaloneSetup(new AccountSyncApiController(coordinator, new AccountAccessHttp(""),
                             scope -> parentPublished && PARENT_ACCOUNTS.contains(scope.accountId().toString())),
                     new SyncTaskApiController(tasks, access, coordinator))
-            .setControllerAdvice(new SyncApiExceptionHandler())
+            .setControllerAdvice(new AccountLifecycleApiExceptionHandler(), new SyncApiExceptionHandler())
             .build();
 
     @AfterEach
@@ -120,6 +120,20 @@ class AccountSyncApiControllerTest {
         long deadline = System.nanoTime() + TIMEOUT.toNanos();
         while (runs.size() < expected && System.nanoTime() < deadline) Thread.sleep(10);
         assertEquals(expected, runs.size());
+    }
+
+    @Test
+    void provedRefreshRefusedByDeletionReturnsRetryableNoStoreResponse() throws Exception {
+        var s = session(A, "key-a");
+        var deletion = access.lifecycle().beginDeletion(java.util.UUID.fromString(A), () -> false, 0);
+        try (var ignored = deletion.exclusive()) {
+            mvc.perform(trigger("/api/sync/account/bank", s, "key-a"))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.error").value("DATA_STORE_UNAVAILABLE"));
+            assertEquals(1, proofCalls.get(), "the valid proof preceded the lifecycle refusal");
+            assertTrue(runs.isEmpty(), "no refresh work was scheduled");
+        }
     }
 
     @Test

@@ -45,6 +45,55 @@ export async function getStateJson<T extends { state: string }>(path: string): P
   return sendJsonAttempt<T>(path, { method: 'GET', headers: { Accept: 'application/json' } }, true, true)
 }
 
+/**
+ * An authorized plain-text read (owner export). Carries the account headers like any account route and
+ * rejects when the account changed while the request or its body was in flight; the caller owns the abort.
+ */
+export async function getText(path: string, accept: string, signal?: AbortSignal): Promise<string> {
+  return (await getTextAttempt(path, accept, signal, true)).text
+}
+
+/** An authorized text attachment: the body plus the server-chosen file name (never built by the browser). */
+export async function getAttachment(path: string, accept: string, signal?: AbortSignal):
+    Promise<{ text: string; filename: string | null }> {
+  return getTextAttempt(path, accept, signal, true)
+}
+
+function attachmentName(header: string | null): string | null {
+  const match = header === null ? null : /filename="([A-Za-z0-9._-]+)"/.exec(header)
+  return match?.[1] ?? null
+}
+
+async function getTextAttempt(path: string, accept: string, signal: AbortSignal | undefined, mayRecover: boolean):
+    Promise<{ text: string; filename: string | null }> {
+  const transport = accountTransport !== null && isAccountPath(path) ? accountTransport : null
+  const ticket = transport === null ? null : await transport.begin(false)
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_PATH}${path}`, {
+      method: 'GET', headers: { Accept: accept, ...(ticket?.headers ?? {}) }, signal
+    })
+  } catch (cause) {
+    throw new ApiRequestError(`The backend could not be reached (${describeCause(cause)}).`, UNREACHABLE_CODE, null)
+  }
+  if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
+    throw new ApiRequestError('The account changed while this request was in flight.', ACCOUNT_CHANGED_CODE, null)
+  }
+  if (!response.ok) {
+    const error = await toRequestError(response)
+    if (transport !== null && ticket !== null && mayRecover && !signal?.aborted &&
+        (await transport.recover(ticket, error)) && !signal?.aborted) {
+      return getTextAttempt(path, accept, signal, false)
+    }
+    throw error
+  }
+  const text = await response.text()
+  if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
+    throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)
+  }
+  return { text, filename: attachmentName(response.headers.get('Content-Disposition')) }
+}
+
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return sendJson<T>(path, {
     method: 'POST',
@@ -89,7 +138,7 @@ function isAccountPath(path: string): boolean {
   const route = path.split('?')[0] ?? path
   return route.startsWith('/account/') || route.startsWith('/crafting/profit') ||
     route.startsWith('/crafting/discovery') || route === '/crafting/selector-options' ||
-    route.startsWith('/sync/account') || route.startsWith('/sync/full/') || route === '/sync/global' || route.startsWith('/sync/tasks/') || route.startsWith('/system/status')
+    route.startsWith('/sync/account') || route.startsWith('/sync/full/') || route === '/sync/global' || route.startsWith('/sync/tasks/') || route.startsWith('/system/status') || route.startsWith('/system/operations')
 }
 
 /**

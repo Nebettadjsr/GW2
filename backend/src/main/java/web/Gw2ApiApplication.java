@@ -98,6 +98,12 @@ public class Gw2ApiApplication {
                 key -> url -> api.Gw2ApiClient.getAuth(url, key));
     }
 
+    @Bean
+    public application.AccountDataDeletionService accountDataDeletionService(
+            AccountAccessService access, ScopedAccountRefreshCoordinator coordinator) {
+        return new application.AccountDataDeletionService(access, coordinator);
+    }
+
     /** Production reader behind the System Status own-account projection; connects only when called. */
     @Bean
     public SystemStatusApiController.AccountStateReader accountStateReader() {
@@ -372,6 +378,38 @@ public class Gw2ApiApplication {
             @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
         return new application.CharacterInventoryLayoutService(coordinator,
                 new repo.CharacterInventoryLayoutRepository(), Clock.systemUTC(), Duration.ofMillis(accountMaxAgeMs));
+    }
+
+    /** Bounded sparse UTC daily activity files (STORY-OPS-003) under {@code OPS_HISTORY_DIR}. */
+    @Bean
+    public application.ops.OperationalHistoryService operationalHistoryService(
+            @Value("${gw2.ops.history-dir}") String directory, tools.jackson.databind.ObjectMapper mapper) {
+        Clock clock = Clock.systemUTC();
+        var store = new infra.ops.SparseActivityStore(Path.of(directory), clock);
+        return new application.ops.OperationalHistoryService(clock,
+                new application.ops.ForegroundActivityTracker(clock), store, store);
+    }
+
+    @Bean
+    public application.ops.DatabaseSizeService databaseSizeService() {
+        return new application.ops.DatabaseSizeService(new repo.DatabaseSizeRepository(repo.Db::open), Clock.systemUTC());
+    }
+
+    @Bean
+    public application.ops.OwnerOperationsService ownerOperationsService(
+            AccountAccessService access, application.access.OwnerPolicy policy,
+            application.ops.OperationalHistoryService history, application.ops.DatabaseSizeService databaseSize) {
+        return new application.ops.OwnerOperationsService(access, policy, history, databaseSize, Clock.systemUTC());
+    }
+
+    @Bean
+    public org.springframework.boot.web.servlet.FilterRegistrationBean<OperationalObservationFilter>
+            operationalObservationFilter(application.ops.OperationalHistoryService history) {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(
+                new OperationalObservationFilter(history));
+        registration.addUrlPatterns("/api/*");
+        registration.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE);
+        return registration;
     }
 
     /** Optional owner identity; malformed nonblank configuration fails startup clearly. */

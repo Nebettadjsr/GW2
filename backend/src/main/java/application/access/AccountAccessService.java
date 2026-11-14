@@ -12,10 +12,48 @@ public final class AccountAccessService {
 
     private final AccountProofPort proof;
     private final AccountSessions sessions;
+    private final AccountLifecycleGate lifecycle = new AccountLifecycleGate();
 
     public AccountAccessService(AccountProofPort proof, AccountSessions sessions) {
         this.proof = proof;
         this.sessions = sessions;
+    }
+
+    /** The one per-GUID lifecycle gate shared by sessions, refresh admission and deletion. */
+    public AccountLifecycleGate lifecycle() {
+        return lifecycle;
+    }
+
+    /** Session installation participates in the account gate, so deletion cannot miss a new session. */
+    private AccountSessions.Issued install(AccountProof proved, String presentedSessionId, String assertedContext) {
+        try (var ignored = lifecycle.enter(java.util.UUID.fromString(proved.accountId()))) {
+            if (presentedSessionId != null) {
+                // Authority is rechecked after actual admission: a deletion that ran while this
+                // renewal waited has invalidated the old session, which must not install a new one.
+                AccountSessions.Resolution again = sessions.resolve(presentedSessionId, assertedContext);
+                if (!again.authenticated()) throw new SessionEnded(again.outcome());
+            }
+            return sessions.establish(proved);
+        }
+    }
+
+    /** Deletion-invalidates every session of the account; call only after the deletion committed. */
+    public int invalidateAccountSessions(String accountId) {
+        return sessions.invalidateAccount(accountId);
+    }
+
+    /** The presented session was no longer authoritative once the account admitted the operation. */
+    public static final class SessionEnded extends RuntimeException {
+        private final AccountSessions.Outcome outcome;
+
+        public SessionEnded(AccountSessions.Outcome outcome) {
+            super("the session is no longer live", null, false, false);
+            this.outcome = outcome;
+        }
+
+        public AccountSessions.Outcome outcome() {
+            return outcome;
+        }
     }
 
     /** Raised when a proved key resolves to an account other than the one already authorized. */
@@ -44,7 +82,7 @@ public final class AccountAccessService {
         if (!proved.grants().contains(AccountGrant.ACCOUNT)) {
             throw new InvalidCredentialException("the credential has no account identity permission");
         }
-        return sessions.establish(proved);
+        return install(proved, null, null);
     }
 
     /**
@@ -62,7 +100,7 @@ public final class AccountAccessService {
             AccountMismatchException {
         AccountSessions.Resolution current = sessions.resolve(sessionId, assertedContext);
         if (!current.authenticated()) {
-            throw new IllegalStateException("renewal requires an authenticated session");
+            throw new SessionEnded(current.outcome());
         }
         AccountProof proved;
         try {
@@ -78,7 +116,7 @@ public final class AccountAccessService {
         if (!proved.accountId().equalsIgnoreCase(current.context().accountId())) {
             throw new AccountMismatchException("the credential resolves to a different account");
         }
-        return sessions.establish(proved);
+        return install(proved, sessionId, assertedContext);
     }
 
     /** Resolves a presented cookie and asserted context; no upstream call, so an outage is fine. */

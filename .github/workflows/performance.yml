@@ -3,13 +3,10 @@
 # Never a gate: every measuring step is continue-on-error, the job is continue-on-error, and
 # the summary script always exits 0. This workflow is not one of the required checks listed in
 # .github/scripts/merge_ready_pr.py and must not be added to branch protection. The functional
-# CI workflow (ci.yml) neither depends on it nor runs the benchmarks. No schedule by design.
+# CI workflow (ci.yml) neither depends on it nor runs the benchmarks. Manual dispatch only (STORY-RESOURCE-001): no push, pull_request or schedule trigger.
 name: Performance
 
 on:
-  push:
-    branches: ["**"]
-  pull_request:
   workflow_dispatch:
 
 concurrency:

@@ -8,6 +8,7 @@ import {
   type AccountRequestTicket,
   type AccountTransport
 } from './http'
+import { onDeletionSignal, publishDeletionSignal } from './accountDeletionSignal'
 
 /**
  * The browser side of account access (`TARGET_ARCHITECTURE.md` 8.1, 8.2, UD-018).
@@ -34,6 +35,8 @@ export interface ConnectionState {
   errorIsDefinitive: boolean
   /** Set after a disconnect whose server-side logout did not succeed. */
   logoutNotice: string | null
+  /** Set when this tab's account data was deleted (here or in another tab); cleared by an explicit connect. */
+  deletionNotice: string | null
   generation: number
   /**
    * Changes each time a session proof installs a (new or renewed) lease, including a renewal for the
@@ -55,6 +58,7 @@ export const connection: ConnectionState = reactive({
   error: null,
   errorIsDefinitive: false,
   logoutNotice: null,
+  deletionNotice: null,
   generation: 0,
   leaseVersion: 0,
   grants: [],
@@ -278,6 +282,7 @@ export async function connectKey(rawKey: string): Promise<boolean> {
   connection.phase = 'connecting'
   connection.error = null
   connection.logoutNotice = null
+  connection.deletionNotice = null
   try {
     const proven = await proveKey(key)
     if (generation !== connection.generation) return false
@@ -326,6 +331,100 @@ export async function disconnect(): Promise<void> {
   }
 }
 
+/* ------------------------------------------------------------------------- deletion --- */
+
+export const DELETION_NOTICE =
+  'Cached account data was deleted. Connect your API key again to use this account.'
+export const DELETION_SUCCESS_NOTICE =
+  'Cached account data was deleted. Your Guild Wars 2 account was not changed.'
+export const ACCOUNT_DATA_DELETED_CODE = 'ACCOUNT_DATA_DELETED'
+
+type DeletionCleanup = (accountId: string) => void
+const deletionCleanups: DeletionCleanup[] = []
+/** Registers browser-state cleanup (e.g. Material Protection) for a deleted account GUID. */
+export function registerDeletionCleanup(cleanup: DeletionCleanup): void {
+  if (!deletionCleanups.includes(cleanup)) deletionCleanups.push(cleanup)
+}
+
+/**
+ * Local-only deletion reset: no proof, no retry, no logout request. Forgets the key, lease, GUID and
+ * grants and advances the epoch/generation so late pre-deletion responses are discarded.
+ */
+function localDeletionReset(notice: string): void {
+  accountEpoch += 1
+  removeKey()
+  lease = null
+  inflight = null
+  connection.generation += 1
+  connection.phase = 'disconnected'
+  connection.error = null
+  connection.errorIsDefinitive = false
+  connection.logoutNotice = null
+  connection.grants = []
+  connection.accountId = null
+  connection.deletionNotice = notice
+}
+
+export type DeleteAccountDataResult = 'deleted' | 'already-deleted' | 'work-in-progress' | 'reconfirm' | 'failed' | 'stale'
+
+/** Authoritative deletion of one GUID: its saved browser state goes first, then (if still current) the session. */
+function applyDeletion(accountId: string, notice: string, stillCurrent: boolean): void {
+  for (const cleanup of deletionCleanups) cleanup(accountId)
+  if (stillCurrent && connection.accountId === accountId) localDeletionReset(notice)
+}
+
+/**
+ * Deletes the connected account's cached data; local cleanup happens only after a 204 or an
+ * authoritative ACCOUNT_DATA_DELETED. The intended GUID and request epoch are captured up front: a
+ * connection that changed meanwhile (new explicit connect, other account) is never reset or reported
+ * as deleted, while the actually deleted GUID's saved browser state is still removed.
+ */
+export async function deleteAccountData(): Promise<DeleteAccountDataResult> {
+  const accountId = connection.accountId
+  if (accountId === null || connection.phase !== 'connected') return 'failed'
+  const epoch = accountEpoch
+  const current = (): boolean => epoch === accountEpoch && connection.accountId === accountId
+  let response: Response
+  try {
+    const ticket = await transport.begin(false)
+    if (!current()) return 'stale'
+    response = await fetch(`${API_BASE_PATH}/account/data`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json', ...ticket.headers }
+    })
+  } catch {
+    return 'failed'
+  }
+  if (response.status === 204) {
+    const wasCurrent = current()
+    applyDeletion(accountId, DELETION_SUCCESS_NOTICE, wasCurrent)
+    publishDeletionSignal(accountId)
+    return wasCurrent ? 'deleted' : 'stale'
+  }
+  const error = await toRequestError(response)
+  if (error.code === ACCOUNT_DATA_DELETED_CODE) {
+    const wasCurrent = current()
+    applyDeletion(accountId, DELETION_NOTICE, wasCurrent)
+    return wasCurrent ? 'already-deleted' : 'stale'
+  }
+  if (!current()) return 'stale'
+  const lapsed = error.status === 401 && error.code === 'SESSION_REQUIRED'
+  const mismatched = error.status === 403 &&
+    (error.code === 'ACCOUNT_ACCESS_DENIED' || error.code === 'ACCESS_CONTEXT_MISMATCH')
+  if (lapsed || mismatched) {
+    // Recheck the retained key before the next explicit confirmation. Never replay DELETE as part
+    // of error recovery, and never reuse a context another tab's shared cookie has displaced.
+    lease = null
+    return 'reconfirm'
+  }
+  return error.code === 'ACCOUNT_WORK_IN_PROGRESS' ? 'work-in-progress' : 'failed'
+}
+
+// Another tab deleted the account this tab is connected to: clear locally, never prove or log out.
+onDeletionSignal((deletedId) => {
+  applyDeletion(deletedId, DELETION_NOTICE, connection.accountId === deletedId)
+})
+
 /* ------------------------------------------------------------------------- transport --- */
 
 const transport: AccountTransport = {
@@ -359,6 +458,13 @@ const transport: AccountTransport = {
       reject(error)
       return false
     }
+    // Deleted data is final until an explicit Connect: never the generic SESSION_REQUIRED re-proof.
+    if (error.code === ACCOUNT_DATA_DELETED_CODE) {
+      const deletedId = connection.accountId
+      if (deletedId !== null) applyDeletion(deletedId, DELETION_NOTICE, true)
+      else localDeletionReset(DELETION_NOTICE)
+      return false
+    }
     // A lapsed lease (401) or a context another tab replaced in the shared cookie (403): prove the
     // retained key again and let the caller repeat the request once.
     const lapsed = error.status === 401 && error.code === 'SESSION_REQUIRED'
@@ -386,6 +492,7 @@ export function resetAccountSession(): void {
   connection.error = null
   connection.errorIsDefinitive = false
   connection.logoutNotice = null
+  connection.deletionNotice = null
   connection.generation = 0
   connection.leaseVersion = 0
   connection.grants = []
