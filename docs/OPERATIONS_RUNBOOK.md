@@ -13,6 +13,33 @@ deployment exists or that monitoring or log forwarding is configured.
 5. Weeks are streamed by the server from the retained daily files. A missing minute means no stored included application request activity, not zero users, zero latency or an outage.
 6. Record the application version, download UTC time, the selected period and any partial, truncated or pruned label.
 
+## What is recorded and when
+
+- Included application requests update fixed counters in memory. Each active UTC minute retains the
+  five-minute distinct-account estimate, request and error counts, backend elapsed time and latency bins,
+  grouped by route category. No API key, account identity or individual click trail is written to these files.
+- Closed minutes are flushed once per minute (initial delay 61 seconds); a manifest/download read also
+  flushes closed minutes. A minute with no included request creates no row, file or index write. System
+  Status reads, owner/admin requests, health checks, assets and task polling do not create activity rows.
+- The owner view loads on opening and explicit Refresh only. Database size is queried on demand and cached
+  for five minutes. CPU and memory belong to Oracle Monitoring, not these application files.
+- Compare active-account estimates, request counts, latency and errors from the same minute. This can
+  reveal slow periods at 3, 5 or 10 active accounts; it does not itself measure simultaneous page loads
+  or establish user capacity. Missing minutes are no stored activity, not proof of an outage or idle uptime.
+
+Approximate CSV sizes below are arithmetic estimates, not load-test results. Assuming 1–3 active route
+groups per minute and roughly 150–200 bytes per row, plus one small CSV header:
+
+| Included activity | Approximate file size |
+| --- | --- |
+| One active hour in a day | 10–35 KiB |
+| A continuously active day | 0.2–0.8 MiB |
+| A continuously active week | 1.5–6 MiB |
+
+Idle hours add nothing. User count changes counters, not the number of per-user rows. The actual size
+depends on active route groups and numeric widths; current storage limits and coverage flags are defined
+in `CURRENT_ARCHITECTURE.md`. A weekly download streams retained days without storing a second copy.
+
 ## Direct aggregate-file retrieval
 
 The history is sparse per-UTC-day files `activity-YYYY-MM-DD.csv` in the `gw2-ops` volume mounted at
