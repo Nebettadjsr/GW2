@@ -8,7 +8,7 @@ import {
   profitResponse,
   selectorOptions
 } from '@/crafting/__tests__/fixtures'
-import { connection, connectKey, installAccountSession, resetAccountSession } from '@/api/accountSession'
+import { connection, connectKey, disconnect, installAccountSession, resetAccountSession } from '@/api/accountSession'
 import { installAccountTransport } from '@/api/http'
 import { resetMaterialProtection, useMaterialProtection } from '@/materials/materialProtectionState'
 import { accountLuck, itemMetadata, itemPrices, METADATA_IDS } from '@/ecto/__tests__/currentEctoFixtures'
@@ -287,6 +287,33 @@ describe('App shell', () => {
     ])
     expect((open.find('[data-test="discovery-search"]').element as HTMLInputElement).value).toBe('Iron')
     expect(open.find('[data-test="discovery-detail-name"]').text()).toBe(selectedRecipe)
+  })
+
+  it('clearsAndRemasksTheDraftAtOnceOnAnExternalDisconnectWhileItsOwnProofIsHeld', async () => {
+    const open = await openApp()
+    await navigateTo(open, 'synchronization')
+    let release!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => (
+      path === '/api/session' ? new Promise<Response>((resolve) => { release = resolve }) : new Response(null, { status: 204 })
+    )))
+    await open.get('[data-test="api-key-input"]').setValue('NEW-KEY-1111')
+    await open.get('[data-test="toggle-key-visibility"]').trigger('click')
+    await open.get('form').trigger('submit')
+    await flushPromises()
+    // The panel was re-created by the attempt's own generation bump; its draft is still there.
+    expect((open.get('[data-test="api-key-input"]').element as HTMLInputElement).value).toBe('NEW-KEY-1111')
+
+    await disconnect()
+    await flushPromises()
+    // Cleaned before the old proof resolves.
+    const field = open.get('[data-test="api-key-input"]')
+    expect((field.element as HTMLInputElement).value).toBe('')
+    expect(field.attributes('type')).toBe('password')
+
+    release(jsonResponse({ accessContext: 'ctx-late', expiresAt: '2099-01-01T00:00:00Z', grants: [] }))
+    await flushPromises()
+    expect((open.get('[data-test="api-key-input"]').element as HTMLInputElement).value).toBe('')
+    expect(connection.phase).toBe('disconnected')
   })
 
   it('opensCraftingProfitWhenTheUrlNamesNoKnownDestination', async () => {

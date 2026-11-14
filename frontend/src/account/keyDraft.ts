@@ -6,12 +6,14 @@ import { connectKey, connection } from '@/api/accountSession'
  * outlives the panel's own remount: a connect attempt bumps the account generation before it
  * completes, which re-creates the workspace, and a failed attempt must still leave the text for
  * correction. It is cleared when the attempt is accepted, on Disconnect, on any account change that
- * did not come from this draft's own attempt, and when the panel is closed without an attempt running.
+ * did not come from this draft's own attempt start (cleared at once, even while its proof is pending), and when the panel is closed without an attempt running.
  */
 export const draft = ref('')
 export const showDraft = ref(false)
 
 let attempting = false
+// True only while connectKey runs its synchronous start, whose generation bump is this draft's own.
+let starting = false
 
 export function clearDraft(): void {
   draft.value = ''
@@ -26,14 +28,20 @@ export function isAttempting(): boolean {
 watch(
   () => connection.generation,
   () => {
-    if (!attempting) clearDraft()
+    if (!starting) clearDraft()
   },
   { flush: 'sync' }
 )
 
 export async function submitDraft(): Promise<void> {
   attempting = true
-  const pending = connectKey(draft.value)
+  starting = true
+  let pending: Promise<boolean>
+  try {
+    pending = connectKey(draft.value)
+  } finally {
+    starting = false
+  }
   // connectKey bumps the generation synchronously; later movement is an external change.
   const own = connection.generation
   let accepted = false
