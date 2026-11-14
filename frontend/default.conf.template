@@ -11,9 +11,11 @@ log_format gw2_minimal '$request_method $gw2_log_path $status $body_bytes_sent $
 server {
     listen 8080;
     access_log /dev/stdout gw2_minimal;
-    # The error log echoes the full request line (with query string) on upstream failures, so only
-    # critical events are written; the 5xx status stays visible in the access log above.
-    error_log /dev/stderr crit;
+    # Request-associated error lines (even critical ones, e.g. a failed body temp file) append the
+    # request line with query string, upstream URI and Referer. Nothing request-bound is therefore
+    # written here; the 5xx status stays visible in the access log above. Startup/config events use
+    # the global error log, which carries no request context.
+    error_log /dev/stderr emerg;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;

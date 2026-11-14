@@ -24,6 +24,7 @@ LOCAL = DOCKER / "compose.yaml"
 GUID = "123e4567-e89b-12d3-a456-426614174000"
 HAVE_COMPOSE = shutil.which("docker") is not None and subprocess.run(
     ["docker", "compose", "version"], capture_output=True).returncode == 0
+DROPPED_PREFIXES = ("GW2_", "DATABASE_", "POSTGRES_", "PG", "VITE_", "COMPOSE_", "SPRING_", "ICON_", "OPS_")
 # Developer values that must never reach the containers.
 POISON = {
     "DATABASE_URL": "jdbc:postgresql://maintainer-db.invalid:5432/prod",
@@ -34,7 +35,9 @@ POISON = {
 
 
 def render(file, env_extra, use_poison=True):
-    env = {"PATH": os.environ["PATH"], "HOME": tempfile.gettempdir()}
+    # Keep the platform/tool-discovery environment (HOME/USERPROFILE/APPDATA/SYSTEMROOT, DOCKER_*) so the
+    # installed Compose CLI plugin is found; drop everything that could carry application credentials.
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith(DROPPED_PREFIXES)}
     if use_poison:
         env.update(POISON)
     env.update(env_extra)
@@ -149,10 +152,10 @@ class _Stub(BaseHTTPRequestHandler):
 
 @unittest.skipUnless(shutil.which("nginx"), "nginx not installed")
 class ProxyLoggingTest(unittest.TestCase):
-    SECRETS = ("SECRET-KEY-VALUE", "SECRET-COOKIE-VALUE", "SECRET-QUERY-VALUE", "SECRET-CTX-VALUE")
+    SECRETS = ("SECRET-KEY-VALUE", "SECRET-COOKIE-VALUE", "SECRET-QUERY-VALUE", "SECRET-CTX-VALUE", "SECRET-BODY-VALUE")
 
-    def request(self, port, path):
-        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers={
+    def request(self, port, path, body=None):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=body, headers={
             "X-GW2-API-Key": self.SECRETS[0], "Cookie": "sid=" + self.SECRETS[1],
             "X-Account-Context": self.SECRETS[3], "Referer": "http://x/?t=" + self.SECRETS[2]})
         try:
@@ -197,6 +200,11 @@ http {{
         stub.shutdown()
         stub.server_close()  # upstream now refuses connections: exercises the error path
         self.assertEqual(502, self.request(18087, "/api/x?access_token=" + self.SECRETS[2]))
+        # Request-associated CRIT failure: the body temp directory vanishes, so buffering a large POST fails
+        # while the request line, query and Referer are attached to the log context.
+        shutil.rmtree(tmp / "b")
+        failed = self.request(18087, "/api/y?access_token=" + self.SECRETS[2], body=b"SECRET-BODY-VALUE" * 4000)
+        self.assertEqual(500, failed)
         time.sleep(0.3)
         access = (tmp / "access.log").read_text()
         self.assertIn("/api/system/status 200", access)
@@ -205,6 +213,7 @@ http {{
         for secret in self.SECRETS:
             self.assertNotIn(secret, everything)
         self.assertNotIn("access_token", everything)
+        self.assertIn("/api/y 500", access)
 
 
 if __name__ == "__main__":
