@@ -10,8 +10,9 @@ import java.util.List;
  *
  * <p>A transport copy of the domain's {@code craft.CraftTraceNode}, with an optional Discovery-only
  * recipe-knowledge label derived from the explicit account-known and eligible-candidate sets. No
- * quantity or cost is repaired, summed or rounded here, no state is inferred from a price quote,
- * and no node is dropped or truncated. Enum-valued
+ * domain quantity or total cost is repaired, summed or rounded. The mapper supplies a separate
+ * display-only rounded unit average; no state is inferred from a price quote and no node is dropped
+ * or truncated. Enum-valued
  * domain facts are carried as their own names, so a state or reason this schema does not yet
  * enumerate stays visible instead of silently reading as success.
  *
@@ -28,6 +29,11 @@ import java.util.List;
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *
+ * @param effectiveUnitCostCopper display-only average of {@code effectiveCostCopper} over
+ *                           {@code requestedQuantity}, whole copper rounded HALF_UP; null when the
+ *                           total is missing or the quantity is not positive. Not a quote
+ * @param effectiveUnitCostApproximate true exactly when a known total does not divide evenly by a
+ *                           positive requested quantity, so the unit value was rounded
  * @param itemName           null when this operation captured no usable name; display may fall back
  *                           to the ID
  * @param methods            the acquisition methods that actually contributed
@@ -65,6 +71,8 @@ public record ResolutionNodeDto(int itemId,
                                 Integer cashCostCopper,
                                 Integer opportunityCostCopper,
                                 Integer effectiveCostCopper,
+                                Integer effectiveUnitCostCopper,
+                                boolean effectiveUnitCostApproximate,
                                 List<ResolutionNodeDto> children,
                                 String iconUrl,
                                 @JsonInclude(JsonInclude.Include.NON_NULL) String recipeKnowledge) {

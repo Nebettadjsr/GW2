@@ -236,6 +236,8 @@ function treeFor(recipeId, itemName) {
     cashCostCopper: 0,
     opportunityCostCopper: 0,
     effectiveCostCopper: 0,
+    effectiveUnitCostCopper: 0,
+    effectiveUnitCostApproximate: false,
     children: [],
     iconUrl: null,
     ...overrides
@@ -248,6 +250,7 @@ function treeFor(recipeId, itemName) {
     methods: ['CRAFT'],
     cashCostCopper: 98_765,
     effectiveCostCopper: 103_086,
+    effectiveUnitCostCopper: 103_086,
     children: [node(19_700, 'Mithril Ore', { requestedQuantity: 60, boughtQuantity: 60, methods: ['BUY'] })]
   })
 }

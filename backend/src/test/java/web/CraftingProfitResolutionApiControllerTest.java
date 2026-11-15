@@ -301,6 +301,8 @@ class CraftingProfitResolutionApiControllerTest {
                 .andExpect(jsonPath("$.tree.cashCostCopper").value(36))
                 .andExpect(jsonPath("$.tree.opportunityCostCopper").value(0))
                 .andExpect(jsonPath("$.tree.effectiveCostCopper").value(36))
+                .andExpect(jsonPath("$.tree.effectiveUnitCostCopper").value(18))
+                .andExpect(jsonPath("$.tree.effectiveUnitCostApproximate").value(false))
                 .andExpect(jsonPath("$.tree.children.length()").value(1))
                 .andExpect(jsonPath("$.tree.children[0].itemId").value(200))
                 .andExpect(jsonPath("$.tree.children[0].itemName").value("Ingot"))

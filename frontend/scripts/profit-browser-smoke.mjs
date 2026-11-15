@@ -256,6 +256,8 @@ function treeNode(itemId, itemName, overrides) {
     cashCostCopper: 0,
     opportunityCostCopper: 0,
     effectiveCostCopper: 0,
+    effectiveUnitCostCopper: 0,
+    effectiveUnitCostApproximate: false,
     children: [],
     iconUrl: null,
     ...overrides
@@ -287,6 +289,7 @@ function resolutionTree(recipeId) {
     cashCostCopper: 98_765,
     opportunityCostCopper: 4_321,
     effectiveCostCopper: 103_086,
+    effectiveUnitCostCopper: 103_086,
     children: [
       treeNode(19_700, 'Mithril Ore', {
         requestedQuantity: 60,
@@ -295,7 +298,8 @@ function resolutionTree(recipeId) {
         methods: ['INVENTORY', 'BUY'],
         cashCostCopper: 4_320,
         opportunityCostCopper: 2_880,
-        effectiveCostCopper: 7_200
+        effectiveCostCopper: 7_200,
+        effectiveUnitCostCopper: 120
       }),
       treeNode(19_698, 'Lump of Mithril', {
         requestedQuantity: 2,
@@ -307,6 +311,7 @@ function resolutionTree(recipeId) {
         cashCostCopper: 1_500,
         opportunityCostCopper: null,
         effectiveCostCopper: null,
+        effectiveUnitCostCopper: null,
         children: [
           treeNode(19_700, 'Mithril Ore', {
             requestedQuantity: 10,
@@ -314,7 +319,8 @@ function resolutionTree(recipeId) {
             methods: ['INVENTORY'],
             cashCostCopper: 0,
             opportunityCostCopper: 1_200,
-            effectiveCostCopper: 1_200
+            effectiveCostCopper: 1_200,
+            effectiveUnitCostCopper: 120
           }),
           treeNode(19_699, 'Charged Core', {
             requestedQuantity: 3,
@@ -323,7 +329,8 @@ function resolutionTree(recipeId) {
             blockedReasons: ['PRICE_UNAVAILABLE', 'BUYING_DISABLED'],
             cashCostCopper: null,
             opportunityCostCopper: null,
-            effectiveCostCopper: null
+            effectiveCostCopper: null,
+            effectiveUnitCostCopper: null
           })
         ]
       }),
@@ -344,7 +351,8 @@ function resolutionTree(recipeId) {
         blockedReasons: ['SOME_REASON_ADDED_LATER'],
         cashCostCopper: null,
         opportunityCostCopper: null,
-        effectiveCostCopper: null
+        effectiveCostCopper: null,
+        effectiveUnitCostCopper: null
       })
     ]
   })
@@ -1043,7 +1051,8 @@ async function run() {
       'From stock ×24',
       'Bought ×36',
       'Crafted by Nbt Anch',
-      'Value: 10g 30s 86c',
+      'Value per item: 10g 30s 86c',
+      'Total value for 1 item: 10g 30s 86c',
       // The two collapsed groups this fixture has, each naming how much it holds.
       '4 ingredient requirements',
       '2 ingredient requirements'
@@ -1162,7 +1171,8 @@ async function run() {
     )
     check(
       // No cost was established for it, and the compact value says so rather than reading as zero.
-      missingPrice.affected.value.join(' | ') === 'Value: —',
+      missingPrice.affected.value.join(' | ').includes('Value per item: —') &&
+        missingPrice.affected.value.join(' | ').includes('Total value for 3 items: —'),
       `A cost the backend could not establish was not left missing: ${JSON.stringify(missingPrice.affected)}`
     )
     check(

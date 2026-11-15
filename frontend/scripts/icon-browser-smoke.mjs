@@ -147,6 +147,8 @@ function treeNode(itemId, itemName, iconUrl, children = []) {
     cashCostCopper: 100,
     opportunityCostCopper: 0,
     effectiveCostCopper: 100,
+    effectiveUnitCostCopper: 50,
+    effectiveUnitCostApproximate: false,
     children,
     iconUrl
   }

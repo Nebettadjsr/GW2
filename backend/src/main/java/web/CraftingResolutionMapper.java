@@ -24,9 +24,10 @@ import java.util.Set;
  * settings, defaults and validation - stays in {@link CraftingProfitApiMapper} and
  * {@link CraftingDiscoveryApiMapper}, which this class does not duplicate.
  *
- * <p>It only validates and copies. It runs no resolution, selects no recipe, derives no cost or
- * quantity, and infers no domain state from a price: every value it emits was produced by the
- * authoritative resolver and handed over by {@code application.CraftingResolutionDetail}. Nothing
+ * <p>It validates and copies authoritative facts and projects the display-only average unit value
+ * from the inclusive total. It runs no resolution, selects no recipe, changes no domain cost or
+ * quantity, and infers no domain state from a price. Authoritative totals come from the resolver
+ * through {@code application.CraftingResolutionDetail}. Nothing
  * here reads the database or the crafting graph, so mapping cannot introduce a second data read into
  * an operation (§13.2). It is stateless, so it is safe to share across concurrent requests.
  */
@@ -190,9 +191,23 @@ final class CraftingResolutionMapper {
                 node.cashCostCopper(),
                 node.opportunityCostCopper(),
                 node.effectiveCostCopper(),
+                unitCost(node.effectiveCostCopper(), node.requestedQuantity()),
+                isApproximate(node.effectiveCostCopper(), node.requestedQuantity()),
                 children,
                 iconUrl(node.itemId(), items),
                 recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds));
+    }
+
+    /** Display projection only: whole-copper HALF_UP average of the node total; null if undefined. */
+    static Integer unitCost(Integer totalCopper, int requestedQuantity) {
+        if (totalCopper == null || requestedQuantity <= 0) return null;
+        return java.math.BigDecimal.valueOf(totalCopper)
+                .divide(java.math.BigDecimal.valueOf(requestedQuantity), 0, java.math.RoundingMode.HALF_UP)
+                .intValueExact();
+    }
+
+    static boolean isApproximate(Integer totalCopper, int requestedQuantity) {
+        return totalCopper != null && requestedQuantity > 0 && totalCopper % requestedQuantity != 0;
     }
 
     private static String recipeKnowledge(Integer recipeId,

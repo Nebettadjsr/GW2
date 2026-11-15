@@ -108,7 +108,14 @@ Normal nodes omit bookkeeping rows for stock/crafted/bought/missing quantities,
 producing recipe and recipe ID, crafts run and produced total. This does not hide
 meaningful blocked/unavailable explanations. Diagnostic values remain in the
 backend/API contract without adding visible technical-detail sections. The normal
-Profit tree shows one `Value` from the backend's `effectiveCostCopper` field. It is the
+Profit and Discovery trees show, for each requirement, `Value per item` and
+`Total value for N item(s)` on separate lines. The total is the backend's unchanged
+`effectiveCostCopper` field. The per-item figure is the backend-projected
+`effectiveUnitCostCopper`, a display-only average of that total over the node's
+`requestedQuantity`, rounded to whole copper HALF_UP and marked `≈` when
+`effectiveUnitCostApproximate` is true. It is null (shown `—`) when the total is
+missing or the quantity is not positive, and is not a Trading Post quote, resolver
+input or sum of children. The total is the
 economic cost of everything consumed by that requirement: the opportunity value of owned sellable
 materials plus the actual acquisition cost of materials that must be bought. It is inclusive of
 descendants exactly once, so a parent includes a crafted child's cost without adding the child's

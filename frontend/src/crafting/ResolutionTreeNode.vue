@@ -12,7 +12,7 @@ import { wikiUrl } from './recipeLabel'
 /**
  * One requirement of the resolution tree, recursively including the ingredients of a selected or
  * attempted craft. Both crafting pages use this one compact presentation: backend-supplied identity,
- * needed and source quantities, the named crafter and a single `Value`. Raw state, blocked-reason and
+ * needed and source quantities, the named crafter and a per-item and a total `Value`. Raw state, blocked-reason and
  * acquisition-method codes remain in backend/API diagnostics. No value is recalculated, and repeated
  * items remain separate ordered occurrences.
  *
@@ -35,6 +35,11 @@ const sourcing = computed(() => [
 ].filter((source) => source.quantity > 0))
 const playerStatus = computed(() => nodePlayerStatus(props.node))
 const wikiHref = computed(() => wikiUrl(props.node.itemName))
+
+const unitText = computed(() => {
+  const text = formatCopper(props.node.effectiveUnitCostCopper)
+  return props.node.effectiveUnitCostApproximate && props.node.effectiveUnitCostCopper !== null ? `≈ ${text}` : text
+})
 
 const childCount = computed(() => props.node.children.length)
 const childSummary = computed(() =>
@@ -89,12 +94,13 @@ const childSummary = computed(() =>
     </p>
 
     <!--
-      One `Value` per requirement, the backend's own `effectiveCostCopper` (`DOMAIN_SPEC.md` 2.1.1).
-      The separate cash/opportunity/effective figures remain in the API contract for diagnostics and
-      are deliberately not a per-node disclosure here.
+      The backend's display-only unit average and unchanged inclusive total, each on its own line
+      (`DOMAIN_SPEC.md` 2.1.1). Cash and opportunity breakdowns remain in API diagnostics.
     -->
     <p class="node__value" data-test="node-value">
-      Value: {{ formatCopper(node.effectiveCostCopper) }}
+      <span class="node__value-part" data-test="node-unit-value">Value per item: <span class="node__value-amount">{{ unitText }}</span></span>
+      <span class="node__value-part" data-test="node-total-value">Total value for {{ node.requestedQuantity }}
+        {{ node.requestedQuantity === 1 ? 'item' : 'items' }}: <span class="node__value-amount">{{ formatCopper(node.effectiveCostCopper) }}</span></span>
     </p>
 
     <details v-if="childCount > 0" class="node__children" data-test="node-children">
@@ -145,6 +151,9 @@ const childSummary = computed(() =>
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+
+.node__value-part { display: block; }
+.node__value-amount { white-space: nowrap; }
 
 .node__identity a { color: inherit; text-decoration: underline; text-decoration-color: var(--color-muted); }
 
@@ -201,7 +210,9 @@ const childSummary = computed(() =>
 
 .node__value {
   display: flex;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
