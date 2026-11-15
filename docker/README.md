@@ -83,6 +83,10 @@ This is the local HTTP stack. Public hosting and TLS are described separately in
 ## Search-engine indexing (noindex)
 
 The frontend image sends `X-Robots-Tag: noindex, nofollow` on every response (including errors and
-`/api/`), and `index.html` carries the matching meta tag. There is no `robots.txt` Disallow, because
-crawlers must fetch a page to see `noindex`, and no sitemap. These are indexing instructions only:
-they are not access control, confidentiality or an anti-scraping guarantee.
+`/api/`), and `index.html` carries the matching meta tag. The owner additionally requested a site-wide
+crawl block: `/robots.txt` serves `User-agent: *` and `Disallow: /` as plain text, without a sitemap.
+This applies to every current path, including the SPA's shared root document and its hash routes.
+Crawlers blocked by robots.txt cannot read the pages' noindex tags; a search engine can still list
+a blocked URL discovered elsewhere without indexing its contents. See
+[Google's distinction between crawling and indexing](https://developers.google.com/search/docs/crawling-indexing/robots/intro).
+These directives are not access control, confidentiality or an anti-scraping guarantee.

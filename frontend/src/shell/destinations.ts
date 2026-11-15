@@ -62,7 +62,7 @@ export function destinationOf(id: DestinationId): Destination {
 
 /** The document title of a destination; a browser tab and the history entries stay identifiable. */
 export function documentTitleOf(destination: Destination): string {
-  return `${destination.label} · ${SITE_NAME}`
+  return `${destination.label} · ${SITE_NAME} · Unofficial fan project`
 }
 
 /**

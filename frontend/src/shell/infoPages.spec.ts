@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { INFO_DESTINATIONS, destinationForHash, isInfoDestination } from './destinations'
 import { missingOperatorFacts, readOperatorFacts } from './operatorFacts'
 import { installAccountSession, resetAccountSession } from '@/api/accountSession'
@@ -24,7 +24,14 @@ describe('operator facts', () => {
 
 describe('application with a public information page', () => {
   const fetchSpy = vi.fn()
+  // Compile the shell before the assertion budget, as in App.spec.ts on cold Windows runs.
+  beforeAll(async () => { await import('../App.vue') }, 30_000)
   beforeEach(() => {
+    // Exercise an incomplete build independently of any local Vite operator configuration.
+    for (const field of [
+      'VITE_OPERATOR_NAME', 'VITE_OPERATOR_ADDRESS', 'VITE_OPERATOR_COUNTRY',
+      'VITE_HOSTING_REGION', 'VITE_PUBLIC_DOMAIN', 'VITE_CONTACT_EMAIL'
+    ]) vi.stubEnv(field, '')
     fetchSpy.mockReset()
     fetchSpy.mockImplementation(async () => new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchSpy)
@@ -34,6 +41,7 @@ describe('application with a public information page', () => {
     installAccountSession()
   })
   afterEach(() => {
+    vi.unstubAllEnvs()
     vi.unstubAllGlobals()
     window.sessionStorage.clear()
     window.location.hash = ''

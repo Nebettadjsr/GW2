@@ -3,7 +3,7 @@
  * (`VITE_OPERATOR_*`). Each is an independent fact: operator country, hosting region, public domain
  * and contact email are never inferred from one another. Nothing is invented — an unset value stays
  * `null`, and the pages then say plainly that the preview is incomplete and not deployable.
- * Final verified content and the publication gate belong to STORY-LAUNCH-004.
+ * Completed values do not by themselves establish approval of the legal/privacy content.
  */
 export interface OperatorFacts {
   readonly operatorName: string | null
@@ -16,11 +16,11 @@ export interface OperatorFacts {
 
 export const OPERATOR_FIELDS: ReadonlyArray<{ key: keyof OperatorFacts; label: string }> = [
   { key: 'operatorName', label: 'Operator name' },
-  { key: 'operatorAddress', label: 'Operator address' },
-  { key: 'operatorCountry', label: 'Operator country of establishment or residence' },
-  { key: 'hostingRegion', label: 'Hosting or data-centre region' },
-  { key: 'publicDomain', label: 'Public domain' },
-  { key: 'contactEmail', label: 'Public contact email' }
+  { key: 'operatorAddress', label: 'Postal address' },
+  { key: 'operatorCountry', label: 'Operator country' },
+  { key: 'hostingRegion', label: 'Hosting region' },
+  { key: 'publicDomain', label: 'Website' },
+  { key: 'contactEmail', label: 'Email' }
 ]
 
 function configured(value: unknown): string | null {

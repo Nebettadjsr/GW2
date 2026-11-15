@@ -153,6 +153,7 @@ a {
 
 .site-wordmark {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
   font-size: var(--text-lg);
@@ -935,4 +936,13 @@ html {
 .site-footer__link[aria-current="page"] {
   font-weight: 600;
   text-decoration-color: var(--color-highlight);
+}
+
+.site-footer__attribution {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 0 var(--space-4) var(--space-4);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
 }
