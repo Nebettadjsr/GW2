@@ -1,6 +1,8 @@
 package craft;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,53 @@ class CraftingGraphSearchTest {
         assertEquals(Set.of(1), graph.parentRecipeIdsForIngredientName("cAbBaGe"));
         assertEquals(Set.of(), graph.parentRecipeIdsForIngredientName("no such item"));
         assertEquals(Set.of(), graph.parentRecipeIdsForIngredientName(" "));
+    }
+
+    @Test
+    void searchesUncachedIngredientIdAcrossEveryProducerAndDeduplicatesCyclesAndPaths() {
+        CraftingGraph graph = new CraftingGraph(List.of(
+                recipe(10, 100, 1, 19698), recipe(11, 100, 2, 19698),
+                recipe(20, 200, 1, 100), recipe(30, 300, 1, 100, 200),
+                recipe(40, 100, 1, 300), recipe(50, 500, 1, 196980)));
+
+        assertEquals(Set.of(10, 11, 20, 30, 40),
+                graph.parentRecipeIdsForIngredientName(" 19698 "));
+    }
+
+    @Test
+    void numericSearchUnionsIngredientIdentityWithExistingNameMatches() {
+        CraftingGraph graph = new CraftingGraph(List.of(
+                recipe(10, 100, 1, 19698), recipe(20, 200, 1, 500),
+                recipe(30, 300, 1, 100, 200)), Map.of(500, "Commemorative 19698 Token"));
+
+        assertEquals(Set.of(10, 20, 30), graph.parentRecipeIdsForIngredientName("19698"));
+        assertEquals(Set.of(20, 30), graph.parentRecipeIdsForIngredientName("cOmMeMoRaTiVe"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, Integer.MAX_VALUE})
+    void searchesPositiveIngredientIdsThroughoutTheSupportedIntegerRange(int itemId) {
+        CraftingGraph graph = new CraftingGraph(List.of(recipe(10, 100, 1, itemId)));
+
+        assertEquals(Set.of(10), graph.parentRecipeIdsForIngredientName(Integer.toString(itemId)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-19698", "19698.0", "19698x", "2147483648",
+            "9999999999999999999999999999999"})
+    void malformedOrOutOfRangeTextDoesNotBecomeAnIngredientId(String query) {
+        CraftingGraph graph = new CraftingGraph(List.of(
+                recipe(10, 100, 1, 19698), recipe(20, 200, 1, Integer.MAX_VALUE)));
+
+        assertEquals(Set.of(), graph.parentRecipeIdsForIngredientName(query));
+    }
+
+    @Test
+    void outOfRangeNumericTextStillUsesOrdinaryNameMatching() {
+        CraftingGraph graph = new CraftingGraph(List.of(recipe(10, 100, 1, 500)),
+                Map.of(500, "Token 2147483648"));
+
+        assertEquals(Set.of(10), graph.parentRecipeIdsForIngredientName("2147483648"));
     }
 
     @Test
