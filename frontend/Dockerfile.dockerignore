@@ -4,6 +4,7 @@
 !package.json
 !package-lock.json
 !index.html
+!welcome.html
 !tsconfig.json
 !vite.config.ts
 !public/**

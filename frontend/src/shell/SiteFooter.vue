@@ -20,7 +20,7 @@ function onClick(event: MouseEvent, id: DestinationId, emit: (id: DestinationId)
         <li v-for="page in INFO_DESTINATIONS" :key="page.id">
           <a
             class="site-footer__link"
-            :href="page.path"
+            :href="currentId === 'home' ? `/${page.path}` : page.path"
             :aria-current="page.id === currentId ? 'page' : undefined"
             :data-test="`footer-link-${page.id}`"
             @click="onClick($event, page.id, id => $emit('navigate', id))"

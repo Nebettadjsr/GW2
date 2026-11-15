@@ -11,7 +11,7 @@ WORKDIR /src
 # Dependencies first so a source-only change reuses the installed node_modules layer.
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY index.html tsconfig.json vite.config.ts ./
+COPY index.html welcome.html tsconfig.json vite.config.ts ./
 COPY public/ public/
 COPY src/ src/
 # Optional public operator facts (src/shell/operatorFacts.ts) baked into the static pages. Unset/empty

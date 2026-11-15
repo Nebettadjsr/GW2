@@ -10,6 +10,7 @@ import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
 import EctoSalvageScreen from './ecto/EctoSalvageScreen.vue'
 import { DESTINATIONS, isInfoDestination, type DestinationId } from './shell/destinations'
 import InfoPage from './shell/InfoPage.vue'
+import HomeScreen from './home/HomeScreen.vue'
 import SiteFooter from './shell/SiteFooter.vue'
 import SiteHeader from './shell/SiteHeader.vue'
 import PageHeader from './shell/PageHeader.vue'
@@ -39,6 +40,7 @@ const bootstrap = useAccountBootstrap()
 const isConnected = computed(() => connection.phase === 'connected')
 const isConnecting = computed(() => connection.phase === 'restoring' || connection.phase === 'connecting')
 const onInfoPage = computed(() => isInfoDestination(route.current.value))
+const onHome = computed(() => route.current.value.id === 'home')
 const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
 const onCraftingPage = computed(() => ['crafting', 'discovery'].includes(route.current.value.id))
 const craftingReady = computed(() => !['checking', 'syncing'].includes(bootstrap.phase.value))
@@ -98,9 +100,11 @@ watch(
     -->
     <SyncScreen v-if="onSystemStatus" />
 
+    <HomeScreen v-if="onHome" @navigate="onNavigate" />
+
     <InfoPage v-if="onInfoPage" :page="route.current.value.id" />
 
-    <section v-if="!onInfoPage && !onSystemStatus && !isConnected" class="account-needed">
+    <section v-if="!onHome && !onInfoPage && !onSystemStatus && !isConnected" class="account-needed">
     <PageHeader :heading="route.current.value.label" />
     <p role="status" data-test="connection-needed">
       <template v-if="isConnecting">Checking your GW2 API key…</template>
