@@ -445,6 +445,7 @@ public class CraftingResolver {
                     }
                     if (child.getBlockedReason() == BlockedReason.MATERIAL_LIMIT
                             || child.getBlockedReason() == BlockedReason.VALUE_RANGE) {
+                        unsatisfiedChildReason = child.getBlockedReason();
                         break; // this attempt can never be accepted; do not expand later siblings
                     }
                 }
