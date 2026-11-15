@@ -72,6 +72,10 @@ public class CraftingGraph {
         itemNames.forEach((itemId, name) -> {
             if (name != null && name.toLowerCase(Locale.ROOT).contains(needle)) seedItems.add(itemId);
         });
+        if (needle.length() <= 10 && needle.chars().allMatch(c -> c >= '0' && c <= '9')) {
+            long id = Long.parseLong(needle);
+            if (id > 0 && id <= Integer.MAX_VALUE) seedItems.add((int) id);
+        }
         return parentRecipeIdsForIngredientIds(seedItems);
     }
 
