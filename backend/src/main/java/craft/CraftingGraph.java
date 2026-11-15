@@ -68,6 +68,7 @@ public class CraftingGraph {
     public Set<Integer> parentRecipeIdsForIngredientName(String searchText) {
         if (searchText == null || searchText.isBlank()) return Set.of();
         String needle = searchText.trim().toLowerCase(Locale.ROOT);
+        if (needle.isEmpty()) return Set.of();
         Set<Integer> seedItems = new HashSet<>();
         itemNames.forEach((itemId, name) -> {
             if (name != null && name.toLowerCase(Locale.ROOT).contains(needle)) seedItems.add(itemId);
