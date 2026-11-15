@@ -91,6 +91,14 @@ is off. This is a bounded deployment check, not an exhaustive security or cross-
 
 ### Information pages, processing and logs
 
+The footer links **Legal notice** (`#/legal`), **Privacy** (`#/privacy`) and **Cookies & browser
+storage** (`#/storage`) outside the main navigation. These pages are publicly hosted. Opening one
+does not restore a retained key or request account data; an existing connected session and cached
+application views remain intact. Public operator facts come from optional `VITE_OPERATOR_*`
+configuration; an unconfigured local preview shows its missing-facts notice. The live release has
+the owner-approved facts and copy. Crawler policy is described above; these information pages
+retain noindex.
+
 The owner approved the legal/privacy/browser-storage copy and supplied all six public deployment
 facts; they were verified in the actual served bundle. The operator is a private individual
 in Germany; the host is in Frankfurt. The working public contact is `kontakt@gw2-crafting.de`.
@@ -238,8 +246,8 @@ confirmation; the next explicit attempt rechecks the retained key before deletin
 
 - Account datasets are GUID-scoped. One account is active per shared-cookie browser session; independent accounts in such tabs are not promised.
 - The connection panel (shown only on System Status, which stays reachable while disconnected and on direct URL/reload; other pages show a concise link to it) retains the key in sessionStorage, proves it before loading account data, and renews access without repeated entry. Invalid keys are removed; transient failures retain the key for retry. The key area is one bordered card: heading, two small help links ("How do I get an API key?", "Is my API key safe here?") in place of routine connection sentences, a full-width field with an eye button that shows or hides only the typed draft, and an actions row below (Connect/Replace key, Try again, Disconnect). Only working, outage and error states are narrated. Help opens a small centered native modal dialog (short safety facts with collapsed "What this app stores"; four numbered creation steps recommending all permissions, an ArenaNet link in the first step, and a footer link to the safety explanation). The draft is masked again after an accepted submission, Disconnect, an account change or remount, and kept after a failed submission. The retained key is never put back into the field.
-- Scoped HTTP workflows now operate on the migrated schema; legacy unscoped account access stays refused. Local Chrome/live-ArenaNet recovery evidence covers completed full synchronization, selector options, loaded Profit, Bank, Materials, reload retention and disconnect. This does not certify every feature or establish a hosted deployment.
-- A Java 25 backend image and a static Nginx frontend image with same-origin `/api` forwarding, each with an isolated Docker smoke, are available (`CURRENT_ARCHITECTURE.md`, container image sections). A three-container Docker Compose stack joins them (frontend is the only published port, `bash scripts/compose-smoke.sh` verifies the local stack offline). The private Oracle execution above uses the standalone production file; public TLS and public deployment are not delivered.
+- Scoped HTTP workflows now operate on the migrated schema; legacy unscoped account access stays refused. Local Chrome/live-ArenaNet recovery evidence covers completed full synchronization, selector options, loaded Profit, Bank, Materials, reload retention and disconnect. This does not certify every feature; the separate hosted checks and their limits are recorded in the public Oracle section above.
+- A Java 25 backend image and static Nginx frontend image with same-origin `/api` forwarding run with PostgreSQL in the public Oracle stack. Only the frontend publishes a loopback host port; the host edge supplies public TLS. Every host Compose invocation requires the production file, protected HTTPS override and explicit environment file described above. The standalone production file alone does not describe this deployment; #228 owns portable configuration follow-up. The local offline Compose smoke is separate evidence (`CURRENT_ARCHITECTURE.md`, container image sections).
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.
 - Attribute projections support level-80 land equipment and explicitly modelled passives; they are not a full trait/combat simulator. In-game effects, live economic correctness and general exact attribute parity remain separate verification work.
 - Oracle Always Free hosts the public release described above. No supported-user capacity is claimed; the retired capacity-test programme is not a launch prerequisite.
@@ -253,5 +261,3 @@ confirmation; the next explicit attempt rechecks the retained key before deletin
 - [Known Problems](KNOWN_PROBLEMS.md): confirmed open defects and risks.
 - [Test Strategy](TEST_STRATEGY.md): verification layers and procedures.
 - [Crafting Glossary](crafting/GLOSSARY.md): player-facing terms and UI-label mapping.
-
-- Public information pages (STORY-LAUNCH-002, local preview): a footer on every destination links **Legal notice** (`#/legal`), **Privacy** (`#/privacy`) and **Cookies & browser storage** (`#/storage`), outside the main navigation. Opening one issues no account request; restoring a retained session key is deferred until an application destination is opened, and a connected session is left untouched. The open screens' `KeepAlive` caches stay mounted while an information page is shown, so returning keeps selections and posts no new calculation. Operator facts come from optional `VITE_OPERATOR_*` configuration; unset facts show "To be completed" under one local-preview notice. All routes default to `noindex` (HTML meta and frontend Nginx `X-Robots-Tag`); noindex is not access control. Final content validation belongs to STORY-LAUNCH-004.
