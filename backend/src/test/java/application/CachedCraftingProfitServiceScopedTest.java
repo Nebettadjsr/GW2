@@ -3,6 +3,7 @@ package application;
 import craft.CraftResult;
 import craft.CraftingSettings;
 import craft.Recipe;
+import craft.SingleCraftExplanation;
 import model.AccountScope;
 import org.junit.jupiter.api.Test;
 import repo.AccountSourceStateRepository;
@@ -23,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** STORY-APP-015: scoped calculations report the captured account/generations and admit no legacy work. */
@@ -51,6 +53,8 @@ class CachedCraftingProfitServiceScopedTest {
 
     private Instant completedAt = EXPIRED_AT;
     private boolean covered = false;
+    private long sourceGeneration = 5L;
+    private final List<CraftingSettings> calculatedSettings = new ArrayList<>();
     private final List<AccountScope> opened = new ArrayList<>();
     private final List<AccountScope> requiredScopes = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -91,6 +95,57 @@ class CachedCraftingProfitServiceScopedTest {
         assertTrue(freshness.failures().isEmpty());
     }
 
+    @Test
+    void finiteSettingsStayRequestLocalAcrossTableDetailAndAccountsWithTheSameSourceVersions() throws Exception {
+        completedAt = FRESH_AT;
+        covered = true;
+        AccountScope a = AccountScope.of("11111111-2222-3333-4444-555555555555");
+        AccountScope b = AccountScope.of("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        CachedCraftingProfitService service = service();
+        var table = service.profit(a, DiscChoice.all(), finiteSettings(250, 25));
+        String generation = table.freshness().calculationId();
+        var sameDetail = service.resolution(a, RECIPE.recipeId, DiscChoice.all(), finiteSettings(250, 25), generation);
+        var changedDetail = service.resolution(a, RECIPE.recipeId, DiscChoice.all(), finiteSettings(200, 30), generation);
+        var otherAccount = service.resolution(b, RECIPE.recipeId, DiscChoice.all(), finiteSettings(250, 25), generation);
+
+        // The token names published input generations. Each operation must still use its own
+        // effective quantity maps; a matching token must never reuse an earlier operation's settings.
+        assertEquals(generation, sameDetail.freshness().calculationId());
+        assertEquals(generation, changedDetail.freshness().calculationId());
+        assertEquals(CachedCraftingProfitService.CONSISTENCY_FRESH_CALCULATION, sameDetail.consistency());
+        assertNotEquals(generation, otherAccount.freshness().calculationId());
+        assertEquals(CachedCraftingProfitService.CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS,
+                otherAccount.consistency());
+        assertEquals(List.of(a, a, a, b), opened);
+        assertEquals(List.of(Map.of(200, 250), Map.of(200, 250), Map.of(200, 200), Map.of(200, 250)),
+                calculatedSettings.stream().map(settings -> settings.protectedBankQuantities).toList());
+        assertEquals(List.of(Map.of(200, 25), Map.of(200, 25), Map.of(200, 30), Map.of(200, 25)),
+                calculatedSettings.stream().map(settings -> settings.protectedMaterialQuantities).toList());
+        assertTrue(calculatedSettings.stream().allMatch(settings -> settings.protectedItemIds.isEmpty()));
+        assertTrue(tasks.admitted.isEmpty(), "fresh quantity-only changes must not admit upstream work");
+    }
+
+    @Test
+    void aChangedSourceGenerationRecalculatesDetailWithTheLatestFiniteSettings() throws Exception {
+        completedAt = FRESH_AT;
+        covered = true;
+        AccountScope scope = AccountScope.of("11111111-2222-3333-4444-555555555555");
+        CachedCraftingProfitService service = service();
+        var table = service.profit(scope, DiscChoice.all(), finiteSettings(250, 25));
+        sourceGeneration = 6L;
+
+        var detail = service.resolution(scope, RECIPE.recipeId, DiscChoice.all(), finiteSettings(200, 30),
+                table.freshness().calculationId());
+
+        assertEquals(CachedCraftingProfitService.CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS, detail.consistency());
+        assertNotEquals(table.freshness().calculationId(), detail.freshness().calculationId());
+        assertTrue(detail.freshness().sourceGenerations().values().stream().allMatch(value -> value == 6L));
+        assertEquals(Map.of(200, 200), calculatedSettings.get(1).protectedBankQuantities);
+        assertEquals(Map.of(200, 30), calculatedSettings.get(1).protectedMaterialQuantities);
+        assertEquals(Map.of(200, 250), calculatedSettings.getFirst().protectedBankQuantities);
+        assertTrue(tasks.admitted.isEmpty());
+    }
+
     private CachedCraftingProfitService service() {
         return new CachedCraftingProfitService(
                 new ProfitInputSession.Factory() {
@@ -102,14 +157,23 @@ class CachedCraftingProfitServiceScopedTest {
                 },
                 session -> new CraftingProfitService(null, null, null, null, null, null, null, session) {
                     @Override public ProfitData reload(DiscChoice choice, CraftingSettings settings) {
+                        calculatedSettings.add(settings);
                         return new ProfitData(List.of(RECIPE), List.of(RECIPE),
                                 Map.of(RECIPE.recipeId, RESULT), Map.of(), Map.of());
+                    }
+                    @Override public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice,
+                                                                            CraftingSettings settings) {
+                        calculatedSettings.add(settings);
+                        return new CraftingResolutionDetail(RECIPE.recipeId,
+                                CraftingResolutionDetail.Status.RESULT_UNAVAILABLE, RECIPE, RESULT,
+                                SingleCraftExplanation.unavailable(RECIPE.recipeId, RECIPE.outputItemId,
+                                        RECIPE.outputCount), Map.of(), Map.of());
                     }
                 },
                 (con, sources) -> Map.of(),
                 (con, scope, sources) -> {
                     Map<String, AccountSourceStateRepository.SourceState> states = new java.util.LinkedHashMap<>();
-                    for (String s : sources) states.put(s, new AccountSourceStateRepository.SourceState(s, 5L, completedAt));
+                    for (String s : sources) states.put(s, new AccountSourceStateRepository.SourceState(s, sourceGeneration, completedAt));
                     return states;
                 },
                 con -> new CalculationFreshness.PriceCoverage(
@@ -123,5 +187,10 @@ class CachedCraftingProfitServiceScopedTest {
 
     private static CraftingSettings settings() {
         return new CraftingSettings(true, false, 10_000, false, false, false);
+    }
+
+    private static CraftingSettings finiteSettings(int bank, int materials) {
+        return new CraftingSettings(true, false, 10_000, false, false, false,
+                true, List.of(), List.of(), List.of(), Map.of(200, bank), Map.of(200, materials));
     }
 }

@@ -12,6 +12,7 @@ import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Material Protection (STORY-MAT-001): protected item IDs lose all pre-existing owned copies. */
@@ -152,6 +153,29 @@ class MaterialProtectionTest {
         assertFalse(s.isProtected(8));
         assertFalse(settings(false, 0, false, 7).isProtected(7));
         assertTrue(s.withBuyingDisabled().isProtected(3), "the no-buy phase keeps protection");
+    }
+
+    @Test
+    void finiteTargetsAreImmutableCopiesAndSurviveTheNoBuyingPhase() {
+        Map<Integer, Integer> bank = new java.util.HashMap<>(Map.of(RAW, 250));
+        Map<Integer, Integer> materials = new java.util.HashMap<>(Map.of(RAW, 25));
+        CraftingSettings settings = new CraftingSettings(true, true, 50, true, true, true,
+                true, Set.of(), Set.of(), Set.of(), bank, materials);
+        bank.put(RAW, 1);
+        materials.clear();
+
+        assertEquals(Map.of(RAW, 250), settings.protectedBankQuantities);
+        assertEquals(Map.of(RAW, 25), settings.protectedMaterialQuantities);
+        assertThrows(UnsupportedOperationException.class, () -> settings.protectedBankQuantities.put(RAW, 1));
+        assertThrows(UnsupportedOperationException.class, () -> settings.protectedMaterialQuantities.clear());
+        CraftingSettings noBuy = settings.withBuyingDisabled();
+        assertFalse(noBuy.allowBuying);
+        assertEquals(0, noBuy.maxBuyCopper);
+        assertEquals(settings.protectedBankQuantities, noBuy.protectedBankQuantities);
+        assertEquals(settings.protectedMaterialQuantities, noBuy.protectedMaterialQuantities);
+        assertTrue(noBuy.materialProtectionEnabled && noBuy.useOwnMats && noBuy.allowDailyCrafts);
+        assertTrue(noBuy.listingSell && noBuy.listingBuy);
+        assertFalse(noBuy.isProtected(RAW), "finite store targets never create a global owned-stock mask");
     }
 
     @Test

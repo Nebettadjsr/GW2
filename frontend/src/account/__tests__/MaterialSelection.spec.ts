@@ -36,9 +36,9 @@ describe('InventoryTile selection control', () => {
   it('hasNoCheckboxUnlessSelectable_andNamesTheItem', async () => {
     const plain = mount(InventoryTile, { props: { itemId: 5, count: 1, iconUrl: null, title: 't' } })
     expect(plain.find('input').exists()).toBe(false)
-    const w = mount(InventoryTile, { props: { itemId: 5, count: 1, iconUrl: null, title: 't', selected: false } })
+    const w = mount(InventoryTile, { props: { itemId: 5, count: 1, iconUrl: null, title: 'Item #5', selected: false } })
     const cb = w.find('input[type="checkbox"]')
-    expect(cb.attributes('aria-label')).toBe('Protect item #5')
+    expect(cb.attributes('aria-label')).toBe('Protect Item #5')
     await cb.setValue(true)
     expect(w.emitted('toggle')).toEqual([[5]])
   })
@@ -154,7 +154,7 @@ describe('Bank and Materials selection', () => {
       expect.arrayContaining([expect.stringContaining('40')]))
     expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([false, true, true, true, true, true])
     expect(boxes(w).map((c) => c.attributes('aria-label'))).toEqual(
-      ['Protect item #555', 'Protect item #19698', 'Protect item #12134', 'Protect item #12134', 'Protect item #12134', 'Protect item #19697'])
+      ['Protect Item #555', 'Protect Item #19698', 'Protect Item #12134', 'Protect Item #12134', 'Protect Item #12134', 'Protect Item #19697'])
     expect(state.pending).toEqual([12134, 19697, 19698])
     expect(state.committed).toEqual([12134, 19697, 19698])
     expect(w.find('[data-test="selection-state"]').exists()).toBe(false)
@@ -274,7 +274,7 @@ describe('Selection presets', () => {
     const w = await open(MaterialsScreen, api)
     const state = useMaterialProtection().state
     const fetches = vi.spyOn(globalThis, 'fetch')
-    const manual = boxes(w).findIndex((c) => c.attributes('aria-label') === 'Protect item #19697')
+    const manual = boxes(w).findIndex((c) => c.attributes('aria-label') === 'Protect Item #19697')
     await box(w, manual).setValue(true)
     await w.find('[data-test="preset-extra"]').trigger('click')
     expect(state.pending).toEqual([19675, 19697, 19721, 19925, 19976])

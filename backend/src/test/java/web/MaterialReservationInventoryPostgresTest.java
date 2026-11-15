@@ -184,6 +184,22 @@ class MaterialReservationInventoryPostgresTest {
         assertEquals(20, root.get("craftableCount").asInt(), "10 intermediate batches yield 20 usable outputs");
     }
 
+    @Test
+    void changingOnlyTheTargetRecalculatesDetailAndDoesNotContaminateTheEarlierTableContext() throws Exception {
+        JsonNode original = calculate(false, finite("protectedBankQuantities", 250), null);
+        JsonNode changedDetail = calculate(true, finite("protectedBankQuantities", 200), null);
+        JsonNode repeated = calculate(false, finite("protectedBankQuantities", 250), null);
+
+        assertEquals(100, original.get("rows").get(0).get("craftableCount").asInt());
+        assertEquals(150, changedDetail.get("row").get("craftableCount").asInt());
+        assertEquals(150, changedDetail.get("tree").get("children").get(0).get("inventoryQuantity").asInt());
+        assertEquals(200, changedDetail.get("calculation").get("settings")
+                .get("protectedBankQuantities").get("200").asInt());
+        assertEquals(original.get("rows"), repeated.get("rows"));
+        assertEquals(original.get("settings"), repeated.get("settings"));
+        assertEquals(350, new InventoryRepository().loadOwnedInventory(admin, A).get(200));
+    }
+
     private static String finite(String field, int quantity) {
         return "{\"useOwnMats\":true,\"allowBuying\":false,\"materialProtectionEnabled\":true,"
                 + "\"protectedItemIds\":[],\"" + field + "\":{\"200\":" + quantity + "}}";

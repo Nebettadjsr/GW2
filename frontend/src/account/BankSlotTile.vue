@@ -18,7 +18,7 @@ const empty = computed(() => props.slot.itemId === null && props.slot.count === 
     :data-slot="slot.slot"
     data-test="bank-slot"
     :title="empty ? `Empty slot #${slot.slot}` : `${slot.itemName ?? `Item #${slot.itemId ?? 'unknown'}`} · ${slot.count ?? 'unknown'} in slot #${slot.slot}`"
-    :aria-label="empty ? `Empty slot ${slot.slot}` : `Slot ${slot.slot}, item ${slot.itemId ?? 'unknown'}, quantity ${slot.count ?? 'unknown'}`"
+    :aria-label="empty ? `Empty slot ${slot.slot}` : `Slot ${slot.slot}, ${slot.itemName ?? `item ${slot.itemId ?? 'unknown'}`}, quantity ${slot.count ?? 'unknown'}`"
   >
     <InventoryTile v-if="!empty && slot.itemId !== null && slot.count !== null"
       :item-id="slot.itemId" :count="slot.count" :icon-url="slot.iconUrl"
