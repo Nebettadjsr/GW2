@@ -197,7 +197,7 @@ async function run() {
       'Loading the page issued a synchronization request.'
     )
     check(
-      (await page.title()) === 'System Status · GW2 Crafting Tool',
+      (await page.title()) === 'System Status · GW2 Crafting Tool · Unofficial fan project',
       `The document title did not name the open area: ${await page.title()}`
     )
     record('System Status opened with health cards and no price-refresh buttons')

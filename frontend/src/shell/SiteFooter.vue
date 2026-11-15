@@ -28,5 +28,12 @@ function onClick(event: MouseEvent, id: DestinationId, emit: (id: DestinationId)
         </li>
       </ul>
     </nav>
+    <p class="site-footer__attribution">
+      © ArenaNet LLC. All rights reserved. NCSOFT, ArenaNet, Guild Wars, Guild Wars 2, GW2,
+      Heart of Thorns, Path of Fire, End of Dragons, Secrets of the Obscure, Janthir Wilds,
+      Visions of Eternity, and all associated logos, designs, and composite marks are trademarks
+      or registered trademarks of NCSOFT Corporation. All other trademarks are the property of
+      their respective owners.
+    </p>
   </footer>
 </template>

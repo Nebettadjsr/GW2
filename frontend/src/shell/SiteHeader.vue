@@ -39,7 +39,7 @@ function activityOf(destination: Destination): string | null {
       <p class="site-wordmark">
         <span class="site-wordmark__accent">GW2</span>
         <span>Crafting Tool</span>
-        <span class="site-wordmark__scope">Trading Post &amp; crafting analysis</span>
+        <span class="site-wordmark__scope">Unofficial fan project · Trading Post &amp; crafting</span>
       </p>
 
       <nav class="site-nav" aria-label="Application areas" data-test="screen-nav">

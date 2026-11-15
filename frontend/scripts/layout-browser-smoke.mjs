@@ -786,7 +786,7 @@ async function run() {
           `${area.id} at ${viewport.name}: the page heading did not read "${area.heading}".`
         )
         check(
-          (await page.title()) === `${area.heading} · GW2 Crafting Tool`,
+          (await page.title()) === `${area.heading} · GW2 Crafting Tool · Unofficial fan project`,
           `${area.id}: the document title did not name the area (${await page.title()}).`
         )
         const current = await page.$eval('[aria-current="page"]', (link) => ({
