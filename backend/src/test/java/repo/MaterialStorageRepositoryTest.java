@@ -11,6 +11,8 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.UUID;
 
+import static support.fixture.CachedItemNameFixtures.itemName;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class MaterialStorageRepositoryTest {
@@ -25,7 +27,7 @@ class MaterialStorageRepositoryTest {
         con.setSchema(schema);
         try (Statement st = con.createStatement()) {
             st.execute("CREATE TABLE account_materials (item_id INTEGER PRIMARY KEY, count INTEGER, fetched_at TIMESTAMPTZ)");
-            st.execute("CREATE TABLE items (item_id INTEGER PRIMARY KEY, icon_path TEXT, icon_url TEXT, rarity TEXT)");
+            st.execute("CREATE TABLE items (item_id INTEGER PRIMARY KEY, name TEXT, icon_path TEXT, icon_url TEXT, rarity TEXT)");
         }
         MaterialStorageSchema.ensure(con);
     }
@@ -43,13 +45,20 @@ class MaterialStorageRepositoryTest {
             st.execute("INSERT INTO material_categories VALUES (5, 'Second', 10), (1, 'First', 2)");
             st.execute("INSERT INTO material_category_items VALUES (5, 0, 99), (1, 0, 20), (1, 1, 21)");
             st.execute("INSERT INTO account_materials VALUES (20, 250)");
-            st.execute("INSERT INTO items VALUES (20, 'C:/icons/20.png', 'https://render.guildwars2.com/file/ABC/20.png', 'Fine')");
+            st.execute("INSERT INTO items (item_id, name, icon_path, icon_url, rarity) VALUES"
+                    + " (20, 'Green Wood Log', 'C:/icons/20.png', 'https://render.guildwars2.com/file/ABC/20.png', 'Fine'),"
+                    + " (21, 'Zero-stock Mithril Ore', NULL, NULL, 'Rare')");
         }
         List<MaterialStorageRepository.MaterialStorageRow> rows = new MaterialStorageRepository().loadMaterialStorage(con);
         assertEquals(List.of(20, 21, 99), rows.stream().map(MaterialStorageRepository.MaterialStorageRow::itemId).toList());
         assertEquals(List.of(2, 2, 10), rows.stream().map(MaterialStorageRepository.MaterialStorageRow::categoryOrder).toList());
         assertEquals(List.of(250, 0, 0), rows.stream().map(MaterialStorageRepository.MaterialStorageRow::count).toList());
         assertEquals("https://render.guildwars2.com/file/ABC/20.png", rows.getFirst().iconUrl());
+        assertEquals(List.of("First", "First", "Second"),
+                rows.stream().map(MaterialStorageRepository.MaterialStorageRow::categoryName).toList());
+        assertEquals("Green Wood Log", itemName(rows.get(0)), "the item name must not be the category name");
+        assertEquals("Zero-stock Mithril Ore", itemName(rows.get(1)), "catalog metadata survives a zero count");
+        assertNull(itemName(rows.get(2)), "unknown metadata stays null instead of borrowing the category name");
     }
 
     @Test void failsWhenAccountMaterialsHaveNeverBeenSynchronized() {

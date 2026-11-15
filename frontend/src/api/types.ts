@@ -510,6 +510,8 @@ export interface BankSlot {
   count: number | null
   iconUrl: string | null
   rarity: string | null
+  /** Cached shared item name; null for an empty slot or missing metadata. */
+  itemName?: string | null
   /** False only when the backend can rule out crafting and Mystic Forge use. */
   protectionSelectable?: boolean
 }
@@ -537,6 +539,8 @@ export interface MaterialStack {
   count: number
   iconUrl: string | null
   rarity: string | null
+  /** Cached shared item name; null when metadata is missing. */
+  itemName?: string | null
 }
 
 /** One official material category in game display order. */

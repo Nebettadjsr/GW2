@@ -86,7 +86,8 @@ public class BankContentsApiController {
                         row.count(),
                         ItemIconUrls.iconUrlFor(row.itemId(), row.iconUrl()),
                         row.rarity(),
-                        row.protectionSelectable()))
+                        row.protectionSelectable(),
+                        row.itemName()))
                 .toList();
     }
 }

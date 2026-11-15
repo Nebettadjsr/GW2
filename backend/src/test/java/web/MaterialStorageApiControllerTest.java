@@ -12,9 +12,14 @@ import application.icons.ItemIconUrls;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+
+import static support.fixture.CachedItemNameFixtures.itemName;
+import static support.fixture.CachedItemNameFixtures.withItemName;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -56,6 +61,47 @@ class MaterialStorageApiControllerTest {
     }
 
     // ---------- successful reads ----------
+
+    @Test
+    void cachedNamesIncludeZeroStockAndNeverBorrowTheCategoryLabelForUnknownItems() throws Exception {
+        var service = new StubMaterialStorageService(List.of(
+                new MaterialStorageService.MaterialCategory(1, "Basic Crafting Materials", 2, List.of(
+                        withItemName(new MaterialStorageRow(1, "Category label", 2, 0, 19718,
+                                250, LOG_SOURCE, "Basic"), "Green Wood Log"),
+                        withItemName(new MaterialStorageRow(1, "Category label", 2, 1, 19723,
+                                0, null, "Fine"), "Mithril Ore"))),
+                new MaterialStorageService.MaterialCategory(5, "Other Materials", 10, List.of(
+                        new MaterialStorageRow(5, "Different category label", 10, 3, 99999, 0, null, null)))));
+
+        String body = mockMvcFor(service).perform(get("/api/account/materials"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoryCount").value(2))
+                .andExpect(jsonPath("$.categories[0].name").value("Basic Crafting Materials"))
+                .andExpect(jsonPath("$.categories[0].order").value(2))
+                .andExpect(jsonPath("$.categories[0].materials[0].itemName").value("Green Wood Log"))
+                .andExpect(jsonPath("$.categories[0].materials[0].count").value(250))
+                .andExpect(jsonPath("$.categories[0].materials[0].iconUrl").value(LOG_ICON_URL))
+                .andExpect(jsonPath("$.categories[0].materials[0].rarity").value("Basic"))
+                .andExpect(jsonPath("$.categories[0].materials[1].itemId").value(19723))
+                .andExpect(jsonPath("$.categories[0].materials[1].itemName").value("Mithril Ore"))
+                .andExpect(jsonPath("$.categories[0].materials[1].position").value(1))
+                .andExpect(jsonPath("$.categories[0].materials[1].count").value(0))
+                .andExpect(jsonPath("$.categories[1].name").value("Other Materials"))
+                .andExpect(jsonPath("$.categories[1].materials[0].itemId").value(99999))
+                .andExpect(jsonPath("$.categories[1].materials[0].position").value(3))
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode unknown = JSON.readTree(body).get("categories").get(1).get("materials").get(0);
+        assertTrue(unknown.has("itemName") && unknown.get("itemName").isNull());
+        assertEquals(1, service.callCount);
+    }
+
+    @Test
+    void existingMaterialRowConstructorsDefaultTheAddedNameToNull() throws Exception {
+        assertNull(itemName(new MaterialStorageRow(1, 19718, 5, null, null, "Basic")));
+        assertNull(itemName(new MaterialStorageRow(1, "Category", 2, 0, 19718, 5, null, "Basic")));
+        assertNull(itemName(new MaterialStorageRow(1, "Category", 2, 0, 19718, 5, null, null, "Basic")));
+    }
 
     @Test
     void returnsEveryCategoryAndStackInServiceOrderWithQuantitiesAndDisplayMetadata() throws Exception {
@@ -128,7 +174,7 @@ class MaterialStorageApiControllerTest {
 
         List<String> stackFields = new ArrayList<>();
         category.get("materials").get(0).fieldNames().forEachRemaining(stackFields::add);
-        assertEquals(List.of("position", "itemId", "count", "iconUrl", "rarity"), stackFields,
+        assertEquals(Set.of("position", "itemId", "itemName", "count", "iconUrl", "rarity"), Set.copyOf(stackFields),
                 "the stack must be a transport record, not a serialized repository row");
         assertFalse(body.contains(LOCAL_ICON_PATH.replace("\\", "\\\\")),
                 "the backend filesystem path must not reach the browser: " + body);

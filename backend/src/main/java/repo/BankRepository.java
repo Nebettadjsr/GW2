@@ -29,7 +29,8 @@ public class BankRepository {
      * <p>{@code iconPath} is the local desktop file JavaFX renders; {@code iconUrl} is the retained
      * upstream icon source ({@code items.icon_url}) a browser-facing read derives its image URL from
      * (TARGET_ARCHITECTURE.md §12.1). Both come from this one batch read, so neither costs a per-row
-     * lookup.
+     * lookup. {@code itemName} is the shared cached {@code items.name}, null for an empty slot or
+     * an item without a cached row (never invented).
      */
     public record BankSlotRow(int slot,
                               Integer itemId,
@@ -37,9 +38,14 @@ public class BankRepository {
                               String iconPath,
                               String iconUrl,
                               String rarity,
-                              boolean protectionSelectable) {
+                              boolean protectionSelectable,
+                              String itemName) {
+        public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity,
+                           boolean protectionSelectable) {
+            this(slot, itemId, count, iconPath, iconUrl, rarity, protectionSelectable, null);
+        }
         public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity) {
-            this(slot, itemId, count, iconPath, iconUrl, rarity, true);
+            this(slot, itemId, count, iconPath, iconUrl, rarity, true, null);
         }
     }
 
@@ -61,7 +67,7 @@ public class BankRepository {
     public List<BankSlotRow> loadBankSlots(Connection con, model.AccountScope scope) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "account_bank");
         String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.no_mystic_forge,
+            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name, i.no_mystic_forge,
                    EXISTS (SELECT 1 FROM material_category_items m WHERE m.item_id = b.item_id) AS material,
                    EXISTS (SELECT 1 FROM recipe_ingredients r WHERE r.item_id = b.item_id) AS recipe_ingredient,
                    EXISTS (SELECT 1 FROM recipe_catalog_publication WHERE complete) AS catalog_complete
@@ -120,7 +126,7 @@ public class BankRepository {
         // account-access stories; until then this is unavailable rather than cross-account.
         ManagedSchema.rejectUnscopedAccountAccess(con, "account_bank without an account scope");
         String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity
+            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name
             FROM account_bank b
             LEFT JOIN items i ON i.item_id = b.item_id
             ORDER BY b.slot
@@ -146,6 +152,6 @@ public class BankRepository {
                 (Integer) rs.getObject("count"),
                 rs.getString("icon_path"),
                 rs.getString("icon_url"),
-                rs.getString("rarity"), protectionSelectable);
+                rs.getString("rarity"), protectionSelectable, rs.getString("item_name"));
     }
 }

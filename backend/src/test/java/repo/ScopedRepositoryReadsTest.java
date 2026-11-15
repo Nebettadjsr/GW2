@@ -11,13 +11,17 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import static support.fixture.CachedItemNameFixtures.itemName;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -103,6 +107,58 @@ class ScopedRepositoryReadsTest {
     }
 
     // ---- InventoryRepository ------------------------------------------------------------------
+
+    @Test
+    void bankAndMaterialsShareCachedNamesWithoutSharingAccountRowsOrSourceMarkers() throws Exception {
+        exec("INSERT INTO items (item_id, name, rarity, no_mystic_forge) VALUES"
+                        + " (100, 'Shared Ore', 'Fine', true), (104, 'Zero-stock Alloy', 'Rare', false)",
+                "INSERT INTO material_categories (category_id, name, display_order) VALUES (5, 'Catalog category', 2)",
+                "INSERT INTO material_category_items (category_id, position, item_id) VALUES"
+                        + " (5, 0, 100), (5, 1, 104), (5, 2, 103)",
+                "INSERT INTO account_bank (account_id, slot, item_id, count) VALUES"
+                        + " ('" + B.accountId() + "', 1, 100, 7), ('" + B.accountId() + "', 4, 104, 9)");
+        var states = new AccountSourceStateRepository();
+        Instant completed = Instant.parse("2026-11-15T20:00:00Z");
+        states.advance(con, A, AccountSyncStateRepository.MATERIALS, completed);
+        var bank = new BankRepository();
+        var materials = new MaterialStorageRepository();
+
+        var bankA = bank.loadBankSlots(con, A);
+        var bankB = bank.loadBankSlots(con, B);
+        var materialsA = materials.loadMaterialStorage(con, A);
+        assertThrows(SQLException.class, () -> materials.loadMaterialStorage(con, B),
+                "another account's named catalog rows do not publish this account's source");
+        assertTrue(states.read(con, B, AccountSyncStateRepository.MATERIALS).isEmpty());
+        states.advance(con, B, AccountSyncStateRepository.MATERIALS, completed.minusSeconds(60));
+        var materialsB = materials.loadMaterialStorage(con, B);
+
+        assertEquals(List.of(1, 2, 3), bankA.stream().map(BankRepository.BankSlotRow::slot).toList());
+        assertEquals(List.of(2, 6), bankA.stream().filter(row -> row.count() != null)
+                .map(BankRepository.BankSlotRow::count).toList());
+        assertEquals("Shared Ore", itemName(bankA.getFirst()));
+        assertNull(itemName(bankA.get(1)), "an unmatched item row has no name");
+        assertNull(itemName(bankA.get(2)), "an empty bank slot has no name");
+        assertEquals(List.of(7, 9), bankB.stream().map(BankRepository.BankSlotRow::count).toList());
+        assertEquals("Shared Ore", itemName(bankB.getFirst()));
+        assertEquals("Zero-stock Alloy", itemName(bankB.get(1)));
+        assertTrue(bankA.getFirst().protectionSelectable(), "material-catalog eligibility remains authoritative");
+        assertTrue(bankA.get(1).protectionSelectable(), "unknown crafting uses stay selectable");
+        assertEquals(List.of(100, 104, 103), materialsA.stream()
+                .map(MaterialStorageRepository.MaterialStorageRow::itemId).toList());
+        assertEquals(List.of(4, 0, 0), materialsA.stream()
+                .map(MaterialStorageRepository.MaterialStorageRow::count).toList());
+        assertEquals(List.of(50, 0, 0), materialsB.stream()
+                .map(MaterialStorageRepository.MaterialStorageRow::count).toList());
+        for (var rows : List.of(materialsA, materialsB)) {
+            assertEquals("Shared Ore", itemName(rows.getFirst()));
+            assertEquals("Zero-stock Alloy", itemName(rows.get(1)));
+            assertNull(itemName(rows.get(2)));
+            assertEquals("Catalog category", rows.getFirst().categoryName());
+        }
+        assertEquals(completed, states.read(con, A, AccountSyncStateRepository.MATERIALS).orElseThrow().completedAt());
+        assertEquals(completed.minusSeconds(60), states.read(con, B,
+                AccountSyncStateRepository.MATERIALS).orElseThrow().completedAt());
+    }
 
     @Test
     void ownedInventoryForSelectedCharacterSplitsSellableAndBoundWithinOneAccount() throws Exception {

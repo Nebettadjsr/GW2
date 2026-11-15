@@ -94,7 +94,8 @@ public class MaterialStorageApiController {
                         row.itemId(),
                         row.count(),
                         ItemIconUrls.iconUrlFor(row.itemId(), row.iconUrl()),
-                        row.rarity()))
+                        row.rarity(),
+                        row.itemName()))
                 .toList();
     }
 }

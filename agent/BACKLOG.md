@@ -11,6 +11,29 @@ general public access, and the two-line value display. Earlier local-only/previe
 that scope are superseded. After publication the owner authorized useful maintenance and review
 of open issues/PRs. Today's UI pairing is finished; this is not permission to redesign approved pages.
 
+### Overnight Bank/Materials request
+
+The owner now authorizes this focused follow-up while away, including implementation and testing.
+It supersedes the no-new-UI-work limit only for these requested interactions. Finished work that
+does not require visual/product approval may be published; incomplete work and new layouts stay
+local for the morning. Preserve unrelated edits and current public behavior outside this scope.
+
+- Make the entire selectable item/material tile toggle protection, with one accessible toggle per action.
+- Save selection changes immediately per verified account/store; remove Save selection, Discard changes
+  and pending-change text. Preserve category/preset actions and honest storage-failure handling.
+- Offer a right-click quantity reservation: a fixed reserved count leaves excess owned copies usable
+  by Profit when protection is enabled. Distinguish quantity reservations with a border and concise
+  contextual text; normal click still supplies whole-item protection.
+- Offer a right-click shortcut to Profit with that material in the search field.
+- Show the actual item/material name on hover, falling back honestly only when metadata is absent.
+
+First prepare additive batch item-name metadata for old-client compatibility. Then prepare one
+combined local-review reservation UX contract, including authoritative backend quantity handling.
+Keep source-specific and character-inventory rules intact. Avoid Profit recalculation while its
+cached screen is inactive; use the latest saved choices when returning to it. Partial reservations
+across heterogeneous binding/owner buckets need an explicit product rule; keep that edge local
+and record the morning question rather than silently selecting an allocation policy.
+
 The pre-release capacity programme, additional-key search and associated measurement/analysis
 work are withdrawn. Preserve concrete future performance improvements. No supported-user capacity
 is promised. Do not restart local Docker/VM, load tests or the retired programme under this scope.
