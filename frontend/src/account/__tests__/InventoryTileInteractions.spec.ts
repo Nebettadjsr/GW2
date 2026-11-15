@@ -37,7 +37,7 @@ function selectableTile(iconUrl: string | null = ICON_URL) {
   const toggles: number[] = []
   const host = mount(defineComponent({
     setup: () => () => h(InventoryTile, {
-      itemId: ITEM_ID, count: 300, iconUrl, title: ITEM_NAME,
+      itemId: ITEM_ID, count: 300, iconUrl, title: ITEM_NAME, itemName: ITEM_NAME,
       selected: selected.value,
       onToggle: (itemId: number) => {
         toggles.push(itemId)

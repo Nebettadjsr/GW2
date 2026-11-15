@@ -18,7 +18,8 @@ const B = 'bbbbbbbb-0000-0000-0000-000000000002'
 
 const syncApi = {} as SyncApi
 const scopedSelection = (ids: number[]) => ({ materialProtectionEnabled: true, protectedItemIds: [],
-  protectedBankItemIds: ids, protectedMaterialItemIds: ids })
+  protectedBankItemIds: ids, protectedMaterialItemIds: ids,
+  protectedBankQuantities: {}, protectedMaterialQuantities: {} })
 
 /** Echoes request settings merged over the defaults, like the backend's canonical echo. */
 function echo(request: CraftingProfitRequest): CraftingProfitResponse {
@@ -63,22 +64,17 @@ function commit(ids: number[]): void {
 describe('Crafting Profit material protection', () => {
   it('sends separate store selections and recalculates when a shared item changes protection source', async () => {
     const protection = useMaterialProtection()
-    protection.setPending([19718], 'bank')
-    protection.commit('bank')
+    protection.togglePending(19718, 'bank')
     protection.setActivation(true)
     const fake = api()
     const w = await open(fake)
     expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ materialProtectionEnabled: true,
       protectedItemIds: [], protectedBankItemIds: [19718], protectedMaterialItemIds: [] })
     const before = fake.profitRequests.length
-    protection.setPending([19718], 'materials')
-    await flushPromises()
-    expect(fake.profitRequests).toHaveLength(before)
-    protection.commit('materials')
+    protection.togglePending(19718, 'materials')
     await flushPromises()
     expect(fake.profitRequests).toHaveLength(before + 1)
-    protection.setPending([], 'bank')
-    protection.commit('bank')
+    protection.togglePending(19718, 'bank')
     await flushPromises()
     expect(fake.profitRequests).toHaveLength(before + 2)
     expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ materialProtectionEnabled: true,
@@ -121,7 +117,7 @@ describe('Crafting Profit material protection', () => {
     expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ ...scopedSelection([3, 9]), materialProtectionEnabled: false })
   })
 
-  it('pending edits change nothing; committing while enabled recalculates and invalidates detail', async () => {
+  it('autosaving a group while enabled recalculates and associates detail without losing display settings', async () => {
     commit([3])
     useMaterialProtection().setActivation(true)
     const fake = api()
@@ -132,18 +128,13 @@ describe('Crafting Profit material protection', () => {
     const count = fake.profitRequests.length
     expect(fake.profitRequests[0]!.settings).toEqual(scopedSelection([3]))
 
-    useMaterialProtection().setPending([3, 4, 5])
-    await flushPromises()
-    expect(fake.profitRequests).toHaveLength(count)
-    expect(w.find('[data-test="protection-count"]').text()).toContain('1 item ')
-
     await w.findAll('tbody tr')[0]!.trigger('click')
     await flushPromises()
     const detailRequests = fake.resolutionRequests.length
     expect(detailRequests).toBeGreaterThan(0)
     expect(fake.resolutionRequests.at(-1)!.calculation.settings).toMatchObject(scopedSelection([3]))
 
-    useMaterialProtection().commit()
+    useMaterialProtection().togglePendingGroup([3, 4, 5])
     await flushPromises()
     expect(fake.profitRequests).toHaveLength(count + 1)
     expect(fake.profitRequests.at(-1)!.settings).toMatchObject(scopedSelection([3, 4, 5]))
@@ -264,21 +255,19 @@ describe('info tooltip and source hints', () => {
     expect(panel(w).isVisible()).toBe(false)
   })
 
-  it('shows only the destinations where the committed selection was made, per account, at Save', async () => {
+  it('updates source links immediately for autosaved selections and clears them for another account', async () => {
     const state = useMaterialProtection()
     state.togglePending(3, 'bank')
     const w = await open(api())
-    expect(w.find('[data-test="protection-links"]').exists()).toBe(false)
-    state.commit()
-    await flushPromises()
     expect(w.find('[data-test="protection-bank-link"]').exists()).toBe(true)
     expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(false)
-    state.togglePending(4, 'materials') // pending only: links unchanged
+    state.togglePending(4, 'materials')
+    await flushPromises()
+    expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(true)
+    state.togglePending(4, 'materials')
     await flushPromises()
     expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(false)
-    state.discardPending()
     state.togglePending(4, 'materials')
-    state.commit()
     await flushPromises()
     expect(w.find('[data-test="protection-bank-link"]').exists()).toBe(true)
     expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(true)

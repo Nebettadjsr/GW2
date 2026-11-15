@@ -53,19 +53,22 @@ describe('canonicalIds', () => {
 })
 
 describe('partitioning, commit and restart', () => {
-  it('toggles a whole group without changing other items or saving pending edits', () => {
+  it('autosaves a whole group in one write without changing other items or stores', () => {
     const m = make()
     source.id = A
     m.setPending([2, 9], 'materials')
     m.commit('materials')
+    m.togglePending(7, 'bank')
+    const writes = vi.spyOn(storage, 'setItem')
     m.togglePendingGroup([2, 3, 4], 'materials')
-    expect(m.state.pending).toEqual([2, 3, 4, 9])
+    expect(m.committedFor('materials')).toEqual([2, 3, 4, 9])
+    expect(m.committedFor('bank')).toEqual([7])
+    expect(writes).toHaveBeenCalledTimes(1)
     m.togglePendingGroup([2, 3, 4], 'materials')
-    expect(m.state.pending).toEqual([9])
-    expect(m.state.committed).toEqual([2, 9])
-    expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([2, 9])
-    m.discardPending()
-    expect(m.state.pending).toEqual([2, 9])
+    expect(m.committedFor('materials')).toEqual([9])
+    expect(m.committedFor('bank')).toEqual([7])
+    expect(writes).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([7, 9])
   })
 
   it('keeps the same item independently selected, saved and discarded in each view', () => {
@@ -111,20 +114,20 @@ describe('partitioning, commit and restart', () => {
     expect(reloaded.state.activation).toBe(false)
   })
 
-  it('keeps pending edits out of storage until commit', () => {
+  it('persists tile changes immediately and restores the last action without confirmation', () => {
     const m = make()
     source.id = A
-    m.setPending([1, 2])
-    expect(m.dirty.value).toBe(true)
-    expect(storage.data.size).toBe(0)
-    m.commit()
+    m.togglePending(1, 'bank')
+    m.togglePending(2, 'bank')
     expect(m.dirty.value).toBe(false)
     expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([1, 2])
-    m.togglePending(2)
-    m.togglePending(7)
-    expect(m.state.pending).toEqual([1, 7])
-    m.discardPending()
-    expect(m.state.pending).toEqual([1, 2])
+    m.togglePending(2, 'bank')
+    m.togglePending(7, 'bank')
+    expect(m.state.committed).toEqual([1, 7])
+    expect(m.dirty.value).toBe(false)
+    const restored = make()
+    expect(restored.committedFor('bank')).toEqual([1, 7])
+    expect(restored.committedFor('materials')).toEqual([])
   })
 
   it('clears presentation on disconnect but keeps storage; reconnect restores', () => {
