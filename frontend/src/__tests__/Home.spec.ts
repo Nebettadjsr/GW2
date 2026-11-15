@@ -107,4 +107,52 @@ describe('public Home landing', () => {
     expect(robots.content).toBe('index, follow')
     expect(fetchSpy).not.toHaveBeenCalled()
   })
+
+  it.each([
+    { path: '/welcome', destination: 'home' },
+    { path: '/#/bank', destination: 'bank' }
+  ])('skips to page content on $destination without changing its URL or history', async ({ path, destination }) => {
+    const app = await open(path)
+    const skip = app.get('.skip-link')
+    const historyLength = window.history.length
+    ;(skip.element as HTMLAnchorElement).focus()
+    expect(document.activeElement).toBe(skip.element)
+
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
+    skip.element.dispatchEvent(click)
+    await flushPromises()
+
+    expect(click.defaultPrevented).toBe(true)
+    expect(window.location.pathname + window.location.hash).toBe(path)
+    expect(window.history.length).toBe(historyLength)
+    expect(app.get(`[data-test="nav-${destination}"]`).attributes('aria-current')).toBe('page')
+    expect(document.activeElement).toBe(app.get('#main-content').element)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('restores Home when Back returns from Bank to a historical Home skip anchor', async () => {
+    const app = await open('/welcome')
+    // An entry created by the former skip link is still present in browser history.
+    window.history.replaceState(null, '', '/welcome#main-content')
+    await app.get('[data-test="nav-bank"]').trigger('click')
+    await flushPromises()
+    expect(window.location.pathname + window.location.hash).toBe('/#/bank')
+    expect(app.get('[data-test="nav-bank"]').attributes('aria-current')).toBe('page')
+    expect(robots.content).toBe('noindex, nofollow')
+
+    const back = new Promise<void>(resolve => {
+      window.addEventListener('popstate', () => resolve(), { once: true })
+    })
+    window.history.back()
+    await back
+    await flushPromises()
+
+    expect(window.location.pathname + window.location.hash).toBe('/welcome#main-content')
+    expect(app.find('[data-test="home-screen"]').exists()).toBe(true)
+    expect(app.get('[data-test="nav-home"]').attributes('aria-current')).toBe('page')
+    expect(document.title).toBe('GW2 Crafting Tool · Gold & Beginner Tips · Unofficial fan project')
+    expect(robots.content).toBe('index, follow')
+    expect(document.activeElement).toBe(app.get('[data-test="page-heading"]').element)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
 })
