@@ -65,7 +65,7 @@ function openEditor(): void {
 }
 function openProfit(): void {
   const accountId = protection.state.accountId
-  if (accountId !== null && props.target !== null) requestProfitSearch(accountId, label.value)
+  if (accountId !== null && props.target !== null) requestProfitSearch(accountId, props.target.name ?? String(props.target.itemId))
   // Navigation moves the user to another screen: do not pull focus back to the hidden tile.
   close(false)
   route.navigate('crafting')
