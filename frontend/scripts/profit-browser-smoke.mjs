@@ -35,6 +35,7 @@
  *   GW2_PROFIT_SMOKE_PORT  port for the stub origin  (default 5176)
  *   GW2_BROWSER_PATH       browser executable        (default: the first installed Chrome/Edge)
  *   GW2_SMOKE_TIMEOUT_MS   per-step wait             (default 30000)
+ *   GW2_SMOKE_HEADLESS     set false to show the browser (default true)
  *
  * Exits 0 when every step passed, 1 otherwise.
  */
@@ -43,6 +44,7 @@ import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
+import { createControlledAccountSession } from './controlledAccountSession.mjs'
 
 const PORT = Number(process.env.GW2_PROFIT_SMOKE_PORT ?? 5176)
 const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 30_000)
@@ -52,6 +54,10 @@ const WIDE = { width: 1440, height: 900 }
 /** Wide enough for the two-column layout, short enough that the list is the taller column. */
 const WIDE_SHORT = { width: 1440, height: 420 }
 const NARROW = { width: 360, height: 800 }
+const session = createControlledAccountSession({
+  calculationRoutes: ['/api/crafting/profit', '/api/crafting/profit/resolution'],
+  searchQueries: ['no recipe is called this']
+})
 
 const steps = []
 
@@ -277,19 +283,26 @@ const SUBSTITUTE_ROOT = { recipeId: 7, row: 'Self-Referential Ingot', rootRecipe
  * blocked requirement with two reasons, a domain-established zero on an untradable item, costs the
  * backend could not establish, and a state code this client has no wording for.
  */
-function resolutionTree(recipeId) {
-  return treeNode(1000 + recipeId, 'Deldrimor Steel Ingot', {
-    requestedQuantity: 1,
-    craftedQuantity: 1,
+function resolutionTree(row) {
+  const { recipeId } = row
+  const counted = row.craftableCount > 0
+  const quantity = counted ? row.craftableCount * row.outputCount : row.outputCount
+  const total = row.buyCostCopper === null || row.totalMatsSellValueCopper === null
+    ? null : row.buyCostCopper + row.totalMatsSellValueCopper
+  return treeNode(row.outputItemId, row.outputName, {
+    requestedQuantity: quantity,
+    craftedQuantity: counted ? quantity : 0,
+    missingQuantity: counted ? 0 : quantity,
     recipeId: recipeId === SUBSTITUTE_ROOT.recipeId ? SUBSTITUTE_ROOT.rootRecipeId : recipeId,
-    craftCount: 1,
-    producedQuantity: 4,
+    craftCount: counted ? row.craftableCount : 0,
+    producedQuantity: counted ? quantity : 0,
     characterName: 'Nbt Anch',
     methods: ['CRAFT'],
-    cashCostCopper: 98_765,
-    opportunityCostCopper: 4_321,
-    effectiveCostCopper: 103_086,
-    effectiveUnitCostCopper: 103_086,
+    cashCostCopper: row.buyCostCopper,
+    opportunityCostCopper: row.totalMatsSellValueCopper,
+    effectiveCostCopper: total,
+    effectiveUnitCostCopper: total === null ? null : Math.round(total / quantity),
+    effectiveUnitCostApproximate: total !== null && total % quantity !== 0,
     children: [
       treeNode(19_700, 'Mithril Ore', {
         requestedQuantity: 60,
@@ -401,7 +414,9 @@ function currentFreshness(requestId) {
   }
 }
 
-function answerApi({ url, body, sendJson }) {
+function answerApi(context) {
+  if (session.answer(context)) return
+  const { url, body, sendJson } = context
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
       defaultScopeKind: 'ALL',
@@ -462,9 +477,9 @@ function answerApi({ url, body, sendJson }) {
       consistency: 'FRESH_CALCULATION',
       calculatedAt: '2026-09-25T09:00:00Z',
       row,
-      treeStatus: 'AVAILABLE',
-      treeBasis: 'SINGLE_OUTPUT_REQUIREMENT',
-      tree: resolutionTree(request.recipeId)
+      treeStatus: row.resultAvailable ? 'AVAILABLE' : 'RESULT_UNAVAILABLE',
+      treeBasis: row.craftableCount === 0 ? 'FIRST_BLOCKED_ATTEMPT' : 'SELECTED_RESULT_OUTPUT_QUANTITY',
+      tree: row.resultAvailable ? resolutionTree(row) : null
     })
   }
   sendJson(404, { error: 'NOT_FOUND', message: url.pathname })
@@ -670,12 +685,14 @@ async function run() {
   console.log(`Bundle  : ${bundle}`)
   console.log(`Page    : ${stub.origin} (stub backend in this process)\n`)
 
-  const browser = await chromium.launch({ executablePath: browserPath })
-  const page = await browser.newPage({ viewport: WIDE })
-  const pageErrors = []
-  page.on('pageerror', (error) => pageErrors.push(String(error)))
-
+  let browser
   try {
+    browser = await chromium.launch({ executablePath: browserPath, timeout: TIMEOUT_MS,
+      headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    const page = await browser.newPage({ viewport: WIDE })
+    await session.install(page, stub.origin)
+    const pageErrors = []
+    page.on('pageerror', (error) => pageErrors.push(String(error)))
     await openProfit(page, stub.origin, WIDE)
     check(
       stub.servedCount() > 0,
@@ -1045,14 +1062,15 @@ async function run() {
     // What the compact presentation of a requirement keeps — the one presentation
     // `CraftingResolution.vue` and `ResolutionTreeNode.vue` have: the identity, the
     // quantity needed, how it was sourced, the crafter the backend named, and one effective value —
-    // 103_086 copper for the root, read and not re-added from the children.
+    // 150_617 copper for all 12 counted outputs, read and not re-added from the children.
     for (const expected of [
       '60 needed',
       'From stock ×24',
       'Bought ×36',
       'Crafted by Nbt Anch',
-      'Value per item: 10g 30s 86c',
-      'Total value for 1 item: 10g 30s 86c',
+      '12 needed',
+      'Value per item: ≈ 1g 25s 51c',
+      'Total value for 12 items: 15g 6s 17c',
       // The two collapsed groups this fixture has, each naming how much it holds.
       '4 ingredient requirements',
       '2 ingredient requirements'
@@ -1525,7 +1543,12 @@ async function run() {
     )
 
     // 7b. Every combination that empties the list still explains itself and stays undoable.
+    const lookup = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return url.pathname === '/api/crafting/ingredient-search' && url.searchParams.get('query') === 'no recipe is called this'
+    }, { timeout: TIMEOUT_MS })
     await page.fill('[data-test="search"]', 'no recipe is called this')
+    check((await lookup).status() === 200, 'The cached ingredient lookup did not succeed.')
     await page.waitForSelector('[data-test="no-matches"]', { timeout: TIMEOUT_MS })
     const emptyText = await textOf(page, '[data-test="no-matches"]')
     check(
@@ -2009,6 +2032,7 @@ async function run() {
       'A crafting calculation or detail was requested with an unexpected method.'
     )
     check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)
+    record('normal synthetic account proofs, strict routes and no off-origin traffic', session.verify())
     record(
       'read-only, no synchronization, no page error',
       `${requestsToPath(stub, '/api/crafting/profit').length} calculations, ` +
@@ -2019,8 +2043,7 @@ async function run() {
     console.log(`\nCrafting Profit hierarchy browser check PASSED (${steps.length} steps).`)
     console.log('Every backend answer was produced by this script; no real data was read or written.')
   } finally {
-    await browser.close()
-    stub.close()
+    try { await browser?.close() } finally { stub.close() }
   }
 }
 

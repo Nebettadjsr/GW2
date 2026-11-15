@@ -23,6 +23,7 @@
  *   GW2_DISCOVERY_SMOKE_PORT  port for the stub origin  (default 5179)
  *   GW2_BROWSER_PATH          browser executable        (default: the first installed Chrome/Edge)
  *   GW2_SMOKE_TIMEOUT_MS      per-step wait             (default 30000)
+ *   GW2_SMOKE_HEADLESS        set false to show the browser (default true)
  *
  * Exits 0 when every step passed, 1 otherwise.
  */
@@ -31,6 +32,7 @@ import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
+import { createControlledAccountSession } from './controlledAccountSession.mjs'
 
 const PORT = Number(process.env.GW2_DISCOVERY_SMOKE_PORT ?? 5179)
 const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 30_000)
@@ -41,6 +43,9 @@ const NARROW = { width: 360, height: 800 }
 
 const DISCOVERY_ROUTE = '/api/crafting/discovery'
 const RESOLUTION_ROUTE = '/api/crafting/discovery/resolution'
+const session = createControlledAccountSession({
+  calculationRoutes: [DISCOVERY_ROUTE, RESOLUTION_ROUTE], searchQueries: ['Loss-making']
+})
 
 /** The value the Discovery flow fixes; it is reported, never accepted as an input. */
 const DAILY_FIXED = true
@@ -92,6 +97,7 @@ function candidateRows() {
     craftableCount: 7,
     buyCostCopper: 98_765,
     matsSellValueCopper: 4_321,
+    totalMatsSellValueCopper: 30_247,
     revenueCopper: 111_110,
     profitCopper: 12_345,
     // Not 7 × 111 110 and not 7 × 12 345: these are the backend's own totals.
@@ -100,11 +106,11 @@ function candidateRows() {
     blockedReason: 'NONE',
     outputPrice: { buyUnitCopper: 120_000, sellUnitCopper: 130_000 },
     missingToBuy: [
-      { itemId: 19_700, itemName: 'Mithril Ore', quantity: 60, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, iconUrl: null },
-      { itemId: 19_701, itemName: null, quantity: 5, price: null, iconUrl: null }
+      { itemId: 19_700, itemName: 'Mithril Ore', quantity: 60, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, purchaseUnitPriceCopper: 140, totalPurchaseCostCopper: 8_407, iconUrl: null },
+      { itemId: 19_701, itemName: null, quantity: 5, price: null, purchaseUnitPriceCopper: null, totalPurchaseCostCopper: null, iconUrl: null }
     ],
     missingToBuyOne: [
-      { itemId: 19_700, itemName: 'Mithril Ore', quantity: 5, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, iconUrl: null }
+      { itemId: 19_700, itemName: 'Mithril Ore', quantity: 5, price: { buyUnitCopper: 120, sellUnitCopper: 140 }, purchaseUnitPriceCopper: 140, totalPurchaseCostCopper: 703, iconUrl: null }
     ],
     iconUrl: null,
     ...overrides
@@ -124,6 +130,7 @@ function candidateRows() {
       craftableCount: 0,
       buyCostCopper: null,
       matsSellValueCopper: null,
+      totalMatsSellValueCopper: null,
       revenueCopper: null,
       profitCopper: null,
       totalSellValueCopper: null,
@@ -136,6 +143,7 @@ function candidateRows() {
       craftableCount: null,
       buyCostCopper: null,
       matsSellValueCopper: null,
+      totalMatsSellValueCopper: null,
       revenueCopper: null,
       profitCopper: null,
       totalSellValueCopper: null,
@@ -207,7 +215,8 @@ function resolutionTree(recipeId) {
   return node({
     itemId: 1000 + recipeId,
     itemName: outputName,
-    craftedQuantity: 1,
+    requestedQuantity: 2,
+    craftedQuantity: 2,
     recipeId,
     craftCount: 1,
     producedQuantity: 2,
@@ -217,7 +226,7 @@ function resolutionTree(recipeId) {
     cashCostCopper: 777_777,
     opportunityCostCopper: 5_555,
     effectiveCostCopper: 783_332,
-    effectiveUnitCostCopper: 783_332,
+    effectiveUnitCostCopper: 391_666,
     children: [
       node({
         itemId: 19_700,
@@ -248,7 +257,9 @@ function resolutionTree(recipeId) {
   })
 }
 
-function answerApi({ url, body, sendJson }) {
+function answerApi(context) {
+  if (session.answer(context)) return
+  const { url, body, sendJson } = context
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
       defaultScopeKind: 'ALL',
@@ -299,10 +310,10 @@ function answerApi({ url, body, sendJson }) {
       consistency: 'FRESH_CALCULATION',
       calculatedAt: '2026-09-27T09:00:00Z',
       // A fresh calculation may legitimately disagree with the table's own numbers.
-      row: { ...row, totalProfitCopper: 424_242 },
-      treeStatus: 'AVAILABLE',
+      row: row.resultAvailable ? { ...row, totalProfitCopper: 424_242 } : row,
+      treeStatus: row.resultAvailable ? 'AVAILABLE' : 'RESULT_UNAVAILABLE',
       treeBasis: 'SINGLE_OUTPUT_REQUIREMENT',
-      tree: resolutionTree(request.recipeId)
+      tree: row.resultAvailable ? resolutionTree(request.recipeId) : null
     })
   }
 
@@ -367,14 +378,16 @@ async function run() {
   console.log(`Bundle  : ${bundle}`)
   console.log(`Page    : ${stub.origin} (stub backend in this process)\n`)
 
-  const browser = await chromium.launch({ executablePath: browserPath })
-  const page = await browser.newPage({ viewport: WIDE })
-  const pageErrors = []
-  page.on('pageerror', (error) => pageErrors.push(String(error)))
-  const browserRequests = []
-  page.on('request', (request) => browserRequests.push(request.url()))
-
+  let browser
   try {
+    browser = await chromium.launch({ executablePath: browserPath, timeout: TIMEOUT_MS,
+      headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    const page = await browser.newPage({ viewport: WIDE })
+    await session.install(page, stub.origin)
+    const pageErrors = []
+    page.on('pageerror', (error) => pageErrors.push(String(error)))
+    const browserRequests = []
+    page.on('request', (request) => browserRequests.push(request.url()))
     await openDiscovery(page, stub.origin, WIDE)
     check(
       stub.servedCount() > 0,
@@ -649,7 +662,7 @@ async function run() {
     // own inclusive 783_332 copper, not the children's added up.
     const rootCost = await textOf(page, '[data-path="0"] [data-test="node-value"]')
     check(
-      rootCost.includes('Value per item: 78g 33s 32c') && rootCost.includes('Total value for 1 item: 78g 33s 32c'),
+      rootCost.includes('Value per item: 39g 16s 66c') && rootCost.includes('Total value for 2 items: 78g 33s 32c'),
       `The root's inclusive cost is not the supplied figure: ${rootCost}`
     )
     const unpricedCost = await textOf(page, '[data-path="0.1"] [data-test="node-value"]')
@@ -717,9 +730,9 @@ async function run() {
       `"${stockRoot.sourcing}" over ${stockRoot.nodes} requirement at ${stockRoot.value}`
     )
 
-    // 10. Sorting and searching are view state: neither reaches the backend, and neither drops the
-    //     valid detail on screen.
-    const beforeViewChanges = stub.requests.filter((request) => request.path.startsWith('/api/')).length
+    // 10. View changes do not recalculate or drop the detail; searching reads the cached graph.
+    const calculationCalls = () => stub.requests.filter(request => [DISCOVERY_ROUTE, RESOLUTION_ROUTE].includes(request.path)).length
+    const beforeViewChanges = calculationCalls()
     await page.focus('[data-test="discovery-sort-minRating"]')
     await page.keyboard.press('Enter')
     const ascending = await textsOf(page, '[data-test="discovery-level"]')
@@ -732,16 +745,21 @@ async function run() {
       (element) => element.getAttribute('aria-sort')
     )
     check(ariaSort === 'ascending', `The sorted column does not report its direction: ${ariaSort}`)
+    const lookup = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return url.pathname === '/api/crafting/ingredient-search' && url.searchParams.get('query') === 'Loss-making'
+    }, { timeout: TIMEOUT_MS })
     await page.fill('[data-test="discovery-search"]', 'Loss-making')
+    check((await lookup).status() === 200, 'The cached ingredient lookup did not succeed.')
     await page.waitForFunction(
       () => document.querySelectorAll('[data-test="discovery-row"]').length === 1,
       undefined,
       { timeout: TIMEOUT_MS }
     )
-    const afterViewChanges = stub.requests.filter((request) => request.path.startsWith('/api/')).length
+    const afterViewChanges = calculationCalls()
     check(
       afterViewChanges === beforeViewChanges,
-      `Sorting or searching issued ${afterViewChanges - beforeViewChanges} request(s); both are view state.`
+      `Sorting or searching issued ${afterViewChanges - beforeViewChanges} calculation/detail request(s).`
     )
     // The selected recipe's row is hidden by the search, and its detail stays reachable and says so.
     check(
@@ -752,7 +770,7 @@ async function run() {
       (await page.$('[data-test="resolution-tree"]')) !== null,
       'Searching dropped a still-valid fresh detail.'
     )
-    record('sorting and searching send nothing and keep the detail', `${afterViewChanges} API calls so far`)
+    record('sorting and cached ingredient search do not recalculate and keep the detail', `${afterViewChanges} calculation/detail calls so far`)
 
     // 11. Narrow: the detail moves below the list, and nothing overflows sideways.
     await page.fill('[data-test="discovery-search"]', '')
@@ -820,14 +838,14 @@ async function run() {
     }
     const unexpected = apiCalls.filter(
       (request) =>
-        ![DISCOVERY_ROUTE, RESOLUTION_ROUTE, '/api/crafting/selector-options'].includes(request.path)
+        ![DISCOVERY_ROUTE, RESOLUTION_ROUTE, '/api/crafting/selector-options', '/api/session', '/api/crafting/ingredient-search'].includes(request.path)
     )
     check(
       unexpected.length === 0,
       `The page called routes Discovery has no business calling: ${JSON.stringify(unexpected.map((r) => r.path))}`
     )
     const pageOrigin = new URL(stub.origin).origin
-    const offOrigin = browserRequests.filter((url) => !url.startsWith(pageOrigin))
+    const offOrigin = browserRequests.filter((url) => new URL(url).origin !== pageOrigin)
     check(
       offOrigin.length === 0,
       `The browser left this origin: ${JSON.stringify(offOrigin.slice(0, 5))}`
@@ -835,6 +853,7 @@ async function run() {
     const upstream = browserRequests.filter((url) => /guildwars2\.com/i.test(url))
     check(upstream.length === 0, `The browser requested ArenaNet: ${JSON.stringify(upstream)}`)
     check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)
+    record('normal synthetic account proofs and strict route/header/method checks', session.verify())
     record(
       'only Discovery\'s own routes, no Profit-only settings, no off-origin request',
       `${tableCalls.length} table, ${detailCalls.length} detail, ${browserRequests.length} browser requests`
@@ -846,8 +865,7 @@ async function run() {
         'stay the backend\'s and were not exercised against real data here.'
     )
   } finally {
-    await browser.close()
-    await stub.close()
+    try { await browser?.close() } finally { stub.close() }
   }
 }
 
