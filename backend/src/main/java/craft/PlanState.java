@@ -56,6 +56,12 @@ public class PlanState {
     // Already paid for by earlier steps of this simulation, never valued as owned stock.
     private final Map<Integer, Integer> surplus = new HashMap<>();
 
+    /** DOMAIN_SPEC.md: most units of one material item ID one candidate recipe plan may require. */
+    public static final int MAX_MATERIAL_UNITS = 2_500;
+
+    // Required units per material item ID in this plan, owned and purchased alike. Journalled.
+    private final Map<Integer, Integer> demand = new HashMap<>();
+
     public int buyCostCopper = 0;
 
     // ---------------- undo journal ----------------
@@ -67,6 +73,7 @@ public class PlanState {
     private static final int VISITING = 4;
     private static final int BUY_COST = 5;
     private static final int SURPLUS = 6;
+    private static final int DEMAND = 7;
 
     /** Journalled "this slot had no value before", distinguishable from every real quantity. */
     private static final int ABSENT = Integer.MIN_VALUE;
@@ -144,6 +151,7 @@ public class PlanState {
         this.dailyLeft = new HashMap<>(other.dailyLeft);
         this.buyCostCopper = other.buyCostCopper;
         this.surplus.putAll(other.surplus);
+        this.demand.putAll(other.demand);
     }
 
     /**
@@ -261,6 +269,7 @@ public class PlanState {
             case VISITING -> visiting.contains(key) ? 1 : ABSENT;
             case BUY_COST -> buyCostCopper;
             case SURPLUS -> valueOrAbsent(surplus, key);
+            case DEMAND -> valueOrAbsent(demand, key);
             default -> throw new IllegalStateException("unknown journal kind " + kind);
         };
     }
@@ -280,6 +289,7 @@ public class PlanState {
             }
             case BUY_COST -> buyCostCopper = value;
             case SURPLUS -> writeOrRemove(surplus, key, value);
+            case DEMAND -> writeOrRemove(demand, key, value);
             default -> throw new IllegalStateException("unknown journal kind " + kind);
         }
     }
@@ -297,7 +307,7 @@ public class PlanState {
     // ---------------- journalled mutations ----------------
 
     public void addSurplus(int itemId, int quantity) {
-        if (quantity > 0) setValue(SURPLUS, itemId, null, surplus.getOrDefault(itemId, 0) + quantity);
+        if (quantity > 0) setValue(SURPLUS, itemId, null, Math.addExact(surplus.getOrDefault(itemId, 0), quantity));
     }
 
     public int consumeSurplus(int itemId, int wanted) {
@@ -309,7 +319,20 @@ public class PlanState {
 
     /** Adds {@code delta} copper to the running cash cost of this plan. */
     public void addBuyCost(int delta) {
-        setValue(BUY_COST, 0, null, buyCostCopper + delta);
+        setValue(BUY_COST, 0, null, Math.addExact(buyCostCopper, delta));
+    }
+
+    /**
+     * Adds {@code quantity} required units of {@code itemId} to this plan's demand, unless the
+     * total would exceed {@link #MAX_MATERIAL_UNITS}; then nothing changes and false is returned.
+     * Journalled, so a rolled-back attempt leaves no demand behind.
+     */
+    public boolean reserveDemand(int itemId, long quantity) {
+        if (quantity < 0 || quantity > MAX_MATERIAL_UNITS) return false;
+        long total = demand.getOrDefault(itemId, 0) + quantity;
+        if (total > MAX_MATERIAL_UNITS) return false;
+        if (quantity > 0) setValue(DEMAND, itemId, null, (int) total);
+        return true;
     }
 
     /** True while {@code itemId} is being resolved higher up the current recursion (cycle guard). */

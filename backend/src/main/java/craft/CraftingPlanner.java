@@ -211,6 +211,22 @@ public class CraftingPlanner {
             PlannerContext ctx,
             RecipeSimulator recipeSimulator
     ) {
+        try {
+            return evaluateOneRecipeChecked(recipe, baseState, ctx, recipeSimulator);
+        } catch (ArithmeticException outOfRange) {
+            // A quantity, price, fee or profit left the supported range: the recipe is unavailable
+            // with an explicit reason, never a wrapped, clamped or fabricated figure.
+            return new CraftResult(recipe.outputItemId, recipe.disciplinesText, 0, Map.of(), Map.of(),
+                    0, 0, 0, 0, 0, 0, null, BlockedReason.VALUE_RANGE, 0, Map.of(), Map.of());
+        }
+    }
+
+    private CraftResult evaluateOneRecipeChecked(
+            Recipe recipe,
+            PlanState baseState,
+            PlannerContext ctx,
+            RecipeSimulator recipeSimulator
+    ) {
         RecipeSimulationResult sim;
 
         // A disabled inventory or buying source does not disable recursive crafting. In
@@ -248,18 +264,19 @@ public class CraftingPlanner {
         // unavailable or non-positive output quote already reports (DOMAIN_SPEC.md §21), and the
         // downstream availability predicates still see exactly the figure they saw before.
         int feeOne = revenueOne > 0 ? (int) TradingPostFeePolicy.feeOn(revenueOne) : 0;
-        int profitOne = revenueOne - feeOne - buyCostOne - matsSellOne;
+        int profitOne = Math.toIntExact((long) revenueOne - feeOne - buyCostOne - matsSellOne);
 
         // Owned-material use can vary by execution, so the total uses full-plan aggregates below.
 
         // DOMAIN_SPEC.md §2.1.1: §25's per-execution output revenue - which already carries the
         // recipe's output quantity and deducts no selling fee - for §28's craftable count. Built
         // from the two figures above rather than from a second resolver or price read.
-        int totalSellValue = revenueOne * sim.getCraftCount();
+        int totalSellValue = Math.multiplyExact(revenueOne, sim.getCraftCount());
         // Inventory consumed can vary between executions, so total profit uses costs from the
         // accepted full plan instead of scaling the first craft's opportunity cost.
-        int totalProfit = totalSellValue - feeOne * sim.getCraftCount()
-                - sim.getBuyCostTotal() - sim.getOpportunityCostTotal();
+        int totalProfit = Math.toIntExact((long) totalSellValue
+                - (long) feeOne * sim.getCraftCount()
+                - sim.getBuyCostTotal() - sim.getOpportunityCostTotal());
 
         CraftResult result = new CraftResult(
                 recipe.outputItemId,
@@ -290,7 +307,7 @@ public class CraftingPlanner {
         for (Map.Entry<Integer, Integer> entry : missing.entrySet()) {
             PriceQuote quote = tp.get(entry.getKey());
             Integer unit = quote == null ? null : settings.listingBuy ? quote.buyUnit : quote.sellUnit;
-            Integer total = unit == null ? null : unit * entry.getValue();
+            Integer total = unit == null ? null : Math.multiplyExact(unit, entry.getValue());
             costs.put(entry.getKey(), new MaterialPurchaseCost(unit, total));
         }
         return Map.copyOf(costs);

@@ -25,7 +25,7 @@ public class CostEvaluator {
         );
     }
 
-    private int computeRevenue(
+    static int computeRevenue(
             Recipe recipe,
             Map<Integer, PriceQuote> tp,
             CraftingSettings settings
@@ -43,6 +43,6 @@ public class CostEvaluator {
             return 0;
         }
 
-        return unit * recipe.outputCount;
+        return Math.multiplyExact(unit, recipe.outputCount);
     }
 }
