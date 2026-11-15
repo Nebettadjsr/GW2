@@ -9,7 +9,7 @@ describe('info destinations', () => {
     expect(INFO_DESTINATIONS.map(d => d.path)).toEqual(['#/legal', '#/privacy', '#/storage'])
     expect(isInfoDestination(destinationForHash('#/privacy'))).toBe(true)
     expect(isInfoDestination(destinationForHash('#/bank'))).toBe(false)
-    expect(destinationForHash('#/unknown').id).toBe('crafting')
+    expect(destinationForHash('#/unknown').id).toBe('home')
   })
 })
 
@@ -36,9 +36,9 @@ describe('application with a public information page', () => {
     fetchSpy.mockImplementation(async () => new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', fetchSpy)
     window.sessionStorage.clear()
-    window.sessionStorage.setItem('gw2.apiKey', 'retained-test-key')
     resetAccountSession()
     installAccountSession()
+    window.sessionStorage.setItem('gw2.apiKey', 'retained-test-key')
   })
   afterEach(() => {
     vi.unstubAllEnvs()

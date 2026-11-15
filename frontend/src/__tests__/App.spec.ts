@@ -129,7 +129,8 @@ beforeEach(async () => {
   await connectKey('TEST-KEY-0000')
   requested.length = 0
   bankAnswer = Promise.resolve(bankWithEmptySlots)
-  window.history.replaceState(null, '', '/')
+  // These workspace regressions open Crafting explicitly; Home owns the default landing route.
+  window.history.replaceState(null, '', '/#/crafting')
   vi.stubGlobal(
     'fetch',
     vi.fn((input: string, init?: RequestInit) => {
@@ -149,7 +150,7 @@ afterEach(() => {
 })
 
 describe('App shell', () => {
-  it('opensOnCraftingProfitWithThatDestinationMarkedAndNothingElseRequested', async () => {
+  it('opensBookmarkedCraftingProfitWithThatDestinationMarkedAndNothingElseRequested', async () => {
     const open = await openApp()
 
     expect(open.find('[data-test="profit-table"]').exists()).toBe(true)
@@ -165,6 +166,7 @@ describe('App shell', () => {
 
     const links = open.findAll('[data-test="screen-nav"] a')
     expect(links.map((link) => link.attributes('href'))).toEqual([
+      '/welcome',
       '#/crafting',
       '#/discovery',
       '#/ecto',
@@ -316,14 +318,17 @@ describe('App shell', () => {
     expect(connection.phase).toBe('disconnected')
   })
 
-  it('opensCraftingProfitWhenTheUrlNamesNoKnownDestination', async () => {
+  it('opensHomeWhenTheUrlNamesNoKnownDestinationWithoutLoadingAccountData', async () => {
     window.history.replaceState(null, '', '#/not-a-screen')
 
     const open = await openApp()
 
-    expect(open.find('[data-test="page-heading"]').text()).toBe('Crafting Profit')
+    expect(open.find('[data-test="home-screen"]').exists()).toBe(true)
+    expect(currentDestination(open)).toBe('nav-home')
     // The address bar is corrected rather than left claiming a destination that does not exist.
-    expect(window.location.hash).toBe('#/crafting')
+    expect(window.location.pathname).toBe('/welcome')
+    expect(window.location.hash).toBe('')
+    expect(requested).toEqual([])
   })
 
   it('followsTheBrowsersOwnHashNavigationSoBackAndForwardWork', async () => {
