@@ -201,12 +201,25 @@ export function useCraftingProfit(
   let active = true
   /** A context change happened while inactive; the latest context is calculated once on return. */
   let dirtyWhileInactive = false
+  /** Work was in flight or provisional when the host was deactivated; recalculate once on return. */
+  let interruptedWhileInactive = false
   if (getCurrentInstance() !== null) {
-    onDeactivated(() => { active = false })
+    onDeactivated(() => {
+      active = false
+      // Obsolete offscreen work is abandoned: in-flight answers are rejected and recovery stops
+      // polling/resubmitting. A provisional or interrupted result is calculated once on return.
+      if (opened && !disposed && (isLoading.value || isRecovering.value || isProvisional.value)) {
+        interruptedWhileInactive = true
+      }
+      newestRequestId += 1
+      abandonRecovery()
+      isLoading.value = false
+    })
     onActivated(() => {
       active = true
-      if (!dirtyWhileInactive) return
+      if (!dirtyWhileInactive && !interruptedWhileInactive) return
       dirtyWhileInactive = false
+      interruptedWhileInactive = false
       if (opened && !disposed && effectiveKey() !== 'none' && protection.state.accountId === boundAccountId) {
         void requestProfit(currentRequest())
       }
@@ -317,9 +330,8 @@ export function useCraftingProfit(
       return wanted.length === got.length && wanted.every((id, index) => id === got[index])
     }) && (['protectedBankQuantities', 'protectedMaterialQuantities'] as const).every(field => {
       const wanted = canonicalQuantityKey(request.settings?.[field])
-      if (wanted === '[]') return true
-      // A backend that omits or alters the maps is not presented as enforcing them.
-      return echoed[field] !== undefined && canonicalQuantityKey(echoed[field]) === wanted
+      // An omitted map counts as empty; an unexpected nonempty or different map is rejected.
+      return (echoed[field] === undefined ? '[]' : canonicalQuantityKey(echoed[field])) === wanted
     })
   }
 

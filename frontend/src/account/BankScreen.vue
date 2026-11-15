@@ -25,8 +25,12 @@ const automatic = useAutomaticAccountRefresh({
 onMounted(() => { void bank.load() })
 const protection = useMaterialProtection()
 const actionTarget = ref<ItemActionTarget | null>(null)
+/** Current total across every same-item Bank stack. */
+function totalFor(itemId: number): number {
+  return (bank.data.value?.slots ?? []).reduce((sum, s) => s.itemId === itemId ? sum + (s.count ?? 0) : sum, 0)
+}
 function openActions(slot: BankSlot, x: number, y: number): void {
-  if (slot.itemId !== null) actionTarget.value = { itemId: slot.itemId, name: slot.itemName ?? null, count: slot.count ?? 0, x, y }
+  if (slot.itemId !== null) actionTarget.value = { itemId: slot.itemId, name: slot.itemName ?? null, count: totalFor(slot.itemId), x, y }
 }
 const pendingIds = computed(() => new Set(protection.pendingFor('bank')))
 const selectable = computed(() => protection.state.status === 'ready')

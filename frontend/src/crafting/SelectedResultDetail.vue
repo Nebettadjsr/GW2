@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, provide } from 'vue'
 import type {
   CraftingProfitResolutionResponse,
   CraftingRow,
@@ -15,6 +15,7 @@ import {
   moneyTone,
   NO_VALUE
 } from './formatCopper'
+import { keepTargetNote, RESOLUTION_SETTINGS_KEY } from './resolutionPresentation'
 import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
 import { formatStackQuantity } from './formatStackQuantity'
 import type { SelectionHiddenReason } from './useProfitTableView'
@@ -87,6 +88,11 @@ const calculationSellPriceLabel = computed(() => {
    */
   return settings.listingSell ? '1 item (Listing sell)' : '1 item (Instant sell)'
 })
+
+/** Confirmed effective settings: the detail's own calculation when present, else the table's echo. */
+const effectiveSettings = computed(() => props.resolutionDetail?.calculation?.settings ?? props.settings)
+provide(RESOLUTION_SETTINGS_KEY, effectiveSettings)
+function keepNote(itemId: number): string | null { return keepTargetNote(effectiveSettings.value, itemId) }
 
 function materialQuoteText(item: MissingItem): string {
   const unit = item.purchaseUnitPriceCopper === null ? 'Unavailable' : formatCopper(item.purchaseUnitPriceCopper)
@@ -391,6 +397,10 @@ function materialQuoteText(item: MissingItem): string {
 
             <span class="meta">
               {{ materialQuoteText(item) }}
+            </span>
+
+            <span v-if="keepNote(item.itemId) !== null" class="meta" data-test="keep-target-note">
+              {{ keepNote(item.itemId) }}
             </span>
           </li>
         </ul>

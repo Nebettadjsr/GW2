@@ -5,7 +5,7 @@ import { useMaterialProtection, type SelectionView } from '@/materials/materialP
 const props = defineProps<{ view: SelectionView; itemIds: readonly number[] }>()
 const protection = useMaterialProtection()
 const ready = computed(() => protection.state.status === 'ready')
-const committedCount = computed(() => protection.committedFor(props.view).length)
+const committedCount = computed(() => new Set([...protection.committedFor(props.view), ...Object.keys(protection.quantitiesFor(props.view)).map(Number)]).size)
 const pendingIds = computed(() => new Set(protection.pendingFor(props.view)))
 const pageFullySelected = computed(() => props.itemIds.length > 0 && props.itemIds.every(id => pendingIds.value.has(id)))
 const storageNotice = computed(() => {
