@@ -149,8 +149,8 @@ public class RecipeSimulator {
 
     /**
      * Whether the revenue and profit totals for {@code crafts} batches stay inside the int range
-     * the result reports, evaluated exactly in long arithmetic. A revenue that cannot be computed
-     * at all is left to the planner, which reports it as VALUE_RANGE for the recipe.
+     * the result reports, evaluated exactly in long arithmetic. Reject an unrepresentable per-craft
+     * revenue here too, so standalone explanations and planner rows report the same VALUE_RANGE.
      */
     private static boolean aggregatesRepresentable(Recipe recipe, PlannerContext ctx, int crafts,
                                                    long buyTotal, long opportunityTotal) {
@@ -158,7 +158,7 @@ public class RecipeSimulator {
         try {
             revenueOne = CostEvaluator.computeRevenue(recipe, ctx.tp, ctx.settings);
         } catch (ArithmeticException outOfRange) {
-            return true;
+            return false;
         }
         long feeOne = revenueOne > 0 ? TradingPostFeePolicy.feeOn(revenueOne) : 0;
         long sellTotal = (long) revenueOne * crafts;
