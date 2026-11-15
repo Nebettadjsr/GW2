@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { accountApi, type AccountApi } from '@/api/accountApi'
 import type { MaterialCategory, MaterialStorage } from '@/api/types'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -7,6 +7,7 @@ import InventoryTile from './InventoryTile.vue'
 import { useAccountRead } from './useAccountRead'
 import AutomaticRefreshStatus from './AutomaticRefreshStatus.vue'
 import { useAutomaticAccountRefresh } from './useAutomaticAccountRefresh'
+import MaterialItemActions, { type ItemActionTarget } from './MaterialItemActions.vue'
 import MaterialSelectionBar from './MaterialSelectionBar.vue'
 import { useMaterialProtection } from '@/materials/materialProtectionState'
 import { MATERIAL_PRESETS, type MaterialPreset } from '@/materials/materialPresets'
@@ -22,6 +23,7 @@ const automatic = useAutomaticAccountRefresh({
 })
 onMounted(() => { void materials.load() })
 const protection = useMaterialProtection()
+const actionTarget = ref<ItemActionTarget | null>(null)
 const pendingIds = computed(() => new Set(protection.pendingFor('materials')))
 const selectable = computed(() => protection.state.status === 'ready')
 const hasNoCategories = computed(() => materials.data.value?.categories?.length === 0)
@@ -48,6 +50,7 @@ function presetSelected(preset: MaterialPreset): boolean {
     <PageHeader heading="Materials" />
     <AutomaticRefreshStatus :updating="automatic.updating.value" :failed="automatic.failed.value" :has-data="!!materials.data.value?.categories" />
     <MaterialSelectionBar view="materials" :item-ids="pageItemIds" />
+    <MaterialItemActions view="materials" :target="actionTarget" @close="actionTarget = null" />
     <div class="stack">
       <p v-if="materials.phase.value === 'loading' && !materials.data.value" class="notice notice--info" role="status" data-test="materials-loading">Loading material storage…</p>
       <div v-else-if="materials.failure.value !== null && !automatic.failed.value && !automatic.updating.value" class="notice notice--error" role="alert" data-test="materials-error">
@@ -74,7 +77,9 @@ function presetSelected(preset: MaterialPreset): boolean {
             <ol class="material-grid" data-test="material-grid">
               <li v-for="material in category.materials" :key="material.position" data-test="material-stack">
                 <InventoryTile :item-id="material.itemId" :count="material.count" :icon-url="material.iconUrl"
-                  :show-one="true" :title="`Item #${material.itemId}`"
+                  :show-one="true" :title="material.itemName ?? `Item #${material.itemId}`" :item-name="material.itemName ?? null"
+                  :reserved="protection.quantityFor('materials', material.itemId)"
+                  @menu="(_id: number, x: number, y: number) => actionTarget = { itemId: material.itemId, name: material.itemName ?? null, count: material.count, x, y }"
                   :selected="selectable ? pendingIds.has(material.itemId) : undefined"
                   @toggle="(id: number) => protection.togglePending(id, 'materials')" />
               </li>

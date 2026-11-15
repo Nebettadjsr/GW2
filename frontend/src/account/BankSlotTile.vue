@@ -3,8 +3,8 @@ import { computed } from 'vue'
 import type { BankSlot } from '@/api/types'
 import InventoryTile from './InventoryTile.vue'
 
-const props = defineProps<{ slot: BankSlot; selected?: boolean }>()
-defineEmits<{ toggle: [itemId: number] }>()
+const props = defineProps<{ slot: BankSlot; selected?: boolean; reserved?: number }>()
+defineEmits<{ toggle: [itemId: number]; menu: [itemId: number, x: number, y: number] }>()
 
 // Both values are null only for a genuinely empty slot.
 const empty = computed(() => props.slot.itemId === null && props.slot.count === null)
@@ -17,13 +17,14 @@ const empty = computed(() => props.slot.itemId === null && props.slot.count === 
     :class="{ 'bank-cell--empty': empty }"
     :data-slot="slot.slot"
     data-test="bank-slot"
-    :title="empty ? `Empty slot #${slot.slot}` : `Item #${slot.itemId ?? 'unknown'} · ${slot.count ?? 'unknown'} in slot #${slot.slot}`"
+    :title="empty ? `Empty slot #${slot.slot}` : `${slot.itemName ?? `Item #${slot.itemId ?? 'unknown'}`} · ${slot.count ?? 'unknown'} in slot #${slot.slot}`"
     :aria-label="empty ? `Empty slot ${slot.slot}` : `Slot ${slot.slot}, item ${slot.itemId ?? 'unknown'}, quantity ${slot.count ?? 'unknown'}`"
   >
     <InventoryTile v-if="!empty && slot.itemId !== null && slot.count !== null"
       :item-id="slot.itemId" :count="slot.count" :icon-url="slot.iconUrl"
-      :title="`Item #${slot.itemId} · ${slot.count} in slot #${slot.slot}`"
-      :selected="selected" @toggle="$emit('toggle', $event)" />
+      :title="`${slot.itemName ?? `Item #${slot.itemId}`} · ${slot.count} in slot #${slot.slot}`"
+      :selected="selected" :reserved="reserved" :item-name="slot.itemName ?? null"
+      @toggle="$emit('toggle', $event)" @menu="(id: number, x: number, y: number) => $emit('menu', id, x, y)" />
     <span v-else class="sr-only" data-test="bank-empty-slot">Empty</span>
   </li>
 </template>

@@ -9,6 +9,7 @@ import web.dto.CraftingProfitResponse;
 import web.dto.CraftingRowDto;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Translation between the HTTP transport DTOs and the existing application/domain inputs and
@@ -95,6 +96,11 @@ final class CraftingProfitApiMapper {
             throw new ApiValidationException("settings.maxBuyCopper must not be negative");
         }
 
+        List<Integer> globalAll = canonicalProtectedIds(settings == null ? null : settings.protectedItemIds(), "protectedItemIds");
+        List<Integer> bankAll = canonicalProtectedIds(settings == null ? null : settings.protectedBankItemIds(), "protectedBankItemIds");
+        List<Integer> materialAll = canonicalProtectedIds(settings == null ? null : settings.protectedMaterialItemIds(), "protectedMaterialItemIds");
+        Map<Integer, Integer> bankQty = withoutAll(canonicalQuantities(settings == null ? null : settings.protectedBankQuantities(), "protectedBankQuantities"), bankAll, globalAll);
+        Map<Integer, Integer> materialQty = withoutAll(canonicalQuantities(settings == null ? null : settings.protectedMaterialQuantities(), "protectedMaterialQuantities"), materialAll, globalAll);
         return new CraftingProfitResponse.EffectiveSettingsDto(
                 orDefault(settings == null ? null : settings.useOwnMats(), DEFAULT_USE_OWN_MATS),
                 orDefault(settings == null ? null : settings.allowBuying(), DEFAULT_ALLOW_BUYING),
@@ -104,9 +110,46 @@ final class CraftingProfitApiMapper {
                 orDefault(settings == null ? null : settings.allowDailyCrafts(),
                         DEFAULT_ALLOW_DAILY_CRAFTS),
                 orDefault(settings == null ? null : settings.materialProtectionEnabled(), false),
-                canonicalProtectedIds(settings == null ? null : settings.protectedItemIds(), "protectedItemIds"),
-                canonicalProtectedIds(settings == null ? null : settings.protectedBankItemIds(), "protectedBankItemIds"),
-                canonicalProtectedIds(settings == null ? null : settings.protectedMaterialItemIds(), "protectedMaterialItemIds"));
+                globalAll, bankAll, materialAll, bankQty, materialQty);
+    }
+
+    /** Reserve-ALL for an item takes precedence over its finite target. */
+    private static Map<Integer, Integer> withoutAll(Map<Integer, Integer> qty, List<Integer> sourceAll, List<Integer> globalAll) {
+        java.util.TreeMap<Integer, Integer> out = new java.util.TreeMap<>(qty);
+        out.keySet().removeIf(id -> sourceAll.contains(id) || globalAll.contains(id));
+        return java.util.Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * Finite reservation targets: keys are positive item IDs, values nonnegative whole numbers within
+     * int range. Zero clears. Fractions, negatives and non-numbers are rejected, never truncated.
+     */
+    private static Map<Integer, Integer> canonicalQuantities(Map<?, ?> raw, String field) {
+        if (raw == null) return Map.of();
+        java.util.TreeMap<Integer, Integer> out = new java.util.TreeMap<>();
+        for (Map.Entry<?, ?> e : raw.entrySet()) {
+            int id;
+            try {
+                id = Integer.parseInt(String.valueOf(e.getKey()));
+            } catch (NumberFormatException ex) {
+                throw new ApiValidationException("settings." + field + " keys must be positive item IDs");
+            }
+            if (id <= 0) throw new ApiValidationException("settings." + field + " keys must be positive item IDs");
+            Object v = e.getValue();
+            long qty;
+            if (v instanceof Integer || v instanceof Long || v instanceof Short || v instanceof Byte) {
+                qty = ((Number) v).longValue();
+            } else if (v instanceof java.math.BigInteger big && big.bitLength() < 63) {
+                qty = big.longValue();
+            } else {
+                throw new ApiValidationException("settings." + field + " values must be whole numbers");
+            }
+            if (qty < 0 || qty > Integer.MAX_VALUE) {
+                throw new ApiValidationException("settings." + field + " values must be between 0 and " + Integer.MAX_VALUE);
+            }
+            if (qty > 0) out.put(id, (int) qty);
+        }
+        return java.util.Collections.unmodifiableMap(out);
     }
 
     /** Positive IDs only; duplicates removed; ascending numeric order. No inventory/item reads. */
@@ -145,7 +188,8 @@ final class CraftingProfitApiMapper {
                     settings.listingBuy(),
                     settings.allowDailyCrafts(),
                     settings.materialProtectionEnabled(),
-                    settings.protectedItemIds(), settings.protectedBankItemIds(), settings.protectedMaterialItemIds());
+                    settings.protectedItemIds(), settings.protectedBankItemIds(), settings.protectedMaterialItemIds(),
+                    settings.protectedBankQuantities(), settings.protectedMaterialQuantities());
         }
     }
 

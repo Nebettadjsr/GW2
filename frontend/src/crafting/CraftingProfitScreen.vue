@@ -8,6 +8,8 @@ import {
 } from '@/api/types'
 import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
+import { pendingProfitSearch, takeProfitSearch } from '@/materials/profitSearchIntent'
+import { useMaterialProtection } from '@/materials/materialProtectionState'
 import CraftingProfitTable from './CraftingProfitTable.vue'
 import MaterialProtectionControl from './MaterialProtectionControl.vue'
 import ProfitRefreshStatus from './ProfitRefreshStatus.vue'
@@ -55,6 +57,7 @@ const profit = useCraftingProfit(props.api, {
   alarm: (milliseconds: number) =>
     props.refreshClock === null ? timerAlarm(milliseconds) : props.refreshClock.alarm(milliseconds)
 })
+const protection = useMaterialProtection()
 const ingredientRecipeIds = ref<ReadonlySet<number>>(new Set())
 const table = useProfitTableView(profit.rows, ingredientRecipeIds)
 useIngredientSearch(props.api, table.searchText, ingredientRecipeIds)
@@ -105,7 +108,14 @@ onDeactivated(() => {
   resolution.invalidate()
 })
 
+/** Search handed over by Bank/Materials "Open Crafting Profit": fills the existing search, nothing else changes. */
+function takeSearchIntent(): void {
+  const text = takeProfitSearch(protection.state.accountId)
+  if (text !== null) table.searchText.value = text
+}
+watch(pendingProfitSearch, takeSearchIntent, { immediate: true })
 onActivated(() => {
+  takeSearchIntent()
   isViewActive = true
   syncResolution()
 })
