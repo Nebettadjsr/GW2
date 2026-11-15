@@ -1,13 +1,49 @@
 # Static frontend + same-origin /api forwarding (ADR-011). Rendered by the Nginx image's
 # envsubst entrypoint; only ${GW2_BACKEND_ORIGIN} is substituted.
+# Minimal access log: method, path WITHOUT the query string, status, sizes and timing. No client
+# address, Referer, User-Agent, Cookie, Origin, X-GW2-API-Key, X-Account-Context or bodies are logged.
+map $request_uri $gw2_log_path {
+    "~^(?<p>[^?]*)" $p;
+    default "-";
+}
+log_format gw2_minimal '$request_method $gw2_log_path $status $body_bytes_sent ${request_time}s';
+
+# Only a successfully served public welcome document may be indexed. Errors keep noindex.
+map $status $gw2_welcome_robots {
+    default "noindex, nofollow";
+    200 "index, follow";
+    206 "index, follow";
+    304 "index, follow";
+}
+
 server {
     listen 8080;
+    access_log /dev/stdout gw2_minimal;
+    # Nginx appends request/query/referrer context even to emerg allocation errors. Discard this
+    # server's raw error stream at every level; keep the global startup/process log and the
+    # query-free access status/size/time diagnostics above.
+    error_log /dev/null;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
 
-    # Never log request headers (X-GW2-API-Key is a credential); the default format has none.
     server_tokens off;
+
+    # Default non-indexable boundary. `add_header` in a location replaces every inherited one, so the
+    # header is repeated in each location below; `always` covers error statuses too. The owner's
+    # site-wide robots.txt crawl block is separate from noindex; blocked crawlers cannot read it.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    location = /welcome {
+        try_files /welcome.html =404;
+        add_header Cache-Control "no-cache";
+        add_header X-Robots-Tag $gw2_welcome_robots always;
+    }
+
+    location = /welcome.html {
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        return 308 /welcome;
+    }
 
     location /api/ {
         # No URI part: path and query are forwarded unchanged.
@@ -23,20 +59,38 @@ server {
         # Origin, Cookie, X-GW2-API-Key, X-Account-Context and the body pass unchanged by default;
         # Set-Cookie returns unchanged. No X-Forwarded-* (the backend does not trust them), no CORS.
         proxy_http_version 1.1;
+        add_header X-Robots-Tag "noindex, nofollow" always;
     }
 
     # A missing hashed asset is a 404, never the HTML shell.
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Robots-Tag "noindex, nofollow" always;
+    }
+
+    # Serve the actual text file; never fall back to the SPA shell when it is missing.
+    location = /robots.txt {
+        default_type text/plain;
+        add_header Cache-Control "no-cache";
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        try_files $uri =404;
+    }
+
+    # No sitemap is published while the whole site is excluded from crawling.
+    location ~ ^/sitemap.*\.xml$ {
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        return 404;
     }
 
     location = /index.html {
         add_header Cache-Control "no-cache";
+        add_header X-Robots-Tag "noindex, nofollow" always;
     }
 
     location / {
         try_files $uri /index.html;
         add_header Cache-Control "no-cache";
+        add_header X-Robots-Tag "noindex, nofollow" always;
     }
 }

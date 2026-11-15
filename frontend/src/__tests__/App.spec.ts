@@ -129,7 +129,8 @@ beforeEach(async () => {
   await connectKey('TEST-KEY-0000')
   requested.length = 0
   bankAnswer = Promise.resolve(bankWithEmptySlots)
-  window.history.replaceState(null, '', '/')
+  // These workspace regressions open Crafting explicitly; Home owns the default landing route.
+  window.history.replaceState(null, '', '/#/crafting')
   vi.stubGlobal(
     'fetch',
     vi.fn((input: string, init?: RequestInit) => {
@@ -149,13 +150,13 @@ afterEach(() => {
 })
 
 describe('App shell', () => {
-  it('opensOnCraftingProfitWithThatDestinationMarkedAndNothingElseRequested', async () => {
+  it('opensBookmarkedCraftingProfitWithThatDestinationMarkedAndNothingElseRequested', async () => {
     const open = await openApp()
 
     expect(open.find('[data-test="profit-table"]').exists()).toBe(true)
     expect(open.find('[data-test="page-heading"]').text()).toBe('Crafting Profit')
     expect(currentDestination(open)).toBe('nav-crafting')
-    expect(document.title).toBe('Crafting Profit · GW2 Crafting Tool')
+    expect(document.title).toBe('Crafting Profit · GW2 Crafting Tool · Unofficial fan project')
     expect(pathsOf('/api/account')).toEqual([])
     expect(pathsOf('/api/sync')).toEqual([])
   })
@@ -165,6 +166,7 @@ describe('App shell', () => {
 
     const links = open.findAll('[data-test="screen-nav"] a')
     expect(links.map((link) => link.attributes('href'))).toEqual([
+      '/welcome',
       '#/crafting',
       '#/discovery',
       '#/ecto',
@@ -184,7 +186,7 @@ describe('App shell', () => {
     await navigateTo(open, 'synchronization')
 
     expect(window.location.hash).toBe('#/synchronization')
-    expect(document.title).toBe('System Status · GW2 Crafting Tool')
+    expect(document.title).toBe('System Status · GW2 Crafting Tool · Unofficial fan project')
     expect(currentDestination(open)).toBe('nav-synchronization')
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('System Status')
@@ -198,7 +200,7 @@ describe('App shell', () => {
 
     // A real URL of its own, so Back, Forward, a bookmark and a reload all work (STORY-WEB-012).
     expect(window.location.hash).toBe('#/discovery')
-    expect(document.title).toBe('Crafting Discovery · GW2 Crafting Tool')
+    expect(document.title).toBe('Crafting Discovery · GW2 Crafting Tool · Unofficial fan project')
     expect(currentDestination(open)).toBe('nav-discovery')
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('Crafting Discovery')
@@ -219,7 +221,7 @@ describe('App shell', () => {
 
     // A real URL of its own, so Back, Forward, a bookmark and a reload all work (STORY-WEB-013).
     expect(window.location.hash).toBe('#/ecto')
-    expect(document.title).toBe('Ecto Salvage · GW2 Crafting Tool')
+    expect(document.title).toBe('Ecto Salvage · GW2 Crafting Tool · Unofficial fan project')
     expect(currentDestination(open)).toBe('nav-ecto')
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('Ecto Salvage')
@@ -316,14 +318,17 @@ describe('App shell', () => {
     expect(connection.phase).toBe('disconnected')
   })
 
-  it('opensCraftingProfitWhenTheUrlNamesNoKnownDestination', async () => {
+  it('opensHomeWhenTheUrlNamesNoKnownDestinationWithoutLoadingAccountData', async () => {
     window.history.replaceState(null, '', '#/not-a-screen')
 
     const open = await openApp()
 
-    expect(open.find('[data-test="page-heading"]').text()).toBe('Crafting Profit')
+    expect(open.find('[data-test="home-screen"]').exists()).toBe(true)
+    expect(currentDestination(open)).toBe('nav-home')
     // The address bar is corrected rather than left claiming a destination that does not exist.
-    expect(window.location.hash).toBe('#/crafting')
+    expect(window.location.pathname).toBe('/welcome')
+    expect(window.location.hash).toBe('')
+    expect(requested).toEqual([])
   })
 
   it('followsTheBrowsersOwnHashNavigationSoBackAndForwardWork', async () => {
@@ -400,6 +405,27 @@ describe('App shell', () => {
     expect((open.find('[data-test="filter-zero-craftable"]').element as HTMLInputElement).checked).toBe(false)
     expect((open.find('[data-test="max-displayed"]').element as HTMLInputElement).value).toBe('25')
     expect(open.findAll('[data-test="profit-row"]')).toHaveLength(rowsBefore)
+  })
+
+  it('keepsTheCraftingSelectionAndPostsNoCalculationWhenVisitingFooterInformationPagesAndBack', async () => {
+    const open = await openApp()
+    await open.find('[data-test="search"]').setValue('Iron')
+    await open.find('[data-test="filter-zero-craftable"]').setValue(false)
+    await flushPromises()
+    const calculationsBefore = pathsOf('/api/crafting/profit').length
+    const requestsBefore = requested.length
+
+    await open.find('[data-test="footer-link-privacy"]').trigger('click')
+    await flushPromises()
+    expect(open.find('[data-test="page-heading"]').text()).toBe('Privacy')
+    await open.find('[data-test="footer-link-storage"]').trigger('click')
+    await flushPromises()
+    expect(requested.length).toBe(requestsBefore)
+    await navigateTo(open, 'crafting')
+
+    expect(pathsOf('/api/crafting/profit')).toHaveLength(calculationsBefore)
+    expect((open.find('[data-test="search"]').element as HTMLInputElement).value).toBe('Iron')
+    expect((open.find('[data-test="filter-zero-craftable"]').element as HTMLInputElement).checked).toBe(false)
   })
 
   it('keepsTheProfitSelectionWhenFollowingTheProtectionLinksToBankAndMaterialsAndBack', async () => {

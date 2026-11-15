@@ -389,7 +389,7 @@ async function run() {
       `Discovery is not addressable at its own URL: ${page.url()}`
     )
     check(
-      (await page.title()) === 'Crafting Discovery · GW2 Crafting Tool',
+      (await page.title()) === 'Crafting Discovery · GW2 Crafting Tool · Unofficial fan project',
       `The document title does not name the page: ${await page.title()}`
     )
     check(

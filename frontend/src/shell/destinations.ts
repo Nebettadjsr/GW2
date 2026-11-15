@@ -6,6 +6,7 @@
  * the page heading, so a destination and the page it opens are named the same way everywhere.
  */
 export type DestinationId =
+  | 'home'
   | 'crafting'
   | 'discovery'
   | 'ecto'
@@ -13,6 +14,9 @@ export type DestinationId =
   | 'bank'
   | 'materials'
   | 'characters'
+  | 'legal'
+  | 'privacy'
+  | 'storage'
 
 export interface Destination {
   readonly id: DestinationId
@@ -24,6 +28,7 @@ export interface Destination {
 export const SITE_NAME = 'GW2 Crafting Tool'
 
 export const DESTINATIONS: readonly Destination[] = [
+  { id: 'home', path: '/welcome', label: 'Home' },
   { id: 'crafting', path: '#/crafting', label: 'Crafting Profit' },
   { id: 'discovery', path: '#/discovery', label: 'Crafting Discovery' },
   { id: 'ecto', path: '#/ecto', label: 'Ecto Salvage' },
@@ -33,18 +38,39 @@ export const DESTINATIONS: readonly Destination[] = [
   { id: 'characters', path: '#/characters', label: 'Characters' }
 ]
 
+/**
+ * The public information pages, linked from the footer and deliberately not from the main
+ * navigation. They are readable without a session and never read account data.
+ */
+export const INFO_DESTINATIONS: readonly Destination[] = [
+  { id: 'legal', path: '#/legal', label: 'Legal notice' },
+  { id: 'privacy', path: '#/privacy', label: 'Privacy' },
+  { id: 'storage', path: '#/storage', label: 'Cookies & browser storage' }
+]
+
+/** Whether a destination is a public information page rather than an application area. */
+export function isInfoDestination(destination: Destination): boolean {
+  return INFO_DESTINATIONS.some((candidate) => candidate.id === destination.id)
+}
+
+/** Public reading pages do not restore a retained account key. */
+export function isPublicDestination(destination: Destination): boolean {
+  return destination.id === 'home' || isInfoDestination(destination)
+}
+
 /** Opening the application without a destination lands here. */
-export const DEFAULT_DESTINATION: Destination = destinationOf('crafting')
+export const DEFAULT_DESTINATION: Destination = destinationOf('home')
 
 export function destinationOf(id: DestinationId): Destination {
-  const destination = DESTINATIONS.find((candidate) => candidate.id === id)
+  const destination = [...DESTINATIONS, ...INFO_DESTINATIONS].find((candidate) => candidate.id === id)
   if (destination === undefined) throw new Error(`Unknown destination: ${id}`)
   return destination
 }
 
 /** The document title of a destination; a browser tab and the history entries stay identifiable. */
 export function documentTitleOf(destination: Destination): string {
-  return `${destination.label} · ${SITE_NAME}`
+  if (destination.id === 'home') return `${SITE_NAME} · Gold & Beginner Tips · Unofficial fan project`
+  return `${destination.label} · ${SITE_NAME} · Unofficial fan project`
 }
 
 /**
@@ -53,5 +79,5 @@ export function documentTitleOf(destination: Destination): string {
  */
 export function destinationForHash(hash: string): Destination {
   const normalized = hash.startsWith('#') ? hash : `#${hash}`
-  return DESTINATIONS.find((candidate) => candidate.path === normalized) ?? DEFAULT_DESTINATION
+  return [...DESTINATIONS, ...INFO_DESTINATIONS].find((candidate) => candidate.path === normalized) ?? DEFAULT_DESTINATION
 }

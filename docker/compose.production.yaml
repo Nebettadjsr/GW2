@@ -1,0 +1,96 @@
+# Production-preparation configuration for the single-host stack (STORY-LAUNCH-003). Standalone: use it
+# INSTEAD of compose.yaml, never together with it. Differences from the local stack:
+#   - GW2_STACK_DB_PASSWORD is required; unset or blank aborts rendering (no local default exists here).
+#   - Nothing is read from a developer's root .env: only the explicit variables below are forwarded.
+#   - Only the frontend publishes a port, loopback by default. This is plain HTTP preparation, NOT a
+#     finished HTTPS deployment: public TLS/edge wiring is a later coordinated launch step. Do not
+#     enable client X-Forwarded-*/Forwarded trust to work around that.
+# Static validation (no daemon):  docker compose -f compose.production.yaml --env-file <file> config
+name: gw2-production
+
+x-logging: &bounded-logging
+  # Bounds on stdout/stderr container logs: at most MAX_FILE files of MAX_SIZE each (not a duration).
+  driver: json-file
+  options:
+    max-size: ${GW2_STACK_LOG_MAX_SIZE:-10m}
+    max-file: "${GW2_STACK_LOG_MAX_FILE:-3}"
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: gw2
+      POSTGRES_USER: gw2
+      POSTGRES_PASSWORD: ${GW2_STACK_DB_PASSWORD:?GW2_STACK_DB_PASSWORD must be set to a non-empty secret}
+    volumes:
+      - gw2-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gw2 -d gw2 -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+    logging: *bounded-logging
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/gw2
+      DATABASE_USER: gw2
+      DATABASE_PASSWORD: ${GW2_STACK_DB_PASSWORD:?GW2_STACK_DB_PASSWORD must be set to a non-empty secret}
+      DATABASE_POOL_SIZE: ${GW2_STACK_DB_POOL_SIZE:-8}
+      DATABASE_POOL_TIMEOUT_MS: ${GW2_STACK_DB_POOL_TIMEOUT_MS:-15000}
+      ICON_CACHE_DIR: /app/data/icons
+      OPS_HISTORY_DIR: /app/data/ops
+      GW2_OPS_ORACLE_CONSOLE_URL: ${GW2_OPS_ORACLE_CONSOLE_URL:-}
+      # Blank/unset: nobody is owner. Malformed nonblank: backend startup fails. No owner key needed.
+      GW2_OWNER_ACCOUNT_GUID: ${GW2_OWNER_ACCOUNT_GUID:-}
+    volumes:
+      - gw2-icons:/app/data/icons
+      - gw2-ops:/app/data/ops
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /api/system/status HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q ' 200'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 15s
+    restart: unless-stopped
+    logging: *bounded-logging
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      # Public operator facts only; unset stays "not configured" on the static pages.
+      args:
+        VITE_OPERATOR_NAME: ${VITE_OPERATOR_NAME:-}
+        VITE_OPERATOR_ADDRESS: ${VITE_OPERATOR_ADDRESS:-}
+        VITE_OPERATOR_COUNTRY: ${VITE_OPERATOR_COUNTRY:-}
+        VITE_HOSTING_REGION: ${VITE_HOSTING_REGION:-}
+        VITE_PUBLIC_DOMAIN: ${VITE_PUBLIC_DOMAIN:-}
+        VITE_CONTACT_EMAIL: ${VITE_CONTACT_EMAIL:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      GW2_BACKEND_ORIGIN: http://backend:8080
+    ports:
+      - "${GW2_STACK_HTTP_BIND:-127.0.0.1}:${GW2_STACK_HTTP_PORT:-8088}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/system/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    logging: *bounded-logging
+
+volumes:
+  gw2-postgres:
+  gw2-icons:
+  gw2-ops:

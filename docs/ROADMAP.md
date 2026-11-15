@@ -13,46 +13,38 @@ Updated: 2026-11-13. Owner: GitHub Codex planner; changes are reviewed by the in
 
 Contracts and invocation details: [agent roles](../agent/README.md). These files do not install a scheduler or start a planner/Claude run.
 
-## Milestone 1: measurable fit within Oracle Always Free
+## Milestone 1: public-production readiness on Oracle Always Free
 
 ### Goal
 
-Implement the missing KPIs and repeatable qualification needed for the final product to operate within Oracle Always Free while preserving correctness, account isolation and a usable desktop experience. Final qualification includes material protection, Characters, owner administration and automatic inventory freshness—not just the current application. It also requires the reserved JVM, storage/log and transfer accounting follow-ups. Report supported capacity and limitations honestly; measuring usage does not itself guarantee free hosting.
+Prepare the application for a public, containerized deployment on Oracle Always Free while preserving correctness, account isolation and a usable desktop experience. Public-production readiness includes material protection, Characters, owner administration and automatic inventory freshness, plus the deployment items below. It does not require a capacity or resource-measurement programme.
+
+### Capacity experiments ended
+
+The Product Owner ended the resource/capacity experiment programme (2026-11-14). Capacity discovery, workload profiling, recorded-interaction replay, VM/container/JVM resource observation and the informational Performance workflow are **retired and are not launch requirements**. Their tooling was removed by STORY-LAUNCH-001 (audit: [launch tooling audit](investigations/launch-001-tooling-audit.md)); earlier reports and measurements are kept only as historical evidence and prove no capacity. The related issues #116, #154, #189 and #191 are not to be repeated. Supervisor-recorded superseding authorization is in the [active backlog](../agent/BACKLOG.md).
 
 ### Confirmed hosting target
 
 The Product Owner confirmed Oracle Always Free on 2026-11-07; Cloudflare is not the requested hosting target. Preserve the portable single-host frontend/backend/PostgreSQL deployment in `TARGET_ARCHITECTURE.md` section 12.
 
-Qualification target: ARM64 Ampere A1, combined 2 OCPU / 12 GB RAM for the entire deployment, including OS, Docker, PostgreSQL, backend, frontend and monitoring overhead. This is an allocation ceiling, not permission for Java alone to use 12 GB. Confirm the actual tenancy's available resources and shared storage/network usage before qualification.
-
-Oracle's [Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm), checked 2026-11-07, specify 1,500 OCPU-hours and 9,000 GB-hours monthly, equivalent to 2 OCPU / 12 GB, plus 200 GB combined boot/block storage across the tenancy. The planner must include storage, transfer, logs and any other required services in the budget. No target host is currently verified by this setup.
-
-The Product Owner selected capacity discovery on 2026-11-12: find how many simultaneous users can be supported before a rendered, usable page takes longer than **2 seconds**. This replaces the older 3–5-second proposal and fixed normal/busy user counts. Research workload methodology and distinguish measured behavior from provisional rates: crafting involves planning bursts followed by minutes acting in game, whereas Bank, Materials and Characters involve more frequent browsing. Test cadence/mix sensitivity and actual frontend background requests, not continuous clicking by every connected session. Use populated synthetic fixtures for default CI and the explicitly authorized, ignored local account snapshot for representative local runs; independent test principals preserve account separation. Record every over-limit sample, latency distributions, first breach and repeatability without silently substituting a percentile SLA. Actual capacity is the result, not an approval prerequisite. Observe resource headroom without inventing a mandatory percentage.
+Target: ARM64 Ampere A1, combined 2 OCPU / 12 GB RAM for the entire deployment, including OS, Docker, PostgreSQL, backend, frontend and monitoring overhead. This is an allocation ceiling, not permission for Java alone to use 12 GB. Oracle's [Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm), checked 2026-11-07, specify 1,500 OCPU-hours and 9,000 GB-hours monthly (2 OCPU / 12 GB) plus 200 GB combined boot/block storage. No target host is currently verified.
 
 ### Sequence
 
-1. Reconcile existing measurements/reports and open work; identify gaps.
-2. Prepare representative offline inputs and researched workload profiles; actual Oracle tenancy access is required for final host qualification, not independent local development.
-3. Extend existing instrumentation/reporting only where needed, then discover the 2-second capacity boundary under named profiles and report resource usage/headroom with units and measurement limits.
-4. Run reproducible correctness, multi-account, desktop, sustained-load and recovery qualification with simulated upstream failures.
-5. Produce a concise usage/headroom report and supervisor health review. Propose optional improvements separately; do not implement them automatically.
+1. Keep ordinary correctness coverage (Maven, Vitest, type-check, build, account isolation, focused browser and container smoke) green.
+2. Complete the accepted feature milestones below (material protection, Characters, owner administration, inventory freshness).
+3. Resolve the open deployment facts (operator identity, legal facts, domain, Oracle region, deployment credentials) with the Product Owner.
+4. Run a production-style stack smoke on the target host as a deployment gate; this is later work and is not part of the cleanup story.
+5. Supervisor reviews CI, code review, local-only evidence and remaining risks. Unknown facts are reported gaps, not passed gates.
 
-### Evidence and exit criteria
+### Exit criteria
 
-- Selected topology is compatible with the application or a separately approved adaptation plan exists. All required runtime/storage/network components and free-tier limits are accounted for.
-- Metrics cover relevant CPU, memory, database/pool/storage, latency/errors, transfer/request quotas and upstream/cache activity. Provider-specific counters supplement host metrics where applicable.
-- Every result includes commit, configuration, environment, workload, account count, duration, units and measurement boundaries; missing data is explicit. Compare current measurements with budgets and show headroom.
-- Cold/warm catalogs, concurrent distinct accounts, refreshes, slow/429/5xx upstreams and restart recovery have meaningful evidence. Use disposable data and fake upstreams; preserve account isolation and domain behavior.
-- Desktop response/rendering behavior is included; mobile optimization is outside this milestone.
-- Per-service and whole-deployment evidence comes from the selected target environment before claiming free-tier fit. Development-machine results are labelled experiments.
-- Existing coverage and performance reports remain usable. Monitoring overhead and log/storage growth are bounded and measured.
-- Supervisor reviews CI, code review, local-only evidence, remaining risks and workload limits. Unknown or excessive usage is a reported gap, not a passed milestone. The Product Owner decides adoption of further optimizations.
+- The selected topology runs the application on the Oracle host with all runtime, storage and network components accounted for.
+- Production images contain no test recorder, proxy, timing overlay, debug route or test-only bypass.
+- Default CI (Maven suite, Vitest coverage, type-check, build, workflow-helper checks) passes; account isolation and real-database checks pass locally.
+- Operator and legal information, domain and credentials are supplied by the Product Owner and are not invented.
 
-### Reuse existing work
-
-Start from [performance measurement guidance](PERFORMANCE_MEASUREMENTS.md), [quality metrics](QUALITY_METRICS.md) and [the optimization investigation](OPTIMIZATION_INVESTIGATION_REPORT.md). Do not reimplement completed pooling, simulation-state reuse, recipe-payload reuse, correctness fixes or Bank/Materials refresh improvements without current evidence of a remaining gap.
-
-KPI contracts and proposed story order: [active backlog](../agent/BACKLOG.md).
+Historical documents ([performance measurements](PERFORMANCE_MEASUREMENTS.md), [workload profile](PERFORMANCE_WORKLOAD_PROFILE.md), [optimization investigation](OPTIMIZATION_INVESTIGATION_REPORT.md)) are not launch requirements. Completed pooling, simulation-state reuse, recipe-payload reuse and Bank/Materials refresh improvements stay as delivered.
 
 ## Milestone 2: protect selected materials from Crafting Profit
 
@@ -75,10 +67,9 @@ These choices were confirmed by the Product Owner. The planner can now refine th
 - Feature disabled or an empty list preserves existing results. Account changes must not reuse another account's selections or stale in-flight results. Discovery and Ecto are outside the requested scope.
 - Preserve existing selection/navigation, sorting, filtering, refresh and item-link interactions; define accessible keyboard operation and a visible enabled/count summary. Consult the Product Owner for unresolved UI decisions rather than inventing them.
 - Prefer a compact, validated item-ID selection and constant-time membership checks within existing calculation boundaries. Reuse existing request/account state; no new service, polling loop or per-item upstream fetch is justified by this feature. Persistence architecture follows the answer above.
-- Measure feature-disabled, enabled-empty and enabled-populated cases using comparable catalogs/accounts and selected-list sizes. Record calculation latency/CPU/allocation, request size and desktop interaction cost; do not claim zero overhead without evidence.
-- Final Oracle qualification includes this feature under the agreed workload. Do not introduce an unmeasured per-account copy of the entire catalog or shared mutable calculation state to support it.
+- Preserve bounded selection payloads and account isolation. Do not introduce per-account catalog copies or shared mutable calculation state. Observe actual operational health after launch; a new feature-overhead benchmark is not a launch requirement.
 
-Status: the paired selection and Crafting UI approved on 2026-11-08 is integrated with its regression and documentation baseline, including source-specific protection, ingredient checkbox eligibility and category-local preset placement. Detailed release order is in the [backlog](../agent/BACKLOG.md); final resource qualification remains outstanding.
+Status: the paired selection and Crafting UI approved on 2026-11-08 is integrated with its regression and documentation baseline, including source-specific protection, ingredient checkbox eligibility and category-local preset placement. Detailed production preparation is in the [backlog](../agent/BACKLOG.md).
 
 ## Milestone 3: Characters overview and equipment-first details
 
@@ -94,9 +85,9 @@ Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_
 2. Prepare a concrete overview/detail UI proposal for Product Owner review, prioritizing equipment quality visibility. Set bounded read/refresh and cache contracts; reuse current account and shared metadata infrastructure.
 3. Implement reviewed data/API and equipment/overview stories, then inventory/build details. Every story includes meaningful tests; pending API/product choices block only the affected work.
 4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
-5. Measure roster/detail response size, desktop rendering, metadata/upstream requests, cold/warm behavior and whole-stack CPU/memory/storage under the Oracle workload. No per-character polling loop, new service or eager download of every detail on each roster visit without measured justification.
+5. Preserve page-scoped loading, retained data and bounded metadata/upstream work. Do not add per-character polling, a new service or eager loading of unrelated details. Monitor real production use through the existing operations facilities.
 
-Status: the approved roster, character summary, Equipment, Inventory and Builds layouts are integrated after CI and review, with their regression and documentation baseline. Preserve the Product Owner's 2026-11-08 visual decisions during maintenance. Story/recipes/map exclusions remain unchanged. Final hosting qualification remains outstanding; owner administration follows the separate operational sequence below.
+Status: the approved roster, character summary, Equipment, Inventory and Builds layouts are integrated after CI and review, with their regression and documentation baseline. Preserve the Product Owner's 2026-11-08 visual decisions during maintenance. Story/recipes/map exclusions remain unchanged. Production deployment remains separate work.
 
 ## Operational follow-up: owner administration and automatic inventory refresh
 
@@ -104,11 +95,9 @@ Confirmed scope: [DOMAIN_SPEC.md section 57](DOMAIN_SPEC.md), [UX sections 2.3�
 
 The paired Bank/Materials/Characters implementation uses automatic page-scoped stale refresh, retained saved data and a compact updating hint. Keep manual full-account refresh in System Status. Reconcile and verify shared admission, missing-grant/error recovery, retained inspected equipment and account switching before acceptance. Do not refresh unrelated sources when navigating a feature page.
 
-Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work; include its CPU/memory/storage/upstream impact in Oracle qualification rather than assuming on-demand TP measurements represent it. Implementation follows supervisor release of a concrete contract.
+Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work. Implementation follows supervisor release of a concrete contract.
 
-Current sequence: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. #188 is held for final visual review. Independent resource tooling in #193 proceeds against merged master without depending on #188's value-display DOM: first a manual-only legacy benchmark workflow and an opt-in local Playwright interaction recorder/final-render timer, then correlated VM/container/JVM/database observations, marginal account-storage measurement, and backend offered/completed-rate reporting. Owner recordings and final capacity tests use the accepted product baseline. #184 and unmerged PR #190 are superseded. Deployment owner configuration, concurrent stress execution, and final Oracle qualification remain separately authorized work.
-
-Preparation may record and replay reviewed owner interactions and collect bounded observations. Concurrent stress, live ArenaNet load, VM creation, paid services, and capacity claims require their own execution scope. Resource-test preparation follows the Product Owner's 2026-11-13 instruction; the complete stack belongs inside the local VM budget and real browser sessions run outside it. Local Intel results approximate the resource envelope; Oracle ARM and storage throughput require target-host verification.
+Current sequence: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. The resource/capacity experiment tooling that was prepared in #193 has been retired (see Milestone 1). Deployment owner configuration and the production-style stack smoke remain separately authorized work.
 
 System Status visual decisions: owner-only composition accepted on 2026-11-11; regular-user account overview (own-account counts, compact service line) accepted on 2026-11-12. Preserve the accepted layouts; execution and final quality evidence belong to #182 / #183.
 
@@ -116,13 +105,13 @@ System Status visual decisions: owner-only composition accepted on 2026-11-11; r
 
 The Product Owner approved future Mystic Forge recipe support behind `Allow Mystic Forge recipes`, below `Allow daily craft`; it is currently a disabled UI placeholder. Forge steps will use that setting rather than a crafting discipline/rating. [The product request](../agent/product-owner-requests/mystic-forge-crafting.md) owns the remaining data/random-output questions. Do not activate calculation work merely because the placeholder exists.
 
-Issue [#154](https://github.com/Nebettadjsr/GW2/issues/154) prepares live-account verification: establish observed API propagation delay first, then select a small representative recipe set and compare before/after wallet, owned quantities, executable craft counts and realized net economics. Research evidence and measured observations must stay distinct. The owner performs game purchases/crafting; no unattended spending is authorized. This evidence complements automated correctness tests and is not Oracle capacity qualification.
+The pre-launch propagation/economics investigation [#154](https://github.com/Nebettadjsr/GW2/issues/154), capacity planning #191, broad investigation #116 and experiment-observer fix #189 were withdrawn as not planned on 2026-11-14. Their investigations are not passed gates or prerequisites for launch. Retain concrete functional defects and optional optimization follow-ups for later prioritization.
 
 ## Existing architecture and historical migration
 
 ### Correctness prerequisite: owned non-tradable valuation
 
-Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. Issue [#132](https://github.com/Nebettadjsr/GW2/issues/132) is complete through accepted PR [#133](https://github.com/Nebettadjsr/GW2/pull/133), merged as `23ce30d`, including cumulative mixed-pool rounding, cycle safety and valued-bound list/detail tests. This implementation prerequisite for material protection is satisfied; resource qualification remains separate.
+Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. Issue [#132](https://github.com/Nebettadjsr/GW2/issues/132) is complete through accepted PR [#133](https://github.com/Nebettadjsr/GW2/pull/133), merged as `23ce30d`, including cumulative mixed-pool rounding, cycle safety and valued-bound list/detail tests. This implementation prerequisite for material protection is satisfied.
 
 [Domain specification](DOMAIN_SPEC.md), [current architecture](CURRENT_ARCHITECTURE.md), [target architecture](TARGET_ARCHITECTURE.md), [test strategy](TEST_STRATEGY.md) and recorded user decisions remain authoritative. This roadmap does not change their business or architecture rules.
 

@@ -62,6 +62,14 @@ const BLOCKED_REASONS: Record<string, { label: string; because: string }> = {
   INSUFFICIENT_BUDGET: {
     label: 'Over the buy limit',
     because: 'a required purchase costs more than the maximum buy setting allows'
+  },
+  MATERIAL_LIMIT: {
+    label: 'Too many materials',
+    because: 'the plan would need more than 2,500 units of a single material'
+  },
+  VALUE_RANGE: {
+    label: 'Value out of range',
+    because: 'a quantity or price in the plan is too large to calculate reliably'
   }
 }
 
@@ -144,7 +152,9 @@ const DETAIL_ONLY_REASONS: ReadonlySet<string> = new Set([
   'NO_RECIPE',
   'DAILY_LIMIT',
   'RECIPE_NOT_ALLOWED',
-  'INSUFFICIENT_BUDGET'
+  'INSUFFICIENT_BUDGET',
+  'MATERIAL_LIMIT',
+  'VALUE_RANGE'
 ])
 
 /** A few words beside one row, with the shared status treatment its tone names. */

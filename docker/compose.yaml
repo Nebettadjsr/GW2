@@ -1,6 +1,6 @@
 # Local three-container stack (STORY-INFRA-008): PostgreSQL, Java backend, Nginx frontend.
 #   cd docker && docker compose up --build --wait (then open http://127.0.0.1:8088)
-# Stack settings use GW2_STACK_* names only and are listed in compose.env.example. The backend gets
+# Stack settings and optional owner/public operator facts are listed in compose.env.example. The backend gets
 # exactly the variables below, so a maintainer's root .env (DATABASE_URL, credentials, GW2_API_KEY)
 # is never forwarded and this stack never connects to a maintainer database. Not a hosted deployment.
 name: gw2
@@ -21,6 +21,13 @@ services:
       retries: 30
       start_period: 5s
     restart: unless-stopped
+    logging:
+      # Bounds on this container's stdout/stderr (docker json-file): at most MAX_FILE files of MAX_SIZE
+      # each. A size/count bound, not a retention duration.
+      driver: json-file
+      options:
+        max-size: ${GW2_STACK_LOG_MAX_SIZE:-10m}
+        max-file: "${GW2_STACK_LOG_MAX_FILE:-3}"
 
   backend:
     build:
@@ -39,6 +46,8 @@ services:
       OPS_HISTORY_DIR: /app/data/ops
       # Optional non-secret HTTPS Oracle Console link shown to the owner; empty means "not configured".
       GW2_OPS_ORACLE_CONSOLE_URL: ${GW2_OPS_ORACLE_CONSOLE_URL:-}
+      # Optional owner account GUID; blank/unset grants nobody owner access, malformed fails startup.
+      GW2_OWNER_ACCOUNT_GUID: ${GW2_OWNER_ACCOUNT_GUID:-}
     volumes:
       # Empty named volumes copy the image's gw2-owned directory, so the non-root user can write.
       - gw2-icons:/app/data/icons
@@ -51,11 +60,25 @@ services:
       retries: 40
       start_period: 10s
     restart: unless-stopped
+    logging:
+      # Bounds on this container's stdout/stderr (docker json-file): at most MAX_FILE files of MAX_SIZE
+      # each. A size/count bound, not a retention duration.
+      driver: json-file
+      options:
+        max-size: ${GW2_STACK_LOG_MAX_SIZE:-10m}
+        max-file: "${GW2_STACK_LOG_MAX_FILE:-3}"
 
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      args:
+        VITE_OPERATOR_NAME: ${VITE_OPERATOR_NAME:-}
+        VITE_OPERATOR_ADDRESS: ${VITE_OPERATOR_ADDRESS:-}
+        VITE_OPERATOR_COUNTRY: ${VITE_OPERATOR_COUNTRY:-}
+        VITE_HOSTING_REGION: ${VITE_HOSTING_REGION:-}
+        VITE_PUBLIC_DOMAIN: ${VITE_PUBLIC_DOMAIN:-}
+        VITE_CONTACT_EMAIL: ${VITE_CONTACT_EMAIL:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -71,6 +94,13 @@ services:
       timeout: 5s
       retries: 20
     restart: unless-stopped
+    logging:
+      # Bounds on this container's stdout/stderr (docker json-file): at most MAX_FILE files of MAX_SIZE
+      # each. A size/count bound, not a retention duration.
+      driver: json-file
+      options:
+        max-size: ${GW2_STACK_LOG_MAX_SIZE:-10m}
+        max-file: "${GW2_STACK_LOG_MAX_FILE:-3}"
 
 volumes:
   gw2-postgres:

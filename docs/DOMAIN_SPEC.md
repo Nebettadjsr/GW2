@@ -1337,6 +1337,8 @@ CYCLE_DETECTED
 PRICE_UNAVAILABLE
 RECIPE_NOT_ALLOWED
 INSUFFICIENT_BUDGET
+MATERIAL_LIMIT
+VALUE_RANGE
 ```
 
 All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are assigned by the planner rather than only declared (`docs/KNOWN_PROBLEMS.md` §3.5).
@@ -1356,7 +1358,24 @@ contract fields. Their meanings are:
 | `PRICE_UNAVAILABLE` | A required purchase quote was missing or unusable. A missing price is not a zero price. |
 | `RECIPE_NOT_ALLOWED` | A recipe was rejected by recipe/allowed-set restrictions or coordinated character eligibility. |
 | `INSUFFICIENT_BUDGET` | The next required purchase exceeded the configured maximum-buy constraint. The constraint applies to the purchase path, not to the value of already counted crafts. |
+| `MATERIAL_LIMIT` | A candidate recipe plan would require more than 2,500 units of one material item ID (see "Material demand bound" below). |
+| `VALUE_RANGE` | A quantity, copper price, total, fee or profit in the attempt fell outside the supported range of the calculation; nothing is wrapped, clamped or invented. |
 | Unknown/future code | Preserve the supplied code as an unknown state. Do not map it to `NONE`, zero, success or a known reason. |
+
+**Material demand bound.** One candidate recipe plan may require at most 2,500 units of any one
+material item ID. Demand is the total of every ingredient requirement for that item ID in the plan
+(repeated sibling and recursive requirements, and all accepted Profit batches), whether the units
+are owned, surplus-reused, crafted or purchased. Each candidate recipe has independent accounting,
+and a speculative alternative that is abandoned releases its demand. Multiplication, ceiling
+division and accumulated demand are validated before stock is consumed, a price applied or a
+requirement descended into; the first excess ends that attempt at once. An excess rejects the whole
+affected root attempt (never a truncated recipe) and rolls back inventory, surplus, daily
+allowances, costs and demand; a valid alternative recipe or direct purchase that fits is still
+preferred. Profit keeps earlier fully accepted batches as a smaller valid plan, the failed next
+attempt adding nothing (the 250-craft maximum is unchanged); Discovery, being one attempt, is
+blocked entirely. Independently, every copper product, sum, comparison, revenue, fee and profit is
+computed exactly and must fit the supported 32-bit copper range; otherwise the attempt is blocked
+as `VALUE_RANGE` rather than wrapping, clamping or reporting a fabricated profit.
 
 A non-`NONE` reason may explain why further crafting stopped after a positive
 `craftableCount`; those already-counted crafts remain valid. When the count is zero,

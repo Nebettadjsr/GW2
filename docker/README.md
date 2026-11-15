@@ -45,6 +45,20 @@ docker compose --env-file compose.env up --build --wait
 
 The local configuration file is gitignored. The repository-root development `.env` and its database credentials or GW2 key are not passed to these containers. Changing the database password after initialization requires resetting this stack's cache volume so PostgreSQL initializes with the new password.
 
+## Production-preparation configuration
+
+[`compose.production.yaml`](compose.production.yaml) is a standalone alternative to `compose.yaml` (never combine them). `GW2_STACK_DB_PASSWORD` is required: unset or blank makes Compose refuse to render, and there is no `gw2-local-only` fallback. Only the explicit variables in the file reach the containers; a developer's `DATABASE_*` or `GW2_API_KEY` is not forwarded. Supply the settings with `--env-file` from a file outside the repository:
+
+```sh
+docker compose -f compose.production.yaml --env-file /path/to/production.env config   # static check, no daemon
+```
+
+It publishes only the frontend, on loopback by default, over plain HTTP. This is preparation, not a finished HTTPS deployment: the real host, domain, TLS/edge and legal values are not configured, and `Forwarded`/`X-Forwarded-*` headers are deliberately not trusted.
+
+Both Compose files also forward optional `GW2_OWNER_ACCOUNT_GUID` (blank grants nobody; a malformed value fails backend startup), pass the optional public `VITE_OPERATOR_*`/`VITE_HOSTING_REGION`/`VITE_PUBLIC_DOMAIN`/`VITE_CONTACT_EMAIL` values to the frontend build (unset stays "not configured"), and bound each container's stdout/stderr with `GW2_STACK_LOG_MAX_SIZE` (default `10m`) and `GW2_STACK_LOG_MAX_FILE` (default `3`). These are size and file-count bounds, not a time guarantee. The proxy access log records only method, path without query string, status, size and timing; request-bound error lines (which echo the request line, query string and Referer even at critical level) are suppressed, while startup events stay in the global error log. Activity and performance come from the existing owner operations aggregates, and CPU/RAM from Oracle metrics.
+
+Checks: `python -m unittest discover -s .github/scripts` renders both files with synthetic values and a poisoned environment and runs a throwaway nginx for the logging check. CI installs the native Nginx runtime so that check executes; platforms without it report an explicit skip. A running production-style stack, TLS/origin/cookie behavior through the real edge, owner separation, CSV export, deletion and restart/volume checks remain target-environment evidence not yet run.
+
 ## Status, logs and shutdown
 
 ```sh
@@ -64,4 +78,15 @@ docker compose up --build --wait
 
 The `gw2-postgres` volume holds PostgreSQL data and `gw2-icons` holds downloaded icons. Both are disposable caches. These commands target the `gw2` Compose project; if you set another project name with `-p`, use that name consistently.
 
-This is the local HTTP stack. Public hosting and TLS are described separately in the [roadmap](../docs/ROADMAP.md). For automated verification and resource measurements, see [current architecture](../docs/CURRENT_ARCHITECTURE.md#docker-compose-stack-story-infra-008) and [performance measurements](../docs/PERFORMANCE_MEASUREMENTS.md).
+This is the local HTTP stack. Public hosting and TLS are described separately in the [roadmap](../docs/ROADMAP.md). For automated verification, see [current architecture](../docs/CURRENT_ARCHITECTURE.md#docker-compose-stack-story-infra-008) and [compose smoke](../scripts/compose-smoke.sh).
+
+## Search-engine indexing (noindex)
+
+The frontend image sends `X-Robots-Tag: noindex, nofollow` on every response (including errors and
+`/api/`), and `index.html` carries the matching meta tag. The owner additionally requested a site-wide
+crawl block: `/robots.txt` serves `User-agent: *` and `Disallow: /` as plain text, without a sitemap.
+This applies to every current path, including the SPA's shared root document and its hash routes.
+Crawlers blocked by robots.txt cannot read the pages' noindex tags; a search engine can still list
+a blocked URL discovered elsewhere without indexing its contents. See
+[Google's distinction between crawling and indexing](https://developers.google.com/search/docs/crawling-indexing/robots/intro).
+These directives are not access control, confidentiality or an anti-scraping guarantee.

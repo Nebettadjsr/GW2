@@ -1,5 +1,7 @@
 package craft;
 
+import tradingpost.TradingPostFeePolicy;
+
 import java.util.Map;
 
 public class RecipeSimulator {
@@ -87,7 +89,30 @@ public class RecipeSimulator {
                 break;
             }
 
-            int nextBuyTotal = result.getBuyCostTotal() + rr.getBuyCostCopper();
+            int nextBuyTotal;
+            try {
+                // Every accumulated total, and each batch's effective cost, must stay representable.
+                nextBuyTotal = Math.addExact(result.getBuyCostTotal(), rr.getBuyCostCopper());
+                int nextOpportunityTotal = Math.addExact(result.getOpportunityCostTotal(),
+                        rr.getOpportunityCostCopper());
+                Math.addExact(nextBuyTotal, nextOpportunityTotal);
+                rr.getEffectiveCostCopper();
+            } catch (ArithmeticException outOfRange) {
+                state.rollbackTo(mark);
+                result.setBlockedReason(BlockedReason.VALUE_RANGE);
+                result.setBlockedAttempt(root);
+                break;
+            }
+
+            if (!aggregatesRepresentable(recipe, ctx, result.getCraftCount() + 1,
+                    nextBuyTotal, Math.addExact(result.getOpportunityCostTotal(), rr.getOpportunityCostCopper()))) {
+                // Keep the batches already accepted; only this one would push a revenue/profit
+                // aggregate outside the supported range.
+                state.rollbackTo(mark);
+                result.setBlockedReason(BlockedReason.VALUE_RANGE);
+                result.setBlockedAttempt(root);
+                break;
+            }
 
             if (ctx.settings.maxBuyCopper > 0 && nextBuyTotal > ctx.settings.maxBuyCopper) {
                 state.rollbackTo(mark);
@@ -120,6 +145,29 @@ public class RecipeSimulator {
                 break;
             }
         }
+    }
+
+    /**
+     * Whether the revenue and profit totals for {@code crafts} batches stay inside the int range
+     * the result reports, evaluated exactly in long arithmetic. Reject an unrepresentable per-craft
+     * revenue here too, so standalone explanations and planner rows report the same VALUE_RANGE.
+     */
+    private static boolean aggregatesRepresentable(Recipe recipe, PlannerContext ctx, int crafts,
+                                                   long buyTotal, long opportunityTotal) {
+        int revenueOne;
+        try {
+            revenueOne = CostEvaluator.computeRevenue(recipe, ctx.tp, ctx.settings);
+        } catch (ArithmeticException outOfRange) {
+            return false;
+        }
+        long feeOne = revenueOne > 0 ? TradingPostFeePolicy.feeOn(revenueOne) : 0;
+        long sellTotal = (long) revenueOne * crafts;
+        long profit = sellTotal - feeOne * crafts - buyTotal - opportunityTotal;
+        return fits(sellTotal) && fits(profit);
+    }
+
+    private static boolean fits(long value) {
+        return value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE;
     }
 
 }

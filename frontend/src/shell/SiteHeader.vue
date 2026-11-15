@@ -31,6 +31,11 @@ function onLinkClick(event: MouseEvent, id: DestinationId): void {
 function activityOf(destination: Destination): string | null {
   return destination.id === 'synchronization' ? props.syncActivity : null
 }
+
+function hrefOf(destination: Destination): string {
+  return props.currentId === 'home' && destination.id !== 'home'
+    ? `/${destination.path}` : destination.path
+}
 </script>
 
 <template>
@@ -39,7 +44,7 @@ function activityOf(destination: Destination): string | null {
       <p class="site-wordmark">
         <span class="site-wordmark__accent">GW2</span>
         <span>Crafting Tool</span>
-        <span class="site-wordmark__scope">Trading Post &amp; crafting analysis</span>
+        <span class="site-wordmark__scope">Unofficial fan project</span>
       </p>
 
       <nav class="site-nav" aria-label="Application areas" data-test="screen-nav">
@@ -47,7 +52,7 @@ function activityOf(destination: Destination): string | null {
           <li v-for="destination in destinations" :key="destination.id">
             <a
               class="site-nav__link"
-              :href="destination.path"
+              :href="hrefOf(destination)"
               :data-test="`nav-${destination.id}`"
               :aria-current="destination.id === currentId ? 'page' : undefined"
               @click="onLinkClick($event, destination.id)"

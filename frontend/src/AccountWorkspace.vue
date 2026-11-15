@@ -8,7 +8,10 @@ import MaterialsScreen from './account/MaterialsScreen.vue'
 import CraftingDiscoveryScreen from './crafting/CraftingDiscoveryScreen.vue'
 import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
 import EctoSalvageScreen from './ecto/EctoSalvageScreen.vue'
-import { DESTINATIONS, type DestinationId } from './shell/destinations'
+import { DESTINATIONS, isInfoDestination, type DestinationId } from './shell/destinations'
+import InfoPage from './shell/InfoPage.vue'
+import HomeScreen from './home/HomeScreen.vue'
+import SiteFooter from './shell/SiteFooter.vue'
 import SiteHeader from './shell/SiteHeader.vue'
 import PageHeader from './shell/PageHeader.vue'
 import { useHashRoute } from './shell/useHashRoute'
@@ -36,6 +39,8 @@ const sync = provideSyncOperations()
 const bootstrap = useAccountBootstrap()
 const isConnected = computed(() => connection.phase === 'connected')
 const isConnecting = computed(() => connection.phase === 'restoring' || connection.phase === 'connecting')
+const onInfoPage = computed(() => isInfoDestination(route.current.value))
+const onHome = computed(() => route.current.value.id === 'home')
 const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
 const onCraftingPage = computed(() => ['crafting', 'discovery'].includes(route.current.value.id))
 const craftingReady = computed(() => !['checking', 'syncing'].includes(bootstrap.phase.value))
@@ -78,7 +83,7 @@ watch(
 </script>
 
 <template>
-  <a class="skip-link" href="#main-content">Skip to page content</a>
+  <a class="skip-link" href="#main-content" @click.prevent="main?.focus()">Skip to page content</a>
 
   <SiteHeader
     :destinations="DESTINATIONS"
@@ -87,7 +92,7 @@ watch(
     @navigate="onNavigate"
   />
 
-  <main id="main-content" ref="main" class="page">
+  <main id="main-content" ref="main" class="page" tabindex="-1">
     <!--
       The API-key controls live only on System Status (STORY-FIX-004), which therefore renders whether
       or not an account is connected — a direct URL or reload while disconnected must still reach it.
@@ -95,7 +100,11 @@ watch(
     -->
     <SyncScreen v-if="onSystemStatus" />
 
-    <section v-if="!onSystemStatus && !isConnected" class="account-needed">
+    <HomeScreen v-if="onHome" @navigate="onNavigate" />
+
+    <InfoPage v-if="onInfoPage" :page="route.current.value.id" />
+
+    <section v-if="!onHome && !onInfoPage && !onSystemStatus && !isConnected" class="account-needed">
     <PageHeader :heading="route.current.value.label" />
     <p role="status" data-test="connection-needed">
       <template v-if="isConnecting">Checking your GW2 API key…</template>
@@ -119,8 +128,10 @@ watch(
       because their results belong to a scope and settings the user chose: re-mounting one would both
       discard that selection and post the calculation again, which navigation must never do. They are
       two independent `KeepAlive` boundaries, so each keeps its own scope, settings, search, sort and
-      selection and neither is re-created by opening the other. Bank and Materials have no such input,
-      so each keeps reading its own route when opened (STORY-WEB-003).
+      selection and neither is re-created by opening the other. Opening a public information page only
+      deactivates the open screen (its route id no longer matches); the boundaries stay mounted so
+      returning neither resets the selection nor posts a calculation. Bank and Materials have no such
+      input, so each keeps reading its own route when opened (STORY-WEB-003).
     -->
     <KeepAlive>
       <CraftingProfitScreen v-if="route.current.value.id === 'crafting' && craftingReady" />
@@ -146,4 +157,6 @@ watch(
     <MaterialsScreen v-else-if="route.current.value.id === 'materials'" />
     </template>
   </main>
+
+  <SiteFooter :current-id="route.current.value.id" @navigate="onNavigate" />
 </template>

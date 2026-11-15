@@ -119,7 +119,7 @@ async function run() {
     check(hooks.resultInsideRoot, 'The result hook is not a region of its own inside the screen root.')
     check(hooks.luckIsOwnRegion, 'Account Luck is not identifiable apart from the salvage result.')
     check(new URL(page.url()).hash === '#/ecto', 'Ecto is not addressable at its own URL.')
-    check((await page.title()) === 'Ecto Salvage · GW2 Crafting Tool', 'The document title is stale.')
+    check((await page.title()) === 'Ecto Salvage · GW2 Crafting Tool · Unofficial fan project', 'The document title is stale.')
     check((await page.locator('[data-page-heading]').innerText()) === 'Ecto Salvage', 'The page heading is stale.')
     check(origin.requestsTo('/api/ecto/salvage').length === 0, 'The removed calculation route was called.')
     check(origin.requestsTo('/api/items/metadata').length === 1, 'Expected one metadata read.')

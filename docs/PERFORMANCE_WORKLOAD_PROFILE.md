@@ -1,3 +1,5 @@
+> **Historical, programme ended, not a launch requirement.** The capacity/resource programme was retired by STORY-LAUNCH-001; commands named below no longer exist and results are not passed gates.
+
 # Workload-profile note for capacity discovery (STORY-KPI-007 → STORY-KPI-002 / #184)
 
 Source-based input for the later discovery driver. It measures nothing and sets no target. **No measured
