@@ -49,7 +49,12 @@ const tile = page => page.locator('.inventory-tile').first()
 const checkbox = page => tile(page).locator('input[type="checkbox"]')
 const saved = page => page.evaluate(key => JSON.parse(localStorage.getItem(key)), PREFIX)
 const text = async locator => (await locator.innerText()).replace(/\s+/g, ' ').trim()
-async function focused(locator) { assert.equal(await locator.evaluate(element => document.activeElement === element), true, 'Focus moved outside its expected control') }
+async function focused(locator) {
+  const state = await locator.evaluate(element => ({ focused: document.activeElement === element,
+    expected: element.getAttribute('data-test'), visibility: getComputedStyle(element).visibility,
+    actual: document.activeElement?.getAttribute('data-test'), tag: document.activeElement?.tagName }))
+  assert.equal(state.focused, true, `Focus moved outside its expected control: ${JSON.stringify(state)}`)
+}
 async function settled(page) { await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))) }
 async function navigate(page, destination) {
   await page.locator(`[data-test="nav-${destination}"]`).click()
@@ -179,6 +184,22 @@ async function runViewport(browser, stub, viewport) {
     assert.match(await text(page.locator('[data-test="selection-committed"]')), /1 item\./)
     await noPageOverflow(page)
     record(`${label} menu clamping, native modal focus trap, validation and distinct finite color`, `${finiteColor} vs ${allColor}`)
+
+    for (const dismiss of ['Cancel', 'Escape', 'outside click']) {
+      const previous = await saved(page)
+      await page.locator('[data-test="selection-toggle"]').focus()
+      await tile(page).locator('[data-test="item-icon-fallback"]').click({ button: 'right' })
+      await page.locator('[data-test="menu-reserve"]').click()
+      await page.locator('[data-test="reserve-input"]').fill('999')
+      if (dismiss === 'Cancel') await page.locator('[data-test="reserve-cancel"]').click()
+      else if (dismiss === 'Escape') await page.keyboard.press('Escape')
+      else await page.locator('[data-test="item-actions-backdrop"]').click({ position: { x: 2, y: 2 } })
+      await page.locator('[data-test="reserve-dialog"]').waitFor({ state: 'hidden' })
+      assert.deepEqual(await saved(page), previous, `Mouse ${dismiss} saved a cancelled draft`)
+      assert.equal(await checkbox(page).evaluate(element => document.activeElement === element), true,
+        `Mouse ${dismiss} did not restore the initiating tile after another control was focused`)
+    }
+    record(`${label} native mouse menu restores its initiating tile for Cancel/Escape/outside`)
 
     await navigate(page, 'materials')
     for (let action = 0; action < 2; action++) await page.locator('[data-test="selection-toggle"]').click()
