@@ -15,6 +15,14 @@ function fixture(options = {}) {
 }
 
 describe('controlled account boundary', () => {
+  it('returns explicit cached lookup fixtures for only the allowed ingredient identity', () => {
+    const { request } = fixture({ searchQueries: ['19698'], searchResults: { '19698': [11, 17] } })
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    expect(request('/api/crafting/ingredient-search?query=19698', 'GET').reply)
+      .toEqual({ status: 200, body: { recipeIds: [11, 17] } })
+    expect(request('/api/crafting/ingredient-search?query=Item%20%2319698', 'GET').reply.status).toBe(400)
+  })
+
   it('admits only explicitly listed account reads after proof with the current context', () => {
     const { request } = fixture({ accountReadRoutes: ['/api/account/bank', '/api/account/materials'] })
     expect(request('/api/account/bank', 'GET').reply.status).toBe(401)

@@ -58,7 +58,10 @@ beforeEach(async () => {
     if (path === '/api/account/materials' && method === 'GET') return json({ categoryCount: 1,
       freshness: { status: 'FRESH', completedAt: '2099-01-01T00:00:00Z' }, categories: [{
         category: 5, name: 'Controlled Materials', order: 1,
-        materials: [{ position: 0, itemId: ITEM, count: 300, itemName: 'Copper Ore', iconUrl: null, rarity: 'Basic' }]
+        materials: [
+          { position: 0, itemId: ITEM, count: 300, itemName: 'Copper Ore', iconUrl: null, rarity: 'Basic' },
+          { position: 1, itemId: 19698, count: 1, itemName: null, iconUrl: null, rarity: null }
+        ]
       }] })
     if (path.startsWith('/api/crafting/ingredient-search?') && method === 'GET') return json({ recipeIds: [11] })
     if (path === TASK && method === 'GET') return json(await taskAnswer())
@@ -255,5 +258,29 @@ describe('reservation edits through the real kept-alive workspace', () => {
     expect(calls(TABLE)).toHaveLength(before)
     expect(window.location.href).not.toContain('SYNTHETIC-235-KEY')
     expect(pendingProfitSearch.value).toBeNull()
+  })
+
+  it('keeps the unknown-name label honest but searches the selected ingredient by its bare ID and shows its cached consumer', async () => {
+    const app = await open()
+    const before = calls(TABLE).length
+    await navigate('materials')
+    const unknown = app.findAll('.inventory-tile')[1]!
+    expect(unknown.attributes('title')).toBe('Item #19698')
+    expect(unknown.get('input[type="checkbox"]').attributes('aria-label')).toContain('Item #19698')
+    await unknown.trigger('contextmenu', { button: 2, clientX: 10, clientY: 10 })
+    expect(app.get('[data-test="item-menu"]').attributes('aria-label')).toContain('Item #19698')
+    await app.get('[data-test="menu-open-profit"]').trigger('click')
+    await flushPromises()
+    expect((app.get('[data-test="search"]').element as HTMLInputElement).value).toBe('19698')
+    await vi.waitFor(() => expect(seen.filter(request => request.path.startsWith('/api/crafting/ingredient-search?'))).toHaveLength(1))
+    const lookup = seen.find(request => request.path.startsWith('/api/crafting/ingredient-search?'))!
+    expect(lookup.method).toBe('GET')
+    expect(new URL(lookup.path, window.location.origin).searchParams.get('query')).toBe('19698')
+    // Iron Ingot has neither 19698 in its output identity nor a supplied ingredient name. Its
+    // presence therefore depends on the fixture's explicit cached consumer recipe ID (11).
+    expect(app.findAll('[data-test="profit-row"]').map(row => row.text())).toEqual([expect.stringContaining('Iron Ingot')])
+    expect(calls(TABLE)).toHaveLength(before)
+    expect(calls(DETAIL)).toHaveLength(0)
+    expect(window.location.hash).toBe('#/crafting')
   })
 })

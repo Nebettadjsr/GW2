@@ -18,7 +18,8 @@ import { ITEM, TABLE, DETAIL, bankSnapshot, materials, tableResponse, detailResp
 
 const TIMEOUT = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 15000)
 const PREFIX = 'gw2.materialProtection.v1.00000000-0000-4000-8000-000000000194'
-const session = createControlledAccountSession({ calculationRoutes: [TABLE, DETAIL], searchQueries: ['Copper Ore'],
+const session = createControlledAccountSession({ calculationRoutes: [TABLE, DETAIL], searchQueries: ['Copper Ore', '19698'],
+  searchResults: { '19698': [11] },
   accountReadRoutes: ['/api/account/bank', '/api/account/materials'] })
 const failures = []
 const steps = []
@@ -252,6 +253,24 @@ async function runViewport(browser, stub, viewport) {
     assert.equal(requestCount(stub, TABLE), beforeSearch, 'Unchanged return recalculated')
     assert.equal(new URL(page.url()).hash, '#/crafting')
     record(`${label} cached search prefill and Back/Forward preserve settings without recalculation`)
+
+    await navigate(page, 'materials')
+    const unknown = page.locator('.inventory-tile').nth(2)
+    assert.equal(await unknown.getAttribute('title'), 'Item #19698')
+    await unknown.click({ button: 'right' })
+    assert.match(await page.locator('[data-test="item-menu"]').getAttribute('aria-label'), /Item #19698/)
+    const [lookup] = await Promise.all([
+      page.waitForRequest(request => new URL(request.url()).pathname === '/api/crafting/ingredient-search'),
+      page.locator('[data-test="menu-open-profit"]').click()
+    ])
+    assert.equal(lookup.method(), 'GET')
+    assert.equal(new URL(lookup.url()).searchParams.get('query'), '19698', 'Unknown-name action lost the selected ingredient ID')
+    assert.equal(await page.locator('[data-test="search"]').inputValue(), '19698')
+    await page.locator('[data-test="profit-row"]').waitFor()
+    assert.deepEqual(await page.locator('[data-test="profit-row"] .recipe-name').allTextContents(), ['Iron Ingot'])
+    assert.equal(requestCount(stub, TABLE), beforeSearch, 'ID search navigation calculated unnecessarily')
+    assert.equal(await page.locator('[data-test="max-displayed"]').inputValue(), '7')
+    record(`${label} unnamed material keeps ID label and resolves its cached consuming recipe by bare ID`)
 
     await page.reload({ waitUntil: 'networkidle' })
     await page.waitForFunction(() => document.querySelector('[data-test="craftable-count"]')?.textContent.trim() === '50')

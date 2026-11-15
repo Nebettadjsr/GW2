@@ -4,7 +4,7 @@ const DUMMY_KEY = 'synthetic-read-only-smoke-key'
 const ACCOUNT_ID = '00000000-0000-4000-8000-000000000194'
 
 /** Test-only backend boundary; the real App restores and proves the retained synthetic key. */
-export function createControlledAccountSession({ calculationRoutes, searchQueries, accountReadRoutes = [] }) {
+export function createControlledAccountSession({ calculationRoutes, searchQueries, searchResults = {}, accountReadRoutes = [] }) {
   const methods = new Map([
     ['/api/session', 'POST'],
     ['/api/crafting/selector-options', 'GET'],
@@ -69,11 +69,12 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
       if (key !== undefined) return reject(400, `Raw key sent outside proof: ${url.pathname}`)
       if (needsProof) return reject(401, `Request preceded this document's proof: ${url.pathname}`)
       if (url.pathname === '/api/crafting/ingredient-search') {
-        if (!searchQueries.includes(url.searchParams.get('query'))) {
+        const query = url.searchParams.get('query')
+        if (!searchQueries.includes(query)) {
           return reject(400, 'Unexpected ingredient-search query')
         }
         lookups += 1
-        sendJson(200, { recipeIds: [] })
+        sendJson(200, { recipeIds: searchResults[query] ?? [] })
         return true
       }
       if (request.headers['x-account-context'] !== accessContext) {
