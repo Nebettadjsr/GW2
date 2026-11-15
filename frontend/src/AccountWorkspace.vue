@@ -83,7 +83,7 @@ watch(
 </script>
 
 <template>
-  <a class="skip-link" href="#main-content">Skip to page content</a>
+  <a class="skip-link" href="#main-content" @click.prevent="main?.focus()">Skip to page content</a>
 
   <SiteHeader
     :destinations="DESTINATIONS"

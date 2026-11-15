@@ -55,7 +55,8 @@ export function useHashRoute(): HashRoute {
   }
 
   function onHashChange(): void {
-    if (window.location.hash === '#main-content') return
+    // A historical Home skip-link anchor still names Home when Back changes the document path.
+    if (window.location.hash === '#main-content' && window.location.pathname !== '/welcome') return
     current.value = destinationForHash(window.location.hash)
   }
 
