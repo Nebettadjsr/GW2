@@ -10,6 +10,9 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.UUID;
 
+import static support.fixture.CachedItemNameFixtures.itemName;
+import static support.fixture.CachedItemNameFixtures.withItemName;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -98,10 +101,11 @@ class BankRepositoryTest {
         List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con);
 
         assertEquals(2, slots.size());
-        assertEquals(new BankRepository.BankSlotRow(
-                0, 19721, 5, "C:\\icons\\19721.png", "https://render.guildwars2.com/file/ABCD/1.png", "Rare"),
+        assertEquals(withItemName(new BankRepository.BankSlotRow(
+                0, 19721, 5, "C:\\icons\\19721.png", "https://render.guildwars2.com/file/ABCD/1.png", "Rare"), "Glob of Ectoplasm"),
                 slots.get(0));
-        assertEquals(new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", null, "Basic"), slots.get(1));
+        assertEquals(withItemName(new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", null, "Basic"),
+                "Pile of Crystalline Dust"), slots.get(1));
     }
 
     @Test
@@ -119,12 +123,14 @@ class BankRepositoryTest {
         assertNull(empty.itemId());
         assertNull(empty.count());
         assertNull(empty.iconPath());
+        assertNull(itemName(empty));
 
         BankRepository.BankSlotRow unjoined = slots.get(1);
         assertEquals(99999, unjoined.itemId());
         assertEquals(3, unjoined.count());
         assertNull(unjoined.iconPath());
         assertNull(unjoined.rarity());
+        assertNull(itemName(unjoined));
     }
 
     @Test

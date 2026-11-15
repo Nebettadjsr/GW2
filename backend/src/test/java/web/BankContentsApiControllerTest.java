@@ -11,9 +11,14 @@ import repo.BankRepository;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+
+import static support.fixture.CachedItemNameFixtures.itemName;
+import static support.fixture.CachedItemNameFixtures.withItemName;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -59,6 +64,43 @@ class BankContentsApiControllerTest {
     }
 
     // ---------- successful reads ----------
+
+    @Test
+    void cachedNamesAndExplicitNullsPreserveBankHolesCountsIconsAndEligibility() throws Exception {
+        var service = new StubBankContentsService(List.of(
+                withItemName(new BankRepository.BankSlotRow(0, 19721, 250, LOCAL_ICON_PATH,
+                        ECTO_SOURCE, "Rare", false), "Glob of Ectoplasm"),
+                new BankRepository.BankSlotRow(1, null, null, null, null, null),
+                new BankRepository.BankSlotRow(2, 99999, 3, null, null, null, false)));
+
+        String body = mockMvcFor(service).perform(get("/api/account/bank"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slotCount").value(3))
+                .andExpect(jsonPath("$.slots[0].itemName").value("Glob of Ectoplasm"))
+                .andExpect(jsonPath("$.slots[0].count").value(250))
+                .andExpect(jsonPath("$.slots[0].iconUrl").value(ECTO_ICON_URL))
+                .andExpect(jsonPath("$.slots[0].rarity").value("Rare"))
+                .andExpect(jsonPath("$.slots[0].protectionSelectable").value(false))
+                .andExpect(jsonPath("$.slots[2].itemId").value(99999))
+                .andExpect(jsonPath("$.slots[2].count").value(3))
+                .andExpect(jsonPath("$.slots[2].protectionSelectable").value(false))
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode slots = JSON.readTree(body).get("slots");
+        assertEquals(List.of(0, 1, 2), List.of(slots.get(0).get("slot").asInt(),
+                slots.get(1).get("slot").asInt(), slots.get(2).get("slot").asInt()));
+        assertTrue(slots.get(1).has("itemName") && slots.get(1).get("itemName").isNull());
+        assertTrue(slots.get(2).has("itemName") && slots.get(2).get("itemName").isNull());
+        assertTrue(slots.get(1).get("itemId").isNull());
+        assertTrue(slots.get(1).get("count").isNull());
+        assertEquals(1, service.callCount);
+    }
+
+    @Test
+    void existingBankRowConstructorsDefaultTheAddedNameToNull() throws Exception {
+        assertNull(itemName(new BankRepository.BankSlotRow(0, 19721, 5, null, null, "Rare")));
+        assertNull(itemName(new BankRepository.BankSlotRow(0, 19721, 5, null, null, "Rare", false)));
+    }
 
     @Test
     void exposesTheBackendSelectionDecisionWithoutRemovingTheSlot() throws Exception {
@@ -140,7 +182,7 @@ class BankContentsApiControllerTest {
         List<String> fields = new ArrayList<>();
         slot.fieldNames().forEachRemaining(fields::add);
 
-        assertEquals(List.of("slot", "itemId", "count", "iconUrl", "rarity", "protectionSelectable"), fields,
+        assertEquals(Set.of("slot", "itemId", "itemName", "count", "iconUrl", "rarity", "protectionSelectable"), Set.copyOf(fields),
                 "the slot must be a transport record, not a serialized repository row");
         assertFalse(body.contains("C:\\icons"),
                 "the backend filesystem path must not reach the browser: " + body);
