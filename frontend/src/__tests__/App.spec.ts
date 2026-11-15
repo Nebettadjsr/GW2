@@ -155,7 +155,7 @@ describe('App shell', () => {
     expect(open.find('[data-test="profit-table"]').exists()).toBe(true)
     expect(open.find('[data-test="page-heading"]').text()).toBe('Crafting Profit')
     expect(currentDestination(open)).toBe('nav-crafting')
-    expect(document.title).toBe('Crafting Profit · GW2 Crafting Tool')
+    expect(document.title).toBe('Crafting Profit · GW2 Crafting Tool · Unofficial fan project')
     expect(pathsOf('/api/account')).toEqual([])
     expect(pathsOf('/api/sync')).toEqual([])
   })
@@ -184,7 +184,7 @@ describe('App shell', () => {
     await navigateTo(open, 'synchronization')
 
     expect(window.location.hash).toBe('#/synchronization')
-    expect(document.title).toBe('System Status · GW2 Crafting Tool')
+    expect(document.title).toBe('System Status · GW2 Crafting Tool · Unofficial fan project')
     expect(currentDestination(open)).toBe('nav-synchronization')
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('System Status')
@@ -198,7 +198,7 @@ describe('App shell', () => {
 
     // A real URL of its own, so Back, Forward, a bookmark and a reload all work (STORY-WEB-012).
     expect(window.location.hash).toBe('#/discovery')
-    expect(document.title).toBe('Crafting Discovery · GW2 Crafting Tool')
+    expect(document.title).toBe('Crafting Discovery · GW2 Crafting Tool · Unofficial fan project')
     expect(currentDestination(open)).toBe('nav-discovery')
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('Crafting Discovery')
@@ -219,7 +219,7 @@ describe('App shell', () => {
 
     // A real URL of its own, so Back, Forward, a bookmark and a reload all work (STORY-WEB-013).
     expect(window.location.hash).toBe('#/ecto')
-    expect(document.title).toBe('Ecto Salvage · GW2 Crafting Tool')
+    expect(document.title).toBe('Ecto Salvage · GW2 Crafting Tool · Unofficial fan project')
     expect(currentDestination(open)).toBe('nav-ecto')
     const heading = open.find('[data-test="page-heading"]')
     expect(heading.text()).toBe('Ecto Salvage')
