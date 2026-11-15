@@ -22,8 +22,8 @@ server {
     server_tokens off;
 
     # Default non-indexable boundary. `add_header` in a location replaces every inherited one, so the
-    # header is repeated in each location below; `always` covers error statuses too. No robots.txt
-    # Disallow (crawlers must fetch pages to see noindex) and no sitemap.
+    # header is repeated in each location below; `always` covers error statuses too. The owner's
+    # site-wide robots.txt crawl block is separate from noindex; blocked crawlers cannot read it.
     add_header X-Robots-Tag "noindex, nofollow" always;
 
     location /api/ {
@@ -50,8 +50,16 @@ server {
         add_header X-Robots-Tag "noindex, nofollow" always;
     }
 
-    # No robots.txt and no sitemap exist: answer 404 rather than the HTML shell.
-    location ~ ^/(robots\.txt|sitemap.*\.xml)$ {
+    # Serve the actual text file; never fall back to the SPA shell when it is missing.
+    location = /robots.txt {
+        default_type text/plain;
+        add_header Cache-Control "no-cache";
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        try_files $uri =404;
+    }
+
+    # No sitemap is published while the whole site is excluded from crawling.
+    location ~ ^/sitemap.*\.xml$ {
         add_header X-Robots-Tag "noindex, nofollow" always;
         return 404;
     }
