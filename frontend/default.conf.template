@@ -8,6 +8,14 @@ map $request_uri $gw2_log_path {
 }
 log_format gw2_minimal '$request_method $gw2_log_path $status $body_bytes_sent ${request_time}s';
 
+# Only a successfully served public welcome document may be indexed. Errors keep noindex.
+map $status $gw2_welcome_robots {
+    default "noindex, nofollow";
+    200 "index, follow";
+    206 "index, follow";
+    304 "index, follow";
+}
+
 server {
     listen 8080;
     access_log /dev/stdout gw2_minimal;
@@ -25,6 +33,17 @@ server {
     # header is repeated in each location below; `always` covers error statuses too. The owner's
     # site-wide robots.txt crawl block is separate from noindex; blocked crawlers cannot read it.
     add_header X-Robots-Tag "noindex, nofollow" always;
+
+    location = /welcome {
+        try_files /welcome.html =404;
+        add_header Cache-Control "no-cache";
+        add_header X-Robots-Tag $gw2_welcome_robots always;
+    }
+
+    location = /welcome.html {
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        return 308 /welcome;
+    }
 
     location /api/ {
         # No URI part: path and query are forwarded unchanged.

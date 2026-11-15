@@ -27,6 +27,14 @@ export default defineConfig(({ mode }) => {
         }
       }
     },
+    build: {
+      rollupOptions: {
+        input: {
+          app: fileURLToPath(new URL('./index.html', import.meta.url)),
+          welcome: fileURLToPath(new URL('./welcome.html', import.meta.url))
+        }
+      }
+    },
     preview: {
       port: Number(env.GW2_FRONTEND_PORT ?? 5173),
       proxy: {

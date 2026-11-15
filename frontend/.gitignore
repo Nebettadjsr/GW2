@@ -12,3 +12,6 @@ dist/
 # Tool caches
 .vite/
 *.tsbuildinfo
+
+# Incoming full-size guide screenshots; the site imports optimized src/home/images assets.
+/screenshots/

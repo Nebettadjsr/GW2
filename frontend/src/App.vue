@@ -2,7 +2,7 @@
 import { watch } from 'vue'
 import AccountWorkspace from './AccountWorkspace.vue'
 import { connection, restoreConnection } from './api/accountSession'
-import { isInfoDestination } from './shell/destinations'
+import { isPublicDestination } from './shell/destinations'
 import { useHashRoute } from './shell/useHashRoute'
 
 /**
@@ -13,14 +13,14 @@ import { useHashRoute } from './shell/useHashRoute'
 const route = useHashRoute()
 
 /**
- * Opening a public information page issues no account request, even with a retained key: restoring
+ * Opening Home or a public information page issues no account request, even with a retained key: restoring
  * is deferred until a real application destination is open. A session that is already connected is
  * left alone, and `restoreConnection` is a no-op unless there is a retained, unproven key.
  */
 watch(
-  () => isInfoDestination(route.current.value),
-  (onInfoPage) => {
-    if (!onInfoPage) void restoreConnection()
+  () => isPublicDestination(route.current.value),
+  (onPublicPage) => {
+    if (!onPublicPage) void restoreConnection()
   },
   { immediate: true }
 )

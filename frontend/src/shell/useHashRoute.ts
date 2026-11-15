@@ -1,7 +1,8 @@
 /**
  * Which application area is open, kept in the address bar.
  *
- * The destination lives in the location hash, so every screen has a real URL, the browser's Back and
+ * Tool destinations live in the location hash; Home has its own /welcome document so its indexing
+ * policy can differ from account pages. Every screen has a real URL, the browser's Back and
  * Forward buttons move between the screens that were visited, and a link or bookmark opens the screen
  * it names. No router library is added for this: the application has one flat set of destinations and
  * no nested or parameterized routes (`TARGET_ARCHITECTURE.md` 4.1 keeps framework choices minimal).
@@ -29,31 +30,48 @@ export interface HashRoute {
 export function useHashRoute(): HashRoute {
   const current = ref<Destination>(destinationForHash(window.location.hash))
 
-  // A hash that named no destination is corrected in place, so the address bar cannot claim to be
-  // somewhere the application is not. `replaceState` keeps this out of the history.
-  if (window.location.hash !== current.value.path) {
-    window.history.replaceState(null, '', current.value.path)
+  function pathOf(destination: Destination): string {
+    return destination.id === 'home' ? destination.path : `/${destination.path}`
+  }
+
+  // The default Home page uses its public URL; existing tool bookmarks retain their hashes.
+  if (window.location.pathname + window.location.hash !== pathOf(current.value)) {
+    window.history.replaceState(null, '', pathOf(current.value))
   }
 
   /**
-   * Applied directly rather than awaited from the `hashchange` event: the click that opened a
+   * Applied directly rather than awaited from a location event: the click that opened a
    * destination has already happened, and the listener below reconciles the same value when the
    * browser's own navigation (Back, Forward, a typed URL) is the source.
    */
   function navigate(id: DestinationId): void {
     const destination = destinationOf(id)
     current.value = destination
-    if (window.location.hash !== destination.path) window.location.hash = destination.path
+    if (window.location.pathname + window.location.hash !== pathOf(destination)) {
+      window.history.pushState(null, '', pathOf(destination))
+      // App and AccountWorkspace each observe the route; pushState emits no native event.
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }
   }
 
   function onHashChange(): void {
+    // A historical Home skip-link anchor still names Home when Back changes the document path.
+    if (window.location.hash === '#main-content' && window.location.pathname !== '/welcome') return
     current.value = destinationForHash(window.location.hash)
   }
 
   window.addEventListener('hashchange', onHashChange)
-  onScopeDispose(() => window.removeEventListener('hashchange', onHashChange))
+  window.addEventListener('popstate', onHashChange)
+  onScopeDispose(() => {
+    window.removeEventListener('hashchange', onHashChange)
+    window.removeEventListener('popstate', onHashChange)
+  })
 
-  watch(current, (destination) => (document.title = documentTitleOf(destination)), {
+  watch(current, (destination) => {
+    document.title = documentTitleOf(destination)
+    document.querySelector('meta[name="robots"]')?.setAttribute('content',
+      destination.id === 'home' ? 'index, follow' : 'noindex, nofollow')
+  }, {
     immediate: true
   })
 
