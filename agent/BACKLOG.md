@@ -1,78 +1,109 @@
 # Active planning backlog
 
-Updated: 2026-11-14. Interactive Codex supervises; native GitHub Codex plans; Claude implements
-one released story at a time. GitHub issues/PRs own execution evidence; this file owns planning
-order, authorization and handoffs. Earlier planning and experiments remain available in Git history.
+Updated: 2026-11-15. Interactive Codex supervises; GitHub issues/PRs own execution evidence.
+Earlier planning and experiments remain available in Git history.
 
-Immediate handoff: after accepted footer/log integration, the owner says “pls continue building”.
-Release #216 as the sole portable production-configuration implementation. Host/domain/TLS choices,
-actual Oracle setup and verified legal content remain later coordinated launch work. Claude codes;
-Codex supervises and performs actual hosting setup with the owner. No Oracle manual is requested.
+## Current outcome: public release complete
 
-## Current authorization: public production preparation
+### Continuation authorized — two-line values approved
 
-The Product Owner ends the multi-user/capacity-test and pre-launch analysis programme. Additional
-real account keys are unavailable. Prepare the application for public Oracle hosting, then observe
-actual use through bounded operational monitoring. Further capacity research, owner recordings,
-request-rate experiments, marginal-storage measurements and Oracle performance qualification are
-not launch prerequisites. Do not claim a supported-user capacity or a passed benchmark.
+The owner explicitly approved #192's corrected two-line value display and said to keep
+working. Its visual hold is satisfied, current CI/review passed, and the merged source was
+published through the visible Oracle release process. Useful maintenance continues below;
+UI redesign and the retired capacity programme remain out of scope.
 
-Remove experiment-only tooling; retain ordinary correctness/CI/browser/container smoke checks,
-account-isolation fixtures, the accepted owner operations history/downloads and Oracle host metrics.
-Issues #116, #154, #189 and #191 are withdrawn as not planned, not completed. Concrete functional
-defects and optional optimizations remain available for later prioritization.
+The owner ended today's UI pairing, accepted the current Home/guide and legal copy, authorized
+publishing the calculation fix, and explicitly authorized general public access. This supersedes
+the earlier local-only, preview-only and no-merge holds for that scope. No new UI design session
+is requested.
 
-This authorizes preparation and normal review/merge of accepted work. It does not authorize paid
-services, a domain/email purchase, public deployment, Docker/VM startup or renewed load tests.
-Coordinate a concrete later stack smoke/release window with the owner; never delete live owner data
-during verification. Preserve unrelated main-checkout edits.
+The live Oracle source is `265cad816492856cb73fa33094dbba2ece6465a1`, containing merged
+[#222](https://github.com/Nebettadjsr/GW2/pull/222),
+[#226](https://github.com/Nebettadjsr/GW2/pull/226) and
+[#224](https://github.com/Nebettadjsr/GW2/pull/224), followed by approved
+[#192](https://github.com/Nebettadjsr/GW2/pull/192). The source tree matches the final candidate
+whose required CI and exact-head review passed. Independent QA passed 342 relevant backend tests,
+including 29 safety regressions; full frontend/type/build gates passed. Every material review
+finding was corrected and independently covered.
 
-The 2026-11-14 continuation releases independent #216 configuration now: owner-GUID forwarding,
-separate required production credentials, bounded logs, public operator-fact build inputs and
-meaningful static/offline checks. No Docker/VM startup or new capacity work on the owner's host.
-Do not silently choose the still-unselected public TLS/edge or claim target-host execution.
+The application is public at https://gw2-crafting.de/welcome. Visible SSH deployment and public
+verification passed; all three containers are healthy. The real-key HTTPS proof/owner-read/logout
+check passed, as did the visible eight-destination keyless Chromium smoke. Details and practical
+limits live in CURRENT_STATE_SPEC.md, not an Oracle how-to document.
 
-## Production planning order
+Only Welcome permits indexing; tools, legal/privacy/storage, APIs and errors retain noindex and
+the selected robots exclusions. Backend/admin/account authorization, exact HTTPS Origin guard,
+restricted database credentials and internal ports remain protected. Public access replaces
+the source-IP preview allowlist. No capacity promise, multi-account browser pass or complete
+keyed browser journey is inferred.
 
-Native handoff and amendments: [PLAN-LAUNCH-001 / #213](https://github.com/Nebettadjsr/GW2/issues/213).
-IDs follow the executor's STORY-[AREA]-[NNN] convention; the original planner's longer labels map
-to these same bounded contracts.
+## Issue and pull-request audit
 
-| Contract | Outcome | Supervisor handoff |
-| --- | --- | --- |
-| [STORY-LAUNCH-001 / #214](https://github.com/Nebettadjsr/GW2/issues/214) | Retire capacity experiment tools; preserve correctness and operational monitoring | Accepted cleanup [#217](https://github.com/Nebettadjsr/GW2/pull/217); no new work released here |
-| [STORY-LAUNCH-002 / #215](https://github.com/Nebettadjsr/GW2/issues/215) | Public footer/info pages and noindex defaults | Owner-approved shell accepted in [#218](https://github.com/Nebettadjsr/GW2/pull/218); no repeated visual gate for this layout |
-| [STORY-LAUNCH-003 / #216](https://github.com/Nebettadjsr/GW2/issues/216) | Concrete production application/container configuration | Sole released coding contract; independent preparation now, actual host/HTTPS execution later; no setup guide/runbook |
-| STORY-LAUNCH-004 | Verified legal/privacy/storage content and publication gate | Draft in #213; factual operator/deployment inputs required |
-| STORY-LAUNCH-005 | Exact-revision release handoff | Draft in #213; deployment remains a later concrete action |
+| Item | Disposition |
+| --- | --- |
+| #198 status/help/history parent | Closed completed: approved key help, activity/DB size and file-selector downloads are merged and hosted |
+| #213 launch parent | Closed completed after actual public release |
+| #220 quiet connection-panel stack smoke | Fixed in #226; actual public HTTPS browser run passed; closed completed |
+| #221/#222 legal information | Accepted and merged; all six public operator facts verified in served bundle |
+| #223/#224 calculation safety | Accepted and merged after checked arithmetic, cumulative material bounds and review corrections |
+| #225/#226 Home/guide | Owner-approved UI accepted and merged, including skip/history regression correction |
+| #116, #154, #189, #191 | Already closed not planned; obsolete pre-release measurement work stays retired |
+| #193 | Historical completed resource preparation, not an active launch dependency |
+| #188/#192 | Owner-approved, merged after current CI/review, and deployed; hosted checks pass |
+| #194/#231 | Completed and merged after exact-head CI/review; QA-owned repair passed focused tests/build and both controlled browser scripts |
+| #21, #60, #111 | Keep coverage/correctness and optional real-DB fixture work; no automatic dispatch |
+| #227/#229 | Completed and merged: targeted development dependency advisories fixed; exact-head CI/review and independent Node 22 install/audit passed |
+| #228 | Prepared portable production configuration follow-up; live host override already supplies restricted role and HTTPS origin |
+| #230 | Prepared follow-up for the pre-existing glob advisory; full audit still reports its three moderate package entries |
 
-The existing two-line value correction [#188/#192](https://github.com/Nebettadjsr/GW2/pull/192)
-is separate functional work with its local visual gate, not a resource prerequisite. Optional browser
-smoke bootstrap gap [#194](https://github.com/Nebettadjsr/GW2/issues/194) is regular correctness work,
-not obsolete load tooling; retain it. Other coverage/functional requests (#21, #60, #111) are not
-automatically activated. Do not revive historical KPI/resource story rows.
+Future concrete performance improvements remain available. Do not restore the withdrawn capacity,
+additional-key search, request-rate, owner-recording or pre-release analysis programme. No local
+Docker/VM or load test was started in this release.
 
-## Confirmed launch facts and open inputs
+## Deployment continuity
 
-- Operator: private individual living/operating in Germany, explicitly confirmed by the owner.
-  No company, tax status, legal name, service address or public email has been supplied.
-- Oracle remains the selected host. Tenancy region/architecture/allocation, public domain/DNS,
-  TLS setup and contact-email service need guided setup with the owner. Operator country and
-  server region are distinct; OCI is not a domain registrar.
-- Interactive Codex performs the actual Oracle/domain/DNS/HTTPS setup with the owner. The owner
-  explicitly rejects delegating an Oracle how-to document/runbook to Claude; do not recreate it.
-- Minimize unnecessary exposure of the home address. Verify an appropriate real service-address or
-  authorized-recipient arrangement if chosen; do not anonymize or invent mandatory facts.
-  Private-individual status alone does not establish an exemption for the public app.
-- App, legal/privacy/storage and fallback/error pages default to noindex through response headers
-  and HTML metadata. Keep required legal information directly public. Do not block crawlers from
-  reading noindex or promise protection from scraping. Only later separately approved app
-  explanations, usage guidance, beginner tips and audience pages may be indexable; no sitemap yet.
-- API key is per-tab sessionStorage; GW2_SESSION holds an opaque session identifier. Saved exclusions
-  use per-account localStorage. Final consent treatment follows actual purpose/necessity across all
-  browser storage, not the presence of a cookie. No advertising/tracking feature is requested.
-- Final legal/privacy content needs verified contact, processing, retention and hosting facts.
-  Preview placeholders must never be presented as publication-ready legal information.
+Oracle Frankfurt AD 2 uses Ubuntu 24.04 ARM64, 2 OCPUs and 12 GB RAM. The owner selected
+`gw2-crafting.de`; apex/www resolve to the host and TLS is active. Operator country and server
+region are separate facts. Contact delivery is owner-confirmed. Actual postal/configuration
+values stay in ignored local and protected host files rather than tracked examples or issues.
+
+The release uses root-owned `/opt/gw2/config/production.env` and the mandatory
+`/opt/gw2/config/https.compose.yaml` override with the release's production Compose file.
+Do not use the original production file alone against this host. #228 owns portability work.
+PostgreSQL remains disposable cache; no backup/preservation programme is required.
+
+Operational evidence, safe runtime metadata and visible terminal details are in ignored
+`target/supervision/oracle-runtime.json` and deployment logs. The public-access step's first
+post-reload read saw an old worker, restored private access, then passed completely after an
+explicit new-worker readiness wait. Do not report that initial check as a product defect.
+The owner explicitly rejects an Oracle setup manual/runbook delegated to Claude.
+
+## Authorization for further work
+
+After publication, the owner authorizes reviewing all open issues/PRs, dropping obsolete
+pre-release analysis and continuing useful existing tasks. That audit and bounded #220 repair
+are complete. #227's bounded manifest/lock update is accepted and merged in #229, with Node 22
+clean-install/resolution evidence and current full CI/coverage/build/native review. All three
+targeted advisories are fixed; the pre-existing glob finding remains explicitly tracked in #230.
+These changes affect development tooling, so the deployed application remains the approved #192
+release. The next bounded maintenance candidate is #194's optional controlled-browser scripts;
+independent QA has identified the missing normal session bootstrap and stale fixture expectations.
+The supervisor accepts the separate planner handoff and selects #194 now that #227 is merged.
+QA authored the two controlled browser scripts and shared session boundary/negative checks: normal
+synthetic proof, current selected-output contracts, explicitly awaited ingredient lookup, and
+preserved meaningful assertions/strict routes. 57 focused tests and production build passed;
+visible Profit 36 stages and Discovery 15 stages passed on the final source. #231 passed current
+CI/native review and is accepted/merged. No product source, UI redesign, real credentials/API, host changes,
+local Docker/VM or capacity measurements are in this scope. #230 remains prepared, not activated.
+No implementation attempt is active. #228 and #230 are bounded future maintenance candidates;
+the retained coverage/correctness and potential performance work remains available.
+Preserve potential performance
+work and unrelated maintainer edits. Today's UI work is finished; do not redesign approved pages
+or reopen #192's now-satisfied visual gate.
+
+No new paid service, subscription/API billing, local VM/Docker start or renewed capacity test is
+authorized by this continuation. Existing remote release operation is explicitly authorized.
+Never delete live owner data merely for verification.
 
 ## Accepted product baseline to preserve
 
@@ -106,12 +137,13 @@ do not weaken regular assertions. All new UI returns to the owner in the local a
 explicit visual approval under agent/SUPERVISOR_INSTRUCTIONS.md. Automated browser checks and
 screenshots do not substitute for that approval.
 
-The ordinary dev app on 5173/8080 now runs the locally integrated accepted master changes, including
-the owner activity download and cached-data deletion. The previous stale runtime caused the owner
+The ordinary dev app on 5173/8080 retains the owner's local working state, including
+the owner activity download and cached-data deletion. The deployed source is the exact revision above;
+the two-line value display is now approved and public. The previous stale runtime caused the owner
 to miss the approved download despite its merged PR; update the daily app when accepting features.
 Runtime launch settings/PIDs are in ignored target/supervision/daily-runtime*.json; the API key is
 not stored there. Preserve unrelated local edits and existing account data during restarts.
-The accepted footer runs in that same daily app. Its confirmed Germany operator-country value is
-set in ignored frontend/.env.local; unknown operator/hosting details remain unset. The former
+The accepted footer runs in that same daily app. Owner-supplied operator/hosting/contact facts are
+set in ignored frontend/.env; the approved information pages are publicly hosted on Oracle. The former
 synthetic 5174/18081 footer preview processes are stopped. Keep verification output ignored, stop owned review
 processes and remove completed worktrees after review; preserve concise evidence.

@@ -13,21 +13,153 @@ The repository contains one user interface:
 
 The backend is Java 25, Maven and Spring Boot 4.1.1. It owns HTTP, application services, Profit/Discovery domain calculations, persistence and ArenaNet access. PostgreSQL stores shared game/economy data and GUID-scoped account data. The browser does not call ArenaNet directly. Ectoplasm Salvage calculates in the browser using backend-provided data.
 
-The app is not hosted yet. Account HTTP workflows now validate browser-supplied GW2 keys and carry verified stable account GUIDs through persistence, calculations and asynchronous work. Replacement keys reuse the same GUID dataset. There is no separate app login; low-risk read-only key handling follows UD-018.
+The app is publicly hosted on Oracle, as described below. Account HTTP workflows now validate browser-supplied GW2 keys and carry verified stable account GUIDs through persistence, calculations and asynchronous work. Replacement keys reuse the same GUID dataset. There is no separate app login; low-risk read-only key handling follows UD-018.
 
 ## Local development and configuration
 
 The backend can be started from `backend/` with `./mvnw spring-boot:run` (Windows: `mvnw.cmd spring-boot:run`); `repo.EnvConfig` reads `.env` from the working directory and, when run from `backend/` with no `.env` there, from the repository root. IDE run configurations use `backend/` as the working directory. It listens on port 8080 by default. Run the browser development server from `frontend/` with `npm ci` and `npm run dev`; Vite uses port 5173 and forwards `/api` requests to the backend.
 
-Configure PostgreSQL through the environment settings in .env.example. Enter the read-only GW2 key in the connection panel on the System Status page; sessionStorage retains it across navigation/reload, and the backend receives it transiently for proof/upstream work. Local GW2_API_KEY configuration may remain for retained entry points, but scoped HTTP routes never fall back to it. Flyway owns schema lifecycle; disposable cached data is reset/re-fetched under UD-016. Vite preserves the browser host through its proxy for normal same-origin checks. `docker compose up --build` starts the local frontend/backend/PostgreSQL stack with its own database and named cache volumes (`CURRENT_ARCHITECTURE.md`, Docker Compose stack); there is no hosted deployment.
+Configure PostgreSQL through the environment settings in .env.example. Enter the read-only GW2 key in the connection panel on the System Status page; sessionStorage retains it across navigation/reload, and the backend receives it transiently for proof/upstream work. Local GW2_API_KEY configuration may remain for retained entry points, but scoped HTTP routes never fall back to it. Flyway owns schema lifecycle; disposable cached data is reset/re-fetched under UD-016. Vite preserves the browser host through its proxy for normal same-origin checks. `docker compose up --build` starts the local frontend/backend/PostgreSQL stack with its own database and named cache volumes (`CURRENT_ARCHITECTURE.md`, Docker Compose stack).
 
-Enable owner controls by setting `GW2_OWNER_ACCOUNT_GUID` in the **backend process environment**, or the Spring property `gw2.owner.account-guid`, to the account GUID verified by the backend's normal key proof. No special admin API key is needed. Unset/blank grants nobody; malformed nonblank values fail startup. Restart the backend after changing this setting. `repo.EnvConfig` reads database/local-entry settings from `.env`; it does not inject that file into Spring's environment, so adding the owner variable only to `.env` does not enable the owner policy. Keep real GUIDs in local/deployment configuration, never committed examples. Both Compose files forward `GW2_OWNER_ACCOUNT_GUID` from the stack environment to the backend; `docker/compose.production.yaml` additionally requires a database password. Production host, TLS and legal publication remain an unexecuted launch gate.
+Enable owner controls by setting `GW2_OWNER_ACCOUNT_GUID` in the **backend process environment**, or the Spring property `gw2.owner.account-guid`, to the account GUID verified by the backend's normal key proof. No special admin API key is needed. Unset/blank grants nobody; malformed nonblank values fail startup. Restart the backend after changing this setting. `repo.EnvConfig` reads database/local-entry settings from `.env`; it does not inject that file into Spring's environment, so adding the owner variable only to `.env` does not enable the owner policy. Keep real GUIDs in local/deployment configuration, never committed examples. Both Compose files forward `GW2_OWNER_ACCOUNT_GUID` from the stack environment to the backend; `docker/compose.production.yaml` additionally requires a database password. The public Oracle TLS deployment below uses a required protected host override.
 
 The Maven wrapper and `backend/pom.xml` manage Java dependencies. Frontend dependencies use `frontend/package.json` and its lockfile. Main Java code and tests use Maven's `backend/src/main/java` and `backend/src/test/java` layout. Repository layout: `backend/` (Maven module and its Dockerfile/ignore rules), `frontend/` (Vue app, its Dockerfile/ignore rules and Nginx template), `docker/` (startup README, canonical `compose.yaml` and optional shared configuration example), `scripts/` (container smokes), `docs/`.
 
+## Public Oracle deployment (2026-11-15)
+
+The owner approved publication of the current UI and calculation fix, then explicitly authorized
+general public access. The live release is `265cad816492856cb73fa33094dbba2ece6465a1`, from merged
+[#222](https://github.com/Nebettadjsr/GW2/pull/222),
+[#226](https://github.com/Nebettadjsr/GW2/pull/226) and
+[#224](https://github.com/Nebettadjsr/GW2/pull/224), followed by the explicitly approved
+[#192](https://github.com/Nebettadjsr/GW2/pull/192). Its tree exactly matches the reviewed/CI
+candidate `ddcc5713359662db9490e4e262c6b313d82bfb01`. Build, activation and public-access
+verification ran in the visible Oracle SSH terminal; all three containers are healthy.
+
+The host is Oracle Frankfurt AD 2, Ubuntu 24.04 ARM64, 2 OCPUs and 12 GB RAM, at
+`130.61.78.114`. Docker 29.9.3 / Compose 5.7.1 run frontend, backend and PostgreSQL 17.
+Only the frontend publishes a host port, `127.0.0.1:8088`; backend and PostgreSQL publish none.
+The database container was not recreated for this release. `/opt/gw2/current` selects
+`/opt/gw2/releases/265cad816492856cb73fa33094dbba2ece6465a1`.
+Private deployment inputs remain outside the repository.
+
+### Public Home and crawler boundary
+
+[Welcome](https://gw2-crafting.de/welcome) is the default public entry. The approved Home has
+Welcome, What you can do, Getting started and New to Guild Wars 2? tabs, plus the owner's
+beginner chapters and compressed local WebP screenshots. Images have responsive variants,
+lazy loading and larger-image links. Home and public information pages never restore a retained
+key or request account data. Tool bookmarks retain their `/#/...` URLs. Skip-link focus and
+Back/Forward navigation are covered by independent regressions.
+
+Vite builds separate `index.html` and `welcome.html` entries. The frontend and host edge allow
+`index, follow` only for successful canonical `/welcome` responses (200/206/304); errors,
+redirects, the shared root/tool document, legal/privacy/storage, APIs and assets retain
+`noindex, nofollow`. `/welcome.html` redirects to `/welcome`. The public plain-text
+`robots.txt` allows `/welcome$` and `/assets/`, then disallows everything else. There is no
+sitemap. This supersedes the former site-wide crawl block. Robots directives guide cooperating
+crawlers; they do not guarantee that a discovered URL never appears in search.
+
+### HTTPS, authorization and database boundary
+
+Host Nginx 1.24 and distro Certbot 2.9 terminate TLS for the apex and www. HTTP and www redirect
+to canonical HTTPS, preserving path/query; unknown TLS names are rejected. The certificate
+expires 2027-02-13; the timer and successful-renewal reload hook were previously verified with
+a dry run. HSTS preloading is not enabled. The old owner-source allowlist is removed.
+
+The edge preserves browser Host, strips client forwarding headers and rejects unsafe requests
+unless Origin is exactly `https://gw2-crafting.de`. Missing, foreign and plaintext Origins
+returned 403; canonical owner operations reached normal authentication. Account and admin reads
+without a session returned 401. A real owner-key HTTPS proof through ordinary DNS passed:
+proof 200, owner details 200, logout 204, then owner read 401. The opaque cookie remains
+Secure, HttpOnly, SameSite=Strict and host-only. Keys, cookies and access contexts were not
+written to verification artifacts.
+
+Every host Compose invocation must include both the release's `docker/compose.production.yaml`
+and root-owned `/opt/gw2/config/https.compose.yaml`, using the root-owned mode-0600
+`/opt/gw2/config/production.env`. The override forwards the exact HTTPS origin and supplies
+the separate `gw2_app` database credential. That role has required schema/Flyway rights but
+no superuser/create-role/create-database/replication/bypass-RLS flags. The bootstrap role's
+network password is disabled. The frontend has no database credential. Public-release checks
+verified the actual role flags, distinct running credential and port bindings.
+Portable configuration follow-up is [#228](https://github.com/Nebettadjsr/GW2/issues/228);
+the original production file alone is not sufficient for this host.
+
+The inspected host uses key-only SSH. No privileged container, Docker-socket mount or Docker
+TCP listener was observed. PostgreSQL uses SCRAM on the internal Docker network; internal DB TLS
+is off. This is a bounded deployment check, not an exhaustive security or cross-account audit.
+
+### Information pages, processing and logs
+
+The owner approved the legal/privacy/browser-storage copy and supplied all six public deployment
+facts; they were verified in the actual served bundle. The operator is a private individual
+in Germany; the host is in Frankfurt. The working public contact is `kontakt@gw2-crafting.de`.
+Actual address/configuration values stay in ignored local and protected host deployment files,
+rather than tracked examples or issue comments. Required information is publicly readable in
+the legal page. The tool identifies itself as an unofficial fan project, includes ArenaNet
+attribution, and links its public source, MIT licence and feedback channels.
+
+There is no separate registration name/email/password. Stable verified GUIDs, character names,
+game data, sessions and request activity are account-linked, not anonymous. Network delivery
+also processes client IP addresses. The key remains in per-tab sessionStorage and is used
+transiently by the backend; normal cookie/local-storage behavior and actual deletion are
+described in the information pages and account sections below. No analytics/advertising
+feature was added. Publication approval does not establish executed provider agreements or
+a legal certification.
+
+Application operations history remains sparse, aggregate and owner-authorized, with day/week
+file selection and download. It keeps 30 nonempty UTC day files subject to byte caps, not
+30-calendar-day expiry; idle time writes no empty history. Host CPU/RAM belongs to Oracle
+Monitoring. Docker logs are bounded by three 10 MB files per container. Query-free edge access
+logs contain timestamp/method/path/status/size/time without account credentials or client IP;
+raw request-bound error logs are suppressed. Edge logrotate retains three rotations, checking
+daily with a 10 MB threshold; Certbot retains five rotated logs plus current. These are
+bounds, not a universal time-based deletion guarantee.
+
+### Release verification and limits
+
+Independent regression QA passed 342 relevant backend tests across 41 suites, including
+29 material/arithmetic bounds cases; every review finding has red/green evidence. Default
+backend/frontend/workflow CI and exact-head native review passed before merging.
+Frontend full-suite evidence on the Home proposal passed 828 tests before the two additional
+skip/history regressions; final required CI includes those regressions and type/build checks.
+
+The public hosted stack passed the regular visible Chromium check across all eight destinations:
+masked empty key entry and enabled Connect, no repeated key form, no browser errors, no 5xx,
+and zero API calls before connection. [#220](https://github.com/Nebettadjsr/GW2/issues/220) is
+closed. A formerly non-allowlisted bridge client now receives 200 for Welcome. Live verification
+covered header/error/Origin rules, redirects, all operator facts and role/port boundaries.
+The first immediate post-reload check saw an old Nginx worker and restored private access;
+waiting for the new worker's policy resolved that readiness race, and the complete rerun passed.
+
+Optional Profit/Discovery fixture-bootstrap maintenance
+[#194/#231](https://github.com/Nebettadjsr/GW2/pull/231) has passed locally: 57 focused tests,
+type/build checks, and visible controlled-browser Profit 36 stages / Discovery 15 stages.
+The final source proves the retained synthetic key through normal App startup after each document
+load, checks context headers and strict routes/methods, and blocks off-origin requests. Search awaits
+the supported cached lookup without recalculating or losing the selected detail; fixtures match
+current counted-output and output-batch contracts. Existing supplied values, recursive trees,
+keyboard/selection/layout and no-sync checks remain. These are synthetic presentation/interaction
+results, not live-account or backend calculation evidence. Exact-head CI and native review passed;
+the test-only repair is merged. It does not change the deployed application revision above.
+The owner approved the two-line value display [#192](https://github.com/Nebettadjsr/GW2/pull/192),
+which is now merged and hosted. The backend projects the display-only unit average while preserving
+the inclusive total; both values appear on separate lines. Its synchronized source passed 79 focused
+backend integration checks, 60 focused Vue tests, production build and exact-head CI/review.
+Hosted public/security, served-label, browser navigation and real-key session checks passed after
+the update, with all containers healthy and the database container unchanged. Development dependency
+maintenance [#227/#229](https://github.com/Nebettadjsr/GW2/pull/229) is merged separately: aligned
+Vitest/mocker/coverage 5.1.0 and scoped minimatch 11.0.8 resolve the three targeted advisories.
+Current CI/coverage/build/review and an independent clean Node 22 install passed. Full audit still
+reports three moderate package entries from the pre-existing glob advisory, tracked in
+[#230](https://github.com/Nebettadjsr/GW2/issues/230). Node/test dependencies are absent from the
+production Nginx runtime image; this development-only change has not replaced the live source above.
+No supported-user capacity,
+new load-test result, complete keyed browser journey or multi-account validation is claimed.
+
 ## Current user workflows
 
-The browser navigation includes Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, Characters and System Status. See [README](../README.md) for a user-oriented overview and [Frontend UX Guidelines](FRONTEND_UX_GUIDELINES.md) for presentation rules.
+The browser navigation includes Home, Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, Characters and System Status. See [README](../README.md) for a user-oriented overview and [Frontend UX Guidelines](FRONTEND_UX_GUIDELINES.md) for presentation rules.
 
 Crafting Profit provides an explicit **Refresh data & results** action. It requests the calculation again and starts no synchronization itself: the backend answers from its last successfully synchronized inputs and admits the account and Trading Post refresh those inputs still need, so bank, material storage, account recipe knowledge and character crafting/recipes/inventory are what get refreshed, and account Luck is not fetched for this workflow. The full account refresh remains available for diagnostics in System Status. Normal feature use does not require opening System Status.
 
@@ -53,7 +185,7 @@ Global recipe metadata and TP-tradeable IDs are checked automatically. The defau
 
 System Status currently shows account refresh status/time, shared price-cache freshness, global check/change and recipe/graph timestamps, task state and the last global failure when available. The page offers full account refresh to everyone; shared health is generic (OK/Problem/Running/Not run yet), and detailed diagnostics plus the three full-catalog controls render only after the backend confirms owner authorization for the current account (see `CURRENT_ARCHITECTURE.md` section 6). The first owner boundary (#152) is delivered on the backend: `POST /api/sync/global`, reads of the tasks it and the scheduler admit, and `/api/system/status/details` require a live session whose verified account GUID equals the optional `gw2.owner.account-guid` (unset denies everyone; configuration is deployment-specific), while generic `/api/system/status` is coarse. The three distinct owner-only full-catalog operations (#180) are delivered on the backend as `POST /api/sync/full/items`, `/recipes` and `/trading-post` (operations `FULL_ITEM_CATALOG`, `FULL_RECIPE_CATALOG`, `FULL_TP_CATALOG`; items and recipes share the `GLOBAL_SYNC` exclusion; duplicates get 409 naming the unfinished task; no live full refresh has been run). `/api/system/status/details` additionally returns owner-only read-only aggregates, read only after authorization (never by the generic route): `items`, `recipes` and `tradingPostPrices` (stored rows, rows with a fetch time, rows without one, and `MIN/MAX(fetched_at)` over timestamped rows; `state: UNAVAILABLE` with null figures on query failure) and `accounts` (total registry rows and rows with `last_seen_at` within 60 minutes inclusive of the boundary, evaluated at one instant; no identifiers). The owner layout is visually accepted. Live full refreshes and Oracle qualification remain separate evidence; owner controls are not required for routine feature workflows and are not a general monitoring system.
 
-The owner layout also has an **Application activity** section (STORY-OPS-002; pending Product Owner visual approval): active accounts in the last 5 minutes (estimate, separate from the existing 60-minute value), total PostgreSQL size with available/stale/unavailable states, recent requests/minute, backend p50/p95 (`>5 s` for overflow, not browser time), 4xx/5xx/failed counts, a collapsed paginated recent-minute (6 h) history with explicit no-stored-activity gaps and partial/truncated markers, one grouped Days/Weeks dropdown (newest first, latest nonempty day preselected) with a single Download of the server-described CSV period (no range or format controls), and an optional configured Oracle Console link. It is read once and on an explicit Refresh, never polled. Retrieval steps: `OPERATIONS_RUNBOOK.md`.
+The owner layout also has an **Application activity** section (STORY-OPS-002; Product Owner visual approval is complete): active accounts in the last 5 minutes (estimate, separate from the existing 60-minute value), total PostgreSQL size with available/stale/unavailable states, recent requests/minute, backend p50/p95 (`>5 s` for overflow, not browser time), 4xx/5xx/failed counts, a collapsed paginated recent-minute (6 h) history with explicit no-stored-activity gaps and partial/truncated markers, one grouped Days/Weeks dropdown (newest first, latest nonempty day preselected) with a single Download of the server-described CSV period (no range or format controls), and an optional configured Oracle Console link. It is read once and on an explicit Refresh, never polled. Retrieval steps: `OPERATIONS_RUNBOOK.md`.
 
 The generic `/api/system/status` also returns an optional own-account `accountOverview` (characters, unlocked account recipes, material types and 64-bit total quantity) per permitted source with `CURRENT|STALE|NOT_LOADED|UNAVAILABLE` states (`DOMAIN_SPEC.md` section 57). Ordinary users see these in the Account data card plus one compact shared-service line. Both ordinary and owner layouts are visually accepted; preserve the approved baseline. Production preparation follows ROADMAP. The capacity-test programme is ended; no supported-user capacity is claimed.
 
@@ -107,10 +239,10 @@ confirmation; the next explicit attempt rechecks the retained key before deletin
 - Account datasets are GUID-scoped. One account is active per shared-cookie browser session; independent accounts in such tabs are not promised.
 - The connection panel (shown only on System Status, which stays reachable while disconnected and on direct URL/reload; other pages show a concise link to it) retains the key in sessionStorage, proves it before loading account data, and renews access without repeated entry. Invalid keys are removed; transient failures retain the key for retry. The key area is one bordered card: heading, two small help links ("How do I get an API key?", "Is my API key safe here?") in place of routine connection sentences, a full-width field with an eye button that shows or hides only the typed draft, and an actions row below (Connect/Replace key, Try again, Disconnect). Only working, outage and error states are narrated. Help opens a small centered native modal dialog (short safety facts with collapsed "What this app stores"; four numbered creation steps recommending all permissions, an ArenaNet link in the first step, and a footer link to the safety explanation). The draft is masked again after an accepted submission, Disconnect, an account change or remount, and kept after a failed submission. The retained key is never put back into the field.
 - Scoped HTTP workflows now operate on the migrated schema; legacy unscoped account access stays refused. Local Chrome/live-ArenaNet recovery evidence covers completed full synchronization, selector options, loaded Profit, Bank, Materials, reload retention and disconnect. This does not certify every feature or establish a hosted deployment.
-- A Java 25 backend image and a static Nginx frontend image with same-origin `/api` forwarding, each with an isolated Docker smoke, are available (`CURRENT_ARCHITECTURE.md`, container image sections). A local three-container Docker Compose stack joins them (frontend is the only published port, `bash scripts/compose-smoke.sh` verifies it offline). Public TLS and hosted deployment are not delivered.
+- A Java 25 backend image and a static Nginx frontend image with same-origin `/api` forwarding, each with an isolated Docker smoke, are available (`CURRENT_ARCHITECTURE.md`, container image sections). A three-container Docker Compose stack joins them (frontend is the only published port, `bash scripts/compose-smoke.sh` verifies the local stack offline). The private Oracle execution above uses the standalone production file; public TLS and public deployment are not delivered.
 - Refresh status is process-local, not durable telemetry. Multiple backend replicas would require shared coordination for global scheduled work and refresh deduplication.
 - Attribute projections support level-80 land equipment and explicitly modelled passives; they are not a full trait/combat simulator. In-game effects, live economic correctness and general exact attribute parity remain separate verification work.
-- Oracle Always Free is the approved hosting target; the actual tenancy/host and final whole-stack fit remain unqualified. No deployment is delivered.
+- Oracle Always Free hosts the public release described above. No supported-user capacity is claimed; the retired capacity-test programme is not a launch prerequisite.
 
 ## Companion documents
 
