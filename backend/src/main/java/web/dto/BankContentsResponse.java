@@ -37,12 +37,18 @@ public record BankContentsResponse(Integer slotCount, List<BankSlotDto> slots,
      *                Never a filesystem path and never an upstream URL: the backend's filesystem
      *                {@code iconPath} deliberately left this contract with STORY-API-009
      * @param rarity  display metadata; null when the slot's item has no matching item row
+     * @param itemName actual cached shared item name; null for an empty slot or missing metadata
      */
     public record BankSlotDto(int slot,
                               Integer itemId,
                               Integer count,
                               String iconUrl,
                               String rarity,
-                              boolean protectionSelectable) {
+                              boolean protectionSelectable,
+                              String itemName) {
+        public BankSlotDto(int slot, Integer itemId, Integer count, String iconUrl, String rarity,
+                           boolean protectionSelectable) {
+            this(slot, itemId, count, iconUrl, rarity, protectionSelectable, null);
+        }
     }
 }

@@ -11,14 +11,19 @@ import java.util.List;
 public class MaterialStorageRepository {
     public record MaterialStorageRow(int category, String categoryName, int categoryOrder,
                                      Integer position, Integer itemId, int count,
-                                     String iconPath, String iconUrl, String rarity) {
+                                     String iconPath, String iconUrl, String rarity, String itemName) {
+        public MaterialStorageRow(int category, String categoryName, int categoryOrder,
+                                  Integer position, Integer itemId, int count,
+                                  String iconPath, String iconUrl, String rarity) {
+            this(category, categoryName, categoryOrder, position, itemId, count, iconPath, iconUrl, rarity, null);
+        }
         public MaterialStorageRow(int category, String categoryName, int categoryOrder,
                                   Integer position, Integer itemId, int count, String iconUrl, String rarity) {
-            this(category, categoryName, categoryOrder, position, itemId, count, null, iconUrl, rarity);
+            this(category, categoryName, categoryOrder, position, itemId, count, null, iconUrl, rarity, null);
         }
         public MaterialStorageRow(int category, Integer itemId, int count, String iconPath,
                                   String iconUrl, String rarity) {
-            this(category, "Category " + category, category, 0, itemId, count, iconPath, iconUrl, rarity);
+            this(category, "Category " + category, category, 0, itemId, count, iconPath, iconUrl, rarity, null);
         }
     }
 
@@ -55,7 +60,7 @@ public class MaterialStorageRepository {
         String sql = """
                 SELECT c.category_id, c.name, c.display_order, ci.position, ci.item_id,
                        CASE WHEN am.item_id IS NULL THEN 0 ELSE am.count END AS count,
-                       i.icon_path, i.icon_url, i.rarity
+                       i.icon_path, i.icon_url, i.rarity, i.name AS item_name
                 FROM material_categories c
                 LEFT JOIN material_category_items ci ON ci.category_id = c.category_id
                 LEFT JOIN account_materials am ON am.item_id = ci.item_id AND am.account_id = ?
@@ -82,7 +87,7 @@ public class MaterialStorageRepository {
         String sql = """
                 SELECT c.category_id, c.name, c.display_order, ci.position, ci.item_id,
                        CASE WHEN am.item_id IS NULL THEN 0 ELSE am.count END AS count,
-                       i.icon_path, i.icon_url, i.rarity
+                       i.icon_path, i.icon_url, i.rarity, i.name AS item_name
                 FROM material_categories c
                 LEFT JOIN material_category_items ci ON ci.category_id = c.category_id
                 LEFT JOIN account_materials am ON am.item_id = ci.item_id
@@ -105,7 +110,7 @@ public class MaterialStorageRepository {
             Integer itemId = rs.wasNull() ? null : itemValue;
             rows.add(new MaterialStorageRow(rs.getInt("category_id"), rs.getString("name"),
                     rs.getInt("display_order"), position, itemId, count, rs.getString("icon_path"),
-                    rs.getString("icon_url"), rs.getString("rarity")));
+                    rs.getString("icon_url"), rs.getString("rarity"), rs.getString("item_name")));
         }
         return rows;
     }
