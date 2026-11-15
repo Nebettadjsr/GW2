@@ -45,8 +45,8 @@ public class CraftingResolver {
         int costOf(int quantity) {
             // Round the complete consumed quantity up once, never each intermediate unit.
             BigInteger total = copper.multiply(BigInteger.valueOf(quantity));
-            return total.add(units).subtract(BigInteger.ONE).divide(units)
-                    .min(BigInteger.valueOf(Integer.MAX_VALUE)).intValueExact();
+            // Out-of-range values are an error (blocked as VALUE_RANGE by the caller), never clamped.
+            return total.add(units).subtract(BigInteger.ONE).divide(units).intValueExact();
         }
 
         @Override public int compareTo(OwnedValue other) {
@@ -152,7 +152,7 @@ public class CraftingResolver {
             int sellUnit = (consumption.usedSellable() > 0 || state.consumedSellableQuantity(itemId) > 0)
                     ? resolveDirectSellUnit(itemId, ctx.tp, ctx.settings) : 0;
             boolean directlyQuoted = sellUnit > 0;
-            int oppCost = directlyQuoted ? consumption.usedSellable() * sellUnit : 0;
+            int oppCost = directlyQuoted ? Math.multiplyExact(consumption.usedSellable(), sellUnit) : 0;
             boolean unvalued = false;
             // DOMAIN_SPEC.md section 11.2: usable bound stock is not free, and sellable stock
             // without a direct quote uses the same fallback. Both pools share one cumulative
@@ -163,7 +163,8 @@ public class CraftingResolver {
                 OwnedValue fallback = resolveOwnedFallbackValue(itemId, ctx);
                 int consumed = state.consumedBoundQuantity(itemId)
                         + (directlyQuoted ? 0 : state.consumedSellableQuantity(itemId));
-                oppCost += fallback.costOf(consumed) - fallback.costOf(consumed - fallbackUsed);
+                oppCost = Math.addExact(oppCost, Math.subtractExact(fallback.costOf(consumed),
+                        fallback.costOf(consumed - fallbackUsed)));
                 unvalued = fallback.isZero();
             }
             result.setOpportunityCostCopper(oppCost);
@@ -187,12 +188,17 @@ public class CraftingResolver {
         // 2) Evaluate direct buy on a COPY of state
         CandidateEval buyEval = null;
         boolean buyPriceUnavailable = false;
+        boolean buyOutOfRange = false;
         if (ctx.settings.allowBuying && allowDirectBuy) {
             int buyUnit = resolveDirectBuyUnit(itemId, ctx.tp, ctx.settings);
-            if (buyUnit > 0) {
+            long buyCost = (long) remaining * buyUnit;
+            if (buyUnit > 0 && buyCost > Integer.MAX_VALUE) {
+                // Exact wide product outside the supported copper range: this purchase is unavailable.
+                buyOutOfRange = true;
+            } else if (buyUnit > 0) {
                 ResolvedNeed buyNeed = new ResolvedNeed(itemId, remaining);
                 buyNeed.setQtyBought(remaining);
-                buyNeed.setBuyCostCopper(remaining * buyUnit);
+                buyNeed.setBuyCostCopper((int) buyCost);
                 buyNeed.determineMode();
 
                 buyEval = new CandidateEval(
@@ -243,8 +249,9 @@ public class CraftingResolver {
             result.setQtyCrafted(reused + chosenNeed.getQtyCrafted());
             result.setQtyBought(chosenNeed.getQtyBought());
             result.setQtyBlocked(chosenNeed.getQtyBlocked());
-            result.setBuyCostCopper(result.getBuyCostCopper() + chosenNeed.getBuyCostCopper());
-            result.setOpportunityCostCopper(result.getOpportunityCostCopper() + chosenNeed.getOpportunityCostCopper());
+            result.setBuyCostCopper(Math.addExact(result.getBuyCostCopper(), chosenNeed.getBuyCostCopper()));
+            result.setOpportunityCostCopper(Math.addExact(result.getOpportunityCostCopper(),
+                    chosenNeed.getOpportunityCostCopper()));
             if (chosenNeed.hasUnvaluedOwnedInput()) result.setUnvaluedOwnedInput(true);
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
@@ -273,6 +280,8 @@ public class CraftingResolver {
                 result.setBlockedReason(BlockedReason.BUYING_DISABLED);
             } else if (craftEval != null && craftEval.need.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(craftEval.need.getBlockedReason());
+            } else if (buyOutOfRange) {
+                result.setBlockedReason(BlockedReason.VALUE_RANGE);
             } else if (buyPriceUnavailable) {
                 result.setBlockedReason(BlockedReason.PRICE_UNAVAILABLE);
             } else {
@@ -380,9 +389,8 @@ public class CraftingResolver {
 
         state.beginVisiting(itemId);
 
+        ResolvedNeed craftResult = new ResolvedNeed(itemId, qtyRequested);
         try {
-            ResolvedNeed craftResult = new ResolvedNeed(itemId, qtyRequested);
-
             if (tracing) {
                 ResolvedNeed.NodeTrace trace = craftResult.traceForWrite();
                 trace.setSelectedRecipeId(recipe.recipeId);
@@ -407,14 +415,20 @@ public class CraftingResolver {
                 state.setDailyLeft(itemId, left - times);
             }
 
-            int produced = times * recipe.outputCount;
+            int produced = Math.multiplyExact(times, recipe.outputCount);
             int qtySatisfied = Math.min(produced, qtyRequested);
 
             boolean allChildrenSatisfied = true;
             BlockedReason unsatisfiedChildReason = BlockedReason.NONE;
 
             for (Ingredient ing : recipe.ingredients) {
-                int childQtyNeeded = ing.count * times;
+                // Validate the multiplication and the accumulated per-item demand before anything
+                // is consumed, priced, bought or descended into; an excess ends this attempt now.
+                long childDemand = (long) ing.count * times;
+                if (!state.reserveDemand(ing.itemId, childDemand)) {
+                    return limitBlocked(craftResult, qtyRequested, BlockedReason.MATERIAL_LIMIT);
+                }
+                int childQtyNeeded = (int) childDemand;
 
                 ResolvedNeed child = resolveNeed(ing.itemId, childQtyNeeded, ctx, state, true,
                         recipe.disciplinesText, assignedCharacter);
@@ -425,6 +439,10 @@ public class CraftingResolver {
                     allChildrenSatisfied = false;
                     if (unsatisfiedChildReason == BlockedReason.NONE) {
                         unsatisfiedChildReason = child.getBlockedReason();
+                    }
+                    if (child.getBlockedReason() == BlockedReason.MATERIAL_LIMIT
+                            || child.getBlockedReason() == BlockedReason.VALUE_RANGE) {
+                        break; // this attempt can never be accepted; do not expand later siblings
                     }
                 }
             }
@@ -453,9 +471,21 @@ public class CraftingResolver {
             craftResult.determineMode();
             return craftResult;
 
+        } catch (ArithmeticException outOfRange) {
+            // Some quantity, price or total left the supported range: this attempt is unavailable.
+            // The caller rolls back every state change the attempt made.
+            return limitBlocked(craftResult, qtyRequested, BlockedReason.VALUE_RANGE);
         } finally {
             state.endVisiting(itemId);
         }
+    }
+
+    private ResolvedNeed limitBlocked(ResolvedNeed craftResult, int qtyRequested, BlockedReason reason) {
+        craftResult.setQtyCrafted(0);
+        craftResult.setQtyBlocked(qtyRequested);
+        craftResult.setBlockedReason(reason);
+        craftResult.determineMode();
+        return craftResult;
     }
 
     private ResolvedNeed tryRecipeCandidates(int itemId, int quantity, PlannerContext ctx,
@@ -537,7 +567,7 @@ public class CraftingResolver {
         }
 
         if (candidateSatisfied) {
-            return candidate.getEffectiveCostCopper() <= currentBest.getEffectiveCostCopper();
+            return candidate.effectiveCostCopper() <= currentBest.effectiveCostCopper();
         }
 
         return candidate.getQtySatisfied() > currentBest.getQtySatisfied();
@@ -555,7 +585,7 @@ public class CraftingResolver {
         if (buyValid && craftValid) {
             // DOMAIN_SPEC.md section 22: choose the lowest total effective economic cost
             // (cash + opportunity cost), not the lowest immediate cash cost.
-            return craftEval.need.getEffectiveCostCopper() <= buyEval.need.getEffectiveCostCopper()
+            return craftEval.need.effectiveCostCopper() <= buyEval.need.effectiveCostCopper()
                    ? craftEval
                    : buyEval;
         }
@@ -567,7 +597,7 @@ public class CraftingResolver {
     }
 
     private int ceilDiv(int a, int b) {
-        return (a + b - 1) / b;
+        return (int) (((long) a + b - 1) / b);
     }
 
     public int resolveDirectBuyUnit(

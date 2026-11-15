@@ -43,6 +43,6 @@ public class CostEvaluator {
             return 0;
         }
 
-        return unit * recipe.outputCount;
+        return Math.multiplyExact(unit, recipe.outputCount);
     }
 }

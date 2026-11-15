@@ -87,7 +87,20 @@ public class RecipeSimulator {
                 break;
             }
 
-            int nextBuyTotal = result.getBuyCostTotal() + rr.getBuyCostCopper();
+            int nextBuyTotal;
+            try {
+                // Every accumulated total, and each batch's effective cost, must stay representable.
+                nextBuyTotal = Math.addExact(result.getBuyCostTotal(), rr.getBuyCostCopper());
+                int nextOpportunityTotal = Math.addExact(result.getOpportunityCostTotal(),
+                        rr.getOpportunityCostCopper());
+                Math.addExact(nextBuyTotal, nextOpportunityTotal);
+                rr.getEffectiveCostCopper();
+            } catch (ArithmeticException outOfRange) {
+                state.rollbackTo(mark);
+                result.setBlockedReason(BlockedReason.VALUE_RANGE);
+                result.setBlockedAttempt(root);
+                break;
+            }
 
             if (ctx.settings.maxBuyCopper > 0 && nextBuyTotal > ctx.settings.maxBuyCopper) {
                 state.rollbackTo(mark);

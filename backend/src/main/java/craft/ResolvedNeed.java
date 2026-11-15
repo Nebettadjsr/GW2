@@ -93,8 +93,14 @@ public class ResolvedNeed {
         this.opportunityCostCopper = opportunityCostCopper;
     }
 
+    /** Exact effective cost; may exceed the int range, so comparisons use this. */
+    public long effectiveCostCopper() {
+        return (long) buyCostCopper + opportunityCostCopper;
+    }
+
+    /** @throws ArithmeticException when the effective cost is outside the supported int range */
     public int getEffectiveCostCopper() {
-        return buyCostCopper + opportunityCostCopper;
+        return Math.addExact(buyCostCopper, opportunityCostCopper);
     }
 
     public int getQtySatisfied() {
@@ -161,8 +167,8 @@ public class ResolvedNeed {
     }
 
     public void addCostsFromChild(ResolvedNeed child) {
-        this.buyCostCopper += child.getBuyCostCopper();
-        this.opportunityCostCopper += child.getOpportunityCostCopper();
+        this.buyCostCopper = Math.addExact(this.buyCostCopper, child.getBuyCostCopper());
+        this.opportunityCostCopper = Math.addExact(this.opportunityCostCopper, child.getOpportunityCostCopper());
         this.unvaluedOwnedInput |= child.unvaluedOwnedInput;
     }
 
