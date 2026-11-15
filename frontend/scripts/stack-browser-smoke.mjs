@@ -4,7 +4,8 @@
  * Offline: no key is entered, no synchronization is started, nothing is written.
  *
  * Usage:  GW2_FRONTEND_URL=http://127.0.0.1:<port> node scripts/stack-browser-smoke.mjs
- * Environment: GW2_FRONTEND_URL (required), GW2_BROWSER_PATH, GW2_SMOKE_TIMEOUT_MS (default 30000)
+ * Environment: GW2_FRONTEND_URL (required), GW2_BROWSER_PATH, GW2_SMOKE_TIMEOUT_MS (default 30000),
+ *   GW2_SMOKE_HEADLESS (default true; set false to show the browser)
  * Exits 0 when every step passed, 1 otherwise.
  */
 import { chromium } from 'playwright-core'
@@ -16,17 +17,26 @@ if (!FRONTEND_URL) {
   console.error('GW2_FRONTEND_URL is required (the Compose frontend port)')
   process.exit(1)
 }
-const DESTINATIONS = ['crafting', 'discovery', 'ecto', 'synchronization', 'bank', 'materials']
+const DESTINATIONS = ['home', 'crafting', 'discovery', 'ecto', 'synchronization', 'bank', 'materials', 'characters']
 
-const browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless: true })
+const browser = await chromium.launch({
+  executablePath: resolveBrowserPath(),
+  headless: process.env.GW2_SMOKE_HEADLESS !== 'false'
+})
 let failed = false
 try {
   const page = await browser.newPage()
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(error.name))
   page.setDefaultTimeout(TIMEOUT_MS)
+  page.setDefaultNavigationTimeout(TIMEOUT_MS)
   const origin = new URL(FRONTEND_URL).origin
+  const apiRequests = []
   const apiResponses = []
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (url.pathname.startsWith('/api/')) apiRequests.push({ origin: url.origin, path: url.pathname })
+  })
   page.on('response', (response) => {
     const url = new URL(response.url())
     if (url.pathname.startsWith('/api/')) apiResponses.push({ origin: url.origin, path: url.pathname, status: response.status() })
@@ -36,27 +46,46 @@ try {
   console.log('  ok   shell rendered with navigation')
   for (const id of DESTINATIONS) {
     await page.locator(`[data-test="nav-${id}"]`).click()
-    await page.waitForFunction((hash) => location.hash === hash, `#/${id}`)
+    await page.waitForFunction((destination) => destination === 'home'
+      ? location.pathname === '/welcome' && location.hash === ''
+      : location.pathname === '/' && location.hash === `#/${destination}`, id)
+    if (await page.locator(`[data-test="nav-${id}"]`).getAttribute('aria-current') !== 'page') {
+      throw new Error(`${id} is not marked as the current destination`)
+    }
     if (id === 'synchronization') {
       await page.waitForSelector('[data-test="connection-panel"]')
     } else {
-      await page.waitForSelector('[data-test="connection-needed-link"]')
+      await page.waitForSelector(id === 'home'
+        ? '[data-test="home-screen"]' : '[data-test="connection-needed-link"]')
       if (await page.locator('[data-test="connection-panel"]').count()) throw new Error(`key form repeated on ${id}`)
+      if (await page.locator('[data-test="api-key-input"]').count()) throw new Error(`key entry repeated on ${id}`)
     }
   }
   console.log(`  ok   navigated to ${DESTINATIONS.length} destinations`)
   await page.locator('[data-test="nav-synchronization"]').click()
   await page.waitForSelector('[data-test="connection-panel"]')
-  const status = (await page.locator('[data-test="connection-status"]').innerText()).trim()
-  console.log(`  ok   connection panel visible — status: ${status}`)
-  if ((await page.locator('[data-test="api-key-input"]').count()) === 0) throw new Error('no key entry field offered')
-  if ((await page.locator('[data-test="api-key-input"]').getAttribute('type')) !== 'password') throw new Error('key entry is not masked')
-  console.log('  ok   key entry offered in the browser (no key entered)')
+  const panel = page.locator('[data-test="connection-panel"]')
+  const input = page.locator('[data-test="api-key-input"]')
+  const connect = page.locator('[data-test="connect"]')
+  if (await panel.count() !== 1 || await input.count() !== 1 || await connect.count() !== 1) {
+    throw new Error('System Status must offer exactly one key entry and Connect action')
+  }
+  if (!(await input.isVisible()) || !(await input.isEnabled())) throw new Error('key entry is not ready')
+  if (await input.inputValue() !== '') throw new Error('key entry is not empty in a fresh browser session')
+  if (await input.getAttribute('type') !== 'password') throw new Error('key entry is not masked')
+  if (!(await connect.isVisible()) || !(await connect.isEnabled()) || (await connect.innerText()).trim() !== 'Connect') {
+    throw new Error('the disconnected Connect action is not ready')
+  }
+  if (await page.locator('[data-test="disconnect"], [data-test="retry-connection"]').count()) {
+    throw new Error('a fresh browser session unexpectedly offers disconnect or retry')
+  }
+  console.log('  ok   disconnected key entry is empty, masked and ready; Connect is enabled (no key entered)')
   await page.waitForTimeout(1000)
   const foreign = apiResponses.filter((r) => r.origin !== origin)
   if (foreign.length > 0) throw new Error(`API requests left the frontend origin: ${JSON.stringify(foreign)}`)
   const serverErrors = apiResponses.filter((r) => r.status >= 500)
   if (serverErrors.length > 0) throw new Error(`API responded 5xx: ${JSON.stringify(serverErrors)}`)
+  if (apiRequests.length > 0) throw new Error(`Keyless navigation made unexpected API requests: ${JSON.stringify(apiRequests)}`)
   if (pageErrors.length > 0) throw new Error(`Browser page errors: ${pageErrors.join(', ')}`)
   console.log(`  ok   ${apiResponses.length} API responses, all same-origin, none 5xx (the app makes none before a key is entered)`)
 } catch (error) {
