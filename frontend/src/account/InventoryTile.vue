@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import ItemIcon from '@/items/ItemIcon.vue'
 
 const props = withDefaults(defineProps<{
@@ -15,6 +16,7 @@ const props = withDefaults(defineProps<{
   itemName?: string | null
 }>(), { showOne: false, selected: undefined, reserved: 0, itemName: null })
 
+const label = computed(() => props.itemName ?? props.title)
 const emit = defineEmits<{ toggle: [itemId: number]; menu: [itemId: number, x: number, y: number] }>()
 
 function openMenu(event: MouseEvent | KeyboardEvent, element: HTMLElement | null): void {
@@ -44,7 +46,7 @@ function onKey(event: KeyboardEvent): void {
       class="inventory-tile__select"
       data-test="protect-checkbox"
       :checked="selected"
-      :aria-label="reserved > 0 && selected !== true ? `Protect ${itemName ?? `item #${itemId}`} (keeping ${reserved})` : `Protect ${itemName ?? `item #${itemId}`}`"
+      :aria-label="reserved > 0 && selected !== true ? `Protect ${label} (keeping ${reserved})` : `Protect ${label}`"
       @change="$emit('toggle', itemId)"
       @keydown="onKey"
     >

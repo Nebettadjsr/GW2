@@ -301,6 +301,10 @@ public class CraftingProfitService {
         if (settings.materialProtectionEnabled
                 && (!settings.protectedBankItemIds.isEmpty() || !settings.protectedMaterialItemIds.isEmpty()
                     || settings.hasFiniteReservations())) {
+            if (con == null && !settings.hasFiniteReservations()) {
+                // ALL-only protection keeps the established id-set read path.
+                return invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds);
+            }
             return con == null
                     ? invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
                             settings.protectedBankQuantities, settings.protectedMaterialQuantities)

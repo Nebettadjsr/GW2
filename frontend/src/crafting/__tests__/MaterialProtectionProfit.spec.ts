@@ -18,7 +18,8 @@ const B = 'bbbbbbbb-0000-0000-0000-000000000002'
 
 const syncApi = {} as SyncApi
 const scopedSelection = (ids: number[]) => ({ materialProtectionEnabled: true, protectedItemIds: [],
-  protectedBankItemIds: ids, protectedMaterialItemIds: ids })
+  protectedBankItemIds: ids, protectedMaterialItemIds: ids,
+  protectedBankQuantities: {}, protectedMaterialQuantities: {} })
 
 /** Echoes request settings merged over the defaults, like the backend's canonical echo. */
 function echo(request: CraftingProfitRequest): CraftingProfitResponse {
@@ -264,21 +265,15 @@ describe('info tooltip and source hints', () => {
     expect(panel(w).isVisible()).toBe(false)
   })
 
-  it('shows only the destinations where the committed selection was made, per account, at Save', async () => {
+  it('shows only the destinations where the committed selection was made, per account, as each toggle autosaves', async () => {
     const state = useMaterialProtection()
-    state.togglePending(3, 'bank')
     const w = await open(api())
     expect(w.find('[data-test="protection-links"]').exists()).toBe(false)
-    state.commit()
+    state.togglePending(3, 'bank') // autosaved immediately
     await flushPromises()
     expect(w.find('[data-test="protection-bank-link"]').exists()).toBe(true)
     expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(false)
-    state.togglePending(4, 'materials') // pending only: links unchanged
-    await flushPromises()
-    expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(false)
-    state.discardPending()
     state.togglePending(4, 'materials')
-    state.commit()
     await flushPromises()
     expect(w.find('[data-test="protection-bank-link"]').exists()).toBe(true)
     expect(w.find('[data-test="protection-materials-link"]').exists()).toBe(true)

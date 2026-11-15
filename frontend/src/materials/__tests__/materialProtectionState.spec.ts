@@ -53,7 +53,7 @@ describe('canonicalIds', () => {
 })
 
 describe('partitioning, commit and restart', () => {
-  it('toggles a whole group without changing other items or saving pending edits', () => {
+  it('toggles a whole group without changing other items and saves each action', () => {
     const m = make()
     source.id = A
     m.setPending([2, 9], 'materials')
@@ -62,10 +62,8 @@ describe('partitioning, commit and restart', () => {
     expect(m.state.pending).toEqual([2, 3, 4, 9])
     m.togglePendingGroup([2, 3, 4], 'materials')
     expect(m.state.pending).toEqual([9])
-    expect(m.state.committed).toEqual([2, 9])
-    expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([2, 9])
-    m.discardPending()
-    expect(m.state.pending).toEqual([2, 9])
+    expect(m.state.committed).toEqual([9])
+    expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([9])
   })
 
   it('keeps the same item independently selected, saved and discarded in each view', () => {
@@ -111,7 +109,7 @@ describe('partitioning, commit and restart', () => {
     expect(reloaded.state.activation).toBe(false)
   })
 
-  it('keeps pending edits out of storage until commit', () => {
+  it('keeps low-level pending edits out of storage but autosaves toggles', () => {
     const m = make()
     source.id = A
     m.setPending([1, 2])
@@ -123,8 +121,8 @@ describe('partitioning, commit and restart', () => {
     m.togglePending(2)
     m.togglePending(7)
     expect(m.state.pending).toEqual([1, 7])
-    m.discardPending()
-    expect(m.state.pending).toEqual([1, 2])
+    expect(m.state.committed).toEqual([1, 7])
+    expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([1, 7])
   })
 
   it('clears presentation on disconnect but keeps storage; reconnect restores', () => {
