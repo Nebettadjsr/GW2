@@ -92,7 +92,7 @@ watch(
     @navigate="onNavigate"
   />
 
-  <main id="main-content" ref="main" class="page">
+  <main id="main-content" ref="main" class="page" tabindex="-1">
     <!--
       The API-key controls live only on System Status (STORY-FIX-004), which therefore renders whether
       or not an account is connected — a direct URL or reload while disconnected must still reach it.
