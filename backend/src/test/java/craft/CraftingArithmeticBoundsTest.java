@@ -14,6 +14,7 @@ import static craft.CraftTestFixtures.recipe;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -107,6 +108,40 @@ class CraftingArithmeticBoundsTest {
         assertEquals(BlockedReason.VALUE_RANGE, result.blockedReason);
         assertEquals(0, result.totalSellValueCopper);
         assertEquals(0, result.totalProfitCopper);
+    }
+
+    @Test
+    void outputRevenueOverflowBlocksTheTableSimulatorAndStandaloneExplanationConsistently() {
+        Recipe root = recipe(1, 100, 2, List.of(ingredient(200, 1)));
+        List<Recipe> recipes = List.of(root);
+        Map<Integer, PriceQuote> prices = Map.of(100, quote(1_100_000_000, 1_100_000_000),
+                200, quote(1, 1));
+        CraftingSettings settings = new CraftingSettings(false, true, 0, false, false, false);
+        PlannerContext context = new PlannerContext(CraftingPlanner.buildRecipesByOutput(recipes),
+                prices, settings, Set.of(1));
+
+        CraftResult row = planner.evaluateSingleCraft(root, recipes, Map.of(), Map.of(), prices,
+                settings, Set.of(1));
+        RecipeSimulationResult simulation = new RecipeSimulator(new CraftingResolver(true), 1, true)
+                .simulateRecipe(root, context, new PlanState(Map.of()));
+        SingleCraftExplanation explanation = new SingleCraftExplainer().explainIndividual(root,
+                recipes, Map.of(), Map.of(), prices, settings, Set.of(1));
+
+        // Two outputs worth 1.1 billion each have no supported revenue. Resolving the cheap
+        // ingredient must never turn the rejected root attempt into an accepted craft.
+        assertAll(
+                () -> assertEquals(0, row.craftableCount),
+                () -> assertEquals(BlockedReason.VALUE_RANGE, row.blockedReason),
+                () -> assertEquals(0, simulation.getCraftCount()),
+                () -> assertEquals(BlockedReason.VALUE_RANGE, simulation.getBlockedReason()),
+                () -> assertTrue(simulation.getAcceptedCrafts().isEmpty()),
+                () -> assertNull(simulation.getFirstCraft()),
+                () -> assertNotNull(simulation.getBlockedAttempt()),
+                () -> assertEquals(0, simulation.getBuyCostTotal()),
+                () -> assertTrue(simulation.getTotalMissingToBuy().isEmpty()),
+                () -> assertTrue(explanation.available()),
+                () -> assertTrue(explanation.root().blockedReasons().contains(BlockedReason.VALUE_RANGE)),
+                () -> assertTrue(explanation.root().states().contains(ResolutionState.BLOCKED)));
     }
 
     @Test
