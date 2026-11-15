@@ -254,9 +254,15 @@ public final class SingleCraftExplainer {
                 blockedReasons,
                 complete ? need.getBuyCostCopper() : null,
                 complete ? need.getOpportunityCostCopper() : null,
-                complete ? need.getEffectiveCostCopper() : null,
+                complete ? effectiveOrNull(need) : null,
                 children
         );
+    }
+
+    /** The effective cost, or null when cash plus opportunity cost is outside the int range. */
+    private static Integer effectiveOrNull(ResolvedNeed need) {
+        long exact = need.effectiveCostCopper();
+        return exact < Integer.MIN_VALUE || exact > Integer.MAX_VALUE ? null : (int) exact;
     }
 
     private List<AcquisitionMethod> methodsOf(ResolvedNeed need) {

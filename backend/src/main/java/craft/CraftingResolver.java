@@ -276,7 +276,10 @@ public class CraftingResolver {
 
             result.setQtyBlocked(remaining);
 
-            if (!ctx.settings.allowBuying) {
+            BlockedReason craftReason = craftEval == null ? BlockedReason.NONE : craftEval.need.getBlockedReason();
+            if (!ctx.settings.allowBuying && craftReason != BlockedReason.MATERIAL_LIMIT
+                    && craftReason != BlockedReason.VALUE_RANGE) {
+                // A nested limit/range failure is the real cause and is never masked by this.
                 result.setBlockedReason(BlockedReason.BUYING_DISABLED);
             } else if (craftEval != null && craftEval.need.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(craftEval.need.getBlockedReason());

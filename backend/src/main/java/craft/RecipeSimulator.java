@@ -1,5 +1,7 @@
 package craft;
 
+import tradingpost.TradingPostFeePolicy;
+
 import java.util.Map;
 
 public class RecipeSimulator {
@@ -102,6 +104,16 @@ public class RecipeSimulator {
                 break;
             }
 
+            if (!aggregatesRepresentable(recipe, ctx, result.getCraftCount() + 1,
+                    nextBuyTotal, Math.addExact(result.getOpportunityCostTotal(), rr.getOpportunityCostCopper()))) {
+                // Keep the batches already accepted; only this one would push a revenue/profit
+                // aggregate outside the supported range.
+                state.rollbackTo(mark);
+                result.setBlockedReason(BlockedReason.VALUE_RANGE);
+                result.setBlockedAttempt(root);
+                break;
+            }
+
             if (ctx.settings.maxBuyCopper > 0 && nextBuyTotal > ctx.settings.maxBuyCopper) {
                 state.rollbackTo(mark);
                 result.setBlockedReason(BlockedReason.INSUFFICIENT_BUDGET);
@@ -133,6 +145,29 @@ public class RecipeSimulator {
                 break;
             }
         }
+    }
+
+    /**
+     * Whether the revenue and profit totals for {@code crafts} batches stay inside the int range
+     * the result reports, evaluated exactly in long arithmetic. A revenue that cannot be computed
+     * at all is left to the planner, which reports it as VALUE_RANGE for the recipe.
+     */
+    private static boolean aggregatesRepresentable(Recipe recipe, PlannerContext ctx, int crafts,
+                                                   long buyTotal, long opportunityTotal) {
+        int revenueOne;
+        try {
+            revenueOne = CostEvaluator.computeRevenue(recipe, ctx.tp, ctx.settings);
+        } catch (ArithmeticException outOfRange) {
+            return true;
+        }
+        long feeOne = revenueOne > 0 ? TradingPostFeePolicy.feeOn(revenueOne) : 0;
+        long sellTotal = (long) revenueOne * crafts;
+        long profit = sellTotal - feeOne * crafts - buyTotal - opportunityTotal;
+        return fits(sellTotal) && fits(profit);
+    }
+
+    private static boolean fits(long value) {
+        return value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE;
     }
 
 }

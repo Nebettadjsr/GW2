@@ -25,7 +25,7 @@ public class CostEvaluator {
         );
     }
 
-    private int computeRevenue(
+    static int computeRevenue(
             Recipe recipe,
             Map<Integer, PriceQuote> tp,
             CraftingSettings settings
