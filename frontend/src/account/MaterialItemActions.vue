@@ -18,24 +18,45 @@ const draft = ref('')
 const error = ref<string | null>(null)
 const label = computed(() => props.target === null ? '' : props.target.name ?? `Item #${props.target.itemId}`)
 const storeLabel = computed(() => props.view === 'bank' ? 'bank' : 'material storage')
-const position = computed(() => {
-  const t = props.target
-  if (t === null) return {}
-  const x = Math.max(4, Math.min(t.x, window.innerWidth - 220))
-  const y = Math.max(4, Math.min(t.y, window.innerHeight - 110))
-  return { left: `${x}px`, top: `${y}px` }
-})
+const placed = ref<{ left: string; top: string } | null>(null)
+const position = computed(() => placed.value ?? { left: '4px', top: '4px', visibility: 'hidden' as const })
+/** The control that opened this layer; focus returns to it when it is still connected. */
+let opener: HTMLElement | null = null
 
-watch(() => props.target, async (target) => {
+function clampToViewport(): void {
+  const t = props.target
+  const el = menu.value
+  if (t === null || el === null) return
+  const margin = 4
+  const x = Math.max(margin, Math.min(t.x, window.innerWidth - el.offsetWidth - margin))
+  const y = Math.max(margin, Math.min(t.y, window.innerHeight - el.offsetHeight - margin))
+  placed.value = { left: `${x}px`, top: `${y}px` }
+}
+
+watch(() => props.target, async (target, previous) => {
   mode.value = 'menu'
   error.value = null
+  placed.value = null
   if (target === null) return
+  if (previous === null || previous === undefined) {
+    opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null
+  }
   draft.value = String(protection.quantityFor(props.view, target.itemId) || '')
   await nextTick()
+  clampToViewport()
   menu.value?.querySelector<HTMLElement>('button')?.focus()
 })
 
-function close(): void { emit('close') }
+function restoreFocus(): void {
+  const el = opener
+  opener = null
+  if (el !== null && el.isConnected) void nextTick(() => el.focus())
+}
+function close(restore = true): void {
+  emit('close')
+  if (restore) restoreFocus()
+  else opener = null
+}
 function openEditor(): void {
   mode.value = 'editor'
   void nextTick(() => input.value?.focus())
@@ -43,7 +64,8 @@ function openEditor(): void {
 function openProfit(): void {
   const accountId = protection.state.accountId
   if (accountId !== null && props.target !== null) requestProfitSearch(accountId, label.value)
-  close()
+  // Navigation moves the user to another screen: do not pull focus back to the hidden tile.
+  close(false)
   route.navigate('crafting')
 }
 function apply(): void {
@@ -56,11 +78,32 @@ function apply(): void {
   protection.reserveQuantity(props.target.itemId, props.view, value)
   close()
 }
+
+const root = ref<HTMLElement | null>(null)
+function focusables(): HTMLElement[] {
+  return Array.from(root.value?.querySelectorAll<HTMLElement>('button, input, [href], [tabindex]:not([tabindex="-1"])') ?? [])
+    .filter(el => !(el as HTMLButtonElement).disabled)
+}
+/** Tab stays inside the open menu/dialog; arrows move within the menu. */
+function onKeydown(event: KeyboardEvent): void {
+  const items = focusables()
+  if (items.length === 0) return
+  const index = items.indexOf(document.activeElement as HTMLElement)
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    const next = event.shiftKey ? (index <= 0 ? items.length - 1 : index - 1) : (index === items.length - 1 ? 0 : index + 1)
+    items[next]?.focus()
+  } else if (mode.value === 'menu' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+    event.preventDefault()
+    const step = event.key === 'ArrowDown' ? 1 : -1
+    items[(index + step + items.length) % items.length]?.focus()
+  }
+}
 </script>
 
 <template>
-  <div v-if="target !== null" class="item-actions" data-test="item-actions" @keydown.esc.stop="close">
-    <div class="item-actions__backdrop" data-test="item-actions-backdrop" @click="close" @contextmenu.prevent="close" />
+  <div v-if="target !== null" ref="root" class="item-actions" data-test="item-actions" @keydown.esc.stop="close()" @keydown="onKeydown">
+    <div class="item-actions__backdrop" data-test="item-actions-backdrop" @click="close()" @contextmenu.prevent="close()" />
     <div v-if="mode === 'menu'" ref="menu" class="item-actions__menu" role="menu" :aria-label="`Actions for ${label}`"
       :style="position" data-test="item-menu">
       <button type="button" role="menuitem" data-test="menu-reserve" @click="openEditor">Reserve quantity…</button>
@@ -78,7 +121,7 @@ function apply(): void {
       <p v-if="error" class="notice notice--error" role="alert" data-test="reserve-error">{{ error }}</p>
       <span class="item-actions__buttons">
         <button type="submit" data-test="reserve-apply">Apply</button>
-        <button type="button" class="button--secondary" data-test="reserve-cancel" @click="close">Cancel</button>
+        <button type="button" class="button--secondary" data-test="reserve-cancel" @click="close()">Cancel</button>
       </span>
     </form>
   </div>

@@ -129,6 +129,22 @@ public class InventoryRepository {
             if (scope == null) sql = sql.replace("account_id = ? AND ", "");
             Set<Integer> excluded = pool == 0 ? excludedMaterialIds : pool == 1 ? excludedBankIds : Set.of();
             Map<Integer, Integer> target = pool == 0 ? materialQuantities : pool == 1 ? bankQuantities : Map.of();
+            if (target == null || target.isEmpty()) {
+                // No finite target for this pool: keep the original streaming path, no buffering.
+                try (PreparedStatement ps = con.prepareStatement(sql)) {
+                    if (scope != null) ps.setObject(1, scope.accountId());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            int itemId = rs.getInt("item_id");
+                            if (excluded.contains(itemId)) continue;
+                            int count = rs.getInt("count");
+                            if (count > 0) handler.accept(itemId, count, rs.getString("binding"), rs.getString("bound_to"));
+                        }
+                    }
+                }
+                continue;
+            }
+            // Homogeneous finite allocation needs every stack of a targeted item, so only this pool is buffered.
             List<Row> rows = new ArrayList<>();
             try (PreparedStatement ps = con.prepareStatement(sql)) {
                 if (scope != null) ps.setObject(1, scope.accountId());

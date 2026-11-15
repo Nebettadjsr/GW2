@@ -85,7 +85,7 @@ function onKey(event: KeyboardEvent): void {
 }
 .inventory-tile--selectable { cursor: pointer; }
 .inventory-tile--selectable:focus-within { outline: 3px solid var(--color-focus, #fff); outline-offset: -3px; }
-.inventory-tile--reserved { border: 2px dashed var(--color-accent, #2f6fdb); }
+.inventory-tile--reserved { border: 2px dashed var(--color-warning, #d99a00); }
 .inventory-tile__keep { position: absolute; left: 0; right: 0; top: 0; padding-inline-start: 20px; font-size: 11px; font-weight: 700; color: #fff; background: rgb(0 0 0 / 0.65); pointer-events: none; white-space: nowrap; overflow: hidden; }
 .inventory-tile--selected { outline: 2px solid var(--color-accent, #2f6fdb); outline-offset: -2px; }
 .inventory-tile--empty :deep(.item-icon__image),
