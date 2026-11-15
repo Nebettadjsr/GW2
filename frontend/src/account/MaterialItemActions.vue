@@ -44,6 +44,8 @@ watch(() => props.target, async (target, previous) => {
   draft.value = String(protection.quantityFor(props.view, target.itemId) || '')
   await nextTick()
   clampToViewport()
+  // Wait for the visible placement to be rendered; a visibility:hidden button cannot take focus.
+  await nextTick()
   menu.value?.querySelector<HTMLElement>('button')?.focus()
 })
 

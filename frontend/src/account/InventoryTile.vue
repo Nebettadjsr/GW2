@@ -22,6 +22,9 @@ const emit = defineEmits<{ toggle: [itemId: number]; menu: [itemId: number, x: n
 function openMenu(event: MouseEvent | KeyboardEvent, element: HTMLElement | null): void {
   if (props.selected === undefined) return
   event.preventDefault()
+  // Make the initiating tile's checkbox the focused control so the menu layer can restore focus to it.
+  const host = element ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget : null)
+  host?.querySelector<HTMLInputElement>('input.inventory-tile__select')?.focus({ preventScroll: true })
   const rect = element?.getBoundingClientRect()
   const x = event instanceof MouseEvent ? event.clientX : (rect?.left ?? 0)
   const y = event instanceof MouseEvent ? event.clientY : (rect?.bottom ?? 0)
@@ -100,6 +103,5 @@ function onKey(event: KeyboardEvent): void {
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
   text-shadow: -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000, 1px 1px 2px #000;
-  pointer-events: none;
 }
 </style>
