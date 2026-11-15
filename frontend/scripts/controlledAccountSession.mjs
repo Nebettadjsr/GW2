@@ -4,11 +4,12 @@ const DUMMY_KEY = 'synthetic-read-only-smoke-key'
 const ACCOUNT_ID = '00000000-0000-4000-8000-000000000194'
 
 /** Test-only backend boundary; the real App restores and proves the retained synthetic key. */
-export function createControlledAccountSession({ calculationRoutes, searchQueries }) {
+export function createControlledAccountSession({ calculationRoutes, searchQueries, accountReadRoutes = [] }) {
   const methods = new Map([
     ['/api/session', 'POST'],
     ['/api/crafting/selector-options', 'GET'],
     ['/api/crafting/ingredient-search', 'GET'],
+    ...accountReadRoutes.map(path => [path, 'GET']),
     ...calculationRoutes.map(path => [path, 'POST'])
   ])
   const failures = []

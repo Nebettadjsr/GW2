@@ -52,6 +52,7 @@ describe('deleteAccountData', () => {
     const mp = useMaterialProtection()
     mp.setPending([5])
     mp.commit()
+    mp.reserveQuantity(19697, 'bank', 250)
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).not.toBeNull()
 
     expect(await deleteAccountData()).toBe('deleted')
@@ -68,6 +69,8 @@ describe('deleteAccountData', () => {
     // The in-memory shadow is gone too: reconnecting restores nothing.
     await connectKey('KEY')
     expect(useMaterialProtection().state.committed).toEqual([])
+    expect(useMaterialProtection().quantitiesFor('bank')).toEqual({})
+    expect(useMaterialProtection().quantitiesFor('materials')).toEqual({})
     expect(connection.deletionNotice).toBeNull()
   })
 
@@ -80,6 +83,7 @@ describe('deleteAccountData', () => {
     const mp = useMaterialProtection()
     mp.setPending([5])
     mp.commit()
+    mp.reserveQuantity(19697, 'materials', 250)
     const posted = vi.fn()
     const channel = new BroadcastChannel(DELETION_CHANNEL)
     channel.onmessage = posted
@@ -94,6 +98,8 @@ describe('deleteAccountData', () => {
     expect(connection.accountId).toBe(A)
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY')
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).not.toBeNull()
+    expect(mp.quantityFor('materials', 19697)).toBe(250)
+    expect(JSON.parse(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).quantities.materials).toEqual({ 19697: 250 })
     expect(connection.deletionNotice).toBeNull()
   })
 
@@ -221,10 +227,12 @@ describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {
     const mp = useMaterialProtection()
     mp.setPending([5])
     mp.commit()
+    mp.reserveQuantity(19697, 'bank', 250)
     account = B
     await connectKey('KEY-B')
     mp.setPending([9])
     mp.commit()
+    mp.reserveQuantity(19697, 'materials', 17)
     const bPreference = window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)
     calls.length = 0
 
@@ -236,10 +244,13 @@ describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {
     expect(connection.phase).toBe('connected')
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe('KEY-B')
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).toBe(bPreference)
+    expect(mp.quantityFor('materials', 19697)).toBe(17)
     expect(calls).toEqual([])
     account = A
     await connectKey('KEY-A')
     expect(mp.state.committed).toEqual([])
+    expect(mp.quantitiesFor('bank')).toEqual({})
+    expect(mp.quantitiesFor('materials')).toEqual({})
   })
 })
 

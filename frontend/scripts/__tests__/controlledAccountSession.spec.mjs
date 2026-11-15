@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createControlledAccountSession } from '../controlledAccountSession.mjs'
 
-function fixture() {
-  const session = createControlledAccountSession({ calculationRoutes: ['/api/crafting/profit'], searchQueries: ['Iron'] })
+function fixture(options = {}) {
+  const session = createControlledAccountSession({ calculationRoutes: ['/api/crafting/profit'], searchQueries: ['Iron'], ...options })
   const replies = []
   function request(path, method, headers = {}, body = '') {
     const handled = session.answer({
@@ -15,6 +15,17 @@ function fixture() {
 }
 
 describe('controlled account boundary', () => {
+  it('admits only explicitly listed account reads after proof with the current context', () => {
+    const { request } = fixture({ accountReadRoutes: ['/api/account/bank', '/api/account/materials'] })
+    expect(request('/api/account/bank', 'GET').reply.status).toBe(401)
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    expect(request('/api/account/bank', 'GET', { 'x-account-context': 'smoke-context-1' }).handled).toBe(false)
+    expect(request('/api/account/materials', 'GET', { 'x-account-context': 'old-context' }).reply.status).toBe(401)
+    expect(request('/api/account/bank', 'POST', { 'x-account-context': 'smoke-context-1' }).reply.status).toBe(405)
+    expect(request('/api/account/inventory', 'GET', { 'x-account-context': 'smoke-context-1' }).reply.status).toBe(404)
+    expect(request('/api/sync/account/bank', 'POST').reply.status).toBe(404)
+  })
+
   it('admits protected fixtures only after the normal retained-key proof with its returned context', () => {
     const { request } = fixture()
     expect(request('/api/crafting/profit', 'POST').reply.status).toBe(401)
