@@ -9,7 +9,8 @@ import { useMaterialProtection } from '@/materials/materialProtectionState'
  */
 const protection = useMaterialProtection()
 const ready = computed(() => protection.state.status === 'ready')
-const count = computed(() => protection.state.committed.length)
+const count = computed(() => protection.state.committed.length
+  + Object.keys(protection.state.quantitiesByView.bank).length + Object.keys(protection.state.quantitiesByView.materials).length)
 const enabled = computed(() => protection.state.activation && count.value > 0)
 const warning = ref(false)
 const hovered = ref(false)

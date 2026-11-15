@@ -40,7 +40,31 @@ type ViewSelections = Record<SelectionView, number[]>
 const emptySelections = (): ViewSelections => ({ bank: [], materials: [] })
 const copySelections = (value: ViewSelections): ViewSelections => ({ bank: [...value.bank], materials: [...value.materials] })
 
+/** Finite keep-targets per view: item id -> units to keep (fixed target, not current stock). */
+type ViewQuantities = Record<SelectionView, Record<number, number>>
+const emptyQuantities = (): ViewQuantities => ({ bank: {}, materials: {} })
+const copyQuantities = (value: ViewQuantities): ViewQuantities => ({ bank: { ...value.bank }, materials: { ...value.materials } })
+
+/** Largest supported reservation target (matches the backend's int range). */
+export const MAX_RESERVATION_QUANTITY = 2147483647
+
+/** A valid finite target is a nonnegative safe whole number within range; anything else is rejected, never coerced. */
+export function validReservationQuantity(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_RESERVATION_QUANTITY
+}
+
+function canonicalQuantityRecord(value: unknown): Record<number, number> {
+  const out: Record<number, number> = {}
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return out
+  for (const [key, qty] of Object.entries(value as Record<string, unknown>)) {
+    const id = Number(key)
+    if (Number.isSafeInteger(id) && id > 0 && validReservationQuantity(qty) && qty > 0) out[id] = qty
+  }
+  return out
+}
+
 interface StoredPreference {
+  quantities?: ViewQuantities
   version: number
   protectedItemIds: number[]
   enabled: boolean
@@ -79,6 +103,18 @@ export function canonicalIds(values: unknown): number[] {
   return [...seen].sort((a, b) => a - b)
 }
 
+/** Stable comparison form of a quantity map: positive whole targets only, ascending by item id. */
+export function canonicalQuantityKey(value: unknown): string {
+  const entries: [number, number][] = []
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    for (const [key, qty] of Object.entries(value as Record<string, unknown>)) {
+      const id = Number(key)
+      if (Number.isSafeInteger(id) && id > 0 && validReservationQuantity(qty) && qty > 0) entries.push([id, qty])
+    }
+  }
+  return JSON.stringify(entries.sort((a, b) => a[0] - b[0]))
+}
+
 function sameIds(a: readonly number[], b: readonly number[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
@@ -109,6 +145,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     pending: [] as number[],
     pendingByView: emptySelections(),
     committedByView: emptySelections(),
+    quantitiesByView: emptyQuantities(),
     /** Views whose checkboxes/presets edited the current pending selection. */
     pendingViews: [] as SelectionView[],
     /** Views the committed selection came from; null when unknown (legacy record). */
@@ -121,7 +158,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
    * Latest COMMITTED values per account for this page. It backs restoration when storage is unavailable
    * or a read/write failed, so A->B->A and reconnect never fall back to a stale stored record.
    */
-  const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null; selections: ViewSelections }>()
+  const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null; selections: ViewSelections; quantities: ViewQuantities }>()
   /** Bumped on every local edit and account change; guards delayed canonical responses. */
   let editVersion = 0
   /** Last started request; a canonical response is accepted only from this one. */
@@ -174,6 +211,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         sources: canonicalSources(record.sources) ?? undefined,
         selections: typeof record.selections === 'object' && record.selections !== null
           ? { bank: canonicalIds((record.selections as ViewSelections).bank), materials: canonicalIds((record.selections as ViewSelections).materials) }
+          : undefined,
+        quantities: typeof record.quantities === 'object' && record.quantities !== null
+          ? { bank: canonicalQuantityRecord((record.quantities as ViewQuantities).bank), materials: canonicalQuantityRecord((record.quantities as ViewQuantities).materials) }
           : undefined
       },
       diagnostic: Array.isArray(record.protectedItemIds) && typeof record.enabled === 'boolean' ? null : 'corrupt'
@@ -187,7 +227,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       return
     }
     const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled,
-      selections: copySelections(state.committedByView) }
+      selections: copySelections(state.committedByView), quantities: copyQuantities(state.quantitiesByView) }
     if (sources !== null) value.sources = [...sources]
     try {
       storage.setItem(keyFor(accountId), JSON.stringify(value))
@@ -232,6 +272,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     state.pending = []
     state.pendingByView = emptySelections()
     state.committedByView = emptySelections()
+    state.quantitiesByView = emptyQuantities()
     state.pendingViews = []
     state.committedSources = null
     state.activation = false
@@ -251,10 +292,11 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         state.activation = value.enabled
         state.committedSources = value.sources ?? null
         state.committedByView = restoredSelections(value.protectedItemIds, value.sources ?? null, value.selections)
+        state.quantitiesByView = value.quantities ? copyQuantities(value.quantities) : emptyQuantities()
         // A successfully restored committed preference is also this page's latest committed value,
         // but never replaces a newer in-memory commit already in the shadow.
         if (!shadow.has(accountId)) shadow.set(accountId, { ids: [...value.protectedItemIds], enabled: value.enabled,
-          sources: value.sources ?? null, selections: copySelections(state.committedByView) })
+          sources: value.sources ?? null, selections: copySelections(state.committedByView), quantities: copyQuantities(state.quantitiesByView) })
       }
       if (diagnostic === 'unsupported-version' || (diagnostic === 'corrupt' && value === null)) {
         discardStored(accountId)
@@ -266,6 +308,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       state.activation = latest.enabled
       state.committedSources = latest.sources === null ? null : [...latest.sources]
       state.committedByView = copySelections(latest.selections)
+      state.quantitiesByView = copyQuantities(latest.quantities)
     }
     state.pending = [...state.committed]
     state.pendingByView = copySelections(state.committedByView)
@@ -319,7 +362,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     const next = new Set(view === undefined ? state.pending : state.pendingByView[view])
     if (next.has(itemId)) next.delete(itemId)
     else next.add(itemId)
+    dropFiniteFor(view, [itemId])
     setPending([...next], view)
+    autosave(view)
   }
 
   /** A partially selected group becomes fully selected; a full group is deselected. */
@@ -332,7 +377,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       if (deselect) next.delete(id)
       else next.add(id)
     }
+    dropFiniteFor(view, ids)
     setPending([...next], view)
+    autosave(view)
   }
 
   function discardPending(view?: SelectionView): void {
@@ -352,14 +399,49 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     if (view === undefined) state.committedByView = copySelections(state.pendingByView)
     else state.committedByView[view] = [...state.pendingByView[view]]
     syncSelectionTotals()
-    state.committedSources = (['bank', 'materials'] as const).filter(source => state.committedByView[source].length > 0)
+    state.committedSources = (['bank', 'materials'] as const).filter(source => state.committedByView[source].length > 0 || Object.keys(state.quantitiesByView[source]).length > 0)
     state.pendingViews = view === undefined ? [] : state.pendingViews.filter(value => value !== view)
     // Empty-selection safety rule: an empty committed selection cannot stay activated, and a later
     // non-empty Save must not silently re-enable it.
-    if (state.committed.length === 0) state.activation = false
+    const hasFinite = Object.keys(state.quantitiesByView.bank).length + Object.keys(state.quantitiesByView.materials).length > 0
+    if (state.committed.length === 0 && !hasFinite) state.activation = false
     shadow.set(accountId, { ids: [...state.committed], enabled: state.activation,
-      sources: state.committedSources && [...state.committedSources], selections: copySelections(state.committedByView) })
+      sources: state.committedSources && [...state.committedSources], selections: copySelections(state.committedByView),
+      quantities: copyQuantities(state.quantitiesByView) })
     persist(accountId, state.committed, state.activation, state.committedSources)
+  }
+
+  /** Autosave: the pending edit becomes committed in the same action, with exactly one preference write. */
+  function autosave(view?: SelectionView): void {
+    commit(view)
+  }
+
+  /** ALL wins over a finite target for the same item; clearing ALL leaves no stale finite target. */
+  function dropFiniteFor(view: SelectionView | undefined, ids: Iterable<number>): void {
+    for (const v of view === undefined ? (['bank', 'materials'] as const) : [view]) {
+      for (const id of ids) delete state.quantitiesByView[v][id]
+    }
+  }
+
+  /**
+   * Sets a finite keep-target for one item in one view. Zero clears. Invalid input is rejected (returns
+   * false) and the existing preference is left untouched.
+   */
+  function reserveQuantity(itemId: number, view: SelectionView, quantity: unknown): boolean {
+    if (ready() === null || !Number.isSafeInteger(itemId) || itemId <= 0 || !validReservationQuantity(quantity)) return false
+    const all = new Set(state.pendingByView[view])
+    all.delete(itemId)
+    state.pendingByView[view] = canonicalIds([...all])
+    if (quantity === 0) delete state.quantitiesByView[view][itemId]
+    else state.quantitiesByView[view][itemId] = quantity
+    syncSelectionTotals()
+    autosave(view)
+    return true
+  }
+
+  /** The finite keep-target of an item in a view, or 0 when it has none. */
+  function quantityFor(view: SelectionView, itemId: number): number {
+    return state.quantitiesByView[view][itemId] ?? 0
   }
 
   /** The stored Profit activation preference. */
@@ -369,7 +451,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     editVersion += 1
     state.activation = enabled
     shadow.set(accountId, { ids: [...state.committed], enabled, sources: state.committedSources && [...state.committedSources],
-      selections: copySelections(state.committedByView) })
+      selections: copySelections(state.committedByView), quantities: copyQuantities(state.quantitiesByView) })
     persist(accountId, state.committed, enabled, state.committedSources)
   }
 
@@ -438,6 +520,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     committedFor: (view: SelectionView) => state.committedByView[view],
     dirtyFor: (view: SelectionView) => !sameIds(state.pendingByView[view], state.committedByView[view]),
     setPending,
+    reserveQuantity,
+    quantityFor,
+    quantitiesFor: (view: SelectionView) => ({ ...state.quantitiesByView[view] }),
     togglePending,
     togglePendingGroup,
     discardPending,

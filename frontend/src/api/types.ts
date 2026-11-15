@@ -104,6 +104,9 @@ export interface EffectiveSettings {
   protectedItemIds?: number[]
   protectedBankItemIds?: number[]
   protectedMaterialItemIds?: number[]
+  /** Finite keep-targets (item id -> units) per store; absent from older backends. */
+  protectedBankQuantities?: Record<string, number>
+  protectedMaterialQuantities?: Record<string, number>
 }
 
 /**

@@ -1,6 +1,7 @@
 package craft;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 
 public class CraftingSettings {
@@ -17,6 +18,9 @@ public class CraftingSettings {
     public final Set<Integer> protectedItemIds;
     public final Set<Integer> protectedBankItemIds;
     public final Set<Integer> protectedMaterialItemIds;
+    /** Finite per-source reservation targets (item id -> units to keep); immutable, positive values only. */
+    public final Map<Integer, Integer> protectedBankQuantities;
+    public final Map<Integer, Integer> protectedMaterialQuantities;
 
     public CraftingSettings(boolean useOwnMats,
                             boolean allowBuy,
@@ -44,6 +48,19 @@ public class CraftingSettings {
                             boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
                             boolean materialProtectionEnabled, Collection<Integer> protectedItemIds,
                             Collection<Integer> protectedBankItemIds, Collection<Integer> protectedMaterialItemIds) {
+        this(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                Map.of(), Map.of());
+    }
+
+    public CraftingSettings(boolean useOwnMats, boolean allowBuy, int maxBuyCopper,
+                            boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
+                            boolean materialProtectionEnabled, Collection<Integer> protectedItemIds,
+                            Collection<Integer> protectedBankItemIds, Collection<Integer> protectedMaterialItemIds,
+                            Map<Integer, Integer> protectedBankQuantities,
+                            Map<Integer, Integer> protectedMaterialQuantities) {
+        this.protectedBankQuantities = canonicalQuantities(protectedBankQuantities, protectedBankItemIds, protectedItemIds);
+        this.protectedMaterialQuantities = canonicalQuantities(protectedMaterialQuantities, protectedMaterialItemIds, protectedItemIds);
         this.materialProtectionEnabled = materialProtectionEnabled;
         this.protectedItemIds = protectedItemIds == null ? Set.of() : Set.copyOf(protectedItemIds);
         this.protectedBankItemIds = protectedBankItemIds == null ? Set.of() : Set.copyOf(protectedBankItemIds);
@@ -56,6 +73,27 @@ public class CraftingSettings {
         this.allowDailyCrafts = allowDailyCrafts;
     }
 
+    /** Immutable copy keeping positive targets only; reserve-ALL for the same item takes precedence. */
+    private static Map<Integer, Integer> canonicalQuantities(Map<Integer, Integer> quantities,
+                                                              Collection<Integer> sourceAll,
+                                                              Collection<Integer> globalAll) {
+        if (quantities == null || quantities.isEmpty()) return Map.of();
+        Map<Integer, Integer> out = new java.util.TreeMap<>();
+        quantities.forEach((id, qty) -> {
+            if (id == null || qty == null || qty <= 0) return;
+            if (sourceAll != null && sourceAll.contains(id)) return;
+            if (globalAll != null && globalAll.contains(id)) return;
+            out.put(id, qty);
+        });
+        return Map.copyOf(out);
+    }
+
+    /** True when any source-specific finite reservation is present. */
+    public boolean hasFiniteReservations() {
+        return materialProtectionEnabled
+                && (!protectedBankQuantities.isEmpty() || !protectedMaterialQuantities.isEmpty());
+    }
+
     /** True when pre-existing owned copies of {@code itemId} must not be consumed. */
     public boolean isProtected(int itemId) {
         return materialProtectionEnabled && !protectedItemIds.isEmpty()
@@ -65,7 +103,8 @@ public class CraftingSettings {
     /** Same settings with buying disabled and no budget; protection is preserved. */
     public CraftingSettings withBuyingDisabled() {
         return new CraftingSettings(useOwnMats, false, 0, listingSell, listingBuy, allowDailyCrafts,
-                materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds);
+                materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                protectedBankQuantities, protectedMaterialQuantities);
     }
 
 }

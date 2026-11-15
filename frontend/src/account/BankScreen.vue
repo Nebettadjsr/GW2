@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { accountApi, type AccountApi } from '@/api/accountApi'
 import type { BankContents, BankSlot } from '@/api/types'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -7,6 +7,7 @@ import BankSlotTile from './BankSlotTile.vue'
 import { useAccountRead } from './useAccountRead'
 import AutomaticRefreshStatus from './AutomaticRefreshStatus.vue'
 import { useAutomaticAccountRefresh } from './useAutomaticAccountRefresh'
+import MaterialItemActions, { type ItemActionTarget } from './MaterialItemActions.vue'
 import MaterialSelectionBar from './MaterialSelectionBar.vue'
 import { useMaterialProtection } from '@/materials/materialProtectionState'
 
@@ -23,6 +24,10 @@ const automatic = useAutomaticAccountRefresh({
 
 onMounted(() => { void bank.load() })
 const protection = useMaterialProtection()
+const actionTarget = ref<ItemActionTarget | null>(null)
+function openActions(slot: BankSlot, x: number, y: number): void {
+  if (slot.itemId !== null) actionTarget.value = { itemId: slot.itemId, name: slot.itemName ?? null, count: slot.count ?? 0, x, y }
+}
 const pendingIds = computed(() => new Set(protection.pendingFor('bank')))
 const selectable = computed(() => protection.state.status === 'ready')
 const pageItemIds = computed(() => [...new Set((bank.data.value?.slots ?? [])
@@ -62,6 +67,7 @@ const tabs = computed(() => {
     <AutomaticRefreshStatus :updating="automatic.updating.value" :failed="automatic.failed.value" :has-data="!!bank.data.value?.slots" />
 
     <MaterialSelectionBar view="bank" :item-ids="pageItemIds" />
+    <MaterialItemActions view="bank" :target="actionTarget" @close="actionTarget = null" />
     <div class="stack">
       <p v-if="bank.phase.value === 'loading' && !bank.data.value" class="notice notice--info" role="status" data-test="bank-loading">
         Loading the bank…
@@ -84,6 +90,8 @@ const tabs = computed(() => {
             <ol class="slots" data-test="bank-slots">
               <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :slot="slot"
                 :selected="selectable && slot.protectionSelectable !== false && slot.itemId !== null ? pendingIds.has(slot.itemId) : undefined"
+                :reserved="slot.itemId !== null ? protection.quantityFor('bank', slot.itemId) : 0"
+                @menu="(_id: number, x: number, y: number) => openActions(slot, x, y)"
                 @toggle="(id: number) => protection.togglePending(id, 'bank')" />
             </ol>
           </div>

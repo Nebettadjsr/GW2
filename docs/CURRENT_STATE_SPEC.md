@@ -28,19 +28,23 @@ The Maven wrapper and `backend/pom.xml` manage Java dependencies. Frontend depen
 ## Public Oracle deployment (2026-11-15)
 
 The owner approved publication of the current UI and calculation fix, then explicitly authorized
-general public access. The live release is `265cad816492856cb73fa33094dbba2ece6465a1`, from merged
+general public access. The live release is `40007cfa250c89434b0d35be8c178517d4110bd5`, from merged
 [#222](https://github.com/Nebettadjsr/GW2/pull/222),
 [#226](https://github.com/Nebettadjsr/GW2/pull/226) and
 [#224](https://github.com/Nebettadjsr/GW2/pull/224), followed by the explicitly approved
-[#192](https://github.com/Nebettadjsr/GW2/pull/192). Its tree exactly matches the reviewed/CI
-candidate `ddcc5713359662db9490e4e262c6b313d82bfb01`. Build, activation and public-access
-verification ran in the visible Oracle SSH terminal; all three containers are healthy.
+[#192](https://github.com/Nebettadjsr/GW2/pull/192), subsequent maintenance and the additive cached
+Bank/Materials item-name foundation [#234](https://github.com/Nebettadjsr/GW2/pull/234). Its tree
+exactly matches reviewed/CI candidate `97ad46f9910b015f2d5036a59488f2dfdd95f488`; independent
+local QA passed all 67 focused checks. Build, activation and public-access verification ran in
+the visible Oracle SSH terminal; all three containers are healthy. The backend was replaced;
+the unchanged frontend kept running. The new tile/reservation UI is a separate local-review
+draft and is not included in this deployment.
 
 The host is Oracle Frankfurt AD 2, Ubuntu 24.04 ARM64, 2 OCPUs and 12 GB RAM, at
 `130.61.78.114`. Docker 29.9.3 / Compose 5.7.1 run frontend, backend and PostgreSQL 17.
 Only the frontend publishes a host port, `127.0.0.1:8088`; backend and PostgreSQL publish none.
 The database container was not recreated for this release. `/opt/gw2/current` selects
-`/opt/gw2/releases/265cad816492856cb73fa33094dbba2ece6465a1`.
+`/opt/gw2/releases/40007cfa250c89434b0d35be8c178517d4110bd5`.
 Private deployment inputs remain outside the repository.
 
 ### Public Home and crawler boundary

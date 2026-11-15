@@ -4,8 +4,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -113,20 +115,77 @@ public class InventoryRepository {
     private static void forEachScopedRow(Connection con, model.AccountScope scope,
                                          Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds,
                                          OwnedRowHandler handler) throws SQLException {
+        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, Map.of(), Map.of(), handler);
+    }
+
+    private record Row(int itemId, int count, String binding, String boundTo) { }
+
+    private static void forEachScopedRow(Connection con, model.AccountScope scope,
+                                         Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds,
+                                         Map<Integer, Integer> bankQuantities, Map<Integer, Integer> materialQuantities,
+                                         OwnedRowHandler handler) throws SQLException {
         for (int pool = 0; pool < SCOPED_POOL_QUERIES.length; pool++) {
             String sql = SCOPED_POOL_QUERIES[pool];
             if (scope == null) sql = sql.replace("account_id = ? AND ", "");
             Set<Integer> excluded = pool == 0 ? excludedMaterialIds : pool == 1 ? excludedBankIds : Set.of();
+            Map<Integer, Integer> target = pool == 0 ? materialQuantities : pool == 1 ? bankQuantities : Map.of();
+            List<Row> rows = new ArrayList<>();
             try (PreparedStatement ps = con.prepareStatement(sql)) {
                 if (scope != null) ps.setObject(1, scope.accountId());
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         if (excluded.contains(rs.getInt("item_id"))) continue;
-                        handler.accept(rs.getInt("item_id"), rs.getInt("count"),
-                                rs.getString("binding"), rs.getString("bound_to"));
+                        rows.add(new Row(rs.getInt("item_id"), rs.getInt("count"),
+                                rs.getString("binding"), rs.getString("bound_to")));
                     }
                 }
             }
+            Map<Integer, Long> remaining = reservationsToApply(rows, target);
+            for (Row r : rows) {
+                int count = r.count();
+                Long keep = remaining.get(r.itemId());
+                if (keep != null && keep > 0) {
+                    int taken = (int) Math.min(keep, count);
+                    count -= taken;
+                    remaining.put(r.itemId(), keep - taken);
+                }
+                if (count > 0) handler.accept(r.itemId(), count, r.binding(), r.boundTo());
+            }
+        }
+    }
+
+    /** Per-item reserve for one store; fails when a partial target spans differently bound stacks. */
+    private static Map<Integer, Long> reservationsToApply(List<Row> rows, Map<Integer, Integer> target) {
+        Map<Integer, Long> out = new HashMap<>();
+        if (target == null || target.isEmpty()) return out;
+        Map<Integer, Long> totals = new HashMap<>();
+        Map<Integer, Set<String>> kinds = new HashMap<>();
+        for (Row r : rows) {
+            if (!target.containsKey(r.itemId())) continue;
+            totals.merge(r.itemId(), (long) r.count(), Long::sum);
+            kinds.computeIfAbsent(r.itemId(), k -> new HashSet<>()).add(r.binding() + "\u0000" + r.boundTo());
+        }
+        for (Map.Entry<Integer, Long> t : totals.entrySet()) {
+            long reserve = target.get(t.getKey());
+            if (reserve <= 0 || t.getValue() <= 0) continue;
+            if (reserve < t.getValue() && kinds.get(t.getKey()).size() > 1) {
+                throw new UnresolvedReservationAllocationException(t.getKey());
+            }
+            out.put(t.getKey(), reserve);
+        }
+        return out;
+    }
+
+    /**
+     * Thrown when a finite reservation would cover only part of one item's stacks in a store whose
+     * stacks differ in binding or character owner. No allocation rule is approved (draft; Product
+     * Owner decision pending), so no guess is made.
+     */
+    public static final class UnresolvedReservationAllocationException extends RuntimeException {
+        public final int itemId;
+        public UnresolvedReservationAllocationException(int itemId) {
+            super("Partial material reservation across differently bound copies is not decided yet");
+            this.itemId = itemId;
         }
     }
 
@@ -363,17 +422,45 @@ public class InventoryRepository {
         }
     }
 
-    /** Source exclusions apply before aggregation; cached quantities and character stock are untouched. */
     public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope,
                                                                 Set<String> characterNames,
                                                                 Set<Integer> excludedBankIds,
                                                                 Set<Integer> excludedMaterialIds) throws SQLException {
+        return loadOwnedInventoryForCharacters(con, scope, characterNames, excludedBankIds, excludedMaterialIds,
+                Map.of(), Map.of());
+    }
+
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds,
+                                                                Map<Integer, Integer> bankQuantities,
+                                                                Map<Integer, Integer> materialQuantities) throws SQLException {
+        try (Connection con = Db.open()) {
+            return loadOwnedInventoryForCharacters(con, null, characterNames, excludedBankIds, excludedMaterialIds,
+                    bankQuantities, materialQuantities);
+        }
+    }
+
+    /**
+     * Source exclusions and finite reservations apply before aggregation; cached quantities and
+     * character stock are untouched. A finite target is subtracted once per item and store across
+     * its stacks (at most the owned amount). Partial reservation across stacks with different
+     * bindings/owners has no approved allocation rule and fails with
+     * {@link UnresolvedReservationAllocationException}.
+     */
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope,
+                                                                Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds,
+                                                                Map<Integer, Integer> bankQuantities,
+                                                                Map<Integer, Integer> materialQuantities) throws SQLException {
         if (scope == null) ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
         else ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> accountBound = new HashMap<>();
         Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
-        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, (itemId, count, binding, boundTo) ->
+        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, bankQuantities, materialQuantities,
+                (itemId, count, binding, boundTo) ->
                 classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames,
                         sellable, accountBound, characterBound));
         return new CoordinatedInventory(sellable, accountBound, characterBound);
