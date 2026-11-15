@@ -84,6 +84,14 @@ class CraftingGraphSearchTest {
     }
 
     @Test
+    void textThatBecomesEmptyAfterTrimmingDoesNotMatchAllNamedIngredients() {
+        CraftingGraph graph = new CraftingGraph(List.of(recipe(10, 100, 1, 19698)),
+                Map.of(19698, "Mithril Ore"));
+
+        assertEquals(Set.of(), graph.parentRecipeIdsForIngredientName(String.valueOf((char) 0)));
+    }
+
+    @Test
     void widelyUsedIngredientTraversalReturnsEachRecipeOnce() {
         var recipes = new java.util.ArrayList<Recipe>();
         for (int i = 1; i <= 2_000; i++) recipes.add(recipe(i, 10_000 + i, 1, 7));
