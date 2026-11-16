@@ -175,6 +175,23 @@ describe('Bank stack reservation intent through rendered controls', () => {
     expect(writes).not.toHaveBeenCalled()
   })
 
+  it('rejects a manual sum above the supported target range without destroying the previous target or hints', async () => {
+    // Both counts fit the supported positive-int transport; only the requested combined target overflows.
+    const maximum = 2147483647
+    snapshot.slots = [{ ...snapshot.slots[0]!, count: maximum }, { ...snapshot.slots[1]!, count: 1 }]
+    const wrapper = await open()
+    await clickSlot(wrapper, 0)
+    const previous = allocationRows([maximum, 0], snapshot)
+    expect((await settings()).protectedBankAllocations).toEqual(previous)
+    const writes = vi.spyOn(Storage.prototype, 'setItem')
+    boxes(wrapper)[1]!.click() // A one-unit Bank stack intentionally has no count badge.
+    await flushPromises()
+    expect(useMaterialProtection().quantityFor('bank', ITEM)).toBe(maximum)
+    expectRows(wrapper, [true, false])
+    expect(writes).not.toHaveBeenCalled()
+    expect((await settings()).protectedBankAllocations).toEqual(previous)
+  })
+
   it.each(['count', 'item', 'binding', 'owner', 'extra row', 'missing row'])(
     'redistributes the unchanged fixed target after a %s guard change, with at most one cleanup write', async change => {
       const wrapper = await open()
