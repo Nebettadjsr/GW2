@@ -8,6 +8,7 @@ import { useAccountRead } from './useAccountRead'
 import AutomaticRefreshStatus from './AutomaticRefreshStatus.vue'
 import { useAutomaticAccountRefresh } from './useAutomaticAccountRefresh'
 import MaterialItemActions, { type ItemActionTarget } from './MaterialItemActions.vue'
+import ReservationNotes, { type ReservationNote } from './ReservationNotes.vue'
 import MaterialSelectionBar from './MaterialSelectionBar.vue'
 import { useMaterialProtection } from '@/materials/materialProtectionState'
 import { MATERIAL_PRESETS, type MaterialPreset } from '@/materials/materialPresets'
@@ -34,6 +35,15 @@ function categorySelected(category: MaterialCategory): boolean {
 }
 function toggleCategory(category: MaterialCategory): void {
   protection.togglePendingGroup(category.materials.map(material => material.itemId), 'materials')
+}
+function notesFor(category: MaterialCategory): ReservationNote[] {
+  const notes = new Map<number, ReservationNote>()
+  for (const material of category.materials) {
+    const target = protection.quantityFor('materials', material.itemId)
+    if (target <= 0 || pendingIds.value.has(material.itemId) || notes.has(material.itemId)) continue
+    notes.set(material.itemId, { itemId: material.itemId, name: material.itemName ?? null, target })
+  }
+  return [...notes.values()]
 }
 function presetsFor(category: MaterialCategory): readonly MaterialPreset[] {
   return MATERIAL_PRESETS.filter(preset => preset.categoryId === category.category)
@@ -73,6 +83,7 @@ function presetSelected(preset: MaterialPreset): boolean {
               :aria-label="`${categorySelected(category) ? 'Deselect' : 'Select'} all ${category.name}`"
               @click="toggleCategory(category)">{{ categorySelected(category) ? 'Deselect all' : 'Select all' }}</button>
           </div>
+          <div class="material-body">
           <div class="material-scroll">
             <ol class="material-grid" data-test="material-grid">
               <li v-for="material in category.materials" :key="material.position" data-test="material-stack">
@@ -85,6 +96,8 @@ function presetSelected(preset: MaterialPreset): boolean {
               </li>
             </ol>
           </div>
+          <ReservationNotes :notes="notesFor(category)" source="material storage" />
+          </div>
         </section>
       </template>
     </div>
@@ -92,7 +105,7 @@ function presetSelected(preset: MaterialPreset): boolean {
 </template>
 
 <style scoped>
-.screen { width: min(100%, 636px); margin-inline: auto; }
+.screen { width: min(100%, 900px); margin-inline: auto; }
 .detail { display: block; margin-top: var(--space-2); }
 .material-category { margin-block: var(--space-4); }
 .material-category h2 { margin: 0 0 var(--space-2); font-size: var(--text-base); }
@@ -101,6 +114,7 @@ function presetSelected(preset: MaterialPreset): boolean {
 .material-category__actions button { padding: 4px 10px; font-size: var(--text-sm); }
 .material-category__toggle { margin-inline-start: auto; }
 .material-category__presets button[aria-pressed='true'] { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.material-body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3); }
 .material-scroll { max-width: 100%; overflow-x: auto; }
 .material-grid { display: grid; grid-template-columns: repeat(10, 60px); grid-auto-rows: 60px; gap: 4px; width: max-content; list-style: none; margin: 0; padding: 0 0 var(--space-2); }
 </style>

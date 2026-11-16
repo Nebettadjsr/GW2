@@ -53,7 +53,6 @@ function onKey(event: KeyboardEvent): void {
       @change="$emit('toggle', itemId)"
       @keydown="onKey"
     >
-    <span v-if="reserved > 0 && selected !== true" class="inventory-tile__keep" data-test="keep-label">Keep {{ reserved.toLocaleString('en-US') }}</span>
     <span v-if="count > 0 && (showOne || count > 1)" class="inventory-tile__quantity" data-test="item-count">
       {{ count.toLocaleString('en-US') }}
     </span>
@@ -88,8 +87,7 @@ function onKey(event: KeyboardEvent): void {
 }
 .inventory-tile--selectable { cursor: pointer; }
 .inventory-tile--selectable:focus-within { outline: 3px solid var(--color-focus, #fff); outline-offset: -3px; }
-.inventory-tile--reserved { border: 2px dashed var(--color-warning, #d99a00); }
-.inventory-tile__keep { position: absolute; left: 0; right: 0; top: 0; padding-inline-start: 20px; font-size: 11px; font-weight: 700; color: #fff; background: rgb(0 0 0 / 0.65); pointer-events: none; white-space: nowrap; overflow: hidden; }
+.inventory-tile--reserved { border: 3px solid #f2c400; }
 .inventory-tile--selected { outline: 2px solid var(--color-accent, #2f6fdb); outline-offset: -2px; }
 .inventory-tile--empty :deep(.item-icon__image),
 .inventory-tile--empty :deep(.item-icon__fallback) { filter: grayscale(1); opacity: 0.38; }

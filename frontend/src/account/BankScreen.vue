@@ -8,6 +8,7 @@ import { useAccountRead } from './useAccountRead'
 import AutomaticRefreshStatus from './AutomaticRefreshStatus.vue'
 import { useAutomaticAccountRefresh } from './useAutomaticAccountRefresh'
 import MaterialItemActions, { type ItemActionTarget } from './MaterialItemActions.vue'
+import ReservationNotes, { type ReservationNote } from './ReservationNotes.vue'
 import MaterialSelectionBar from './MaterialSelectionBar.vue'
 import { useMaterialProtection } from '@/materials/materialProtectionState'
 
@@ -39,6 +40,20 @@ const pageItemIds = computed(() => [...new Set((bank.data.value?.slots ?? [])
 
 function isEmptySlot(slot: BankSlot): boolean {
   return slot.itemId === null && slot.count === null
+}
+
+/** One note per distinct reserved item in a tab; same-item stacks are not repeated and the target is never clamped. */
+function notesFor(slots: BankSlot[]): ReservationNote[] {
+  const notes = new Map<number, ReservationNote>()
+  for (const slot of slots) {
+    if (slot.itemId === null || slot.protectionSelectable === false || pendingIds.value.has(slot.itemId)) continue
+    const target = protection.quantityFor('bank', slot.itemId)
+    if (target <= 0) continue
+    const known = notes.get(slot.itemId)
+    if (!known) notes.set(slot.itemId, { itemId: slot.itemId, name: slot.itemName ?? null, target })
+    else if (known.name === null && slot.itemName) known.name = slot.itemName
+  }
+  return [...notes.values()]
 }
 
 const hasNoSlots = computed(() => bank.data.value?.slots?.length === 0)
@@ -90,6 +105,7 @@ const tabs = computed(() => {
             <h2>Bank tab {{ tab.index + 1 }}</h2>
             <span class="meta">{{ tab.occupied }} / {{ tab.slots.length }} slots</span>
           </div>
+          <div class="bank-tab__body">
           <div class="bank-tab__scroll">
             <ol class="slots" data-test="bank-slots">
               <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :slot="slot"
@@ -99,6 +115,8 @@ const tabs = computed(() => {
                 @toggle="(id: number) => protection.togglePending(id, 'bank')" />
             </ol>
           </div>
+          <ReservationNotes :notes="notesFor(tab.slots)" source="bank" />
+          </div>
         </section>
       </template>
     </div>
@@ -106,7 +124,7 @@ const tabs = computed(() => {
 </template>
 
 <style scoped>
-.screen { width: min(100%, 636px); margin-inline: auto; }
+.screen { width: min(100%, 900px); margin-inline: auto; }
 .detail { display: block; margin-top: var(--space-2); }
 .bank-tab { margin-block: var(--space-4); }
 .bank-tab__header {
@@ -117,6 +135,7 @@ const tabs = computed(() => {
   margin-bottom: var(--space-2);
 }
 .bank-tab__header h2 { margin: 0; font-size: var(--text-base); }
+.bank-tab__body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3); }
 .bank-tab__scroll { max-width: 100%; overflow-x: auto; }
 .slots {
   display: grid;
