@@ -21,6 +21,8 @@ public class CraftingSettings {
     /** Finite per-source reservation targets (item id -> units to keep); immutable, positive values only. */
     public final Map<Integer, Integer> protectedBankQuantities;
     public final Map<Integer, Integer> protectedMaterialQuantities;
+    /** Canonical manual Bank row intent (ascending slot); a guard over the fixed totals, never authority. */
+    public final java.util.List<BankAllocation> protectedBankAllocations;
 
     public CraftingSettings(boolean useOwnMats,
                             boolean allowBuy,
@@ -59,6 +61,20 @@ public class CraftingSettings {
                             Collection<Integer> protectedBankItemIds, Collection<Integer> protectedMaterialItemIds,
                             Map<Integer, Integer> protectedBankQuantities,
                             Map<Integer, Integer> protectedMaterialQuantities) {
+        this(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                protectedBankQuantities, protectedMaterialQuantities, java.util.List.of());
+    }
+
+    public CraftingSettings(boolean useOwnMats, boolean allowBuy, int maxBuyCopper,
+                            boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
+                            boolean materialProtectionEnabled, Collection<Integer> protectedItemIds,
+                            Collection<Integer> protectedBankItemIds, Collection<Integer> protectedMaterialItemIds,
+                            Map<Integer, Integer> protectedBankQuantities,
+                            Map<Integer, Integer> protectedMaterialQuantities,
+                            java.util.List<BankAllocation> protectedBankAllocations) {
+        this.protectedBankAllocations = protectedBankAllocations == null ? java.util.List.of()
+                : java.util.List.copyOf(protectedBankAllocations);
         this.protectedBankQuantities = canonicalQuantities(protectedBankQuantities, protectedBankItemIds, protectedItemIds);
         this.protectedMaterialQuantities = canonicalQuantities(protectedMaterialQuantities, protectedMaterialItemIds, protectedItemIds);
         this.materialProtectionEnabled = materialProtectionEnabled;
@@ -104,7 +120,7 @@ public class CraftingSettings {
     public CraftingSettings withBuyingDisabled() {
         return new CraftingSettings(useOwnMats, false, 0, listingSell, listingBuy, allowDailyCrafts,
                 materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
-                protectedBankQuantities, protectedMaterialQuantities);
+                protectedBankQuantities, protectedMaterialQuantities, protectedBankAllocations);
     }
 
 }

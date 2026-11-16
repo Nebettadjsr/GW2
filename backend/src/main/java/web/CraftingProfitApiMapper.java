@@ -101,6 +101,9 @@ final class CraftingProfitApiMapper {
         List<Integer> materialAll = canonicalProtectedIds(settings == null ? null : settings.protectedMaterialItemIds(), "protectedMaterialItemIds");
         Map<Integer, Integer> bankQty = withoutAll(canonicalQuantities(settings == null ? null : settings.protectedBankQuantities(), "protectedBankQuantities"), bankAll, globalAll);
         Map<Integer, Integer> materialQty = withoutAll(canonicalQuantities(settings == null ? null : settings.protectedMaterialQuantities(), "protectedMaterialQuantities"), materialAll, globalAll);
+        List<craft.BankAllocation> rawAllocations = canonicalAllocations(
+                settings == null ? null : settings.protectedBankAllocations());
+        List<craft.BankAllocation> bankAllocations = validatedAllocations(rawAllocations, bankQty, bankAll, globalAll);
         return new CraftingProfitResponse.EffectiveSettingsDto(
                 orDefault(settings == null ? null : settings.useOwnMats(), DEFAULT_USE_OWN_MATS),
                 orDefault(settings == null ? null : settings.allowBuying(), DEFAULT_ALLOW_BUYING),
@@ -110,7 +113,82 @@ final class CraftingProfitApiMapper {
                 orDefault(settings == null ? null : settings.allowDailyCrafts(),
                         DEFAULT_ALLOW_DAILY_CRAFTS),
                 orDefault(settings == null ? null : settings.materialProtectionEnabled(), false),
-                globalAll, bankAll, materialAll, bankQty, materialQty);
+                globalAll, bankAll, materialAll, bankQty, materialQty, bankAllocations);
+    }
+
+    /** Entry shape and ranges only; sorted by slot. Duplicate slots are rejected. */
+    private static List<craft.BankAllocation> canonicalAllocations(Object raw) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new ApiValidationException("settings.protectedBankAllocations must be an array");
+        }
+        java.util.ArrayList<craft.BankAllocation> out = new java.util.ArrayList<>();
+        java.util.HashSet<Integer> slots = new java.util.HashSet<>();
+        for (Object entry : list) {
+            if (!(entry instanceof Map<?, ?> m)) {
+                throw new ApiValidationException("settings.protectedBankAllocations entries must be objects");
+            }
+            int slot = wholeInt(m, "slot", 0);
+            int itemId = wholeInt(m, "itemId", 1);
+            int observed = wholeInt(m, "observedCount", 1);
+            int reserved = wholeInt(m, "reservedUnits", 0);
+            if (reserved > observed) {
+                throw new ApiValidationException("settings.protectedBankAllocations reservedUnits must not exceed observedCount");
+            }
+            String binding = nullableString(m, "binding");
+            String boundTo = nullableString(m, "boundTo");
+            if (!slots.add(slot)) {
+                throw new ApiValidationException("settings.protectedBankAllocations slots must be unique");
+            }
+            out.add(new craft.BankAllocation(slot, itemId, reserved, observed, binding, boundTo));
+        }
+        out.sort(java.util.Comparator.comparingInt(craft.BankAllocation::slot));
+        return java.util.Collections.unmodifiableList(out);
+    }
+
+    private static int wholeInt(Map<?, ?> m, String key, int min) {
+        Object v = m.get(key);
+        long n;
+        if (v instanceof Integer || v instanceof Long || v instanceof Short || v instanceof Byte) {
+            n = ((Number) v).longValue();
+        } else {
+            throw new ApiValidationException("settings.protectedBankAllocations " + key + " must be a whole number");
+        }
+        if (n < min || n > Integer.MAX_VALUE) {
+            throw new ApiValidationException("settings.protectedBankAllocations " + key + " is out of range");
+        }
+        return (int) n;
+    }
+
+    private static String nullableString(Map<?, ?> m, String key) {
+        Object v = m.get(key);
+        if (v == null) return null;
+        if (v instanceof String str) return str;
+        throw new ApiValidationException("settings.protectedBankAllocations " + key + " must be a string or null");
+    }
+
+    /** Applies dominant ALL, then checks each remaining group against its fixed target. */
+    private static List<craft.BankAllocation> validatedAllocations(List<craft.BankAllocation> all,
+            Map<Integer, Integer> target, List<Integer> sourceAll, List<Integer> globalAll) {
+        java.util.ArrayList<craft.BankAllocation> kept = new java.util.ArrayList<>();
+        Map<Integer, long[]> sums = new java.util.HashMap<>();
+        for (craft.BankAllocation a : all) {
+            if (sourceAll.contains(a.itemId()) || globalAll.contains(a.itemId())) continue;
+            kept.add(a);
+            long[] s = sums.computeIfAbsent(a.itemId(), k -> new long[2]);
+            s[0] += a.reservedUnits();
+            s[1] += a.observedCount();
+        }
+        for (Map.Entry<Integer, long[]> e : sums.entrySet()) {
+            Integer t = target.get(e.getKey());
+            if (t == null) {
+                throw new ApiValidationException("settings.protectedBankAllocations item has no protectedBankQuantities target");
+            }
+            if (e.getValue()[0] != Math.min((long) t, e.getValue()[1])) {
+                throw new ApiValidationException("settings.protectedBankAllocations reservedUnits must sum to the item's reserved quantity");
+            }
+        }
+        return java.util.Collections.unmodifiableList(kept);
     }
 
     /** Reserve-ALL for an item takes precedence over its finite target. */
@@ -189,7 +267,8 @@ final class CraftingProfitApiMapper {
                     settings.allowDailyCrafts(),
                     settings.materialProtectionEnabled(),
                     settings.protectedItemIds(), settings.protectedBankItemIds(), settings.protectedMaterialItemIds(),
-                    settings.protectedBankQuantities(), settings.protectedMaterialQuantities());
+                    settings.protectedBankQuantities(), settings.protectedMaterialQuantities(),
+                    settings.protectedBankAllocations());
         }
     }
 

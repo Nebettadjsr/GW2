@@ -12,11 +12,16 @@ const props = withDefaults(defineProps<{
   selected?: boolean
   /** Finite keep-target for this item, when one is saved (0/undefined: none). */
   reserved?: number
+  /** Native mixed (partially reserved) checkbox state of one stack. */
+  mixed?: boolean
+  /** Finite reservation of this stack, independent of the checked state; defaults to reserved-and-unchecked. */
+  finite?: boolean
   /** Cached item name used for title and accessible labels; null falls back to the item ID. */
   itemName?: string | null
-}>(), { showOne: false, selected: undefined, reserved: 0, itemName: null })
+}>(), { showOne: false, selected: undefined, reserved: 0, mixed: false, finite: undefined, itemName: null })
 
 const label = computed(() => props.itemName ?? props.title)
+const isFinite = computed(() => props.finite ?? (props.reserved > 0 && props.selected !== true))
 const emit = defineEmits<{ toggle: [itemId: number]; menu: [itemId: number, x: number, y: number] }>()
 
 function openMenu(event: MouseEvent | KeyboardEvent, element: HTMLElement | null): void {
@@ -30,6 +35,23 @@ function openMenu(event: MouseEvent | KeyboardEvent, element: HTMLElement | null
   const y = event instanceof MouseEvent ? event.clientY : (rect?.bottom ?? 0)
   emit('menu', props.itemId, x, y)
 }
+/**
+ * One activation toggles exactly once. A real activation delivers `click` and then `change`; a click
+ * on a disconnected checkbox delivers only `click`. Handle the first and ignore its paired `change`.
+ */
+let clickedRecently = false
+function onClick(): void {
+  clickedRecently = true
+  setTimeout(() => { clickedRecently = false }, 0)
+  emit('toggle', props.itemId)
+}
+function onChange(): void {
+  if (clickedRecently) {
+    clickedRecently = false
+    return
+  }
+  emit('toggle', props.itemId)
+}
 function onKey(event: KeyboardEvent): void {
   if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
     openMenu(event, event.currentTarget instanceof HTMLElement ? event.currentTarget : null)
@@ -39,7 +61,7 @@ function onKey(event: KeyboardEvent): void {
 
 <template>
   <component :is="selected === undefined ? 'span' : 'label'" class="inventory-tile"
-    :class="{ 'inventory-tile--empty': count === 0, 'inventory-tile--selected': selected === true, 'inventory-tile--reserved': reserved > 0 && selected !== true,
+    :class="{ 'inventory-tile--empty': count === 0, 'inventory-tile--selected': selected === true, 'inventory-tile--reserved': isFinite,
       'inventory-tile--selectable': selected !== undefined }"
     :title="itemName ?? title" @contextmenu="openMenu($event, null)">
     <ItemIcon :item-id="itemId" :icon-url="iconUrl" loading="lazy" :size="56" />
@@ -49,8 +71,10 @@ function onKey(event: KeyboardEvent): void {
       class="inventory-tile__select"
       data-test="protect-checkbox"
       :checked="selected"
-      :aria-label="reserved > 0 && selected !== true ? `Protect ${label} (keeping ${reserved})` : `Protect ${label}`"
-      @change="$emit('toggle', itemId)"
+      :indeterminate.prop="mixed"
+      :aria-label="isFinite && reserved > 0 ? `Protect ${label} (keeping ${reserved})` : `Protect ${label}`"
+      @click="onClick"
+      @change="onChange"
       @keydown="onKey"
     >
     <span v-if="count > 0 && (showOne || count > 1)" class="inventory-tile__quantity" data-test="item-count">

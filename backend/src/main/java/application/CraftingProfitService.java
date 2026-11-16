@@ -307,9 +307,9 @@ public class CraftingProfitService {
             }
             return con == null
                     ? invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
-                            settings.protectedBankQuantities, settings.protectedMaterialQuantities)
+                            settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations)
                     : invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
-                            settings.protectedBankQuantities, settings.protectedMaterialQuantities);
+                            settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations);
         }
         if (con == null) return invRepo.loadOwnedInventoryForCharacters(names);
         return scope == null ? invRepo.loadOwnedInventoryForCharacters(con, names)

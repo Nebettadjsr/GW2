@@ -26,9 +26,10 @@ public class InventoryRepository {
             WHERE account_id = ? AND item_id IS NOT NULL
             """,
             """
-            SELECT item_id, count, binding, bound_to
+            SELECT slot, item_id, count, binding, bound_to
             FROM account_bank
             WHERE account_id = ? AND item_id IS NOT NULL
+            ORDER BY slot
             """,
             """
             SELECT item_id, count, binding, bound_to
@@ -115,14 +116,15 @@ public class InventoryRepository {
     private static void forEachScopedRow(Connection con, model.AccountScope scope,
                                          Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds,
                                          OwnedRowHandler handler) throws SQLException {
-        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, Map.of(), Map.of(), handler);
+        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, Map.of(), Map.of(), List.of(), handler);
     }
 
-    private record Row(int itemId, int count, String binding, String boundTo) { }
+    private record Row(int slot, int itemId, int count, String binding, String boundTo) { }
 
     private static void forEachScopedRow(Connection con, model.AccountScope scope,
                                          Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds,
                                          Map<Integer, Integer> bankQuantities, Map<Integer, Integer> materialQuantities,
+                                         List<craft.BankAllocation> bankAllocations,
                                          OwnedRowHandler handler) throws SQLException {
         for (int pool = 0; pool < SCOPED_POOL_QUERIES.length; pool++) {
             String sql = SCOPED_POOL_QUERIES[pool];
@@ -151,23 +153,80 @@ public class InventoryRepository {
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         if (excluded.contains(rs.getInt("item_id"))) continue;
-                        rows.add(new Row(rs.getInt("item_id"), rs.getInt("count"),
+                        rows.add(new Row(pool == 1 ? rs.getInt("slot") : 0, rs.getInt("item_id"), rs.getInt("count"),
                                 rs.getString("binding"), rs.getString("bound_to")));
                     }
                 }
             }
-            Map<Integer, Long> remaining = reservationsToApply(rows, target);
+            Map<Integer, Long> remaining = pool == 1 ? Map.of() : reservationsToApply(rows, target);
+            Map<Integer, Integer> bankKept = pool == 1 ? bankReservedBySlot(rows, target, bankAllocations) : Map.of();
             for (Row r : rows) {
                 int count = r.count();
-                Long keep = remaining.get(r.itemId());
-                if (keep != null && keep > 0) {
-                    int taken = (int) Math.min(keep, count);
-                    count -= taken;
-                    remaining.put(r.itemId(), keep - taken);
+                if (pool == 1) {
+                    count -= bankKept.getOrDefault(r.slot(), 0);
+                } else {
+                    Long keep = remaining.get(r.itemId());
+                    if (keep != null && keep > 0) {
+                        int taken = (int) Math.min(keep, count);
+                        count -= taken;
+                        remaining.put(r.itemId(), keep - taken);
+                    }
                 }
                 if (count > 0) handler.accept(r.itemId(), count, r.binding(), r.boundTo());
             }
         }
+    }
+
+    /**
+     * Units reserved per current Bank slot. A complete, matching manual layout (same slots, item,
+     * count, binding and owner) keeps the selected rows; any difference redistributes the same fixed
+     * target over the item's current positive-count rows in ascending slot order. Never throws.
+     */
+    private static Map<Integer, Integer> bankReservedBySlot(List<Row> rows, Map<Integer, Integer> target,
+                                                            List<craft.BankAllocation> hints) {
+        Map<Integer, List<Row>> byItem = new HashMap<>();
+        for (Row r : rows) {
+            if (r.count() > 0 && target.containsKey(r.itemId())) {
+                byItem.computeIfAbsent(r.itemId(), k -> new ArrayList<>()).add(r);
+            }
+        }
+        Map<Integer, List<craft.BankAllocation>> hintsByItem = new HashMap<>();
+        if (hints != null) for (craft.BankAllocation h : hints) {
+            hintsByItem.computeIfAbsent(h.itemId(), k -> new ArrayList<>()).add(h);
+        }
+        Map<Integer, Integer> out = new HashMap<>();
+        for (Map.Entry<Integer, List<Row>> e : byItem.entrySet()) {
+            List<Row> current = e.getValue();
+            current.sort(java.util.Comparator.comparingInt(Row::slot));
+            if (hintsMatch(current, hintsByItem.get(e.getKey()))) {
+                for (craft.BankAllocation h : hintsByItem.get(e.getKey())) {
+                    if (h.reservedUnits() > 0) out.put(h.slot(), h.reservedUnits());
+                }
+                continue;
+            }
+            long remaining = target.get(e.getKey());
+            for (Row r : current) {
+                if (remaining <= 0) break;
+                int taken = (int) Math.min(remaining, r.count());
+                out.put(r.slot(), taken);
+                remaining -= taken;
+            }
+        }
+        return out;
+    }
+
+    private static boolean hintsMatch(List<Row> current, List<craft.BankAllocation> hints) {
+        if (hints == null || hints.size() != current.size()) return false;
+        List<craft.BankAllocation> sorted = new ArrayList<>(hints);
+        sorted.sort(java.util.Comparator.comparingInt(craft.BankAllocation::slot));
+        for (int i = 0; i < current.size(); i++) {
+            Row r = current.get(i);
+            craft.BankAllocation h = sorted.get(i);
+            if (h.slot() != r.slot() || h.itemId() != r.itemId() || h.observedCount() != r.count()
+                    || !java.util.Objects.equals(h.binding(), r.binding())
+                    || !java.util.Objects.equals(h.boundTo(), r.boundTo())) return false;
+        }
+        return true;
     }
 
     /** Per-item reserve for one store; fails when a partial target spans differently bound stacks. */
@@ -451,9 +510,19 @@ public class InventoryRepository {
                                                                 Set<Integer> excludedMaterialIds,
                                                                 Map<Integer, Integer> bankQuantities,
                                                                 Map<Integer, Integer> materialQuantities) throws SQLException {
+        return loadOwnedInventoryForCharacters(characterNames, excludedBankIds, excludedMaterialIds,
+                bankQuantities, materialQuantities, List.of());
+    }
+
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds,
+                                                                Map<Integer, Integer> bankQuantities,
+                                                                Map<Integer, Integer> materialQuantities,
+                                                                List<craft.BankAllocation> bankAllocations) throws SQLException {
         try (Connection con = Db.open()) {
             return loadOwnedInventoryForCharacters(con, null, characterNames, excludedBankIds, excludedMaterialIds,
-                    bankQuantities, materialQuantities);
+                    bankQuantities, materialQuantities, bankAllocations);
         }
     }
 
@@ -470,12 +539,23 @@ public class InventoryRepository {
                                                                 Set<Integer> excludedMaterialIds,
                                                                 Map<Integer, Integer> bankQuantities,
                                                                 Map<Integer, Integer> materialQuantities) throws SQLException {
+        return loadOwnedInventoryForCharacters(con, scope, characterNames, excludedBankIds, excludedMaterialIds,
+                bankQuantities, materialQuantities, List.of());
+    }
+
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope,
+                                                                Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds,
+                                                                Map<Integer, Integer> bankQuantities,
+                                                                Map<Integer, Integer> materialQuantities,
+                                                                List<craft.BankAllocation> bankAllocations) throws SQLException {
         if (scope == null) ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
         else ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> accountBound = new HashMap<>();
         Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
-        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, bankQuantities, materialQuantities,
+        forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, bankQuantities, materialQuantities, bankAllocations,
                 (itemId, count, binding, boundTo) ->
                 classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames,
                         sellable, accountBound, characterBound));

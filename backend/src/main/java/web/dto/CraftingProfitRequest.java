@@ -48,7 +48,21 @@ public record CraftingProfitRequest(ScopeDto scope, SettingsDto settings) {
                               java.util.List<Integer> protectedBankItemIds,
                               java.util.List<Integer> protectedMaterialItemIds,
                               java.util.Map<?, ?> protectedBankQuantities,
-                              java.util.Map<?, ?> protectedMaterialQuantities) {
+                              java.util.Map<?, ?> protectedMaterialQuantities,
+                              Object protectedBankAllocations) {
+
+        /** Shape without Bank row allocations. */
+        public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,
+                           Boolean listingSell, Boolean listingBuy, Boolean allowDailyCrafts,
+                           Boolean materialProtectionEnabled, java.util.List<Integer> protectedItemIds,
+                           java.util.List<Integer> protectedBankItemIds,
+                           java.util.List<Integer> protectedMaterialItemIds,
+                           java.util.Map<?, ?> protectedBankQuantities,
+                           java.util.Map<?, ?> protectedMaterialQuantities) {
+            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                    materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                    protectedBankQuantities, protectedMaterialQuantities, null);
+        }
 
         /** Legacy shape without finite reservation maps. */
         public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,

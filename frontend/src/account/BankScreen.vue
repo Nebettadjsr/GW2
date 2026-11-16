@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { accountApi, type AccountApi } from '@/api/accountApi'
 import type { BankContents, BankSlot } from '@/api/types'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -10,7 +10,7 @@ import { useAutomaticAccountRefresh } from './useAutomaticAccountRefresh'
 import MaterialItemActions, { type ItemActionTarget } from './MaterialItemActions.vue'
 import ReservationNotes, { type ReservationNote } from './ReservationNotes.vue'
 import MaterialSelectionBar from './MaterialSelectionBar.vue'
-import { useMaterialProtection } from '@/materials/materialProtectionState'
+import { useMaterialProtection, type BankRowGuard } from '@/materials/materialProtectionState'
 
 const SLOTS_PER_TAB = 30
 const props = withDefaults(defineProps<{ api?: AccountApi }>(), { api: () => accountApi })
@@ -33,6 +33,27 @@ function totalFor(itemId: number): number {
 function openActions(slot: BankSlot, x: number, y: number): void {
   if (slot.itemId !== null) actionTarget.value = { itemId: slot.itemId, name: slot.itemName ?? null, count: totalFor(slot.itemId), x, y }
 }
+/** Every current stack of the loaded snapshot with its raw guards. */
+const rowGuards = computed<BankRowGuard[]>(() => (bank.data.value?.slots ?? []).flatMap(slot =>
+  slot.itemId === null || slot.count === null || slot.count <= 0 ? []
+    : [{ slot: slot.slot, itemId: slot.itemId, count: slot.count, binding: slot.binding ?? null, boundTo: slot.boundTo ?? null }]))
+/** Per-slot reserved units of the current layout (legacy ALL, matching hints, or ascending redistribution). */
+const unitsBySlot = computed(() => {
+  const out = new Map<number, number>()
+  for (const itemId of new Set(rowGuards.value.map(row => row.itemId))) {
+    for (const [slot, units] of protection.bankUnits(itemId, rowGuards.value)) out.set(slot, units)
+  }
+  return out
+})
+function stackState(slot: BankSlot): { selected: boolean; mixed: boolean; finite: boolean; reserved: number } {
+  const units = unitsBySlot.value.get(slot.slot) ?? 0
+  const count = slot.count ?? 0
+  const all = slot.itemId !== null && pendingIds.value.has(slot.itemId)
+  if (all) return { selected: true, mixed: false, finite: false, reserved: 0 }
+  return { selected: units > 0 && units >= count, mixed: units > 0 && units < count, finite: units > 0, reserved: units }
+}
+// A new snapshot may invalidate manual hints: clean them up with at most one preference write.
+watch(() => bank.data.value, data => { if (data?.slots) protection.pruneStaleBankHints(rowGuards.value) })
 const pendingIds = computed(() => new Set(protection.pendingFor('bank')))
 const selectable = computed(() => protection.state.status === 'ready')
 const pageItemIds = computed(() => [...new Set((bank.data.value?.slots ?? [])
@@ -109,10 +130,10 @@ const tabs = computed(() => {
           <div class="bank-tab__scroll">
             <ol class="slots" data-test="bank-slots">
               <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :slot="slot"
-                :selected="selectable && slot.protectionSelectable !== false && slot.itemId !== null ? pendingIds.has(slot.itemId) : undefined"
-                :reserved="slot.itemId !== null ? protection.quantityFor('bank', slot.itemId) : 0"
+                :selected="selectable && slot.protectionSelectable !== false && slot.itemId !== null ? stackState(slot).selected : undefined"
+                :mixed="stackState(slot).mixed" :finite="stackState(slot).finite" :reserved="stackState(slot).reserved"
                 @menu="(_id: number, x: number, y: number) => openActions(slot, x, y)"
-                @toggle="(id: number) => protection.togglePending(id, 'bank')" />
+                @toggle="(id: number) => protection.toggleBankStack(id, slot.slot, rowGuards)" />
             </ol>
           </div>
           <ReservationNotes :notes="notesFor(tab.slots)" source="bank" />

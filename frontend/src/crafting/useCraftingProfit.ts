@@ -1,4 +1,5 @@
 import { computed, getCurrentInstance, onActivated, onDeactivated, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
+import type { BankAllocation } from '@/api/types'
 import type { CraftingApi } from '@/api/craftingApi'
 import { ApiRequestError } from '@/api/http'
 import {
@@ -13,7 +14,7 @@ import {
   type SyncTaskAccepted,
   type SyncTaskStatus
 } from '@/api/types'
-import { canonicalIds, canonicalQuantityKey, useMaterialProtection, type MaterialProtectionState } from '@/materials/materialProtectionState'
+import { canonicalAllocationKey, canonicalIds, canonicalQuantityKey, useMaterialProtection, type MaterialProtectionState } from '@/materials/materialProtectionState'
 import { buildScopeOptions, defaultScopeOptionId, type ScopeOption } from './scopeOptions'
 
 /**
@@ -296,7 +297,8 @@ export function useCraftingProfit(
    * Activation is effective only with at least one committed ID; pending edits are never read.
    */
   function protectionContext(): { enabled: boolean; ids: number[]; bankIds: number[]; materialIds: number[];
-    bankQuantities: Record<number, number>; materialQuantities: Record<number, number> } | null {
+    bankQuantities: Record<number, number>; materialQuantities: Record<number, number>;
+    bankAllocations: BankAllocation[] } | null {
     if (protection.state.status !== 'ready' || protection.state.accountId === null) return null
     const ids = [...protection.state.committed]
     const bankQuantities = protection.quantitiesFor('bank')
@@ -304,7 +306,7 @@ export function useCraftingProfit(
     const hasFinite = Object.keys(bankQuantities).length + Object.keys(materialQuantities).length > 0
     return { enabled: protection.state.activation && (ids.length > 0 || hasFinite), ids,
       bankIds: [...protection.committedFor('bank')], materialIds: [...protection.committedFor('materials')],
-      bankQuantities, materialQuantities }
+      bankQuantities, materialQuantities, bankAllocations: protection.allocationsFor() }
   }
 
   function contextKey(): string {
@@ -315,7 +317,7 @@ export function useCraftingProfit(
   function effectiveKey(): string {
     const context = protectionContext()
     if (context === null) return 'none'
-    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? JSON.stringify([context.bankIds, context.materialIds, canonicalQuantityKey(context.bankQuantities), canonicalQuantityKey(context.materialQuantities)]) : ''}`
+    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? JSON.stringify([context.bankIds, context.materialIds, canonicalQuantityKey(context.bankQuantities), canonicalQuantityKey(context.materialQuantities), canonicalAllocationKey(context.bankAllocations)]) : ''}`
   }
 
   /** Whether an enabled-protection request was echoed back as such (order/duplicate insensitive). */
@@ -332,7 +334,8 @@ export function useCraftingProfit(
       const wanted = canonicalQuantityKey(request.settings?.[field])
       // An omitted map counts as empty; an unexpected nonempty or different map is rejected.
       return (echoed[field] === undefined ? '[]' : canonicalQuantityKey(echoed[field])) === wanted
-    })
+    }) && canonicalAllocationKey(request.settings?.protectedBankAllocations)
+      === canonicalAllocationKey(echoed.protectedBankAllocations)
   }
 
   /**
@@ -632,6 +635,7 @@ export function useCraftingProfit(
         request.settings.protectedMaterialItemIds = context.materialIds
         request.settings.protectedBankQuantities = { ...context.bankQuantities }
         request.settings.protectedMaterialQuantities = { ...context.materialQuantities }
+        request.settings.protectedBankAllocations = context.bankAllocations.map(row => ({ ...row }))
       } else {
         delete request.settings.materialProtectionEnabled
         delete request.settings.protectedItemIds
@@ -639,12 +643,14 @@ export function useCraftingProfit(
         delete request.settings.protectedMaterialItemIds
         delete request.settings.protectedBankQuantities
         delete request.settings.protectedMaterialQuantities
+        delete request.settings.protectedBankAllocations
       }
     } else if (context !== null && context.enabled) {
       // Backend defaults for everything else; only the committed protection is supplied.
       request.settings = { materialProtectionEnabled: true, protectedItemIds: [],
         protectedBankItemIds: context.bankIds, protectedMaterialItemIds: context.materialIds,
-        protectedBankQuantities: { ...context.bankQuantities }, protectedMaterialQuantities: { ...context.materialQuantities } }
+        protectedBankQuantities: { ...context.bankQuantities }, protectedMaterialQuantities: { ...context.materialQuantities },
+        protectedBankAllocations: context.bankAllocations.map(row => ({ ...row })) }
     }
     return request
   }
