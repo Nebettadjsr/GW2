@@ -545,9 +545,10 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     const units = bankUnits(itemId, current)
     units.set(slot, units.get(slot) === target.count ? 0 : target.count)
     const sum = [...units.values()].reduce((a, b) => a + b, 0)
+    if (sum > MAX_RESERVATION_QUANTITY) return // reject before touching any valid existing intent
     state.pendingByView.bank = state.pendingByView.bank.filter(id => id !== itemId)
     state.bankAllocations = state.bankAllocations.filter(row => row.itemId !== itemId)
-    if (sum <= 0 || sum > MAX_RESERVATION_QUANTITY) {
+    if (sum <= 0) {
       delete state.quantitiesByView.bank[itemId]
     } else {
       state.quantitiesByView.bank[itemId] = sum

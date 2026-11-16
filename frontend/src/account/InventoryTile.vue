@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick } from 'vue'
 import ItemIcon from '@/items/ItemIcon.vue'
 
 const props = withDefaults(defineProps<{
@@ -40,10 +40,13 @@ function openMenu(event: MouseEvent | KeyboardEvent, element: HTMLElement | null
  * on a disconnected checkbox delivers only `click`. Handle the first and ignore its paired `change`.
  */
 let clickedRecently = false
-function onClick(): void {
+function onClick(event: MouseEvent): void {
   clickedRecently = true
   setTimeout(() => { clickedRecently = false }, 0)
   emit('toggle', props.itemId)
+  // A rejected toggle leaves the model unchanged; do not let the native control drift from it.
+  const input = event.currentTarget instanceof HTMLInputElement ? event.currentTarget : null
+  void nextTick(() => { if (input !== null && input.checked !== (props.selected === true)) input.checked = props.selected === true })
 }
 function onChange(): void {
   if (clickedRecently) {

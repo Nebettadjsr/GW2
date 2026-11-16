@@ -76,16 +76,29 @@ const calculationInputs = computed<CalculationInputs | null>(() => {
 })
 
 let isViewActive = true
+/** Identity of the detail held across a deactivation, so an unchanged return does not ask again. */
+let heldDetailKey: string | null = null
+
+function detailKey(recipeId: number, inputs: CalculationInputs): string {
+  return `${recipeId}|${calculationKey(inputs)}|${inputs.calculationId ?? 'none'}`
+}
 
 function syncResolution(): void {
   const recipeId = table.selectedRecipeId.value
   const inputs = calculationInputs.value
 
   if (!isViewActive || recipeId === null || inputs === null) {
+    heldDetailKey = null
     resolution.invalidate()
     return
   }
 
+  const key = detailKey(recipeId, inputs)
+  if (heldDetailKey === key && resolution.requestedRecipeId.value === recipeId && isSettled(resolution.phase.value)) {
+    heldDetailKey = null
+    return // unchanged return: the completed matching detail is still the right one
+  }
+  heldDetailKey = null
   void resolution.request(recipeId, inputs)
 }
 
@@ -103,9 +116,22 @@ watch(
   () => syncResolution()
 )
 
+function isSettled(phase: string): boolean {
+  return phase === 'ready' || phase === 'unavailable' || phase === 'absent'
+}
+
 onDeactivated(() => {
   isViewActive = false
-  resolution.invalidate()
+  const recipeId = table.selectedRecipeId.value
+  const inputs = calculationInputs.value
+  if (recipeId !== null && inputs !== null && isSettled(resolution.phase.value)
+    && resolution.requestedRecipeId.value === recipeId) {
+    // Completed work cannot produce a late answer; keep it only to compare on return.
+    heldDetailKey = detailKey(recipeId, inputs)
+  } else {
+    heldDetailKey = null
+    resolution.invalidate() // pending or failed work is abandoned; late answers are rejected
+  }
 })
 
 /** Search handed over by Bank/Materials "Open Crafting Profit": fills the existing search, nothing else changes. */
