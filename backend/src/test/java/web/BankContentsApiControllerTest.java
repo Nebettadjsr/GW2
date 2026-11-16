@@ -15,6 +15,7 @@ import java.util.Set;
 
 import static support.fixture.CachedItemNameFixtures.itemName;
 import static support.fixture.CachedItemNameFixtures.withItemName;
+import static support.fixture.BankBindingFixtures.withBinding;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -103,6 +104,45 @@ class BankContentsApiControllerTest {
     }
 
     @Test
+    void batchResponseKeepsRawNullableBindingAndOwnerForActualSlotGuards() throws Exception {
+        var service = new StubBankContentsService(List.of(
+                withBinding(new BankRepository.BankSlotRow(0, 200, 250, null, null, null), "Character", "Aria"),
+                withBinding(new BankRepository.BankSlotRow(4, 200, 250, null, null, null), "Character", "Bran"),
+                withBinding(new BankRepository.BankSlotRow(9, 200, 250, null, null, null), null, null),
+                withBinding(new BankRepository.BankSlotRow(30, 200, 250, null, null, null), "Unrecognized binding", ""),
+                new BankRepository.BankSlotRow(31, null, null, null, null, null)));
+
+        JsonNode slots = JSON.readTree(mockMvcFor(service).perform(get("/api/account/bank"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.slotCount").value(5))
+                .andReturn().getResponse().getContentAsString()).get("slots");
+
+        assertEquals("Aria", slots.get(0).get("boundTo").asText());
+        assertEquals("Bran", slots.get(1).get("boundTo").asText());
+        assertEquals("Character", slots.get(0).get("binding").asText());
+        assertEquals("Unrecognized binding", slots.get(3).get("binding").asText());
+        assertEquals("", slots.get(3).get("boundTo").asText());
+        for (int index : List.of(2, 4)) {
+            assertTrue(slots.get(index).has("binding") && slots.get(index).get("binding").isNull());
+            assertTrue(slots.get(index).has("boundTo") && slots.get(index).get("boundTo").isNull());
+        }
+        assertEquals(1, service.callCount);
+    }
+
+    @Test
+    void existingBankRowAndDtoConstructorsDefaultAddedGuardsToNull() {
+        for (Record row : List.of(
+                new BankRepository.BankSlotRow(0, 200, 1, null, null, null),
+                new BankRepository.BankSlotRow(0, 200, 1, null, null, null, true),
+                new BankRepository.BankSlotRow(0, 200, 1, null, null, null, true, "Ore"),
+                new web.dto.BankContentsResponse.BankSlotDto(0, 200, 1, null, null, true),
+                new web.dto.BankContentsResponse.BankSlotDto(0, 200, 1, null, null, true, "Ore"))) {
+            JsonNode value = JSON.valueToTree(row);
+            assertTrue(value.has("binding") && value.get("binding").isNull());
+            assertTrue(value.has("boundTo") && value.get("boundTo").isNull());
+        }
+    }
+
+    @Test
     void exposesTheBackendSelectionDecisionWithoutRemovingTheSlot() throws Exception {
         var service = new StubBankContentsService(List.of(
                 new BankRepository.BankSlotRow(0, 20017, 2, null, null, "Fine", false),
@@ -182,7 +222,8 @@ class BankContentsApiControllerTest {
         List<String> fields = new ArrayList<>();
         slot.fieldNames().forEachRemaining(fields::add);
 
-        assertEquals(Set.of("slot", "itemId", "itemName", "count", "iconUrl", "rarity", "protectionSelectable"), Set.copyOf(fields),
+        assertEquals(Set.of("slot", "itemId", "itemName", "count", "iconUrl", "rarity", "protectionSelectable",
+                "binding", "boundTo"), Set.copyOf(fields),
                 "the slot must be a transport record, not a serialized repository row");
         assertFalse(body.contains("C:\\icons"),
                 "the backend filesystem path must not reach the browser: " + body);

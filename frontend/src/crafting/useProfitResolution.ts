@@ -7,7 +7,7 @@ import type {
   ResolutionCalculation,
   ScopeRequest
 } from '@/api/types'
-import { canonicalIds } from '@/materials/materialProtectionState'
+import { canonicalAllocationKey, canonicalIds, canonicalQuantityKey } from '@/materials/materialProtectionState'
 import { useResolutionDetail, type ResolutionDetailState } from './useResolutionDetail'
 
 /**
@@ -93,7 +93,10 @@ export function calculationKey(
     settings.materialProtectionEnabled ?? null,
     settings.protectedItemIds === undefined ? null : canonicalIds(settings.protectedItemIds),
     settings.protectedBankItemIds === undefined ? null : canonicalIds(settings.protectedBankItemIds),
-    settings.protectedMaterialItemIds === undefined ? null : canonicalIds(settings.protectedMaterialItemIds)
+    settings.protectedMaterialItemIds === undefined ? null : canonicalIds(settings.protectedMaterialItemIds),
+    canonicalQuantityKey(settings.protectedBankQuantities),
+    canonicalQuantityKey(settings.protectedMaterialQuantities),
+    canonicalAllocationKey(settings.protectedBankAllocations)
   ])
 }
 

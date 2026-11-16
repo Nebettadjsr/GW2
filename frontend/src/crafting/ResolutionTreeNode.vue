@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import type { ResolutionNode } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper } from './formatCopper'
 import {
+  keepTargetNote,
   nodeLabel,
-  nodePlayerStatus
+  nodePlayerStatus,
+  RESOLUTION_SETTINGS_KEY
 } from './resolutionPresentation'
 import { wikiUrl } from './recipeLabel'
 
@@ -28,6 +30,8 @@ const props = defineProps<{
 }>()
 
 const label = computed(() => nodeLabel(props.node))
+const resolutionSettings = inject(RESOLUTION_SETTINGS_KEY, null)
+const keepNote = computed(() => keepTargetNote(resolutionSettings?.value, props.node.itemId))
 const sourcing = computed(() => [
   { label: 'From stock', quantity: props.node.inventoryQuantity },
   { label: 'Crafted', quantity: props.node.craftedQuantity },
@@ -69,6 +73,8 @@ const childSummary = computed(() =>
         {{ node.requestedQuantity }} needed
       </span>
     </div>
+
+    <p v-if="keepNote !== null" class="node__keep meta" data-test="node-keep-target">{{ keepNote }}</p>
 
     <p v-if="sourcing.length > 0" class="node__methods" data-test="node-methods">
       <span data-test="node-sourcing">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { accountApi, type AccountApi } from '@/api/accountApi'
 import type { MaterialCategory, MaterialStorage } from '@/api/types'
 import PageHeader from '@/shell/PageHeader.vue'
@@ -7,6 +7,8 @@ import InventoryTile from './InventoryTile.vue'
 import { useAccountRead } from './useAccountRead'
 import AutomaticRefreshStatus from './AutomaticRefreshStatus.vue'
 import { useAutomaticAccountRefresh } from './useAutomaticAccountRefresh'
+import MaterialItemActions, { type ItemActionTarget } from './MaterialItemActions.vue'
+import ReservationNotes, { type ReservationNote } from './ReservationNotes.vue'
 import MaterialSelectionBar from './MaterialSelectionBar.vue'
 import { useMaterialProtection } from '@/materials/materialProtectionState'
 import { MATERIAL_PRESETS, type MaterialPreset } from '@/materials/materialPresets'
@@ -22,6 +24,7 @@ const automatic = useAutomaticAccountRefresh({
 })
 onMounted(() => { void materials.load() })
 const protection = useMaterialProtection()
+const actionTarget = ref<ItemActionTarget | null>(null)
 const pendingIds = computed(() => new Set(protection.pendingFor('materials')))
 const selectable = computed(() => protection.state.status === 'ready')
 const hasNoCategories = computed(() => materials.data.value?.categories?.length === 0)
@@ -32,6 +35,15 @@ function categorySelected(category: MaterialCategory): boolean {
 }
 function toggleCategory(category: MaterialCategory): void {
   protection.togglePendingGroup(category.materials.map(material => material.itemId), 'materials')
+}
+function notesFor(category: MaterialCategory): ReservationNote[] {
+  const notes = new Map<number, ReservationNote>()
+  for (const material of category.materials) {
+    const target = protection.quantityFor('materials', material.itemId)
+    if (target <= 0 || pendingIds.value.has(material.itemId) || notes.has(material.itemId)) continue
+    notes.set(material.itemId, { itemId: material.itemId, name: material.itemName ?? null, target })
+  }
+  return [...notes.values()]
 }
 function presetsFor(category: MaterialCategory): readonly MaterialPreset[] {
   return MATERIAL_PRESETS.filter(preset => preset.categoryId === category.category)
@@ -48,6 +60,7 @@ function presetSelected(preset: MaterialPreset): boolean {
     <PageHeader heading="Materials" />
     <AutomaticRefreshStatus :updating="automatic.updating.value" :failed="automatic.failed.value" :has-data="!!materials.data.value?.categories" />
     <MaterialSelectionBar view="materials" :item-ids="pageItemIds" />
+    <MaterialItemActions view="materials" :target="actionTarget" @close="actionTarget = null" />
     <div class="stack">
       <p v-if="materials.phase.value === 'loading' && !materials.data.value" class="notice notice--info" role="status" data-test="materials-loading">Loading material storage…</p>
       <div v-else-if="materials.failure.value !== null && !automatic.failed.value && !automatic.updating.value" class="notice notice--error" role="alert" data-test="materials-error">
@@ -70,15 +83,20 @@ function presetSelected(preset: MaterialPreset): boolean {
               :aria-label="`${categorySelected(category) ? 'Deselect' : 'Select'} all ${category.name}`"
               @click="toggleCategory(category)">{{ categorySelected(category) ? 'Deselect all' : 'Select all' }}</button>
           </div>
+          <div class="material-body">
           <div class="material-scroll">
             <ol class="material-grid" data-test="material-grid">
               <li v-for="material in category.materials" :key="material.position" data-test="material-stack">
                 <InventoryTile :item-id="material.itemId" :count="material.count" :icon-url="material.iconUrl"
-                  :show-one="true" :title="`Item #${material.itemId}`"
+                  :show-one="true" :title="material.itemName ?? `Item #${material.itemId}`" :item-name="material.itemName ?? null"
+                  :reserved="protection.quantityFor('materials', material.itemId)"
+                  @menu="(_id: number, x: number, y: number) => actionTarget = { itemId: material.itemId, name: material.itemName ?? null, count: material.count, x, y }"
                   :selected="selectable ? pendingIds.has(material.itemId) : undefined"
                   @toggle="(id: number) => protection.togglePending(id, 'materials')" />
               </li>
             </ol>
+          </div>
+          <ReservationNotes :notes="notesFor(category)" source="material storage" />
           </div>
         </section>
       </template>
@@ -87,7 +105,7 @@ function presetSelected(preset: MaterialPreset): boolean {
 </template>
 
 <style scoped>
-.screen { width: min(100%, 636px); margin-inline: auto; }
+.screen { width: min(100%, 900px); margin-inline: auto; }
 .detail { display: block; margin-top: var(--space-2); }
 .material-category { margin-block: var(--space-4); }
 .material-category h2 { margin: 0 0 var(--space-2); font-size: var(--text-base); }
@@ -96,6 +114,7 @@ function presetSelected(preset: MaterialPreset): boolean {
 .material-category__actions button { padding: 4px 10px; font-size: var(--text-sm); }
 .material-category__toggle { margin-inline-start: auto; }
 .material-category__presets button[aria-pressed='true'] { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.material-body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3); }
 .material-scroll { max-width: 100%; overflow-x: auto; }
 .material-grid { display: grid; grid-template-columns: repeat(10, 60px); grid-auto-rows: 60px; gap: 4px; width: max-content; list-style: none; margin: 0; padding: 0 0 var(--space-2); }
 </style>

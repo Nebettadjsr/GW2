@@ -29,6 +29,8 @@ local for the morning. Preserve unrelated edits and current public behavior outs
 
 First prepare additive batch item-name metadata for old-client compatibility. Then prepare one
 combined local-review reservation UX contract, including authoritative backend quantity handling.
+The accepted combined handoff is [STORY-MAT-004, #235](https://github.com/Nebettadjsr/GW2/issues/235),
+dependent on the merged item-name foundation. Its new UI remains held for local owner review.
 Keep source-specific and character-inventory rules intact. Avoid Profit recalculation while its
 cached screen is inactive; use the latest saved choices when returning to it. Partial reservations
 across heterogeneous binding/owner buckets need an explicit product rule; keep that edge local

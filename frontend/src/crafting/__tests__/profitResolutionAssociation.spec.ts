@@ -33,7 +33,7 @@ const completedSyncApi: SyncApi = {
 }
 
 /**
- * The association rules of `TARGET_ARCHITECTURE.md` 13.4, driven through the real screen.
+ * The resolution-context association rules of `TARGET_ARCHITECTURE.md` 10.2, driven through the real screen.
  *
  * A detail belongs to a feature, a recipe, the effective calculation inputs and a local request
  * generation. These tests are about which answers may be displayed and which requests are issued at
@@ -317,25 +317,31 @@ describe('Crafting Profit resolution detail association', () => {
       }
     })
 
-    it('invalidatesOnLeavingAndAsksFreshlyOnReturn', async () => {
+    it('retainsCompletedMatchingDetailWithoutAnotherRequestOnUnchangedReturn', async () => {
       const api = new FakeCraftingApi()
       const wrapper = mount(KeptAliveShell, { props: { api } })
       await flushPromises()
       await selectRecipe(wrapper, 'Iron Ingot')
       expect(rootItem(wrapper)).toBe('Iron Ingot')
+      expect(api.resolutionRequests).toHaveLength(1)
+      const originalRequest = JSON.parse(JSON.stringify(api.resolutionRequests[0]!))
 
       await wrapper.find('[data-test="toggle"]').trigger('click')
       await flushPromises()
+      expect(rootItem(wrapper)).toBeNull() // The kept-alive page is absent from the visible DOM.
+      expect(api.profitRequests).toHaveLength(1)
+      expect(api.resolutionRequests).toHaveLength(1)
 
       api.resolutionHandler = (request) =>
         Promise.resolve(resolutionResponse(request, { tree: treeNamed('Asked again') }))
       await wrapper.find('[data-test="toggle"]').trigger('click')
       await flushPromises()
 
-      // The selection survived the trip, the calculation was not re-posted, and the detail is new.
+      // A completed explanation still matches this recipe, settings and input generation.
+      // Pending late answers remain covered separately below; unchanged completed work is retained.
       expect(api.profitRequests).toHaveLength(1)
-      expect(api.resolutionRequests).toHaveLength(2)
-      expect(rootItem(wrapper)).toBe('Asked again')
+      expect(api.resolutionRequests).toEqual([originalRequest])
+      expect(rootItem(wrapper)).toBe('Iron Ingot')
     })
 
     it('doesNotLetAnAnswerThatArrivesWhileAwayReviveTheDetail', async () => {

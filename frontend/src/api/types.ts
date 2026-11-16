@@ -104,6 +104,11 @@ export interface EffectiveSettings {
   protectedItemIds?: number[]
   protectedBankItemIds?: number[]
   protectedMaterialItemIds?: number[]
+  /** Finite keep-targets (item id -> units) per store; absent from older backends. */
+  protectedBankQuantities?: Record<string, number>
+  protectedMaterialQuantities?: Record<string, number>
+  /** Canonical manual Bank row intent the backend calculated with; absent from older backends. */
+  protectedBankAllocations?: BankAllocation[]
 }
 
 /**
@@ -514,6 +519,20 @@ export interface BankSlot {
   itemName?: string | null
   /** False only when the backend can rule out crafting and Mystic Forge use. */
   protectionSelectable?: boolean
+  /** Raw cached binding guard of this stack; absent from older backends, null when unbound. */
+  binding?: string | null
+  /** Raw cached owner guard of this stack; absent from older backends, null when none. */
+  boundTo?: string | null
+}
+
+/** One observed Bank row of a manually edited item with its reserved units (complete layout guard). */
+export interface BankAllocation {
+  slot: number
+  itemId: number
+  reservedUnits: number
+  observedCount: number
+  binding: string | null
+  boundTo: string | null
 }
 
 /** Response body of `GET /api/account/bank`. `slots` is in the backend's slot order. */

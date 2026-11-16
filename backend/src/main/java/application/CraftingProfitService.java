@@ -299,10 +299,17 @@ public class CraftingProfitService {
                                                                         CraftingSettings settings) throws SQLException {
         AccountScope scope = session.scope();
         if (settings.materialProtectionEnabled
-                && (!settings.protectedBankItemIds.isEmpty() || !settings.protectedMaterialItemIds.isEmpty())) {
+                && (!settings.protectedBankItemIds.isEmpty() || !settings.protectedMaterialItemIds.isEmpty()
+                    || settings.hasFiniteReservations())) {
+            if (con == null && !settings.hasFiniteReservations()) {
+                // ALL-only protection keeps the established id-set read path.
+                return invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds);
+            }
             return con == null
-                    ? invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds)
-                    : invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds);
+                    ? invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
+                            settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations)
+                    : invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
+                            settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations);
         }
         if (con == null) return invRepo.loadOwnedInventoryForCharacters(names);
         return scope == null ? invRepo.loadOwnedInventoryForCharacters(con, names)

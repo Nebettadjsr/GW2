@@ -57,13 +57,36 @@ public record CraftingProfitResponse(String status,
                                        boolean materialProtectionEnabled,
                                        List<Integer> protectedItemIds,
                                        List<Integer> protectedBankItemIds,
-                                       List<Integer> protectedMaterialItemIds) {
+                                       List<Integer> protectedMaterialItemIds,
+                                       java.util.Map<Integer, Integer> protectedBankQuantities,
+                                       java.util.Map<Integer, Integer> protectedMaterialQuantities,
+                                       List<craft.BankAllocation> protectedBankAllocations) {
+
+        public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
+                                    boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
+                                    boolean materialProtectionEnabled, List<Integer> protectedItemIds,
+                                    List<Integer> protectedBankItemIds, List<Integer> protectedMaterialItemIds,
+                                    java.util.Map<Integer, Integer> protectedBankQuantities,
+                                    java.util.Map<Integer, Integer> protectedMaterialQuantities) {
+            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                    materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                    protectedBankQuantities, protectedMaterialQuantities, List.of());
+        }
+
+        public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
+                                    boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
+                                    boolean materialProtectionEnabled, List<Integer> protectedItemIds,
+                                    List<Integer> protectedBankItemIds, List<Integer> protectedMaterialItemIds) {
+            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                    materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                    java.util.Map.of(), java.util.Map.of());
+        }
 
         public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
                                     boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
                                     boolean materialProtectionEnabled, List<Integer> protectedItemIds) {
             this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    materialProtectionEnabled, protectedItemIds, List.of(), List.of());
+                    materialProtectionEnabled, protectedItemIds, List.of(), List.of(), java.util.Map.of(), java.util.Map.of());
         }
 
         public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,

@@ -45,10 +45,16 @@ public record BankContentsResponse(Integer slotCount, List<BankSlotDto> slots,
                               String iconUrl,
                               String rarity,
                               boolean protectionSelectable,
-                              String itemName) {
+                              String itemName,
+                              String binding,
+                              String boundTo) {
+        public BankSlotDto(int slot, Integer itemId, Integer count, String iconUrl, String rarity,
+                           boolean protectionSelectable, String itemName) {
+            this(slot, itemId, count, iconUrl, rarity, protectionSelectable, itemName, null, null);
+        }
         public BankSlotDto(int slot, Integer itemId, Integer count, String iconUrl, String rarity,
                            boolean protectionSelectable) {
-            this(slot, itemId, count, iconUrl, rarity, protectionSelectable, null);
+            this(slot, itemId, count, iconUrl, rarity, protectionSelectable, null, null, null);
         }
     }
 }

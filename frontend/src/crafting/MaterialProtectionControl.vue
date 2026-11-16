@@ -9,7 +9,9 @@ import { useMaterialProtection } from '@/materials/materialProtectionState'
  */
 const protection = useMaterialProtection()
 const ready = computed(() => protection.state.status === 'ready')
-const count = computed(() => protection.state.committed.length)
+/** Distinct item types across ALL and finite reservations in both stores. */
+const count = computed(() => new Set([...protection.state.committed,
+  ...Object.keys(protection.state.quantitiesByView.bank).map(Number), ...Object.keys(protection.state.quantitiesByView.materials).map(Number)]).size)
 const enabled = computed(() => protection.state.activation && count.value > 0)
 const warning = ref(false)
 const hovered = ref(false)
@@ -110,7 +112,7 @@ function onToggle(event: Event): void {
       role="alert"
       data-test="protection-empty-warning"
     >
-      Select at least one item in Bank or Materials and save the selection before turning protection on.
+      Select at least one item in Bank or Materials before turning protection on.
       <a href="#/bank">Bank</a> · <a href="#/materials">Materials</a>
       <button type="button" data-test="protection-warning-dismiss" @click="dismiss">Dismiss</button>
     </div>

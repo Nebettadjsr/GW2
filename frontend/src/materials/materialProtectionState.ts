@@ -1,6 +1,6 @@
 import { computed, effectScope, reactive, watch, type ComputedRef } from 'vue'
 import { connection, registerDeletionCleanup } from '@/api/accountSession'
-import type { EffectiveSettings } from '@/api/types'
+import type { BankAllocation, EffectiveSettings } from '@/api/types'
 
 /**
  * The one owner of browser-side Material Protection state (STORY-MAT-002).
@@ -40,7 +40,82 @@ type ViewSelections = Record<SelectionView, number[]>
 const emptySelections = (): ViewSelections => ({ bank: [], materials: [] })
 const copySelections = (value: ViewSelections): ViewSelections => ({ bank: [...value.bank], materials: [...value.materials] })
 
+/** Finite keep-targets per view: item id -> units to keep (fixed target, not current stock). */
+type ViewQuantities = Record<SelectionView, Record<number, number>>
+const emptyQuantities = (): ViewQuantities => ({ bank: {}, materials: {} })
+const copyQuantities = (value: ViewQuantities): ViewQuantities => ({ bank: { ...value.bank }, materials: { ...value.materials } })
+
+/** Largest supported reservation target (matches the backend's int range). */
+export const MAX_RESERVATION_QUANTITY = 2147483647
+
+/** A valid finite target is a nonnegative safe whole number within range; anything else is rejected, never coerced. */
+export function validReservationQuantity(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_RESERVATION_QUANTITY
+}
+
+function canonicalQuantityRecord(value: unknown): Record<number, number> {
+  const out: Record<number, number> = {}
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return out
+  for (const [key, qty] of Object.entries(value as Record<string, unknown>)) {
+    const id = Number(key)
+    if (Number.isSafeInteger(id) && id > 0 && validReservationQuantity(qty) && qty > 0) out[id] = qty
+  }
+  return out
+}
+
+/** A current Bank row as the last loaded snapshot reports it (positive counts only matter). */
+export interface BankRowGuard {
+  slot: number
+  itemId: number
+  count: number
+  binding: string | null
+  boundTo: string | null
+}
+
+/** Manual per-row hints are valid only as a complete guarded group; malformed stored rows are dropped. */
+function canonicalAllocations(value: unknown): BankAllocation[] {
+  if (!Array.isArray(value)) return []
+  const out: BankAllocation[] = []
+  const slots = new Set<number>()
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const r = raw as Record<string, unknown>
+    const whole = (v: unknown, min: number): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= MAX_RESERVATION_QUANTITY
+    if (!whole(r.slot, 0) || !whole(r.itemId, 1) || !whole(r.observedCount, 1) || !whole(r.reservedUnits, 0) || r.reservedUnits > r.observedCount) continue
+    if (slots.has(r.slot)) continue
+    if ((r.binding !== null && typeof r.binding !== 'string') || (r.boundTo !== null && typeof r.boundTo !== 'string')) continue
+    slots.add(r.slot)
+    out.push({ slot: r.slot, itemId: r.itemId, reservedUnits: r.reservedUnits, observedCount: r.observedCount,
+      binding: r.binding ?? null, boundTo: r.boundTo ?? null })
+  }
+  return out.sort((a, b) => a.slot - b.slot)
+}
+
+const copyAllocations = (value: readonly BankAllocation[]): BankAllocation[] => value.map(row => ({ ...row }))
+
+/** Whether a complete hint group describes exactly the current positive-count rows of its item. */
+function hintsMatch(rows: readonly BankRowGuard[], hints: readonly BankAllocation[]): boolean {
+  if (rows.length === 0 || rows.length !== hints.length) return false
+  return rows.every((row, index) => {
+    const hint = hints[index]!
+    return hint.slot === row.slot && hint.itemId === row.itemId && hint.observedCount === row.count
+      && hint.binding === (row.binding ?? null) && hint.boundTo === (row.boundTo ?? null)
+  })
+}
+
+/** Ascending-slot distribution of a fixed target over rows; the target is never clamped. */
+function distribute(rows: readonly BankRowGuard[], target: number): number[] {
+  let left = target
+  return rows.map(row => {
+    const units = Math.min(left, row.count)
+    left -= units
+    return units
+  })
+}
+
 interface StoredPreference {
+  allocations?: BankAllocation[]
+  quantities?: ViewQuantities
   version: number
   protectedItemIds: number[]
   enabled: boolean
@@ -79,6 +154,23 @@ export function canonicalIds(values: unknown): number[] {
   return [...seen].sort((a, b) => a - b)
 }
 
+/** Stable comparison form of a quantity map: positive whole targets only, ascending by item id. */
+export function canonicalQuantityKey(value: unknown): string {
+  const entries: [number, number][] = []
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    for (const [key, qty] of Object.entries(value as Record<string, unknown>)) {
+      const id = Number(key)
+      if (Number.isSafeInteger(id) && id > 0 && validReservationQuantity(qty) && qty > 0) entries.push([id, qty])
+    }
+  }
+  return JSON.stringify(entries.sort((a, b) => a[0] - b[0]))
+}
+
+/** Stable comparison form of Bank row hints: ascending by slot, every field significant. */
+export function canonicalAllocationKey(value: unknown): string {
+  return JSON.stringify(canonicalAllocations(value).map(r => [r.slot, r.itemId, r.reservedUnits, r.observedCount, r.binding, r.boundTo]))
+}
+
 function sameIds(a: readonly number[], b: readonly number[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
@@ -109,6 +201,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     pending: [] as number[],
     pendingByView: emptySelections(),
     committedByView: emptySelections(),
+    quantitiesByView: emptyQuantities(),
+    /** Complete guarded Bank row hints for manually edited items (sum per item equals its fixed target). */
+    bankAllocations: [] as BankAllocation[],
     /** Views whose checkboxes/presets edited the current pending selection. */
     pendingViews: [] as SelectionView[],
     /** Views the committed selection came from; null when unknown (legacy record). */
@@ -121,7 +216,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
    * Latest COMMITTED values per account for this page. It backs restoration when storage is unavailable
    * or a read/write failed, so A->B->A and reconnect never fall back to a stale stored record.
    */
-  const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null; selections: ViewSelections }>()
+  const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null; selections: ViewSelections; quantities: ViewQuantities; allocations: BankAllocation[] }>()
   /** Bumped on every local edit and account change; guards delayed canonical responses. */
   let editVersion = 0
   /** Last started request; a canonical response is accepted only from this one. */
@@ -174,7 +269,11 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         sources: canonicalSources(record.sources) ?? undefined,
         selections: typeof record.selections === 'object' && record.selections !== null
           ? { bank: canonicalIds((record.selections as ViewSelections).bank), materials: canonicalIds((record.selections as ViewSelections).materials) }
-          : undefined
+          : undefined,
+        quantities: typeof record.quantities === 'object' && record.quantities !== null
+          ? { bank: canonicalQuantityRecord((record.quantities as ViewQuantities).bank), materials: canonicalQuantityRecord((record.quantities as ViewQuantities).materials) }
+          : undefined,
+        allocations: canonicalAllocations(record.allocations)
       },
       diagnostic: Array.isArray(record.protectedItemIds) && typeof record.enabled === 'boolean' ? null : 'corrupt'
     }
@@ -187,7 +286,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       return
     }
     const value: StoredPreference = { version: PREFERENCE_SCHEMA_VERSION, protectedItemIds: [...ids], enabled,
-      selections: copySelections(state.committedByView) }
+      selections: copySelections(state.committedByView), quantities: copyQuantities(state.quantitiesByView),
+      allocations: copyAllocations(state.bankAllocations) }
     if (sources !== null) value.sources = [...sources]
     try {
       storage.setItem(keyFor(accountId), JSON.stringify(value))
@@ -232,6 +332,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     state.pending = []
     state.pendingByView = emptySelections()
     state.committedByView = emptySelections()
+    state.quantitiesByView = emptyQuantities()
+    state.bankAllocations = []
     state.pendingViews = []
     state.committedSources = null
     state.activation = false
@@ -251,10 +353,12 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
         state.activation = value.enabled
         state.committedSources = value.sources ?? null
         state.committedByView = restoredSelections(value.protectedItemIds, value.sources ?? null, value.selections)
+        state.quantitiesByView = value.quantities ? copyQuantities(value.quantities) : emptyQuantities()
+        state.bankAllocations = value.allocations ? copyAllocations(value.allocations.filter(row => state.quantitiesByView.bank[row.itemId] !== undefined)) : []
         // A successfully restored committed preference is also this page's latest committed value,
         // but never replaces a newer in-memory commit already in the shadow.
         if (!shadow.has(accountId)) shadow.set(accountId, { ids: [...value.protectedItemIds], enabled: value.enabled,
-          sources: value.sources ?? null, selections: copySelections(state.committedByView) })
+          sources: value.sources ?? null, selections: copySelections(state.committedByView), quantities: copyQuantities(state.quantitiesByView), allocations: copyAllocations(state.bankAllocations) })
       }
       if (diagnostic === 'unsupported-version' || (diagnostic === 'corrupt' && value === null)) {
         discardStored(accountId)
@@ -266,6 +370,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       state.activation = latest.enabled
       state.committedSources = latest.sources === null ? null : [...latest.sources]
       state.committedByView = copySelections(latest.selections)
+      state.quantitiesByView = copyQuantities(latest.quantities)
+      state.bankAllocations = copyAllocations(latest.allocations)
     }
     state.pending = [...state.committed]
     state.pendingByView = copySelections(state.committedByView)
@@ -319,7 +425,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     const next = new Set(view === undefined ? state.pending : state.pendingByView[view])
     if (next.has(itemId)) next.delete(itemId)
     else next.add(itemId)
+    dropFiniteFor(view, [itemId])
     setPending([...next], view)
+    autosave(view)
   }
 
   /** A partially selected group becomes fully selected; a full group is deselected. */
@@ -332,7 +440,9 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       if (deselect) next.delete(id)
       else next.add(id)
     }
+    dropFiniteFor(view, ids)
     setPending([...next], view)
+    autosave(view)
   }
 
   function discardPending(view?: SelectionView): void {
@@ -352,14 +462,128 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     if (view === undefined) state.committedByView = copySelections(state.pendingByView)
     else state.committedByView[view] = [...state.pendingByView[view]]
     syncSelectionTotals()
-    state.committedSources = (['bank', 'materials'] as const).filter(source => state.committedByView[source].length > 0)
+    state.committedSources = (['bank', 'materials'] as const).filter(source => state.committedByView[source].length > 0 || Object.keys(state.quantitiesByView[source]).length > 0)
     state.pendingViews = view === undefined ? [] : state.pendingViews.filter(value => value !== view)
     // Empty-selection safety rule: an empty committed selection cannot stay activated, and a later
     // non-empty Save must not silently re-enable it.
-    if (state.committed.length === 0) state.activation = false
+    const hasFinite = Object.keys(state.quantitiesByView.bank).length + Object.keys(state.quantitiesByView.materials).length > 0
+    if (state.committed.length === 0 && !hasFinite) state.activation = false
     shadow.set(accountId, { ids: [...state.committed], enabled: state.activation,
-      sources: state.committedSources && [...state.committedSources], selections: copySelections(state.committedByView) })
+      sources: state.committedSources && [...state.committedSources], selections: copySelections(state.committedByView),
+      quantities: copyQuantities(state.quantitiesByView), allocations: copyAllocations(state.bankAllocations) })
     persist(accountId, state.committed, state.activation, state.committedSources)
+  }
+
+  /** Autosave: the pending edit becomes committed in the same action, with exactly one preference write. */
+  function autosave(view?: SelectionView): void {
+    commit(view)
+  }
+
+  /** ALL wins over a finite target for the same item; clearing ALL leaves no stale finite target. */
+  function dropFiniteFor(view: SelectionView | undefined, ids: Iterable<number>): void {
+    for (const v of view === undefined ? (['bank', 'materials'] as const) : [view]) {
+      for (const id of ids) delete state.quantitiesByView[v][id]
+    }
+    if (view === undefined || view === 'bank') {
+      const gone = new Set(ids)
+      state.bankAllocations = state.bankAllocations.filter(row => !gone.has(row.itemId))
+    }
+  }
+
+  /**
+   * Sets a finite keep-target for one item in one view. Zero clears. Invalid input is rejected (returns
+   * false) and the existing preference is left untouched.
+   */
+  function reserveQuantity(itemId: number, view: SelectionView, quantity: unknown): boolean {
+    if (ready() === null || !Number.isSafeInteger(itemId) || itemId <= 0 || !validReservationQuantity(quantity)) return false
+    const all = new Set(state.pendingByView[view])
+    all.delete(itemId)
+    state.pendingByView[view] = canonicalIds([...all])
+    if (view === 'bank') state.bankAllocations = state.bankAllocations.filter(row => row.itemId !== itemId)
+    if (quantity === 0) delete state.quantitiesByView[view][itemId]
+    else state.quantitiesByView[view][itemId] = quantity
+    syncSelectionTotals()
+    autosave(view)
+    return true
+  }
+
+  /** Hint rows of one item, ascending by slot. */
+  function hintsOf(itemId: number): BankAllocation[] {
+    return state.bankAllocations.filter(row => row.itemId === itemId)
+  }
+
+  /**
+   * Units reserved per current positive-count stack of one item, ascending by slot. Legacy ALL reserves
+   * every stack; a matching complete hint group is kept; any layout difference redistributes the fixed
+   * target ascending. An item with no reservation reserves nothing.
+   */
+  function bankUnits(itemId: number, rows: readonly BankRowGuard[]): Map<number, number> {
+    const current = rows.filter(row => row.itemId === itemId && row.count > 0).sort((a, b) => a.slot - b.slot)
+    const out = new Map<number, number>()
+    if (state.pendingByView.bank.includes(itemId)) {
+      for (const row of current) out.set(row.slot, row.count)
+      return out
+    }
+    const target = state.quantitiesByView.bank[itemId] ?? 0
+    if (target <= 0) return out
+    const hints = hintsOf(itemId)
+    const units = hints.length > 0 && hintsMatch(current, hints) ? hints.map(h => h.reservedUnits) : distribute(current, target)
+    current.forEach((row, index) => out.set(row.slot, units[index]!))
+    return out
+  }
+
+  /**
+   * One Bank stack click: only that stack toggles (full -> zero; partial/zero -> full current count), the
+   * other stacks keep their current allocation, the new sum is the fixed target and the complete guarded
+   * rows are the hints. One autosave.
+   */
+  function toggleBankStack(itemId: number, slot: number, rows: readonly BankRowGuard[]): void {
+    if (ready() === null) return
+    const current = rows.filter(row => row.itemId === itemId && row.count > 0).sort((a, b) => a.slot - b.slot)
+    const target = current.find(row => row.slot === slot)
+    if (target === undefined) return
+    const units = bankUnits(itemId, current)
+    units.set(slot, units.get(slot) === target.count ? 0 : target.count)
+    const sum = [...units.values()].reduce((a, b) => a + b, 0)
+    if (sum > MAX_RESERVATION_QUANTITY) return // reject before touching any valid existing intent
+    state.pendingByView.bank = state.pendingByView.bank.filter(id => id !== itemId)
+    state.bankAllocations = state.bankAllocations.filter(row => row.itemId !== itemId)
+    if (sum <= 0) {
+      delete state.quantitiesByView.bank[itemId]
+    } else {
+      state.quantitiesByView.bank[itemId] = sum
+      state.bankAllocations = [...state.bankAllocations, ...current.map(row => ({ slot: row.slot, itemId, reservedUnits: units.get(row.slot) ?? 0,
+        observedCount: row.count, binding: row.binding ?? null, boundTo: row.boundTo ?? null }))].sort((a, b) => a.slot - b.slot)
+    }
+    syncSelectionTotals()
+    autosave('bank')
+  }
+
+  /**
+   * Drops manual hints whose complete guarded layout no longer matches the loaded snapshot; the fixed
+   * target stays and redistributes. At most one preference write per call, none when nothing is stale.
+   */
+  function pruneStaleBankHints(rows: readonly BankRowGuard[]): void {
+    if (ready() === null || rows.length === 0 || state.bankAllocations.length === 0) return
+    const stale = new Set<number>()
+    for (const itemId of new Set(state.bankAllocations.map(row => row.itemId))) {
+      const current = rows.filter(row => row.itemId === itemId && row.count > 0).sort((a, b) => a.slot - b.slot)
+      if (!hintsMatch(current, hintsOf(itemId))) stale.add(itemId)
+    }
+    if (stale.size === 0) return
+    state.bankAllocations = state.bankAllocations.filter(row => !stale.has(row.itemId))
+    autosave('bank')
+  }
+
+  /** Complete hint groups to send, only for items still carrying a finite bank target. */
+  function allocationsFor(): BankAllocation[] {
+    return copyAllocations(state.bankAllocations.filter(row => (state.quantitiesByView.bank[row.itemId] ?? 0) > 0
+      && !state.committedByView.bank.includes(row.itemId)))
+  }
+
+  /** The finite keep-target of an item in a view, or 0 when it has none. */
+  function quantityFor(view: SelectionView, itemId: number): number {
+    return state.quantitiesByView[view][itemId] ?? 0
   }
 
   /** The stored Profit activation preference. */
@@ -369,7 +593,8 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     editVersion += 1
     state.activation = enabled
     shadow.set(accountId, { ids: [...state.committed], enabled, sources: state.committedSources && [...state.committedSources],
-      selections: copySelections(state.committedByView) })
+      selections: copySelections(state.committedByView), quantities: copyQuantities(state.quantitiesByView),
+      allocations: copyAllocations(state.bankAllocations) })
     persist(accountId, state.committed, enabled, state.committedSources)
   }
 
@@ -438,6 +663,13 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     committedFor: (view: SelectionView) => state.committedByView[view],
     dirtyFor: (view: SelectionView) => !sameIds(state.pendingByView[view], state.committedByView[view]),
     setPending,
+    reserveQuantity,
+    quantityFor,
+    bankUnits,
+    toggleBankStack,
+    pruneStaleBankHints,
+    allocationsFor,
+    quantitiesFor: (view: SelectionView) => ({ ...state.quantitiesByView[view] }),
     togglePending,
     togglePendingGroup,
     discardPending,

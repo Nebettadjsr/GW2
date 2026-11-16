@@ -39,13 +39,19 @@ public class BankRepository {
                               String iconUrl,
                               String rarity,
                               boolean protectionSelectable,
-                              String itemName) {
+                              String itemName,
+                              String binding,
+                              String boundTo) {
+        public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity,
+                           boolean protectionSelectable, String itemName) {
+            this(slot, itemId, count, iconPath, iconUrl, rarity, protectionSelectable, itemName, null, null);
+        }
         public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity,
                            boolean protectionSelectable) {
-            this(slot, itemId, count, iconPath, iconUrl, rarity, protectionSelectable, null);
+            this(slot, itemId, count, iconPath, iconUrl, rarity, protectionSelectable, null, null, null);
         }
         public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity) {
-            this(slot, itemId, count, iconPath, iconUrl, rarity, true, null);
+            this(slot, itemId, count, iconPath, iconUrl, rarity, true, null, null, null);
         }
     }
 
@@ -67,7 +73,7 @@ public class BankRepository {
     public List<BankSlotRow> loadBankSlots(Connection con, model.AccountScope scope) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "account_bank");
         String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name, i.no_mystic_forge,
+            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name, b.binding, b.bound_to, i.no_mystic_forge,
                    EXISTS (SELECT 1 FROM material_category_items m WHERE m.item_id = b.item_id) AS material,
                    EXISTS (SELECT 1 FROM recipe_ingredients r WHERE r.item_id = b.item_id) AS recipe_ingredient,
                    EXISTS (SELECT 1 FROM recipe_catalog_publication WHERE complete) AS catalog_complete
@@ -126,7 +132,7 @@ public class BankRepository {
         // account-access stories; until then this is unavailable rather than cross-account.
         ManagedSchema.rejectUnscopedAccountAccess(con, "account_bank without an account scope");
         String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name
+            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name, b.binding, b.bound_to
             FROM account_bank b
             LEFT JOIN items i ON i.item_id = b.item_id
             ORDER BY b.slot
@@ -152,6 +158,7 @@ public class BankRepository {
                 (Integer) rs.getObject("count"),
                 rs.getString("icon_path"),
                 rs.getString("icon_url"),
-                rs.getString("rarity"), protectionSelectable, rs.getString("item_name"));
+                rs.getString("rarity"), protectionSelectable, rs.getString("item_name"),
+                rs.getString("binding"), rs.getString("bound_to"));
     }
 }

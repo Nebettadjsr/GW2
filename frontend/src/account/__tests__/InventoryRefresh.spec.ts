@@ -114,7 +114,7 @@ describe.each(SCREENS)('%s automatic refresh', (view, screen) => {
     expect(submitted.views).toEqual([view])
   })
 
-  it('keeps tiles and the pending selection when the task fails and does not resubmit', async () => {
+  it('keeps tiles and the autosaved store selection when the task fails and does not resubmit', async () => {
     const api = new FakeAccountApi()
     source(view, api)
     const syncApi = new FakeSyncApi()
@@ -123,13 +123,26 @@ describe.each(SCREENS)('%s automatic refresh', (view, screen) => {
     await settle()
     const before = tiles(wrapper, view)
     await wrapper.get('[data-test="protect-checkbox"]').setValue(true)
-    const pending = [...useMaterialProtection().state.pending]
-    expect(pending).toHaveLength(1)
+    const protection = useMaterialProtection()
+    if (view === 'bank') {
+      // A Bank click keeps this slot's supplied42 units, rather than adding its item to ALL.
+      expect(protection.quantityFor('bank', 19697)).toBe(42)
+      expect(protection.committedFor('bank')).toEqual([])
+      expect(protection.quantitiesFor('materials')).toEqual({})
+      expect(protection.committedFor('materials')).toEqual([])
+    } else {
+      expect(protection.committedFor('materials')).toEqual([12134])
+      expect(protection.quantityFor('bank', 12134)).toBe(0)
+      expect(protection.committedFor('bank')).toEqual([])
+    }
     await settle()
     expect(wrapper.get('.refresh-error').text()).toContain('Update failed — showing saved data.')
     expect(tiles(wrapper, view)).toBe(before)
     expect(firstCount(wrapper, view)).not.toContain('99')
-    expect(useMaterialProtection().state.pending).toEqual(pending)
+    expect((wrapper.get('[data-test="protect-checkbox"]').element as HTMLInputElement).checked).toBe(true)
+    if (view === 'bank') expect(protection.quantityFor('bank', 19697)).toBe(42)
+    else expect(protection.committedFor('materials')).toEqual([12134])
+    expect(otherReads(api)).toBe(0)
     expect(submitted.views).toEqual([view])
   })
 

@@ -1,4 +1,5 @@
-import { computed, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, getCurrentInstance, onActivated, onDeactivated, onScopeDispose, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
+import type { BankAllocation } from '@/api/types'
 import type { CraftingApi } from '@/api/craftingApi'
 import { ApiRequestError } from '@/api/http'
 import {
@@ -13,7 +14,7 @@ import {
   type SyncTaskAccepted,
   type SyncTaskStatus
 } from '@/api/types'
-import { canonicalIds, useMaterialProtection, type MaterialProtectionState } from '@/materials/materialProtectionState'
+import { canonicalAllocationKey, canonicalIds, canonicalQuantityKey, useMaterialProtection, type MaterialProtectionState } from '@/materials/materialProtectionState'
 import { buildScopeOptions, defaultScopeOptionId, type ScopeOption } from './scopeOptions'
 
 /**
@@ -197,6 +198,34 @@ export function useCraftingProfit(
   })
 
   let opened = false
+  /** False while a kept-alive host is deactivated: edits made offscreen must not calculate. */
+  let active = true
+  /** A context change happened while inactive; the latest context is calculated once on return. */
+  let dirtyWhileInactive = false
+  /** Work was in flight or provisional when the host was deactivated; recalculate once on return. */
+  let interruptedWhileInactive = false
+  if (getCurrentInstance() !== null) {
+    onDeactivated(() => {
+      active = false
+      // Obsolete offscreen work is abandoned: in-flight answers are rejected and recovery stops
+      // polling/resubmitting. A provisional or interrupted result is calculated once on return.
+      if (opened && !disposed && (isLoading.value || isRecovering.value || isProvisional.value)) {
+        interruptedWhileInactive = true
+      }
+      newestRequestId += 1
+      abandonRecovery()
+      isLoading.value = false
+    })
+    onActivated(() => {
+      active = true
+      if (!dirtyWhileInactive && !interruptedWhileInactive) return
+      dirtyWhileInactive = false
+      interruptedWhileInactive = false
+      if (opened && !disposed && effectiveKey() !== 'none' && protection.state.accountId === boundAccountId) {
+        void requestProfit(currentRequest())
+      }
+    })
+  }
   /** The verified account this composable's scope/settings belong to; bound on first sight. */
   let boundAccountId: string | null = null
   /**
@@ -214,6 +243,14 @@ export function useCraftingProfit(
         newestRequestId += 1
         abandonRecovery()
         isLoading.value = false
+        return
+      }
+      if (!active) {
+        // Persisted already; invalidate obsolete work and remember to calculate the latest context once.
+        newestRequestId += 1
+        abandonRecovery()
+        isLoading.value = false
+        dirtyWhileInactive = true
         return
       }
       const account = protection.state.accountId
@@ -259,11 +296,17 @@ export function useCraftingProfit(
    * The committed protection context for the verified account, or null while it is not restored.
    * Activation is effective only with at least one committed ID; pending edits are never read.
    */
-  function protectionContext(): { enabled: boolean; ids: number[]; bankIds: number[]; materialIds: number[] } | null {
+  function protectionContext(): { enabled: boolean; ids: number[]; bankIds: number[]; materialIds: number[];
+    bankQuantities: Record<number, number>; materialQuantities: Record<number, number>;
+    bankAllocations: BankAllocation[] } | null {
     if (protection.state.status !== 'ready' || protection.state.accountId === null) return null
     const ids = [...protection.state.committed]
-    return { enabled: protection.state.activation && ids.length > 0, ids,
-      bankIds: [...protection.committedFor('bank')], materialIds: [...protection.committedFor('materials')] }
+    const bankQuantities = protection.quantitiesFor('bank')
+    const materialQuantities = protection.quantitiesFor('materials')
+    const hasFinite = Object.keys(bankQuantities).length + Object.keys(materialQuantities).length > 0
+    return { enabled: protection.state.activation && (ids.length > 0 || hasFinite), ids,
+      bankIds: [...protection.committedFor('bank')], materialIds: [...protection.committedFor('materials')],
+      bankQuantities, materialQuantities, bankAllocations: protection.allocationsFor() }
   }
 
   function contextKey(): string {
@@ -274,7 +317,7 @@ export function useCraftingProfit(
   function effectiveKey(): string {
     const context = protectionContext()
     if (context === null) return 'none'
-    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? JSON.stringify([context.bankIds, context.materialIds]) : ''}`
+    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? JSON.stringify([context.bankIds, context.materialIds, canonicalQuantityKey(context.bankQuantities), canonicalQuantityKey(context.materialQuantities), canonicalAllocationKey(context.bankAllocations)]) : ''}`
   }
 
   /** Whether an enabled-protection request was echoed back as such (order/duplicate insensitive). */
@@ -287,7 +330,12 @@ export function useCraftingProfit(
       const wanted = canonicalIds(request.settings?.[field])
       const got = canonicalIds(echoed[field])
       return wanted.length === got.length && wanted.every((id, index) => id === got[index])
-    })
+    }) && (['protectedBankQuantities', 'protectedMaterialQuantities'] as const).every(field => {
+      const wanted = canonicalQuantityKey(request.settings?.[field])
+      // An omitted map counts as empty; an unexpected nonempty or different map is rejected.
+      return (echoed[field] === undefined ? '[]' : canonicalQuantityKey(echoed[field])) === wanted
+    }) && canonicalAllocationKey(request.settings?.protectedBankAllocations)
+      === canonicalAllocationKey(echoed.protectedBankAllocations)
   }
 
   /**
@@ -585,16 +633,24 @@ export function useCraftingProfit(
         request.settings.protectedItemIds = []
         request.settings.protectedBankItemIds = context.bankIds
         request.settings.protectedMaterialItemIds = context.materialIds
+        request.settings.protectedBankQuantities = { ...context.bankQuantities }
+        request.settings.protectedMaterialQuantities = { ...context.materialQuantities }
+        request.settings.protectedBankAllocations = context.bankAllocations.map(row => ({ ...row }))
       } else {
         delete request.settings.materialProtectionEnabled
         delete request.settings.protectedItemIds
         delete request.settings.protectedBankItemIds
         delete request.settings.protectedMaterialItemIds
+        delete request.settings.protectedBankQuantities
+        delete request.settings.protectedMaterialQuantities
+        delete request.settings.protectedBankAllocations
       }
     } else if (context !== null && context.enabled) {
       // Backend defaults for everything else; only the committed protection is supplied.
       request.settings = { materialProtectionEnabled: true, protectedItemIds: [],
-        protectedBankItemIds: context.bankIds, protectedMaterialItemIds: context.materialIds }
+        protectedBankItemIds: context.bankIds, protectedMaterialItemIds: context.materialIds,
+        protectedBankQuantities: { ...context.bankQuantities }, protectedMaterialQuantities: { ...context.materialQuantities },
+        protectedBankAllocations: context.bankAllocations.map(row => ({ ...row })) }
     }
     return request
   }

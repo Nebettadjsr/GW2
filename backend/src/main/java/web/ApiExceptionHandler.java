@@ -54,6 +54,14 @@ public class ApiExceptionHandler {
                 .body(new ApiErrorResponse("RECIPE_NOT_IN_CALCULATION", e.getMessage()));
     }
 
+    /** Draft: partial reservation across differently bound copies has no approved allocation rule. */
+    @ExceptionHandler(repo.InventoryRepository.UnresolvedReservationAllocationException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnresolvedReservation() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).header("Cache-Control", "no-store")
+                .body(new ApiErrorResponse("RESERVATION_ALLOCATION_UNDECIDED",
+                        "A partial reservation across differently bound copies of one material is not supported yet"));
+    }
+
     /** Body was absent-but-required, not JSON, or structurally unusable. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadableBody(HttpMessageNotReadableException e) {

@@ -1,4 +1,5 @@
-import type { ResolutionNode } from '@/api/types'
+import type { InjectionKey, Ref } from 'vue'
+import type { EffectiveSettings, ResolutionNode } from '@/api/types'
 
 /** The item's name, or its ID when the backend supplied none. */
 export function nodeLabel(node: ResolutionNode): string {
@@ -39,4 +40,21 @@ export function describeRootSourcing(root: ResolutionNode, requestedRecipeId: nu
     `Recipe ${root.recipeId} was selected for this requirement, not the requested recipe ` +
     `${requestedRecipeId}.`
   )
+}
+
+/** Injection key: the confirmed effective settings a resolution tree was calculated with. */
+export const RESOLUTION_SETTINGS_KEY: InjectionKey<Ref<EffectiveSettings | null>> = Symbol('resolutionSettings')
+
+/**
+ * Small finite keep-target note for one material, naming each source. It describes a fixed target
+ * from the confirmed effective settings and never claims current stock.
+ */
+export function keepTargetNote(settings: EffectiveSettings | null | undefined, itemId: number): string | null {
+  if (settings === null || settings === undefined || settings.materialProtectionEnabled !== true) return null
+  const parts: string[] = []
+  const bank = settings.protectedBankQuantities?.[String(itemId)]
+  const materials = settings.protectedMaterialQuantities?.[String(itemId)]
+  if (typeof bank === 'number' && bank > 0) parts.push(`Keep ${bank.toLocaleString('en-US')} in bank`)
+  if (typeof materials === 'number' && materials > 0) parts.push(`Keep ${materials.toLocaleString('en-US')} in material storage`)
+  return parts.length === 0 ? null : parts.join(' · ')
 }
