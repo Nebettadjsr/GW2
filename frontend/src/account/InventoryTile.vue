@@ -21,7 +21,7 @@ const props = withDefaults(defineProps<{
 }>(), { showOne: false, selected: undefined, reserved: 0, mixed: false, finite: undefined, itemName: null })
 
 const label = computed(() => props.itemName ?? props.title)
-const isFinite = computed(() => props.finite ?? (props.reserved > 0 && props.selected !== true))
+const hasFiniteReservation = computed(() => props.finite ?? (props.reserved > 0 && props.selected !== true))
 const emit = defineEmits<{ toggle: [itemId: number]; menu: [itemId: number, x: number, y: number] }>()
 
 function openMenu(event: MouseEvent | KeyboardEvent, element: HTMLElement | null): void {
@@ -46,7 +46,11 @@ function onClick(event: MouseEvent): void {
   emit('toggle', props.itemId)
   // A rejected toggle leaves the model unchanged; do not let the native control drift from it.
   const input = event.currentTarget instanceof HTMLInputElement ? event.currentTarget : null
-  void nextTick(() => { if (input !== null && input.checked !== (props.selected === true)) input.checked = props.selected === true })
+  void nextTick(() => {
+    if (input === null) return
+    if (input.checked !== (props.selected === true)) input.checked = props.selected === true
+    if (input.indeterminate !== props.mixed) input.indeterminate = props.mixed
+  })
 }
 function onChange(): void {
   if (clickedRecently) {
@@ -64,7 +68,7 @@ function onKey(event: KeyboardEvent): void {
 
 <template>
   <component :is="selected === undefined ? 'span' : 'label'" class="inventory-tile"
-    :class="{ 'inventory-tile--empty': count === 0, 'inventory-tile--selected': selected === true, 'inventory-tile--reserved': isFinite,
+    :class="{ 'inventory-tile--empty': count === 0, 'inventory-tile--selected': selected === true, 'inventory-tile--reserved': hasFiniteReservation,
       'inventory-tile--selectable': selected !== undefined }"
     :title="itemName ?? title" @contextmenu="openMenu($event, null)">
     <ItemIcon :item-id="itemId" :icon-url="iconUrl" loading="lazy" :size="56" />
@@ -75,7 +79,7 @@ function onKey(event: KeyboardEvent): void {
       data-test="protect-checkbox"
       :checked="selected"
       :indeterminate.prop="mixed"
-      :aria-label="isFinite && reserved > 0 ? `Protect ${label} (keeping ${reserved})` : `Protect ${label}`"
+      :aria-label="hasFiniteReservation && reserved > 0 ? `Protect ${label} (keeping ${reserved})` : `Protect ${label}`"
       @click="onClick"
       @change="onChange"
       @keydown="onKey"
