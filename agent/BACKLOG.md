@@ -1,6 +1,6 @@
 # Planning backlog
 
-Updated: 2026-11-15. Interactive Codex supervises; GitHub issues, PRs and their checks own execution
+Updated: 2026-11-16. Interactive Codex supervises; GitHub issues, PRs and their checks own execution
 status. This file contains planning order, authorization and handoff boundaries only.
 Observed runtime facts belong in [Current State](../docs/CURRENT_STATE_SPEC.md).
 
@@ -29,12 +29,28 @@ local for the morning. Preserve unrelated edits and current public behavior outs
 
 First prepare additive batch item-name metadata for old-client compatibility. Then prepare one
 combined local-review reservation UX contract, including authoritative backend quantity handling.
-The accepted combined handoff is [STORY-MAT-004, #235](https://github.com/Nebettadjsr/GW2/issues/235),
-dependent on the merged item-name foundation. Its new UI remains held for local owner review.
 Keep source-specific and character-inventory rules intact. Avoid Profit recalculation while its
 cached screen is inactive; use the latest saved choices when returning to it. Partial reservations
 across heterogeneous binding/owner buckets need an explicit product rule; keep that edge local
 and record the morning question rather than silently selecting an allocation policy.
+
+### Morning Bank/Materials correction
+
+The owner accepts the other preview features and authorizes these local corrections. Reservation
+text belongs in a readable area to the right of each Bank tab/material category grid, with a narrow
+layout fallback; remove the clipped text inside item tiles and use a solid yellow reservation border.
+Bank clicks now select the actual clicked stack independently. A numeric target allocates in Bank
+slot order: four stacks of 250 with target 250 reserve one stack; target 300 reserves 250 from the
+first and 50 from the second. Actual backend exclusion must match the displayed selected rows,
+including their bindings. This supersedes the earlier item-wide Bank click contract. Materials,
+autosave, cached search, names and offscreen calculation guards retain their accepted behavior.
+After rearranging or splitting stacks in game, the owner chose to keep the reserved item amount
+and redistribute it over current matching stacks. Preserve the fixed target even when stock is
+temporarily lower or absent; never reserve a different item that replaced an old slot.
+Initially keep the corrected layout in the running local preview for visual review. The owner's
+subsequent explicit instruction, "when u done pls publish it on the website", authorizes merge and
+publication of this completed correction after verification, without another approval request.
+This supersedes the local-only hold for this Bank/Materials correction; it does not expand its scope.
 
 The pre-release capacity programme, additional-key search and associated measurement/analysis
 work are withdrawn. Preserve concrete future performance improvements. No supported-user capacity
@@ -54,15 +70,11 @@ implementation selections. Consult the linked GitHub issue for its current execu
    restricted application database role and canonical HTTPS origin. Preserve the actual host's
    protected override until a separately reviewed change replaces it. Keep fresh-cache/Flyway
    behavior simple; PostgreSQL is disposable cache, without preservation obligations.
-2. [#230](https://github.com/Nebettadjsr/GW2/issues/230): resolve the remaining development-tool
-   glob advisory through a compatible parent update or justified narrow override. Require current
-   Node 22 support, clean dependency resolution/audit and existing frontend coverage/type/build
-   gates; do not make unrelated product changes or use indiscriminate forced upgrades.
-3. [#111](https://github.com/Nebettadjsr/GW2/issues/111): meaningful account request-mapping and
+2. [#111](https://github.com/Nebettadjsr/GW2/issues/111): meaningful account request-mapping and
    session-recovery coverage, within the current verified-account boundary.
-4. [#60](https://github.com/Nebettadjsr/GW2/issues/60): optional real-database fixtures and account
+3. [#60](https://github.com/Nebettadjsr/GW2/issues/60): optional real-database fixtures and account
    task-lookup semantics; distinguish refetchable cache behavior from durable data obligations.
-5. [#21](https://github.com/Nebettadjsr/GW2/issues/21): refine the broader coverage request into
+4. [#21](https://github.com/Nebettadjsr/GW2/issues/21): refine the broader coverage request into
    bounded checks of currently under-covered behavior before selecting implementation work.
 
 Preserve concrete optimization candidates in the owning problem/investigation documents.
