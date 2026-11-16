@@ -28,23 +28,27 @@ The Maven wrapper and `backend/pom.xml` manage Java dependencies. Frontend depen
 ## Public Oracle deployment (2026-11-15)
 
 The owner approved publication of the current UI and calculation fix, then explicitly authorized
-general public access. The live release is `40007cfa250c89434b0d35be8c178517d4110bd5`, from merged
+general public access. The live release is `a2490cda6f988b0769468fe4dcf80359d4678fef`, from merged
 [#222](https://github.com/Nebettadjsr/GW2/pull/222),
 [#226](https://github.com/Nebettadjsr/GW2/pull/226) and
 [#224](https://github.com/Nebettadjsr/GW2/pull/224), followed by the explicitly approved
 [#192](https://github.com/Nebettadjsr/GW2/pull/192), subsequent maintenance and the additive cached
-Bank/Materials item-name foundation [#234](https://github.com/Nebettadjsr/GW2/pull/234). Its tree
-exactly matches reviewed/CI candidate `97ad46f9910b015f2d5036a59488f2dfdd95f488`; independent
-local QA passed all 67 focused checks. Build, activation and public-access verification ran in
-the visible Oracle SSH terminal; all three containers are healthy. The backend was replaced;
-the unchanged frontend kept running. The new tile/reservation UI is a separate local-review
-draft and is not included in this deployment.
+Bank/Materials item-name foundation [#234](https://github.com/Nebettadjsr/GW2/pull/234) and
+reservation interactions [#236](https://github.com/Nebettadjsr/GW2/pull/236). Its tree exactly
+matches reviewed/CI candidate `61a10cfa1686f7763696c9a725cf809a0792644c`. Independent local QA
+passed 306 backend checks, 213 focused frontend checks, type/build and 19 controlled visible
+desktop/narrow browser phases; full frontend CI passed 933 tests. The owner explicitly requested
+publication of the completed correction, superseding its earlier local-review hold. Build,
+activation and public-access verification ran in the visible Oracle SSH terminal on 2026-11-16;
+all three containers are healthy. Backend and frontend were replaced; PostgreSQL was not recreated.
+The approved reservation UI is now public. Its behavior is owned by DOMAIN_SPEC section 9.1
+and FRONTEND_UX_GUIDELINES section 2.1.
 
 The host is Oracle Frankfurt AD 2, Ubuntu 24.04 ARM64, 2 OCPUs and 12 GB RAM, at
 `130.61.78.114`. Docker 29.9.3 / Compose 5.7.1 run frontend, backend and PostgreSQL 17.
 Only the frontend publishes a host port, `127.0.0.1:8088`; backend and PostgreSQL publish none.
 The database container was not recreated for this release. `/opt/gw2/current` selects
-`/opt/gw2/releases/40007cfa250c89434b0d35be8c178517d4110bd5`.
+`/opt/gw2/releases/a2490cda6f988b0769468fe4dcf80359d4678fef`.
 Private deployment inputs remain outside the repository.
 
 ### Public Home and crawler boundary
@@ -162,10 +166,12 @@ Hosted public/security, served-label, browser navigation and real-key session ch
 the update, with all containers healthy and the database container unchanged. Development dependency
 maintenance [#227/#229](https://github.com/Nebettadjsr/GW2/pull/229) is merged separately: aligned
 Vitest/mocker/coverage 5.1.0 and scoped minimatch 11.0.8 resolve the three targeted advisories.
-Current CI/coverage/build/review and an independent clean Node 22 install passed. Full audit still
-reports three moderate package entries from the pre-existing glob advisory, tracked in
-[#230](https://github.com/Nebettadjsr/GW2/issues/230). Node/test dependencies are absent from the
-production Nginx runtime image; this development-only change has not replaced the live source above.
+CI/coverage/build/review and an independent clean Node 22 install passed. Follow-up
+[#238](https://github.com/Nebettadjsr/GW2/pull/238) resolves the pre-existing glob advisory with a
+scoped glob 14.0.6 override beneath js-beautify 2.0.3. Its independent Node 22 clean install,
+CommonJS/API/CLI compatibility checks and full audit passed with zero vulnerabilities reported.
+Both maintenance changes are included in the live source above. Node/test dependencies are absent
+from the production Nginx runtime image.
 No supported-user capacity,
 new load-test result, complete keyed browser journey or multi-account validation is claimed.
 
