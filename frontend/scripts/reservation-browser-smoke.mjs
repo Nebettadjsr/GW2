@@ -78,7 +78,7 @@ async function openEditor(page, key = 'Shift+F10', expectedCount, origin = tile(
   await page.locator('[data-test="menu-reserve"]').click()
   await page.locator('[data-test="reserve-dialog"]').waitFor()
   await focused(page.locator('[data-test="reserve-input"]'))
-  if (expectedCount !== undefined) assert.match(await text(page.locator('[data-test="reserve-dialog"]')), new RegExp(`In (bank|material storage): ${expectedCount}\\b`))
+  if (expectedCount !== undefined) assert.match(await text(page.locator('[data-test="reserve-dialog"]')), new RegExp(`In (bank|material storage): ${expectedCount.toLocaleString('en-US')}\\b`))
 }
 async function apply(page, value, origin = checkbox(page)) {
   await page.locator('[data-test="reserve-input"]').fill(String(value))
@@ -189,7 +189,11 @@ async function runViewport(browser, stub, viewport) {
     assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 200 })
     assert.deepEqual((await saved(page)).selections.bank, [])
     assert.equal(await page.locator('[data-slot="1"] input').isChecked(), false)
-    await tile(page).click({ position: { x: 58, y: 30 } })
+    // Playwright's position is padding-relative: x58 can miss a 60px tile with a 3px finite border.
+    // Use the actual border box so the background click stays on the tile as its border changes.
+    const background = await tile(page).boundingBox()
+    assert.ok(background)
+    await page.mouse.click(background.x + 1, background.y + background.height / 2)
     assert.deepEqual((await saved(page)).quantities.bank, {})
     await tile(page).locator('[data-test="item-icon-fallback"]').click()
     assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 200 })
