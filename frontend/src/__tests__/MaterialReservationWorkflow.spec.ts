@@ -4,6 +4,7 @@ import { connectKey, installAccountSession, resetAccountSession } from '@/api/ac
 import { installAccountTransport } from '@/api/http'
 import type { CraftingProfitRequest, CraftingProfitResolutionRequest, CraftingProfitResponse, SyncTaskStatus } from '@/api/types'
 import { deferred } from '@/account/__tests__/accountFixtures'
+import { allocationRows, fourStackBank, type BankSettings, type BankSnapshot } from '@/account/__tests__/bankReservationFixtures'
 import {
   accountWork, echoedProfitResponse, finalFreshness, node, profitableRow,
   provisionalFreshness, resolutionResponse, selectorOptions
@@ -21,6 +22,7 @@ let wrapper: VueWrapper | null = null
 let profitAnswer: (request: CraftingProfitRequest, index: number) => Promise<CraftingProfitResponse>
 let detailAnswer: (request: CraftingProfitResolutionRequest) => Promise<ReturnType<typeof resolutionResponse>>
 let taskAnswer: () => Promise<SyncTaskStatus>
+let bankAnswer: BankSnapshot | null
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 const calls = (path: string) => seen.filter(request => request.path === path)
@@ -39,6 +41,7 @@ beforeEach(async () => {
   taskAnswer = async () => ({ taskId: 'reservation-existing-task', operation: 'ACCOUNT_SYNC', state: 'SUCCEEDED',
     submittedAt: '', startedAt: '', finishedAt: '', failure: null })
   seen.length = 0
+  bankAnswer = null
   window.history.replaceState(null, '', '/#/crafting')
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const path = String(input)
@@ -52,6 +55,7 @@ beforeEach(async () => {
     if (path === '/api/crafting/selector-options' && method === 'GET') return json(selectorOptions)
     if (path === TABLE && method === 'POST') return json(await profitAnswer(body, calls(TABLE).length - 1))
     if (path === DETAIL && method === 'POST') return json(await detailAnswer(body))
+    if (path === '/api/account/bank' && method === 'GET' && bankAnswer !== null) return json(bankAnswer)
     if (path === '/api/account/bank' && method === 'GET') return json({ slotCount: 2,
       freshness: { status: 'FRESH', completedAt: '2099-01-01T00:00:00Z' },
       slots: [200, 100].map((count, slot) => ({ slot, itemId: ITEM, count, itemName: 'Copper Ore', iconUrl: null, rarity: 'Basic' })) })
@@ -114,6 +118,88 @@ function enabledTarget(quantity = 100) {
 }
 
 describe('reservation edits through the real kept-alive workspace', () => {
+  async function moveSameFixedTotalToThirdStack() {
+    for (const slot of [0, 2]) {
+      ;(wrapper!.get(`[data-slot="${slot}"] [data-test="protect-checkbox"]`).element as HTMLInputElement).click()
+      await flushPromises()
+    }
+  }
+
+  it('invalidates same-total slot edits offscreen, rejects old detail, and calculates the latest layout once on activation', async () => {
+    bankAnswer = fourStackBank()
+    enabledTarget(300)
+    const app = await open()
+    const old = deferred<ReturnType<typeof resolutionResponse>>()
+    detailAnswer = () => old.promise
+    await selectIron()
+    const initial = calls(DETAIL)[0]!.body as CraftingProfitResolutionRequest
+    await navigate('bank')
+    await moveSameFixedTotalToThirdStack() // 300->[0,50,0,0]->[0,50,250,0], still target300.
+    expect(useMaterialProtection().quantityFor('bank', ITEM)).toBe(300)
+    expect(calls(TABLE)).toHaveLength(1)
+    expect(calls(DETAIL)).toHaveLength(1)
+    old.resolve(resolutionResponse(initial, { tree: node({ itemName: 'OLD SLOT DETAIL' }) }))
+    await flushPromises()
+    expect(calls(TABLE)).toHaveLength(1)
+    detailAnswer = async request => resolutionResponse(request, { tree: node({ itemName: 'LATEST SLOT DETAIL' }) })
+    await navigate('crafting')
+    expect(calls(TABLE)).toHaveLength(2)
+    expect(calls(DETAIL)).toHaveLength(2)
+    expect(lastRequest().settings).toMatchObject({ protectedItemIds: [], protectedBankItemIds: [],
+      protectedBankQuantities: { [ITEM]: 300 }, protectedBankAllocations: allocationRows([0, 50, 250, 0]) })
+    expect((calls(DETAIL).at(-1)!.body as CraftingProfitResolutionRequest).calculation.settings)
+      .toEqual(echoedProfitResponse(lastRequest()).settings)
+    expect(app.text()).toContain('LATEST SLOT DETAIL')
+    expect(app.text()).not.toContain('OLD SLOT DETAIL')
+    await navigate('bank')
+    await navigate('crafting')
+    expect(calls(TABLE)).toHaveLength(2)
+    expect(calls(DETAIL)).toHaveLength(2)
+    expect(seen.filter(request => request.path.startsWith('/api/sync'))).toEqual([])
+  })
+
+  it('rejects an old same-total table after only manual allocation hints changed', async () => {
+    bankAnswer = fourStackBank()
+    enabledTarget(300)
+    const old = deferred<CraftingProfitResponse>()
+    profitAnswer = () => old.promise
+    const app = await open()
+    const initial = lastRequest()
+    await navigate('bank')
+    await moveSameFixedTotalToThirdStack()
+    old.resolve(echoedProfitResponse(initial, [{ ...profitableRow, outputName: 'OLD SLOT TABLE' }]))
+    await flushPromises()
+    expect(calls(TABLE)).toHaveLength(1)
+    profitAnswer = async request => echoedProfitResponse(request, [{ ...profitableRow, outputName: 'LATEST SLOT TABLE' }])
+    await navigate('crafting')
+    expect(calls(TABLE)).toHaveLength(2)
+    expect(lastRequest().settings).toMatchObject({ protectedBankAllocations: allocationRows([0, 50, 250, 0]) })
+    expect(app.text()).toContain('LATEST SLOT TABLE')
+    expect(app.text()).not.toContain('OLD SLOT TABLE')
+  })
+
+  it('abandons recovery while Bank edits slot hints and resumes only the latest allocation once visible', async () => {
+    bankAnswer = fourStackBank()
+    enabledTarget(300)
+    const status = deferred<SyncTaskStatus>()
+    taskAnswer = () => status.promise
+    profitAnswer = async request => echoedProfitResponse(request, undefined, provisionalFreshness({
+      outstandingWork: [accountWork('reservation-existing-task', { taskStatusUrl: TASK })]
+    }))
+    await open()
+    expect(calls(TASK)).toHaveLength(1)
+    await navigate('bank')
+    await moveSameFixedTotalToThirdStack()
+    status.resolve({ taskId: 'reservation-existing-task', operation: 'ACCOUNT_SYNC', state: 'SUCCEEDED',
+      submittedAt: '', startedAt: '', finishedAt: '', failure: null })
+    await flushPromises()
+    expect(calls(TABLE)).toHaveLength(1)
+    profitAnswer = async request => echoedProfitResponse(request)
+    await navigate('crafting')
+    expect(calls(TABLE)).toHaveLength(2)
+    expect((lastRequest().settings as BankSettings).protectedBankAllocations).toEqual(allocationRows([0, 50, 250, 0]))
+  })
+
   it('makes zero offscreen calculations/details and calculates the latest autosaved stores once on return', async () => {
     enabledTarget()
     const app = await open()

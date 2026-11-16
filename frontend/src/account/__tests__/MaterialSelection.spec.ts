@@ -71,9 +71,10 @@ describe('Bank and Materials selection', () => {
     expect(bankBoxes).toEqual([false, false, false]) // 19697, 24295, 12134
     expect(bank.find('[data-test="selection-state"]').exists()).toBe(false)
     await box(bank, 2).setValue(true)
-    expect(useMaterialProtection().pendingFor('bank')).toEqual([12134])
+    expect(useMaterialProtection().quantityFor('bank', 12134)).toBe(250)
     expect(useMaterialProtection().pendingFor('materials')).toEqual([12134])
     await box(bank, 2).setValue(false)
+    expect(useMaterialProtection().quantityFor('bank', 12134)).toBe(0)
     expect(useMaterialProtection().pendingFor('bank')).toEqual([])
     expect(useMaterialProtection().pendingFor('materials')).toEqual([12134])
     expect(state.committed).toEqual([12134])
@@ -87,20 +88,20 @@ describe('Bank and Materials selection', () => {
     const w = await open(BankScreen, api)
     expect(w.find('[data-test="selection-confirm"]').exists()).toBe(false)
     await box(w, 0).setValue(true)
-    expect(state.committed).toEqual([19697])
-    expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.bank).toEqual([19697])
+    expect(useMaterialProtection().quantityFor('bank', 19697)).toBe(42)
+    expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).quantities.bank).toEqual({ 19697: 42 })
     useMaterialProtection().setActivation(true)
     w.unmount()
-    expect(state.committed).toEqual([19697])
+    expect(useMaterialProtection().quantityFor('bank', 19697)).toBe(42)
     const other = await open(MaterialsScreen, api)
     expect(other.find('[data-test="selection-confirm"]').exists()).toBe(false)
     expect(useMaterialProtection().committedFor('materials')).toEqual([])
-    expect(state.committed).toEqual([19697])
+    expect(useMaterialProtection().quantityFor('bank', 19697)).toBe(42)
     other.unmount()
     const m = await open(BankScreen, api)
     expect(m.find('[data-test="selection-committed"]').text()).toContain('1 item.')
     await boxes(m).find((c) => (c.element as HTMLInputElement).checked)!.setValue(false)
-    expect(state.committed).toEqual([])
+    expect(useMaterialProtection().quantityFor('bank', 19697)).toBe(0)
     expect(state.activation).toBe(false)
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.bank).toEqual([])
     await box(m, 0).setValue(true)
@@ -169,10 +170,9 @@ describe('Bank and Materials selection', () => {
     expect(state.committed).toEqual([12134, 19697, 19698])
   })
 
-  it('bankRefreshWithMovedStacks_keepsSelectionByItemId', async () => {
+  it('bankRefreshWithMovedStacks_keepsTheFixedAmountAndRedistributesItToCurrentSlots', async () => {
     const api = new FakeAccountApi()
     const w = await open(BankScreen, api)
-    const state = useMaterialProtection().state
     await box(w, 2).setValue(true) // 12134
     api.bankHandler = () => Promise.resolve({
       slotCount: 3,
@@ -184,9 +184,10 @@ describe('Bank and Materials selection', () => {
     } as never)
     document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
-    expect(state.pending).toEqual([12134])
-    expect(state.committed).toEqual([12134])
+    expect(useMaterialProtection().quantityFor('bank', 12134)).toBe(250)
+    // The saved amount exceeds current stock; reserve both current stacks without clamping 250 to 6.
     expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([true, true])
+    expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).quantities.bank).toEqual({ 12134: 250 })
   })
 
   it('showsSavedSelectionWording_andConcisePurposeHint', async () => {

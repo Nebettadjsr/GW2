@@ -77,7 +77,9 @@ describe('reservation editor and autosave', () => {
     expect(wrapper.findAll('[data-test="reservation-note"]')).toHaveLength(1)
     expectNote(wrapper.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'bank')
     expect(wrapper.findAll('.inventory-tile').every(tile => !/Keep\s+250/i.test(tile.text()))).toBe(true)
-    expect(wrapper.get('input[type="checkbox"]').attributes('aria-label')).toContain('250')
+    expect(wrapper.get('input[type="checkbox"]').attributes('aria-label')).toContain('Copper Ore')
+    expect(wrapper.findAll('input[type="checkbox"]').map(input => (input.element as HTMLInputElement).checked)).toEqual([true, false])
+    expect(wrapper.findAll('input[type="checkbox"]').map(input => (input.element as HTMLInputElement).indeterminate)).toEqual([false, true])
 
     for (const count of [200, 400]) {
       api.bankHandler = async () => bank([count])
@@ -85,14 +87,16 @@ describe('reservation editor and autosave', () => {
       await flushPromises()
       expect(wrapper.get('[data-test="item-count"]').text()).toBe(String(count))
       expectNote(wrapper.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'bank')
-      expect(wrapper.get('input[type="checkbox"]').attributes('aria-label')).toContain('250')
+      const checkbox = wrapper.get('input[type="checkbox"]').element as HTMLInputElement
+      expect(checkbox.checked).toBe(count === 200)
+      expect(checkbox.indeterminate).toBe(count === 400)
       expect(saved().quantities.bank).toEqual({ [ITEM]: 250 })
     }
     wrapper.unmount()
     resetMaterialProtection()
     const reopened = await open()
     expectNote(reopened.wrapper.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'bank')
-    expect(reopened.wrapper.get('input[type="checkbox"]').attributes('aria-label')).toContain('250')
+    expect((reopened.wrapper.get('input[type="checkbox"]').element as HTMLInputElement).checked).toBe(true)
     expect(useMaterialProtection().quantityFor('bank', ITEM)).toBe(250)
     expect(fetch).not.toHaveBeenCalled()
   })

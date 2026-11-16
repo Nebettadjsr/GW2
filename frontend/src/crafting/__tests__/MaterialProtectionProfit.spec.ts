@@ -19,7 +19,7 @@ const B = 'bbbbbbbb-0000-0000-0000-000000000002'
 const syncApi = {} as SyncApi
 const scopedSelection = (ids: number[]) => ({ materialProtectionEnabled: true, protectedItemIds: [],
   protectedBankItemIds: ids, protectedMaterialItemIds: ids,
-  protectedBankQuantities: {}, protectedMaterialQuantities: {} })
+  protectedBankQuantities: {}, protectedMaterialQuantities: {}, protectedBankAllocations: [] })
 
 /** Echoes request settings merged over the defaults, like the backend's canonical echo. */
 function echo(request: CraftingProfitRequest): CraftingProfitResponse {

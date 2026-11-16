@@ -1,5 +1,9 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import BankScreen from '@/account/BankScreen.vue'
+import { FakeAccountApi } from '@/account/__tests__/accountFixtures'
+import { allocationRows, fourStackBank, type BankSettings } from '@/account/__tests__/bankReservationFixtures'
+import { shellProvide } from '@/sync/__tests__/shellProvide'
 import { connection } from '@/api/accountSession'
 import type { SyncApi } from '@/api/syncApi'
 import { resetMaterialProtection, useMaterialProtection } from '@/materials/materialProtectionState'
@@ -38,7 +42,7 @@ describe('Profit finite reservation contract', () => {
     expect(api.profitRequests[0]!.settings).toEqual({
       materialProtectionEnabled: true, protectedItemIds: [],
       protectedBankItemIds: [19721], protectedMaterialItemIds: [],
-      protectedBankQuantities: { [ITEM]: 250 }, protectedMaterialQuantities: { [ITEM]: 30 }
+      protectedBankQuantities: { [ITEM]: 250 }, protectedMaterialQuantities: { [ITEM]: 30 }, protectedBankAllocations: []
     })
     await wrapper.get('[data-test="select-row"]').trigger('click')
     await flushPromises()
@@ -140,4 +144,96 @@ describe('Profit finite reservation contract', () => {
     expect(ingredient.text()).toContain('Keep 250 in material storage')
     expect(ingredient.get('[data-test="node-methods"]').text()).toContain('From stock ×50')
   })
+})
+
+async function manualThirdStack() {
+  const api = new FakeAccountApi()
+  api.bankHandler = async () => fourStackBank()
+  const bank = mount(BankScreen, { props: { api }, global: { provide: shellProvide() } })
+  mounted.push(bank)
+  await flushPromises()
+  ;(bank.get('[data-slot="2"] [data-test="protect-checkbox"]').element as HTMLInputElement).click()
+  await flushPromises()
+  bank.unmount()
+  useMaterialProtection().setActivation(true)
+}
+
+describe('Bank allocation settings association', () => {
+  it('sends the complete slot intent, accepts canonical order, and carries it unchanged into detail', async () => {
+    await manualThirdStack()
+    const { wrapper, api } = await open()
+    expect(api.profitRequests[0]!.settings).toMatchObject({ protectedItemIds: [], protectedBankItemIds: [],
+      protectedBankQuantities: { [ITEM]: 250 }, protectedBankAllocations: allocationRows([0, 0, 250, 0]) })
+    await wrapper.get('[data-test="select-row"]').trigger('click')
+    await flushPromises()
+    expect((api.resolutionRequests[0]!.calculation.settings as BankSettings).protectedBankAllocations)
+      .toEqual(allocationRows([0, 0, 250, 0]))
+  })
+
+  it.each(['omitted', 'units', 'owner', 'extra guard'])('rejects a table echo with %s allocation intent', async mismatch => {
+    await manualThirdStack()
+    const api = new FakeCraftingApi()
+    api.profitHandler = async request => {
+      const response = echoedProfitResponse(request)
+      const settings = response.settings as BankSettings
+      const allocations = allocationRows([0, 0, 250, 0])
+      settings.protectedBankAllocations = allocations
+      if (mismatch === 'omitted') delete settings.protectedBankAllocations
+      if (mismatch === 'units') allocations[2]!.reservedUnits = 249
+      if (mismatch === 'owner') allocations[0]!.boundTo = 'Other Character'
+      if (mismatch === 'extra guard') allocations.push({ ...allocations[0]!, slot: 4 })
+      return response
+    }
+    const { wrapper } = await open(api)
+    expect(wrapper.get('[data-test="request-error"]').text()).toContain('did not confirm')
+    expect(wrapper.findAll('[data-test="profit-row"]')).toHaveLength(0)
+    expect(api.resolutionRequests).toHaveLength(0)
+  })
+
+  it('rejects an unexpected nonempty allocation echo for numeric-only intent', async () => {
+    useMaterialProtection().reserveQuantity(ITEM, 'bank', 250)
+    useMaterialProtection().setActivation(true)
+    const api = new FakeCraftingApi()
+    api.profitHandler = async request => {
+      const response = echoedProfitResponse(request)
+      ;(response.settings as BankSettings).protectedBankAllocations = allocationRows([0, 0, 250, 0])
+      return response
+    }
+    const { wrapper } = await open(api)
+    expect(wrapper.get('[data-test="request-error"]').text()).toContain('did not confirm')
+    expect(wrapper.findAll('[data-test="profit-row"]')).toHaveLength(0)
+  })
+
+  it('rejects detail whose slots differ despite an identical item and fixed total', async () => {
+    await manualThirdStack()
+    const api = new FakeCraftingApi()
+    api.resolutionHandler = async request => {
+      const response = resolutionResponse(request)
+      ;(response.calculation.settings as BankSettings).protectedBankAllocations = allocationRows([250, 0, 0, 0])
+      return response
+    }
+    const { wrapper } = await open(api)
+    await wrapper.get('[data-test="select-row"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="resolution-tree"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('different calculation inputs')
+  })
+
+  it.each(['slot', 'itemId', 'reservedUnits', 'observedCount', 'binding', 'boundTo'] as const)(
+    'includes every allocation %s guard in calculation identity while canonicalizing row order', field => {
+      const allocations = allocationRows([0, 0, 250, 0])
+      const settings: BankSettings = { ...DEFAULT_SETTINGS, materialProtectionEnabled: true,
+        protectedItemIds: [], protectedBankItemIds: [], protectedMaterialItemIds: [],
+        protectedBankQuantities: { [ITEM]: 250 }, protectedMaterialQuantities: {}, protectedBankAllocations: allocations }
+      const inputs = { scope: { kind: 'ALL', discipline: null, characterName: null, rating: 0 }, settings }
+      const key = calculationKey(inputs)
+      const reordered: BankSettings = { ...settings, protectedBankAllocations: [...allocations].reverse() }
+      expect(calculationKey({ ...inputs, settings: reordered })).toBe(key)
+      const changed = structuredClone(allocations)
+      if (field === 'binding' || field === 'boundTo') changed[0]![field] = 'Raw guard string'
+      else changed[0]![field] += 1
+      const different: BankSettings = { ...settings, protectedBankAllocations: changed }
+      expect(calculationKey({ ...inputs, settings: different })).not.toBe(key)
+    }
+  )
 })

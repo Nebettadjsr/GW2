@@ -35,8 +35,8 @@ function answerApi(context) {
     if (url.pathname === '/api/account/materials') return sendJson(200, materials)
     if (url.pathname === '/api/crafting/selector-options') return sendJson(200, {
       defaultScopeKind: 'ALL', disciplines: ['Armorsmith', 'Chef'], characterOptionCount: 0, characterOptions: [] })
-    if (url.pathname === TABLE) return sendJson(200, tableResponse(JSON.parse(body), `reservation-table-${++tableSequence}`))
-    if (url.pathname === DETAIL) return sendJson(200, detailResponse(JSON.parse(body)))
+    if (url.pathname === TABLE) return sendJson(200, tableResponse(JSON.parse(body), `reservation-table-${++tableSequence}`, stock))
+    if (url.pathname === DETAIL) return sendJson(200, detailResponse(JSON.parse(body), stock))
     throw new Error(`Unanswered controlled route ${url.pathname}`)
   } catch (error) {
     failures.push(error.message)
@@ -69,9 +69,10 @@ async function waitForCount(stub, path, count) {
     await new Promise(resolve => setTimeout(resolve, 20))
   }
 }
-async function openEditor(page, key = 'Shift+F10', expectedCount) {
-  await checkbox(page).focus()
-  await checkbox(page).press(key)
+async function openEditor(page, key = 'Shift+F10', expectedCount, origin = tile(page)) {
+  const input = origin.locator('input[type="checkbox"]')
+  await input.focus()
+  await input.press(key)
   await page.locator('[data-test="item-menu"]').waitFor()
   await focused(page.locator('[data-test="menu-reserve"]'))
   await page.locator('[data-test="menu-reserve"]').click()
@@ -79,11 +80,11 @@ async function openEditor(page, key = 'Shift+F10', expectedCount) {
   await focused(page.locator('[data-test="reserve-input"]'))
   if (expectedCount !== undefined) assert.match(await text(page.locator('[data-test="reserve-dialog"]')), new RegExp(`In (bank|material storage): ${expectedCount}\\b`))
 }
-async function apply(page, value) {
+async function apply(page, value, origin = checkbox(page)) {
   await page.locator('[data-test="reserve-input"]').fill(String(value))
   await page.locator('[data-test="reserve-input"]').press('Enter')
   await page.locator('[data-test="reserve-dialog"]').waitFor({ state: 'hidden' })
-  await focused(checkbox(page))
+  await focused(origin)
 }
 async function geometry(page, selector) {
   return page.locator(selector).evaluate(element => {
@@ -178,23 +179,28 @@ async function runViewport(browser, stub, viewport) {
     await navigate(page, 'bank')
     const beforeTables = requestCount(stub, TABLE)
     const beforeDetails = requestCount(stub, DETAIL)
-    await checkbox(page).click() // finite -> ALL
+    await page.locator('[data-test="selection-toggle"]').click() // Bulk remains item-wide ALL.
     assert.deepEqual((await saved(page)).selections.bank, [ITEM])
     assert.deepEqual((await saved(page)).quantities.bank, {})
     await page.locator('[data-test="page-heading"]').focus()
     const allColor = await tile(page).evaluate(element => getComputedStyle(element).outlineColor)
+    await page.locator('[data-test="selection-toggle"]').click()
+    await checkbox(page).click() // Only this stack becomes fully reserved (200).
+    assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 200 })
+    assert.deepEqual((await saved(page)).selections.bank, [])
+    assert.equal(await page.locator('[data-slot="1"] input').isChecked(), false)
     await tile(page).click({ position: { x: 58, y: 30 } })
-    assert.deepEqual((await saved(page)).selections.bank, [])
+    assert.deepEqual((await saved(page)).quantities.bank, {})
     await tile(page).locator('[data-test="item-icon-fallback"]').click()
-    assert.deepEqual((await saved(page)).selections.bank, [ITEM])
+    assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 200 })
     await tile(page).locator('[data-test="item-count"]').click()
-    assert.deepEqual((await saved(page)).selections.bank, [])
+    assert.deepEqual((await saved(page)).quantities.bank, {})
     await checkbox(page).focus()
     await checkbox(page).press('Space')
     assert.equal(await checkbox(page).isChecked(), true)
     await checkbox(page).press('Space')
     assert.equal(await checkbox(page).isChecked(), false)
-    assert.deepEqual((await saved(page)).selections.bank, [])
+    assert.deepEqual((await saved(page)).quantities.bank, {})
     record(`${label} native checkbox/background/icon/count/Space each toggle exactly once`)
 
     await checkbox(page).focus()
@@ -223,7 +229,10 @@ async function runViewport(browser, stub, viewport) {
     const [red, green, blue] = finiteColor.match(/\d+/g).map(Number)
     assert.ok(red > 180 && green > 140 && blue < 170 && red >= green && green > blue, `Finite reservation border must be yellow: ${finiteColor}`)
     assert.notEqual(finiteColor, allColor, `Finite border must use a different color than ALL (${allColor})`)
-    assert.match(await checkbox(page).getAttribute('aria-label'), /250/)
+    assert.match(await checkbox(page).getAttribute('aria-label'), /Copper Ore/)
+    assert.equal(await checkbox(page).isChecked(), true, 'The first finite200 allocation must be fully checked')
+    assert.equal(await page.locator('[data-slot="1"] input').evaluate(input => input.indeterminate), true,
+      'The remaining50 allocation must have native mixed state')
     await reservationPresentation(page, '[data-test="bank-slots"]', 250, 'bank')
     assert.match(await text(page.locator('[data-test="selection-committed"]')), /1 item\./)
     await noPageOverflow(page)
@@ -331,11 +340,55 @@ async function runViewport(browser, stub, viewport) {
       await focused(checkbox(page))
       assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 250 })
     }
-    await checkbox(page).click() // configured fixed target becomes a separate ALL mode
-    assert.deepEqual((await saved(page)).selections.bank, [ITEM])
-    assert.deepEqual((await saved(page)).quantities.bank, {})
+    await checkbox(page).click() // Remove only this full 200-stack, preserving the second stack's 50.
+    assert.equal(await checkbox(page).isChecked(), false)
+    assert.equal(await page.locator('[data-slot="1"] input').evaluate(input => input.indeterminate), true)
+    assert.deepEqual((await saved(page)).selections.bank, [])
+    assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 50 })
     await noPageOverflow(page)
-    record(`${label} restart and 200/400 stock preserve fixed250; normal click stores ALL separately`)
+    record(`${label} restart and 200/400 stock preserve fixed250; normal click changes only its stack`)
+
+    // The actual third stack is essential: a .first() helper cannot detect item-wide selection.
+    stock = 1000
+    await navigate(page, 'materials')
+    await navigate(page, 'bank')
+    const third = page.locator('[data-slot="2"] .inventory-tile')
+    const bankInputs = page.locator('[data-test="bank-slot"] input')
+    const states = async () => bankInputs.evaluateAll(inputs => inputs.map(input => ({ checked: input.checked, mixed: input.indeterminate })))
+    const none = { checked: false, mixed: false }, full = { checked: true, mixed: false }, partial = { checked: false, mixed: true }
+    const stackTables = requestCount(stub, TABLE), stackDetails = requestCount(stub, DETAIL)
+    await openEditor(page, 'ContextMenu', 1000, third)
+    await apply(page, 300, third.locator('input'))
+    assert.deepEqual(await states(), [full, partial, none, none])
+    await checkbox(page).click()
+    assert.deepEqual(await states(), [none, partial, none, none])
+    assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 50 })
+    await openEditor(page, 'Shift+F10', 1000, third)
+    await apply(page, 300, third.locator('input'))
+    await third.locator('[data-test="item-count"]').click()
+    assert.deepEqual(await states(), [full, partial, full, none])
+    assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 550 })
+    await page.locator('[data-test="page-heading"]').focus()
+    const borders = await page.locator('[data-test="bank-slot"] .inventory-tile').evaluateAll(tiles => tiles.slice(0, 4).map(tile => {
+      const style = getComputedStyle(tile)
+      return { color: style.borderTopColor, style: style.borderTopStyle }
+    }))
+    for (const index of [0, 1, 2]) assert.deepEqual(borders[index], { color: finiteColor, style: 'solid' })
+    assert.notEqual(borders[3].color, finiteColor, 'Untouched fourth stack was colored as reserved')
+    assert.equal(requestCount(stub, TABLE), stackTables, 'Stack clicks calculated Profit offscreen')
+    assert.equal(requestCount(stub, DETAIL), stackDetails, 'Stack clicks requested detail offscreen')
+    await navigate(page, 'crafting')
+    await waitForCount(stub, TABLE, stackTables + 1)
+    await page.waitForFunction(() => document.querySelector('[data-test="craftable-count"]')?.textContent.trim() === '45')
+    const stackSettings = lastBody(stub, TABLE).settings
+    assert.deepEqual(stackSettings.protectedItemIds, [])
+    assert.deepEqual(stackSettings.protectedBankItemIds, [])
+    assert.deepEqual(stackSettings.protectedBankQuantities, { [ITEM]: 550 })
+    assert.deepEqual(stackSettings.protectedBankAllocations, [250, 50, 250, 0].map((reservedUnits, slot) => ({
+      slot, itemId: ITEM, reservedUnits, observedCount: 250, binding: null, boundTo: null })))
+    assert.equal(requestCount(stub, TABLE), stackTables + 1, 'Latest stack layout calculated more than once')
+    await noPageOverflow(page)
+    record(`${label} actual third-stack click preserves partial rows, yellow/native states and exact guarded wire intent`)
   } finally {
     await page.close()
   }
