@@ -222,7 +222,8 @@ class BankContentsApiControllerTest {
         List<String> fields = new ArrayList<>();
         slot.fieldNames().forEachRemaining(fields::add);
 
-        assertEquals(Set.of("slot", "itemId", "itemName", "count", "iconUrl", "rarity", "protectionSelectable"), Set.copyOf(fields),
+        assertEquals(Set.of("slot", "itemId", "itemName", "count", "iconUrl", "rarity", "protectionSelectable",
+                "binding", "boundTo"), Set.copyOf(fields),
                 "the slot must be a transport record, not a serialized repository row");
         assertFalse(body.contains("C:\\icons"),
                 "the backend filesystem path must not reach the browser: " + body);
