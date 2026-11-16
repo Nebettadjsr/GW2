@@ -135,6 +135,19 @@ describe('whole-tile selection', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('keeps a finite reservation accessible without adding visible Keep text over the icon or count', () => {
+    const tile = mount(InventoryTile, { props: {
+      itemId: ITEM_ID, itemName: ITEM_NAME, title: ITEM_NAME, count: 300,
+      iconUrl: ICON_URL, selected: false, reserved: 250
+    }, attachTo: document.body })
+    mounted.push(tile)
+    expect(tile.get('input[type="checkbox"]').attributes('aria-label')).toMatch(/Copper Ore.*keeping 250/i)
+    expect(tile.get('[data-test="item-count"]').text()).toBe('300')
+    expect(tile.text()).not.toMatch(/Keep\s+250/i)
+    expect(tile.get('img').attributes('src')).toBe(ICON_URL)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('leaves a nonselectable tile inert at every visible click target', async () => {
     const tile = mount(InventoryTile, {
       props: { itemId: ITEM_ID, count: 300, iconUrl: ICON_URL, title: ITEM_NAME },

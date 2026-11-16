@@ -100,6 +100,42 @@ async function contained(page, selector) {
 async function noPageOverflow(page) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true, 'The page overflows horizontally')
 }
+async function reservationPresentation(page, gridSelector, quantity, source) {
+  assert.equal(await page.locator('.inventory-tile').evaluateAll(tiles => tiles.some(tile => /Keep\s+\d/i.test(tile.innerText))), false,
+    'Reservation text overlaps a tile instead of appearing beside its grid')
+  const section = page.locator('section').filter({ has: page.locator(gridSelector) }).first()
+  const notes = section.locator('[data-test="reservation-notes"]')
+  const note = notes.locator('[data-test="reservation-note"]')
+  assert.equal(await note.count(), 1, 'Duplicate stacks must not repeat the item note within a grid')
+  const content = await text(note)
+  for (const fact of ['Copper Ore', String(quantity), source]) assert.ok(content.includes(fact), `Reservation note omitted ${fact}: ${content}`)
+  const layout = await section.evaluate((element, selector) => {
+    const grid = element.querySelector(selector).getBoundingClientRect()
+    const notes = element.querySelector('[data-test="reservation-notes"]')
+    const box = notes.getBoundingClientRect()
+    const walker = document.createTreeWalker(notes, NodeFilter.SHOW_TEXT)
+    const lines = []
+    while (walker.nextNode()) {
+      if (!walker.currentNode.textContent.trim()) continue
+      const range = document.createRange()
+      range.selectNodeContents(walker.currentNode)
+      lines.push(...Array.from(range.getClientRects(), line => ({ left: line.left, right: line.right, top: line.top, bottom: line.bottom })))
+    }
+    return { grid: { right: grid.right, top: grid.top, bottom: grid.bottom },
+      notes: { left: box.left, right: box.right, top: box.top, bottom: box.bottom }, lines,
+      clipped: notes.scrollWidth > notes.clientWidth + 1 || notes.scrollHeight > notes.clientHeight + 1,
+      width: window.innerWidth }
+  }, gridSelector)
+  assert.equal(layout.clipped, false, `Reservation notes are clipped: ${JSON.stringify(layout)}`)
+  assert.ok(layout.notes.left >= 0 && layout.notes.right <= layout.width + 1, `Reservation notes escape the viewport: ${JSON.stringify(layout)}`)
+  assert.ok(layout.lines.length > 0, 'Reservation notes have no rendered text')
+  for (const line of layout.lines) assert.ok(line.left >= layout.notes.left - 1 && line.right <= layout.notes.right + 1 &&
+    line.top >= layout.notes.top - 1 && line.bottom <= layout.notes.bottom + 1, `Reservation note text is clipped: ${JSON.stringify(layout)}`)
+  if (layout.width >= 1000) assert.ok(layout.notes.left >= layout.grid.right - 1 && layout.notes.top < layout.grid.bottom,
+    `Desktop reservation notes are not beside their own grid: ${JSON.stringify(layout)}`)
+  else assert.ok(layout.notes.top >= layout.grid.bottom - 1, `Narrow reservation notes are not below their own grid: ${JSON.stringify(layout)}`)
+  await noPageOverflow(page)
+}
 
 async function runViewport(browser, stub, viewport) {
   const page = await browser.newPage({ viewport })
@@ -178,10 +214,17 @@ async function runViewport(browser, stub, viewport) {
     await page.locator('[data-test="reserve-error"]').waitFor()
     assert.deepEqual((await saved(page)).quantities.bank, {})
     await apply(page, 250)
-    const finiteColor = await tile(page).evaluate(element => getComputedStyle(element).borderTopColor)
+    const finiteBorder = await tile(page).evaluate(element => {
+      const style = getComputedStyle(element)
+      return { color: style.borderTopColor, styles: [style.borderTopStyle, style.borderRightStyle, style.borderBottomStyle, style.borderLeftStyle] }
+    })
+    const finiteColor = finiteBorder.color
+    assert.deepEqual(finiteBorder.styles, ['solid', 'solid', 'solid', 'solid'], 'Finite reservation border must be solid')
+    const [red, green, blue] = finiteColor.match(/\d+/g).map(Number)
+    assert.ok(red > 180 && green > 140 && blue < 170 && red >= green && green > blue, `Finite reservation border must be yellow: ${finiteColor}`)
     assert.notEqual(finiteColor, allColor, `Finite border must use a different color than ALL (${allColor})`)
-    assert.equal(await text(tile(page).locator('[data-test="keep-label"]')), 'Keep 250')
     assert.match(await checkbox(page).getAttribute('aria-label'), /250/)
+    await reservationPresentation(page, '[data-test="bank-slots"]', 250, 'bank')
     assert.match(await text(page.locator('[data-test="selection-committed"]')), /1 item\./)
     await noPageOverflow(page)
     record(`${label} menu clamping, native modal focus trap, validation and distinct finite color`, `${finiteColor} vs ${allColor}`)
@@ -207,6 +250,8 @@ async function runViewport(browser, stub, viewport) {
     await openEditor(page, 'ContextMenu', 0)
     await apply(page, 17)
     assert.deepEqual((await saved(page)).quantities, { bank: { [ITEM]: 250 }, materials: { [ITEM]: 17 } })
+    assert.match(await checkbox(page).getAttribute('aria-label'), /17/)
+    await reservationPresentation(page, '[data-test="material-grid"]', 17, 'material storage')
     assert.equal((await saved(page)).enabled, false, 'Clearing the last selection must disable protection; later picks must not enable it')
     assert.equal(requestCount(stub, TABLE), beforeTables, 'Offscreen autosaves calculated Profit')
     assert.equal(requestCount(stub, DETAIL), beforeDetails, 'Offscreen autosaves requested detail')

@@ -17,6 +17,12 @@ const bank = (counts = [200, 100]): BankContents => ({
   slots: counts.map((count, slot) => ({ slot, itemId: ITEM, itemName: 'Copper Ore', count, iconUrl: null, rarity: 'Basic' }))
 })
 const saved = () => JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + ACCOUNT)!)
+function expectNote(note: { text(): string }, name: string, target: number, source: string): void {
+  const content = note.text()
+  expect(content).toContain(name)
+  expect(content.replaceAll(',', '')).toContain(String(target))
+  expect(content.toLowerCase()).toContain(source)
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -35,8 +41,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function open(screen: typeof BankScreen | typeof MaterialsScreen = BankScreen, api = new FakeAccountApi()) {
-  if (screen === BankScreen) api.bankHandler = async () => bank()
+async function open(screen: typeof BankScreen | typeof MaterialsScreen = BankScreen, api = new FakeAccountApi(), contents = bank()) {
+  if (screen === BankScreen) api.bankHandler = async () => contents
   const wrapper = mount(screen, { props: { api }, attachTo: document.body, global: { provide: shellProvide() } })
   mounted.push(wrapper)
   await flushPromises()
@@ -68,7 +74,9 @@ describe('reservation editor and autosave', () => {
     await wrapper.get('[data-test="reserve-dialog"]').trigger('submit')
     expect(wrapper.find('[data-test="reserve-dialog"]').exists()).toBe(false)
     expect(saved().quantities.bank).toEqual({ [ITEM]: 250 })
-    expect(wrapper.findAll('[data-test="keep-label"]').map(label => label.text())).toEqual(['Keep 250', 'Keep 250'])
+    expect(wrapper.findAll('[data-test="reservation-note"]')).toHaveLength(1)
+    expectNote(wrapper.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'bank')
+    expect(wrapper.findAll('.inventory-tile').every(tile => !/Keep\s+250/i.test(tile.text()))).toBe(true)
     expect(wrapper.get('input[type="checkbox"]').attributes('aria-label')).toContain('250')
 
     for (const count of [200, 400]) {
@@ -76,13 +84,15 @@ describe('reservation editor and autosave', () => {
       document.dispatchEvent(new Event('visibilitychange'))
       await flushPromises()
       expect(wrapper.get('[data-test="item-count"]').text()).toBe(String(count))
-      expect(wrapper.get('[data-test="keep-label"]').text()).toBe('Keep 250')
+      expectNote(wrapper.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'bank')
+      expect(wrapper.get('input[type="checkbox"]').attributes('aria-label')).toContain('250')
       expect(saved().quantities.bank).toEqual({ [ITEM]: 250 })
     }
     wrapper.unmount()
     resetMaterialProtection()
     const reopened = await open()
-    expect(reopened.wrapper.get('[data-test="keep-label"]').text()).toBe('Keep 250')
+    expectNote(reopened.wrapper.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'bank')
+    expect(reopened.wrapper.get('input[type="checkbox"]').attributes('aria-label')).toContain('250')
     expect(useMaterialProtection().quantityFor('bank', ITEM)).toBe(250)
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -116,7 +126,67 @@ describe('reservation editor and autosave', () => {
     await wrapper.get('[data-test="reserve-input"]').setValue('0')
     await wrapper.get('[data-test="reserve-dialog"]').trigger('submit')
     expect(saved().quantities.bank).toEqual({})
-    expect(wrapper.find('[data-test="keep-label"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="reservation-note"]').exists()).toBe(false)
+    expect(wrapper.get('input[type="checkbox"]').attributes('aria-label')).not.toContain('keeping')
+  })
+
+  it('places deduplicated fixed-target notes with each Bank tab and keeps cached names or honest IDs', async () => {
+    const slots = [
+      { slot: 0, itemId: ITEM, itemName: 'Copper Ore', count: 200, iconUrl: null, rarity: 'Basic' },
+      { slot: 1, itemId: ITEM, itemName: 'Copper Ore', count: 100, iconUrl: null, rarity: 'Basic' },
+      { slot: 30, itemId: ITEM, itemName: 'Copper Ore', count: 1, iconUrl: null, rarity: 'Basic' },
+      { slot: 31, itemId: 19698, itemName: null, count: 1, iconUrl: null, rarity: null }
+    ]
+    const { wrapper } = await open(BankScreen, new FakeAccountApi(), { slotCount: 32, slots })
+    const protection = useMaterialProtection()
+    protection.reserveQuantity(ITEM, 'bank', 250)
+    protection.reserveQuantity(19698, 'bank', 2147483647)
+    await flushPromises()
+    const tabs = wrapper.findAll('.bank-tab')
+    expect(tabs).toHaveLength(2)
+    expect(tabs[0]!.findAll('[data-test="reservation-note"]')).toHaveLength(1)
+    expectNote(tabs[0]!.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'bank')
+    const second = tabs[1]!.findAll('[data-test="reservation-note"]')
+    expect(second).toHaveLength(2)
+    expectNote(second.find(note => note.text().includes('Copper Ore'))!, 'Copper Ore', 250, 'bank')
+    expectNote(second.find(note => note.text().includes('Item #19698'))!, 'Item #19698', 2147483647, 'bank')
+    for (const tab of tabs) {
+      expect(tab.get('[data-test="reservation-notes"]').element.closest('[data-test="bank-slots"]')).toBeNull()
+      expect(tab.findAll('.inventory-tile').every(tile => !/Keep\s+\d/i.test(tile.text()))).toBe(true)
+    }
+    expect(saved().quantities.bank).toEqual({ [ITEM]: 250, 19698: 2147483647 })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('keeps each category reservation note beside its own grid without clamping targets to material stock', async () => {
+    const api = new FakeAccountApi()
+    api.materialsHandler = async () => ({ categoryCount: 2, categories: [
+      { category: 5, name: 'Named Materials', order: 1, materials: [
+        { position: 0, itemId: ITEM, itemName: 'Copper Ore', count: 0, iconUrl: null, rarity: 'Basic' }
+      ] },
+      { category: 6, name: 'Other Materials', order: 2, materials: [
+        { position: 0, itemId: 19698, itemName: null, count: 1, iconUrl: null, rarity: null }
+      ] }
+    ] })
+    const { wrapper } = await open(MaterialsScreen, api)
+    const protection = useMaterialProtection()
+    protection.reserveQuantity(ITEM, 'materials', 250)
+    protection.reserveQuantity(19698, 'materials', 2147483647)
+    await flushPromises()
+    const categories = wrapper.findAll('[data-test="material-category"]')
+    expect(categories).toHaveLength(2)
+    expect(categories[0]!.findAll('[data-test="reservation-note"]')).toHaveLength(1)
+    expectNote(categories[0]!.get('[data-test="reservation-note"]'), 'Copper Ore', 250, 'material storage')
+    expect(categories[1]!.findAll('[data-test="reservation-note"]')).toHaveLength(1)
+    expectNote(categories[1]!.get('[data-test="reservation-note"]'), 'Item #19698', 2147483647, 'material storage')
+    for (const category of categories) {
+      expect(category.get('[data-test="reservation-notes"]').element.closest('[data-test="material-grid"]')).toBeNull()
+      expect(category.findAll('.inventory-tile').every(tile => !/Keep\s+\d/i.test(tile.text()))).toBe(true)
+    }
+    expect(wrapper.findAll('input[type="checkbox"]').map(input => input.attributes('aria-label')))
+      .toEqual([expect.stringContaining('250'), expect.stringContaining('2147483647')])
+    expect(saved().quantities.materials).toEqual({ [ITEM]: 250, 19698: 2147483647 })
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it.each(['Cancel', 'Escape', 'outside click'])('%s dismisses without saving and restores the initiating control focus', async action => {
