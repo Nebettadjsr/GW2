@@ -47,8 +47,8 @@ async function clickSlot(wrapper: VueWrapper, slot: number) {
   ;(wrapper.get(`[data-slot="${slot}"] [data-test="item-count"]`).element as HTMLElement).click()
   await flushPromises()
 }
-async function reserve(wrapper: VueWrapper, target: number) {
-  await wrapper.get('[data-slot="2"] .inventory-tile').trigger('contextmenu', { button: 2 })
+async function reserve(wrapper: VueWrapper, target: number, slot = 2) {
+  await wrapper.get(`[data-slot="${slot}"] .inventory-tile`).trigger('contextmenu', { button: 2 })
   await wrapper.get('[data-test="menu-reserve"]').trigger('click')
   await wrapper.get('[data-test="reserve-input"]').setValue(String(target))
   await wrapper.get('[data-test="reserve-dialog"]').trigger('submit')
@@ -175,21 +175,27 @@ describe('Bank stack reservation intent through rendered controls', () => {
     expect(writes).not.toHaveBeenCalled()
   })
 
-  it('rejects a manual sum above the supported target range without destroying the previous target or hints', async () => {
+  it.each(['unreserved', 'partial'])('rejects an above-range %s stack click without changing the target, hints or native state', async mode => {
     // Both counts fit the supported positive-int transport; only the requested combined target overflows.
     const maximum = 2147483647
     snapshot.slots = [{ ...snapshot.slots[0]!, count: maximum }, { ...snapshot.slots[1]!, count: 1 }]
     const wrapper = await open()
-    await clickSlot(wrapper, 0)
-    const previous = allocationRows([maximum, 0], snapshot)
+    const partial = mode === 'partial'
+    if (partial) {
+      await reserve(wrapper, maximum - 1, 0)
+      boxes(wrapper)[1]!.click()
+      await flushPromises()
+      expectRows(wrapper, [false, true], [true, false])
+    } else await clickSlot(wrapper, 0)
+    const previous = allocationRows(partial ? [maximum - 1, 1] : [maximum, 0], snapshot)
     expect((await settings()).protectedBankAllocations).toEqual(previous)
     const writes = vi.spyOn(Storage.prototype, 'setItem')
-    boxes(wrapper)[1]!.click() // A one-unit Bank stack intentionally has no count badge.
+    boxes(wrapper)[partial ? 0 : 1]!.click() // A one-unit Bank stack intentionally has no count badge.
     await flushPromises()
     expect(useMaterialProtection().quantityFor('bank', ITEM)).toBe(maximum)
-    expectRows(wrapper, [true, false])
     expect(writes).not.toHaveBeenCalled()
     expect((await settings()).protectedBankAllocations).toEqual(previous)
+    expectRows(wrapper, partial ? [false, true] : [true, false], partial ? [true, false] : [false, false])
   })
 
   it.each(['count', 'item', 'binding', 'owner', 'extra row', 'missing row'])(
