@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import static support.fixture.CachedItemNameFixtures.itemName;
 import static support.fixture.CachedItemNameFixtures.withItemName;
+import static support.fixture.BankBindingFixtures.withBinding;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -136,6 +137,26 @@ class BankRepositoryTest {
     @Test
     void emptyBankTableReturnsAnEmptyList() throws Exception {
         assertTrue(new BankRepository().loadBankSlots(con).isEmpty());
+    }
+
+    @Test
+    void batchRowsKeepEachSameItemStacksRawBindingAndOwnerIncludingNulls() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("INSERT INTO account_bank (slot, item_id, count, binding, bound_to) VALUES"
+                    + " (9, 200, 250, 'Character', 'Bran'), (4, 200, 250, 'Character', 'Aria'),"
+                    + " (0, 200, 250, 'Account', NULL), (30, 200, 250, NULL, NULL),"
+                    + " (31, 99999, 1, 'Unrecognized binding', ''), (32, NULL, NULL, NULL, NULL)");
+        }
+
+        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con);
+
+        assertEquals(List.of(
+                withBinding(new BankRepository.BankSlotRow(0, 200, 250, null, null, null), "Account", null),
+                withBinding(new BankRepository.BankSlotRow(4, 200, 250, null, null, null), "Character", "Aria"),
+                withBinding(new BankRepository.BankSlotRow(9, 200, 250, null, null, null), "Character", "Bran"),
+                withBinding(new BankRepository.BankSlotRow(30, 200, 250, null, null, null), null, null),
+                withBinding(new BankRepository.BankSlotRow(31, 99999, 1, null, null, null), "Unrecognized binding", ""),
+                withBinding(new BankRepository.BankSlotRow(32, null, null, null, null, null), null, null)), slots);
     }
 
     @Test

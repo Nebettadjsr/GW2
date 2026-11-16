@@ -140,6 +140,150 @@ class MaterialReservationApiContractTest {
         assertEquals(Map.of(200, 251), quantities(service.calls.get(1), "protectedBankQuantities"));
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void completeManualBankAllocationsAreSortedEchoedAndPreservedWithoutBuying(boolean detail) throws Exception {
+        String input = "[" + allocation(9, 200, 250, 250, "Character", "Aria") + ","
+                + allocation(0, 200, 0, 250, null, null) + ","
+                + allocation(4, 200, 0, 250, "Unrecognized binding", "") + ","
+                + allocation(2, 201, 10, 10, null, null) + "]";
+        JsonNode expected = JSON.readTree("[" + allocation(0, 200, 0, 250, null, null) + ","
+                + allocation(2, 201, 10, 10, null, null) + ","
+                + allocation(4, 200, 0, 250, "Unrecognized binding", "") + ","
+                + allocation(9, 200, 250, 250, "Character", "Aria") + "]");
+
+        JsonNode settings = echoed(detail, bankSettings("{\"200\":250,\"201\":10}", input));
+
+        assertEquals(expected, settings.get("protectedBankAllocations"));
+        assertTrue(settings.get("protectedItemIds").isEmpty());
+        CraftingSettings captured = service.calls.getFirst();
+        assertEquals(expected, JSON.valueToTree(allocations(captured)));
+        assertEquals(expected, JSON.valueToTree(allocations(captured.withBuyingDisabled())));
+        assertThrows(UnsupportedOperationException.class, () -> allocations(captured).clear());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void omittedNullableGuardsAndLegacyAllocationShapesNormalizeWithoutInventingBindingRules(boolean detail)
+            throws Exception {
+        for (String value : List.of("", ",\"protectedBankAllocations\":null",
+                ",\"protectedBankAllocations\":[]")) {
+            assertEquals(JSON.readTree("[]"), echoed(detail,
+                    "{\"materialProtectionEnabled\":true" + value + "}").get("protectedBankAllocations"));
+        }
+        for (String guards : List.of("", ",\"binding\":null,\"boundTo\":null",
+                ",\"binding\":\"\",\"boundTo\":\"\"",
+                ",\"binding\":\"Character\",\"boundTo\":null")) {
+            JsonNode actual = echoed(detail, bankSettings("{\"200\":250}",
+                    "[{\"slot\":0,\"itemId\":200,\"reservedUnits\":250,\"observedCount\":250"
+                            + guards + "}]")).get("protectedBankAllocations").get(0);
+            assertTrue(actual.has("binding") && actual.has("boundTo"));
+            assertEquals(JSON.readTree("{" + (guards.isEmpty() ? "\"binding\":null,\"boundTo\":null"
+                    : guards.substring(1)) + "}").get("binding"), actual.get("binding"));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void allocationObservationTotalsUseWideArithmeticAndKeepTargetsAboveStock(boolean detail) throws Exception {
+        String twoHugeStacks = "[" + allocation(0, 200, Integer.MAX_VALUE, Integer.MAX_VALUE, null, null)
+                + "," + allocation(1, 200, 0, Integer.MAX_VALUE, null, null) + "]";
+        JsonNode wide = echoed(detail, bankSettings("{\"200\":2147483647}", twoHugeStacks));
+        assertEquals(JSON.readTree(twoHugeStacks), wide.get("protectedBankAllocations"));
+        JsonNode belowTarget = echoed(detail, bankSettings("{\"200\":300}",
+                "[" + allocation(0, 200, 250, 250, null, null) + "]"));
+        assertEquals(300, belowTarget.get("protectedBankQuantities").get("200").asInt());
+        assertEquals(250, belowTarget.get("protectedBankAllocations").get(0).get("reservedUnits").asInt());
+    }
+
+    static Stream<Object[]> dominantBankAllRequests() {
+        return Stream.of(false, true).flatMap(detail -> Stream.of("protectedItemIds", "protectedBankItemIds")
+                .map(field -> new Object[]{detail, field}));
+    }
+
+    @ParameterizedTest
+    @MethodSource("dominantBankAllRequests")
+    void legacyAllDropsItsBankQuantityAndHintsBeforeRemainingGroupValidation(boolean detail, String allField)
+            throws Exception {
+        String input = "{\"materialProtectionEnabled\":true,\"" + allField + "\":[200],"
+                + "\"protectedBankQuantities\":{\"200\":250},\"protectedMaterialQuantities\":{\"201\":25},"
+                + "\"protectedBankAllocations\":[" + allocation(0, 200, 1, 250, null, null) + "]}";
+
+        JsonNode settings = echoed(detail, input);
+
+        assertEquals(JSON.readTree("{}"), settings.get("protectedBankQuantities"));
+        assertEquals(JSON.readTree("[]"), settings.get("protectedBankAllocations"));
+        assertEquals(JSON.readTree("{\"201\":25}"), settings.get("protectedMaterialQuantities"));
+        assertTrue(allocations(service.calls.getFirst()).isEmpty());
+    }
+
+    static Stream<Object[]> invalidBankAllocationRequests() throws Exception {
+        List<Object[]> cases = new ArrayList<>();
+        String valid = allocation(0, 200, 250, 250, null, null);
+        for (String shape : List.of("{}", "true", "1", "\"not-an-array\"", "[null]")) {
+            cases.add(new Object[]{"allocation shape " + shape, bankSettings("{\"200\":250}", shape)});
+        }
+        for (String required : List.of("slot", "itemId", "reservedUnits", "observedCount")) {
+            var missing = (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(valid);
+            missing.remove(required);
+            cases.add(new Object[]{"missing " + required, bankSettings("{\"200\":250}", "[" + missing + "]")});
+        }
+        Map<String, List<String>> badFields = Map.of(
+                "slot", List.of("-1", "0.5", "2147483648", "\"0\"", "null", "true"),
+                "itemId", List.of("0", "-1", "200.5", "2147483648", "\"200\""),
+                "reservedUnits", List.of("-1", "250.5", "251", "2147483648", "\"250\"", "null"),
+                "observedCount", List.of("0", "-1", "250.5", "2147483648", "\"250\""),
+                "binding", List.of("1", "true", "{}", "[]"),
+                "boundTo", List.of("1", "true", "{}", "[]"));
+        for (var field : badFields.entrySet()) {
+            for (String raw : field.getValue()) {
+                var bad = (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(valid);
+                bad.set(field.getKey(), JSON.readTree(raw));
+                cases.add(new Object[]{field.getKey() + "=" + raw,
+                        bankSettings("{\"200\":250}", "[" + bad + "]")});
+            }
+        }
+        cases.add(new Object[]{"duplicate slot", bankSettings("{\"200\":250}", "[" + valid + "," + valid + "]")});
+        cases.add(new Object[]{"orphan group", bankSettings("{}", "[" + valid + "]")});
+        cases.add(new Object[]{"zero target orphan", bankSettings("{\"200\":0}", "[" + valid + "]")});
+        cases.add(new Object[]{"wrong reserved sum", bankSettings("{\"200\":249}", "[" + valid + "]")});
+        cases.add(new Object[]{"ALL cannot hide bad shape", "{\"protectedBankItemIds\":[200],"
+                + "\"protectedBankAllocations\":[{\"slot\":-1,\"itemId\":200,"
+                + "\"reservedUnits\":250,\"observedCount\":250}]}"});
+        return cases.stream().flatMap(c -> Stream.of(false, true)
+                .map(detail -> new Object[]{c[0], detail, c[1]}));
+    }
+
+    @ParameterizedTest(name = "{0}, detail={1}")
+    @MethodSource("invalidBankAllocationRequests")
+    void invalidAllocationJsonIsRejectedBeforeAnyCalculation(String label, boolean detail, String settings)
+            throws Exception {
+        mvc.perform(request(detail, settings)).andExpect(status().isBadRequest());
+        assertTrue(service.calls.isEmpty(), label + " must not reach calculation");
+    }
+
+    private static String bankSettings(String quantities, String allocations) {
+        return "{\"materialProtectionEnabled\":true,\"protectedItemIds\":[],\"protectedBankQuantities\":"
+                + quantities + ",\"protectedBankAllocations\":" + allocations + "}";
+    }
+
+    private static String allocation(int slot, int itemId, int reserved, int observed, String binding, String owner)
+            throws Exception {
+        var row = JSON.createObjectNode().put("slot", slot).put("itemId", itemId)
+                .put("reservedUnits", reserved).put("observedCount", observed);
+        row.put("binding", binding);
+        row.put("boundTo", owner);
+        return JSON.writeValueAsString(row);
+    }
+
+    private static List<?> allocations(CraftingSettings settings) throws Exception {
+        try {
+            return (List<?>) settings.getClass().getField("protectedBankAllocations").get(settings);
+        } catch (NoSuchFieldException missing) {
+            throw new AssertionError("effective settings must carry protectedBankAllocations", missing);
+        }
+    }
+
     private JsonNode echoed(boolean detail, String settings) throws Exception {
         String body = mvc.perform(request(detail, settings)).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();

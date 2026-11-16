@@ -4,6 +4,7 @@ import craft.CraftResult;
 import craft.CraftingSettings;
 import craft.Recipe;
 import craft.SingleCraftExplanation;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import model.AccountScope;
 import org.junit.jupiter.api.Test;
 import repo.AccountSourceStateRepository;
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** STORY-APP-015: scoped calculations report the captured account/generations and admit no legacy work. */
@@ -144,6 +146,48 @@ class CachedCraftingProfitServiceScopedTest {
         assertEquals(Map.of(200, 30), calculatedSettings.get(1).protectedMaterialQuantities);
         assertEquals(Map.of(200, 250), calculatedSettings.getFirst().protectedBankQuantities);
         assertTrue(tasks.admitted.isEmpty());
+    }
+
+    @Test
+    void allocationOnlyChangesStayRequestLocalAcrossTableDetailAccountsAndNewGenerations() throws Exception {
+        completedAt = FRESH_AT;
+        covered = true;
+        AccountScope a = AccountScope.of("11111111-2222-3333-4444-555555555555");
+        AccountScope b = AccountScope.of("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        String template = """
+                {"materialProtectionEnabled":true,"protectedItemIds":[],"protectedBankQuantities":{"200":250},
+                 "protectedBankAllocations":[
+                   {"slot":0,"itemId":200,"reservedUnits":%d,"observedCount":250,"binding":"Account","boundTo":null},
+                   {"slot":9,"itemId":200,"reservedUnits":%d,"observedCount":250,"binding":"Character","boundTo":"Aria"}]}
+                """;
+        String firstJson = template.formatted(250, 0);
+        String thirdJson = template.formatted(0, 250);
+        CraftingSettings first = web.CraftingSettingsJsonFixture.fromSettingsJson(firstJson);
+        CraftingSettings third = web.CraftingSettingsJsonFixture.fromSettingsJson(thirdJson);
+        CachedCraftingProfitService service = service();
+
+        var table = service.profit(a, DiscChoice.all(), first);
+        String generation = table.freshness().calculationId();
+        var same = service.resolution(a, RECIPE.recipeId, DiscChoice.all(), first, generation);
+        var changed = service.resolution(a, RECIPE.recipeId, DiscChoice.all(), third, generation);
+        var otherAccount = service.resolution(b, RECIPE.recipeId, DiscChoice.all(), third, generation);
+        sourceGeneration = 6L;
+        var refreshed = service.resolution(a, RECIPE.recipeId, DiscChoice.all(), first, generation);
+
+        ObjectMapper json = new ObjectMapper();
+        var firstAllocations = json.readTree(firstJson).get("protectedBankAllocations");
+        var thirdAllocations = json.readTree(thirdJson).get("protectedBankAllocations");
+        for (CraftingSettings settings : calculatedSettings) {
+            assertNotNull(json.valueToTree(settings).get("protectedBankAllocations"));
+        }
+        assertEquals(List.of(firstAllocations, firstAllocations, thirdAllocations, thirdAllocations, firstAllocations),
+                calculatedSettings.stream().map(settings -> json.valueToTree(settings).get("protectedBankAllocations")).toList());
+        assertEquals(generation, same.freshness().calculationId());
+        assertEquals(generation, changed.freshness().calculationId(), "generation identity does not cache earlier settings");
+        assertNotEquals(generation, otherAccount.freshness().calculationId());
+        assertNotEquals(generation, refreshed.freshness().calculationId());
+        assertEquals(CachedCraftingProfitService.CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS, refreshed.consistency());
+        assertTrue(tasks.admitted.isEmpty(), "fresh allocation-only changes must not admit upstream work");
     }
 
     private CachedCraftingProfitService service() {
