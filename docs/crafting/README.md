@@ -10,14 +10,14 @@ For glossary terms and short answers to common questions, see [GLOSSARY.md](GLOS
 
 This is a maintained, human-readable **summary** of the project's authoritative rules. It is
 allowed to repeat information that also lives in the documents below — that duplication is an
-explicit, intentional exception (`docs/TARGET_ARCHITECTURE.md` §18), made specifically so a reader
+explicit, intentional exception (`docs/ARCHITECTURE.md`), made specifically so a reader
 does not have to open several technical documents to understand one calculation.
 
 The authoritative sources remain:
 
 - [`docs/DOMAIN_SPEC.md`](../DOMAIN_SPEC.md) — the normative rules this guide explains. Section
   numbers below (e.g. "§22") refer to this document.
-- [`docs/TARGET_ARCHITECTURE.md`](../TARGET_ARCHITECTURE.md) §18 — why this guide exists and the
+- [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) §1 — why this guide exists and the
   policy for keeping it up to date.
 
 If anything here ever disagrees with `DOMAIN_SPEC.md`, the spec wins — treat the disagreement as a
@@ -32,7 +32,7 @@ contrast a rule (for example, Trading Post fees); it is not covered end-to-end h
 - **Crafting Profit** — "Of everything I could craft right now, what's actually worth crafting?"
   Scans recipes you (or your account) could use and reports how many times you could craft each
   one and what profit that would produce.
-- **Crafting Discovery** � "Which recipes could this character discover, and what would one discovery attempt cost and return?" Discovery evaluates one attempt per recipe; it is about *learning* recipes, not maximizing craft count or applying a cumulative buy budget.
+- **Crafting Discovery** — "Which recipes could this character discover, and what would one discovery attempt cost and return?" Discovery evaluates one attempt per recipe; it is about *learning* recipes, not maximizing craft count or applying a cumulative buy budget.
 - **Ectoplasm Salvage** — a separate, small calculator for the economics of salvaging Globs of
   Ectoplasm for Luck. Not part of the shared crafting engine described here.
 
@@ -136,6 +136,29 @@ ingredients in the same plan both need Wood, the simulation consumes owned Wood 
 before considering the second — it does not let the same 10 Wood "satisfy" two separate 8-Wood and
 5-Wood requirements simultaneously (§10).
 
+### Keeping materials for later
+
+Bank and Materials let you reserve stock for other goals (§9.1). Changes save immediately in
+this browser for the verified account. Turn on **Respect excluded items/ mats** in Crafting
+Profit to apply them; Discovery and Ecto do not use these reservations.
+
+- Click a Materials tile to exclude all of that item in material storage. Bank stack clicks
+  instead keep or release that particular current stack; the saved total follows the item if
+  you rearrange or split stacks later.
+- Right-click and choose **Reserve quantity…** to keep a fixed amount. With 300 Ectos and a
+  target of 250, the remaining 50 stay usable. If stock later falls to 200, all 200 are kept
+  without reducing the saved target. Four Bank stacks of 250 with a target of 300 initially
+  keep one full stack and 50 from the next.
+- Bank and Materials are independent; character bags are unaffected. Excluding Bank stock
+  does not also exclude the same item in material storage.
+
+Reserved stock is unavailable as an owned input, including through recursive crafting. The
+item itself is still allowed in recipes: the normal crafting rules apply, and **Allow buying**
+can permit replacement purchases. A yellow border and notes beside the grid identify finite
+targets. The same right-click menu offers **Open Crafting Profit**, which searches the current
+recipe results for that material and its possible direct/indirect uses without adding a new
+calculation mode.
+
 ## Opportunity cost of owned materials
 
 Owned materials are not economically free just because using them costs no cash. If a material
@@ -151,6 +174,13 @@ item worth 1 silver each on the Trading Post. Crafting with all 10 costs you 0 c
 its opportunity cost is 10 silver — the amount you gave up not selling them. "Cash spent = 0" does
 **not** mean "economic cost = 0." Bound materials (above) are the one exception: since they can't
 be sold at all, they carry no Trading Post opportunity cost.
+
+That does not make bound materials free (§11.2). The tool recursively values their crafting
+ingredients where a recipe exists, even if the account has not unlocked it for actual use.
+If a crafting value cannot be established, vendor sell value is the next fallback. Only when
+neither provides a value does it use zero with an explicit unvalued-nontradeable diagnostic.
+This is a valuation of stock consumed, not permission to buy or recraft it, and a parent's
+inclusive cost must not add the same ingredients twice.
 
 ## Buying missing materials and budgets
 
@@ -218,7 +248,9 @@ sale value (§25, decision UD-011). It is a **profitability** model, not a trans
 game's real fee is two separately rounded components each with a 1-copper minimum, and those
 copper-level differences are deliberately not modelled here.
 
-The fee is deducted **once**, in the backend, and **only from profit**:
+Crafting Profit and Discovery deduct the fee **once in the backend**, when valuing profit;
+their displayed market quotes and gross output values are unchanged. Ecto applies its
+separate browser calculation described below:
 
 - **Crafting Profit** subtracts it from output revenue when computing profit:
   `profit_per_craft = output_revenue - 15% of output_revenue - purchased_material_cost - opportunity_cost`.
@@ -231,13 +263,10 @@ The fee is deducted **once**, in the backend, and **only from profit**:
   `expected_gross_recovered = selected gross Dust price × expected Dust per ecto`, then
   `15%` off that one amount. The expected yield is a fraction and is never rounded up into whole Dust
   sales first, and the fee touches only the recovered-material sale side, never the ecto acquisition
-  cost or the Luck amount. The screen shows both figures side by side: the recovered Dust value gross,
-  and the same value after the fee.
-
-  The Dust quotes themselves stay gross like every other displayed price — the Ectoplasm screen no
-  longer shows a per-Dust-unit "net of TP fee" quote, because a market price is never displayed with
-  the fee taken off. Its two profitability tables ("profit per ecto" and "cost per 1000 Luck") are
-  labelled "after 15% TP fees" instead.
+  cost or the Luck amount. Its calculation shows **Dust value after TP fees**, consumed Ecto
+  value and salvage-tool cost separately. The Dust unit quotes stay gross. Effective Luck
+  cost includes the tool's coin usage; any Gem usage remains a separate additional cost.
+  **Cost per 1,000 Luck** and Magic Find targets use the selected tool, yields and price modes.
 
 In the Crafting Profit and Discovery calculation details, Profit and Total Profit carry a small
 "after 15% TP fees" note for exactly this reason.
@@ -258,12 +287,16 @@ silently-completed calculation. The same principle extends to every reason a cra
 | `PRICE_UNAVAILABLE` | A required purchase has no usable Trading Post price. |
 | `RECIPE_NOT_ALLOWED` | The only recipe(s) found aren't allowed in this analysis (wrong discipline/character/context, §29). |
 | `INSUFFICIENT_BUDGET` | Completing the plan would exceed the purchase budget. |
+| `MATERIAL_LIMIT` | The plan would require more than 2,500 units of one material item ID. |
+| `VALUE_RANGE` | Quantity or money arithmetic would exceed the calculation's supported range. |
 
-Both views show a **Status / requirements** column carrying this reason, and replace numeric
-buy-cost/revenue/profit cells with literal "Unavailable" text for a blocked row rather than a
-fabricated zero or a completed-looking profit figure. This keeps two different questions visibly
-separate: *can this be crafted at all* versus *is crafting it profitable* (§41) — a blocked row is
-not the same thing as an unprofitable one.
+These are backend diagnostic reasons, not a normal table's Status column. The comparison
+tables and selected-result panels omit generic row-state labels; the resolution tree keeps
+item-specific sourcing quantities and uses **Not craftable** or **Not available on TP** only
+where the corresponding facts are known. A failed path alone does not prove that no crafting
+path exists. Missing values remain distinct from zero. In Profit, a reason can explain why the
+*next* craft stopped after valid earlier crafts; it does not invalidate those completed crafts.
+The question of feasibility remains separate from profitability (§41).
 
 ## Daily-limited crafting
 
@@ -283,7 +316,7 @@ remain controlled solely by `allowBuying`; daily-craft selection never turns buy
 
 Crafting Discovery answers a different question from Crafting Profit: not "what's profitable" but
 "what can this character discover next." A recipe qualifies as a discovery candidate only when all
-of the following hold at once (§18):
+of the following hold at once (§34–§35):
 
 ```text
 recipe is discoverable through normal ingredient discovery
@@ -315,6 +348,24 @@ will be **250**, not 300, and total profit will be `250 × 5 = 1,250 copper` (12
 not the 1,500 copper that would be mathematically available. The un-simulated 50 crafts are not
 reported as "unprofitable"; they simply were never evaluated.
 
+### The separate material and numeric bounds
+
+A candidate recipe plan can require at most **2,500 units of each material item ID** (§42).
+Count repeated ingredient requirements, nested requirements and all accepted batches together,
+whether their units come from stock, crafting, purchases or reused surplus. This is ten ordinary
+250-item stacks of demand for one material, not ten stacks total across every material, and it
+does not cap the quantity you may reserve in Bank or Materials.
+
+An attempt that crosses this bound stops before expanding the excessive requirement and rolls
+back. Profit retains earlier complete batches; Discovery's single attempt is unavailable if it
+cannot fit. Alternative eligible recipes or a direct purchase can still work if they fit the
+same rules. Speculative paths that lose do not consume the winning path's allowance.
+
+Quantity and money calculations are also checked for range errors. A large multiplication must
+never wrap into a negative purchase cost or a fabricated enormous profit. Such an attempt has
+the `VALUE_RANGE` diagnostic instead. These bounds limit work and arithmetic; they are distinct
+from both the 250-craft cap and the default **Show at most 250** displayed-result setting.
+
 ## Craft count, produced quantity and requested quantity
 
 A single recipe execution ("one craft") can produce more than one copy of its output item, so the
@@ -340,13 +391,14 @@ collapsing them into one figure (§24–§27):
 ```text
 trading_post_fee = 15% of output_revenue
 profit_per_craft = output_revenue - trading_post_fee - purchased_material_cost - owned_material_opportunity_cost
-total_profit      = profit_per_craft × craft_count
+total_profit = total_gross_output_value - total_fees - total_purchase_cost - total_owned_material_value
 ```
 
 where `output_revenue = selected_output_sell_price × recipe_output_count` (i.e. revenue for *one*
 craft, which may cover more than one output item if the recipe has an output count above 1).
-`total_profit` is only meaningful because `craft_count` itself already comes from a simulation that
-prevents material reuse — it is not a naive "multiply by however many you'd like."
+Total costs come from every accepted batch in the simulation. Stock can run out and the
+acquisition path can change, so the first craft's profit is not generally multiplied by the
+craft count. Multiplication works in the example below because every batch has identical costs.
 
 **Worked example** (illustrative, not a measured result): a recipe produces 2 Potions per craft.
 Each Potion sells (instant sell, at the gross price the tool displays — see
@@ -391,27 +443,25 @@ not yet read.
 Every number in this guide's worked examples is illustrative only. It demonstrates how the rules
 combine, not an actual measured application result.
 
-## Known implementation gaps
+## Current limitations and follow-up
 
-Most historical gaps between this calculation and `DOMAIN_SPEC.md` recorded in
-[`docs/KNOWN_PROBLEMS.md`](../KNOWN_PROBLEMS.md) §3 have since been resolved (see that document's
-per-item Status lines for evidence). One user-visible caveat remains open at the time of writing:
+The calculator uses synchronized snapshots, not live guaranteed transactions. Unit TP quotes
+do not establish that the whole requested quantity can trade at that price; actual market depth
+can change the outcome (§20). Daily cooldown usage is not observed, and both simulation bounds
+above are intentional project limits.
 
-- When "use own materials" is off **and** buying is disabled at the same time, an internal
-  worthiness check estimates a recipe's value from its *direct* ingredients' immediate Trading Post
-  prices only, without considering that a sub-ingredient might be cheaper to craft recursively. In
-  that specific settings combination, a recipe could be skipped (reported as 0 craftable) even
-  though a fuller recursive evaluation would have found it viable (`docs/KNOWN_PROBLEMS.md` §7.4).
-  This does not affect the common case where either "use own materials" or "buy missing mats" is
-  enabled.
+Turning off both owned materials and buying does not bypass recursive crafting. The former
+direct-ingredient worthiness shortcut has been removed; the normal recursive simulation decides
+whether any permitted path remains.
 
-If you notice a result that seems to disagree with the rules in this guide, check
-`docs/KNOWN_PROBLEMS.md` first — it may already be a documented, tracked gap rather than a new one.
+[`docs/KNOWN_PROBLEMS.md`](../KNOWN_PROBLEMS.md) is the maintained register of remaining defects
+and optimization candidates. If a result disagrees with this guide, check that register and the
+normative specification rather than relying on historical gap lists.
 
 ## Where to go next
 
 - [GLOSSARY.md](GLOSSARY.md) — terms and frequently asked questions.
 - [`docs/DOMAIN_SPEC.md`](../DOMAIN_SPEC.md) — the full authoritative rule set this guide summarizes.
-- [`docs/TARGET_ARCHITECTURE.md`](../TARGET_ARCHITECTURE.md) §18 — why this guide exists and how it
+- [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) §1 — why this guide exists and how it
   is meant to be kept up to date.
 - [`docs/KNOWN_PROBLEMS.md`](../KNOWN_PROBLEMS.md) — current defects, risks and technical debt.

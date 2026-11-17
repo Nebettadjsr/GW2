@@ -2,11 +2,11 @@
 
 ## 1. Authority and scope
 
-This document owns reusable web presentation and interaction requirements. It implements the Product Owner intent in `agent/product-owner-requests/Request-003-UX-guidelines.md`. Frontend implementation stories must reference the relevant sections. Future Product Owner requirements may extend or supersede these rules.
+This document owns reusable web presentation and interaction requirements. It implements the Product Owner intent in `docs/archive/agent/product-owner-requests/Request-003-UX-guidelines.md`. Frontend implementation issues must reference the relevant sections. Future Product Owner requirements may extend or supersede these rules.
 
 The Product Owner's visual-design direction of 2026-09-25 extends that foundation: build an attractive, responsive, Guild Wars 2-inspired website with a coherent visual identity, polished feedback and natural browser behavior. The requirements below describe intended presentation, not a claim that the existing frontend already implements it.
 
-`TARGET_ARCHITECTURE.md` owns frontend/backend responsibilities and API contracts; `DOMAIN_SPEC.md` owns calculation behavior; `TEST_STRATEGY.md` owns testing methodology. These guidelines do not introduce domain rules or change those boundaries. JavaFX is a functional and interaction reference, not a visual specification. Preserve useful workflows and information separation while adapting them to the browser.
+`ARCHITECTURE.md` owns frontend/backend responsibilities and API contracts; `DOMAIN_SPEC.md` owns calculation behavior; `TEST_STRATEGY.md` owns testing methodology. These guidelines do not introduce domain rules or change those boundaries. Preserve useful workflows and information separation in the browser; the retired desktop interface is not a visual specification.
 
 When reviewing visible crafting or Trading Post wording, use [`crafting/GLOSSARY.md`](crafting/GLOSSARY.md) as the canonical mapping between interface labels and game/economic terms. Keep detailed definitions there; this document governs presentation and `DOMAIN_SPEC.md` governs normative calculation semantics.
 
@@ -26,17 +26,63 @@ cached controls/results and must not submit another calculation.
 
 ### 2.1 Material protection
 
-On Bank and Materials, explain the saved selection with one short sentence below its count: "Select materials that can be excluded from Crafting Profit calculations." The Product Owner requested this wording on 2026-11-08; selection changes are saved automatically and activation retains its existing behavior.
+Bank keeps the original slot order and empty cells, grouped into 30-slot tabs with ten square
+tiles per row and an occupied/available count. Materials keeps backend category/position order.
+Do not merge duplicate Bank stacks or collapse empty cells to make the grid denser.
 
-Bank and Materials tiles are fully clickable (STORY-MAT-004, draft pending Product Owner local visual approval): one click anywhere on a tile toggles protection exactly once (NONE or finite -> ALL; ALL -> NONE) and every change is saved immediately; there is no global Save/Discard control or pending-change text. Right-click, ContextMenu or Shift+F10 opens a menu with **Reserve quantity…** (small centered modal with one numeric input and Apply/Cancel; zero clears; invalid input is rejected) and **Open Crafting Profit** (fills the existing Profit search with the item name). On Bank, a click on an actual stack toggles only that stack (fully kept -> 0; partial or 0 -> its full current count) and preserves the other stacks; the new sum is the fixed item target and the complete guarded rows are sent as allocation hints. A manual total outside the supported range is rejected without changing the existing reservation. Numeric entry and stale layouts allocate in ascending current Bank slot order, and the kept amount stays fixed after rearranging, splitting, absence or low stock (the former mixed-binding hold is resolved). Fully covered and partial stacks both show the solid yellow finite border (partial also mixed state); untouched duplicates stay ordinary. Materials item-wide actions and legacy/bulk ALL remain dominant. Finite reservations show a solid yellow border, clearly distinct from ordinary tiles and the ALL selection outline, plus the accessible "keeping N" checkbox label; no "Keep N" text is drawn inside a tile. A compact readable note list (cached item name or honest Item #ID, saved fixed target, source) sits to the right of each Bank tab grid and each Materials category grid on desktop and below that grid at narrow widths, deduplicated per grid, never clamping the target to current stock; the grid keeps its own horizontal scrolling and the page must not overflow. Tile titles and ARIA labels use the cached item name, falling back to the item ID. Distinguish protection and the Profit activation state clearly. Do not interfere with item links, quantity display or keyboard navigation.
+Below the saved-selection count, explain the current actions concisely: "Click an item to
+protect it from Crafting Profit calculations; right-click to keep a quantity or open
+Crafting Profit." Selection changes save automatically; activation remains a separate
+Crafting Profit choice.
+
+Bank and Materials tiles are fully clickable. A click on the checkbox, background, icon or
+quantity toggles protection exactly once, as does keyboard activation. Every accepted change
+is saved immediately; there is no global Save/Discard control or pending-change text. The
+Product Owner accepted the final stack and note presentation after publication on 2026-11-17.
+
+On Materials, clicking NONE or a finite reservation selects ALL; clicking ALL clears it.
+On Bank, clicking an actual stack changes only that stack: fully kept becomes 0; partial or
+0 becomes the stack's full current count. Preserve the other stacks and save the new total
+as the item's fixed target. A manual total outside the supported range leaves the existing
+reservation and native checkbox state unchanged. Numeric entry and stale layouts allocate
+in ascending current Bank slot order. The kept target remains fixed after rearranging,
+splitting, absence or low stock. Materials item-wide actions and legacy/bulk ALL retain
+their meaning; they do not become permanent reservations of particular old slot numbers.
+
+Right-click, ContextMenu or Shift+F10 opens **Reserve quantity…** and **Open Crafting Profit**.
+The quantity editor is a small centered modal with one numeric input and Apply/Cancel;
+accept whole numbers from 0 to 2,147,483,647, zero clears, and invalid input stays visible
+with an explanation. The Profit shortcut fills the existing search with the cached item
+name (item ID if unavailable), allowing the existing ingredient search to find uses for it.
+Opening the menu or cancelling the editor changes no reservation. Keep the menu within
+the viewport, preserve keyboard operation and restore focus to its trigger on dismissal.
+
+Finite reservations use a **solid yellow border**, distinct from ordinary tiles and the
+ALL selection outline. Both fully covered and partially covered stacks use that border;
+partial stacks also have the native mixed checkbox state, while untouched duplicates
+stay ordinary. Provide accessible "keeping N" labels but draw no clipped "Keep N" text
+inside the tile. A compact readable note list sits to the right of each Bank tab grid and
+each Materials category grid on desktop, and below that grid at narrow widths. Deduplicate
+notes per grid and show cached item name (honest Item #ID fallback), saved fixed target and
+source without clamping the target to stock. Keep horizontal scrolling within the grid;
+the page must not overflow. Tile titles and ARIA labels use cached item names with an ID
+fallback. Distinguish protection from its Crafting Profit activation state without
+interfering with item links, quantity display or keyboard navigation.
 
 Selections are independent per page, including when the same item type occurs in both stores. One top-level button toggles Select all / Deselect all; Bulk, category and preset actions act atomically on their eligible items (a mixed group becomes ALL; only a fully ALL group clears) with a single preference write. Bulk actions affect displayed selectable item types and preserve stored selections for absent items. Materials also has a Select all / Deselect all toggle per category: a partial category becomes fully selected first; a full category is deselected. Tier and special presets appear only on Materials and use the same toggle behavior. Place T1–T6 below the Intermediate Crafting Materials heading, left of its category toggle on the same line above the tiles; place the four-item preset equivalently in Advanced Crafting Materials. Other categories and the other page remain unchanged. Every Materials tile has a checkbox; Bank uses the ingredient eligibility rule in DOMAIN_SPEC §9.1. These controls and the independent store selection were confirmed by the Product Owner on 2026-11-08.
 
 Provide preset buttons for every intermediate-material tier (T1 through T6), including families such as dust and blood. Basic crafting materials and gemstones are excluded from these presets; users can still select them individually. Provide an additional preset selecting Mystic Clovers, Mystic Coins, Globs of Ectoplasm and Obsidian Shards; its visible button label is "Clovers, coins, ecto & obsidian", with a tooltip naming the four full item names. Presets apply immediately and are saved automatically like any other selection change. The design must allow further presets. Verify exact item-ID membership from game data; do not infer crafting tier from rarity or select unrelated items automatically. These membership choices were confirmed by the Product Owner on 2026-11-07.
 
-Crafting Profit has a protection toggle and selected-item count. The checkbox is labelled exactly "Respect excluded items/ mats" and sits in the calculation panel's right-hand checkbox column, in this order: Use own materials; Respect excluded items/ mats; Allow buying; Allow daily craft; Allow Mystic Forge recipes. The Calculation heading occupies the full width alone; the first checkbox aligns with the Discipline selection below it. Mystic Forge is a disabled, unchecked placeholder until its calculation support is delivered (see the deferred product request); do not make it an apparently working control. Protection is unchecked by default for a new account/browser; saved per-account activation is kept, not reset per visit. A tiny (i) control at the end of the protection row hides the committed unique item count and the Bank and/or Materials selection links in a hover/focus panel: it stays open while the pointer moves from the icon into the panel and while focus is inside, closes on Escape, and has an accessible name. Links reflect which stores have committed selections. The empty-selection warning floats separately without shifting the layout. Attempting to activate it without a committed selection must show a short popup/floating warning explaining that nothing is selected; do not imply that stock is being protected. Checkbox selection must remain coherent across duplicate stacks within a store.
+Crafting Profit has a protection toggle and selected-item count. The checkbox is labelled exactly "Respect excluded items/ mats" and sits in the calculation panel's right-hand checkbox column, in this order: Use own materials; Respect excluded items/ mats; Allow buying; Allow daily craft; Allow Mystic Forge recipes. The Calculation heading occupies the full width alone; the first checkbox aligns with the Discipline selection below it. Mystic Forge is a disabled, unchecked placeholder until its calculation support is delivered (see the deferred product request); do not make it an apparently working control. Protection is unchecked by default for a new account/browser; saved per-account activation is kept, not reset per visit. A tiny (i) control at the end of the protection row hides the committed unique item count and the Bank and/or Materials selection links in a hover/focus panel: it stays open while the pointer moves from the icon into the panel and while focus is inside, closes on Escape, and has an accessible name. Links reflect which stores have committed selections. The empty-selection warning floats separately without shifting the layout. Attempting to activate it without a committed selection must show a short popup/floating warning explaining that nothing is selected; do not imply that stock is being protected. Repeated Materials tiles and item-wide ALL selections must remain coherent; Bank finite allocations may intentionally differ across stacks of the same item.
 
-Remember the committed selection and activation setting per account on the same browser. Account changes must not display or apply another account's preferences. Calculation behavior belongs in `DOMAIN_SPEC.md`, section 9.1. Resolve remaining visual/interaction ambiguities with the Product Owner during design review; the workflow is not started by these requirements.
+Remember the saved selection and activation setting per verified account on the same browser.
+Account changes must not display or apply another account's preferences. If browser storage
+cannot save preferences, retain coherent in-memory state and disclose that persistence is
+unavailable. Returning to Crafting Profit applies changed reservations once to the active
+calculation; edits on Bank/Materials do not start crafting calculations in hidden screens.
+An unchanged return keeps the matching completed selected detail; an unfinished or mismatched
+request must not install a stale explanation. Calculation behavior belongs in
+`DOMAIN_SPEC.md`, section 9.1.
 
 ### 2.2 Characters
 
@@ -70,15 +116,52 @@ Present the saved own-account counts as a compact summary grid inside the Accoun
 
 Ordinary layout (accepted 2026-11-12): the Account data card uses the full content width and shows four own-account counts (Characters, Unlocked recipes, Material types, Total materials stored). Shared service health is one compact, `role="status"` line (items and recipes, Trading Post prices; OK/Running/Problem/Not run yet) instead of two large cards. A count is never shown as 0 unless that source was published empty; "Not loaded yet", "Unknown" and "may be out of date" are distinct, and sources the key does not permit are omitted. The owner-only accounts/catalog/actions composition accepted on 2026-11-11 is preserved, with the common account-count summary added. Visual approval is complete; a future deliberate redesign requires its own Product Owner review.
 
-Ordinary users see their key/connection controls, their account-data age and manual account refresh. Shared-system health uses concise generic labels. Owner-only controls provide detailed diagnostics and global item, recipe and full-TP refresh actions, clearly distinguished from refreshing one account. Do not render privileged details for ordinary users and do not rely on hidden controls for authorization. Admin identity is resolved by the backend as described in `TARGET_ARCHITECTURE.md` section 8.3.
+Ordinary users see their key/connection controls, their account-data age and manual account refresh. Shared-system health uses concise generic labels. Owner-only controls provide detailed diagnostics and global item, recipe and full-TP refresh actions, clearly distinguished from refreshing one account. Do not render privileged details for ordinary users and do not rely on hidden controls for authorization. Admin identity is resolved by the backend as described in `ARCHITECTURE.md`.
 
-For owners, keep each shared dataset's stored count, oldest/newest per-record refresh times and full-refresh action in the same card. Show synced item counts separately when stored items include placeholders. Place stored-account and last-60-minute activity counts beside the account-data card. Price freshness belongs in the Trading Post card; keep process-lifetime reference-check diagnostics secondary and expandable. Do not show an idle full-refresh action as though the stored dataset itself has never been refreshed. These layout proposals remain subject to local Product Owner visual approval.
+For owners, keep each shared dataset's stored count, oldest/newest per-record refresh times
+and full-refresh action in the same card. Show synced item counts separately when stored
+items include placeholders. Place stored-account and last-60-minute activity counts beside
+the account-data card. Price freshness belongs in the Trading Post card; keep process-lifetime
+reference-check diagnostics secondary and expandable. Do not show an idle full-refresh action
+as though the stored dataset itself has never been refreshed. These layouts are approved.
+
+**Application activity** is owner-only and loads when opened or explicitly refreshed; do not
+add a polling timer. Show its five-minute foreground-account estimate separately from the
+60-minute stored-account figure, and keep partial/startup/unavailable states explicit. History
+is collapsed initially and paginated. Offer a readable file dropdown grouped by Day and Week,
+newest first, with the newest available day selected by default; show the server-supplied
+range, retained size and coverage state. Download one chosen CSV rather than asking for raw
+timestamps. A removed file prompts a manifest refresh instead of choosing a different period.
+Withdrawal of owner capability clears privileged presentation and aborts pending downloads.
 
 ### 2.4 Feature pages: automatic stale-data refresh
 
 Bank, Materials and Characters have no manual refresh or saved-reload buttons and no routine last-synchronized/may-be-out-of-date paragraphs. Show saved data immediately and automatically refresh stale relevant sources through the shared task mechanism; retain equipment, the inspected template and inventory throughout. Use a compact stale/updating indicator. On completion replace the view without resetting the selection or saved protection choices. On failure keep the saved view, mark the failure and link to System Status. A failed cached read must preserve the last successful view.
 
 Refresh only sources needed by the page: Bank only Bank, Materials only material storage, Characters only character data and required optional detail sources, Crafting only its required calculation sources, Ecto only its required source. Opening Characters must not refresh recipes or materials. Sorting the roster must not fetch details. System Status remains the place for manual full-account refresh. Navigation must not duplicate ongoing refreshes or start global catalog work. Product behavior is owned by `DOMAIN_SPEC.md` section 57.
+
+### 2.5 Public Home and beginner guide
+
+Home is the first main-navigation destination and the default landing at `/welcome`. Its four
+tabs are **Welcome**, **What you can do**, **Getting started** and **GW2 beginner tips**.
+Keep the introductory promise, intended audiences, tool links and short account-to-crafting
+steps easy to scan. Tab navigation supports Arrow keys, Home/End and visible focus, with
+proper tab/panel associations. Home and the footer information pages never require or
+restore an account connection merely to read them.
+
+The beginner guide is titled **Things I wish I knew sooner**. Explain from a player's
+questions about starting GW2, making gold and using loot; keep a personal voice, clear
+priorities and secondary caveats in side notes. Do not turn it into an exhaustive checklist,
+patronizing instructions or a guaranteed farming-profit guide. Preserve direct Product
+Owner text edits when maintaining spelling, spacing and layout.
+
+In the Gear & salvaging and magic/materials sections, explanatory text sits left and the
+relevant screenshots form a smaller right-hand column at desktop widths; stack them on
+narrow screens. Gear's two screenshots have no repeated captions underneath. Salvage-kit
+recommendations include recognizable small kit images. Screenshots use compressed local
+WebP assets, useful alternative text, intrinsic dimensions, lazy loading and responsive
+sources where available; a link opens the full image. Unfilled screenshot positions render
+nothing until an image is supplied. Essential instructions remain readable without images.
 
 ## 3. Layout and responsive behavior
 
@@ -98,7 +181,12 @@ Selecting a result must be visibly and accessibly indicated and expose its avail
 
 Product Owner presentation choices (issue #153) for the Crafting Profit results: pointer hover emphasizes only the whole table row, with no border on the recipe-name button, while keyboard focus keeps the visible `:focus-visible` outline. During an active refresh with last-good rows, only the compact green "Stale data – refreshing…" indicator sits above the table: no explanation, account-source, Trading Post coverage or outstanding-work text and no "Showing …" summary; the summary returns when the replacement arrives. A failed or timed-out refresh keeps the full failure explanation, backend/account/Trading Post context and retry, and a pending state with no rows stays informative.
 
-Present only backend-provided detail. Expose available row details without fabricating a tree or claiming a complete explanation. Crafting Profit's tree explains the full output quantity represented by the selected detail row, as defined in `TARGET_ARCHITECTURE.md` section 10.2; the browser must render backend quantities and costs without scaling them. Keep fresh-calculation and response-association wording accurate where shown. Do not make a shopping list by adding inclusive tree costs or deriving procurement quantities in the browser. Selected-result shopping rows display the backend-selected acquisition price per item and backend purchase total; they do not choose between raw Trading Post quote sides. Label the basis of any backend-supplied material list.
+Present only backend-provided detail. Expose available row details without fabricating a tree or claiming a complete explanation. Crafting Profit's tree explains the full output quantity represented by the selected detail row, as defined in `ARCHITECTURE.md`; the browser must render backend quantities and costs without scaling them. Keep fresh-calculation and response-association wording accurate where shown. Do not make a shopping list by adding inclusive tree costs or deriving procurement quantities in the browser. Selected-result shopping rows display the backend-selected acquisition price per item and backend purchase total; they do not choose between raw Trading Post quote sides. Label the basis of any backend-supplied material list.
+
+Where an effective finite reservation applies to a displayed requirement or shopping item,
+show its saved target and source as a quiet note (for example, "Keep 250 in material
+storage"). The note describes a preference, not an additional requirement quantity; do
+not subtract it again from backend stock use, purchase amounts or costs.
 
 The first correction must change navigation, grouping and interaction structure as well as styling. A recolored version of the same oversized table does not satisfy this requirement.
 
@@ -132,11 +220,18 @@ Record concrete accessibility limitations; do not claim full conformance from an
 
 ## 8. Applying and verifying the rules
 
-Before changing a screen, compare the implemented structure with the relevant rules and record concrete gaps in the implementation story's Result. Assess the real screen during implementation; a planning assessment based on documentation is not a visual inspection.
+Before changing a screen, compare the implemented structure with the relevant rules and
+record concrete gaps and verification in the GitHub issue or pull request. Assess the real
+screen during implementation; a planning assessment based on documentation is not a visual
+inspection.
 
 Verify representative wide and narrow layouts, keyboard navigation, visible focus, meaningful status/error states, and selected-detail interaction. Use frontend tests for rendering, interaction and state with controlled backend values, including values chosen to reveal accidental recalculation. Record browser/viewport evidence and limitations. Follow `TEST_STRATEGY.md` for test-layer choices; do not duplicate domain tests in the frontend.
 
-Existing functionality and backend contracts must survive presentation changes. Navigation/layout changes do not relax `TARGET_ARCHITECTURE.md` section 17's complete-page performance requirement. Full Phase 5 performance evidence and the bounded project-health review remain distinct milestone work; visual improvement alone does not close the milestone.
+Existing functionality and backend contracts must survive presentation changes. Preserve
+the page-load requirement in `ARCHITECTURE.md` and verify any concrete
+performance regression introduced by a change. The Product Owner retired the synthetic
+pre-release capacity-measurement programme; it is not an extra visual-acceptance gate.
+Useful production activity monitoring and specific future optimizations remain in scope.
 
 ## 9. Visual identity and shared color system
 
@@ -186,7 +281,7 @@ Use item images, crafting-discipline symbols, coin denominations and contextual 
 
 Pair unfamiliar icons with text. Icon-only controls need accessible names and a discoverable explanation. Decorative images/icons must not produce redundant screen-reader announcements; meaningful images need appropriate alternative text. Coin symbols supplement explicitly understandable currency values. Show a stable fallback when an image is missing, preserving the item's name, quantity and occupied state.
 
-Prefer existing project assets or appropriately licensed/authorized artwork and record asset attribution where required. Do not imply official ArenaNet affiliation. Obtain game metadata/images through the established backend or approved local/static assets, preserving TARGET_ARCHITECTURE's external-API boundary. This guideline does not require adding a new icon service, UI framework or animation dependency.
+Prefer existing project assets or appropriately licensed/authorized artwork and record asset attribution where required. Do not imply official ArenaNet affiliation. Obtain game metadata/images through the established backend or approved local/static assets, preserving ARCHITECTURE.md's external-API boundary. This guideline does not require adding a new icon service, UI framework or animation dependency.
 
 Size and compress images for their display role, use responsive sources where appropriate, reserve image dimensions to prevent layout shifts, and defer offscreen decorative images. Essential text and results must render even when optional artwork fails. Avoid autoplay video, parallax and heavy animated backgrounds on analysis pages.
 
@@ -217,4 +312,14 @@ Visual acceptance under section 8 must include the actual loading, empty, failur
 
 A connected, GUID-verified account shows **Delete cached data** beside Disconnect. It opens a small native modal over the blurred backdrop ("Delete cached account data?", Cancel / Delete cached data); no inline warning panel. Opening or cancelling sends no request; Escape and backdrop click cancel only while idle; focus starts on the heading, is trapped, and returns to the trigger. Only `DELETE /api/account/data` answering `204` clears this GUID's Material Protection record and shadow, runs a local-only reset (no `/session/logout`), signals other same-origin tabs (GUID only) and shows the success notice. `409 ACCOUNT_WORK_IN_PROGRESS`, network and `5xx` failures keep all local data, announce the failure in the modal and need a fresh confirmation. `ACCOUNT_DATA_DELETED` from any account request resets locally without re-proof or retry; an explicit Connect remains allowed.
 
-**Footer and public information pages.** A modest footer in normal document flow links Legal notice, Privacy and Cookies & browser storage as their own small navigation. Pages use short headings and bullets within the prose width, state only verified behavior, show missing operator details as "To be completed" under one local-preview notice, and never read the account. Visiting them must not unmount the kept-alive screens.
+**Footer and public information pages.** A modest footer in normal document flow links Legal
+notice, Privacy and Cookies & browser storage as their own small navigation. Pages use short
+headings and bullets within the prose width and never read the account. Render configured
+operator/contact/hosting facts; only incomplete local builds show "To be completed" and one
+explicit preview notice. Legal notice identifies the independent fan project, ArenaNet/NCSOFT
+rights and absence of endorsement, the public GitHub repository, MIT code licence and
+contribution/contact links. Privacy and storage copy follow DOMAIN_SPEC §§58–59 and actual
+retention/monitoring behavior, including the difference between account-linked data and
+anonymity. Do not put private keys in contribution examples. Visiting public pages must not
+unmount kept-alive account screens. Home alone is indexable; tool and footer pages retain
+noindex metadata. Crawler directives are not access control.

@@ -80,11 +80,11 @@ snapshot consistency must not be disguised as guarantees of this contract.
 
 ## References
 
-- [Target architecture](../../TARGET_ARCHITECTURE.md), sections 12?14, 23, 33.
-- [Current architecture](../../CURRENT_ARCHITECTURE.md), sections 5.5, 5.6, 5.11.
-- [Domain specification](../../DOMAIN_SPEC.md), sections 42?44 and invariants.
-- [Roadmap](../../ROADMAP.md), Phase 5.
-- [UD-007](../../../agent/user-decisions/UD-007-http-long-running-sync-approach.md).
-- [AR-002](../../../agent/architect-requests/AR-002-resolution-tree-http-contract.md).
+- [Target architecture](../TARGET_ARCHITECTURE.md), sections 12?14, 23, 33.
+- [Current architecture](../CURRENT_ARCHITECTURE.md), sections 5.5, 5.6, 5.11.
+- [Domain specification](../../../DOMAIN_SPEC.md), sections 42?44 and invariants.
+- [Roadmap](../../../ROADMAP.md), Phase 5.
+- [UD-007](../../agent/user-decisions/UD-007-http-long-running-sync-approach.md).
+- [AR-002](../../agent/architect-requests/AR-002-resolution-tree-http-contract.md).
 - Source inspection: craft.Node, craft.RecipeTreeBuilder, application crafting
   services and web.dto crafting requests/responses. No runtime measurements made.

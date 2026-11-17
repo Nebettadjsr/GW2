@@ -58,7 +58,7 @@ The frontend:
 
 The frontend must not duplicate authoritative backend/domain calculations. Crafting Profit, Crafting Discovery, recursive recipe resolution, material valuation, opportunity cost, recipe eligibility, daily-item rules, and resolution-tree construction remain backend-owned. Crafting results supply total owned-material opportunity value and, for each required purchase, the selected acquisition unit price and purchase total; the frontend displays these values without scaling quantities or choosing between raw Trading Post quotes.
 
-Reusable UX/UI requirements are owned by `FRONTEND_UX_GUIDELINES.md`. Detailed user-visible Crafting Profit and Discovery semantics are owned by `DOMAIN_SPEC.md`. For the mapping between player-facing labels and Trading Post/domain terms, consult the canonical [Crafting glossary](crafting/GLOSSARY.md); do not duplicate its label definitions here.
+Reusable UX/UI requirements are owned by `FRONTEND_UX_GUIDELINES.md`. Detailed user-visible Crafting Profit and Discovery semantics are owned by `DOMAIN_SPEC.md`. For the mapping between player-facing labels and Trading Post/domain terms, consult the canonical [Crafting glossary](../../crafting/GLOSSARY.md); do not duplicate its label definitions here.
 
 ## 4.2 Ectoplasm Salvage exception
 
@@ -444,6 +444,17 @@ The frontend container is one Nginx process serving the built Vue assets (with `
 
 Do not introduce Kubernetes, microservices, or additional supporting services without a concrete requirement.
 
+### Public TLS edge (ADR-012)
+
+The selected public edge is host-installed Ubuntu Nginx, forwarding HTTPS to the frontend's
+loopback binding. Ubuntu Certbot uses HTTP-01 webroot validation with root-owned host credentials,
+automatic renewal and validated Nginx reload. The apex is the sole application origin; www redirects
+to it. The edge preserves the existing account headers/cookies and rejects unsafe methods unless
+Origin is exactly `https://gw2-crafting.de`; this check covers every proxied application path.
+Deployment also configures that exact additional backend origin. Forwarded headers remain
+untrusted. Application access remains owner-only until explicit public release. Full rationale,
+boundaries and required checks: [ADR-012](decisions/ADR-012-host-tls-edge.md).
+
 ---
 
 # 13. Testing Architecture
@@ -517,10 +528,10 @@ Review workflow and story disposition belong in the agent/planning documentation
 - **Trading Post prices:** globally shared on-demand freshness cache, ten-minute TTL; no full-catalog timer.
 - **Hosting portability:** no unnecessary provider-specific dependency.
 - **Hosting target (Product Owner, 2026-11-07):** Oracle Always Free; the final product must fit its whole-deployment budget. Preserve hosting portability and qualify actual usage before claiming fit.
+- **Public TLS edge (ADR-012):** host Nginx and distro Certbot; canonical apex HTTPS, an exact unsafe-method Origin gate and private backend/database, with owner-only access before release.
 
 ## To Be Decided
 
-- Public TLS/edge proxy, if required by deployment (separate from the internal frontend-to-backend forwarding selected in ADR-011).
 - Inactive-account retention threshold, only if measured impact justifies automatic cleanup.
 - Oracle target-host access, available tenancy resources and measured capacity/headroom; hosting provider is decided.
 

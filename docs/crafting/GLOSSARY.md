@@ -20,6 +20,11 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
   craft-count or max-buy budget; its output valuation still uses the recipe's actual output quantity.
 - **Owned-material pool** — the combined total of account material storage, account bank, and all
   character inventories, used only for economic analysis (§9).
+- **Material reservation / exclusion** — stock kept out of Crafting Profit when **Respect excluded
+  items/ mats** is enabled. Bank and Materials are independent sources; a reservation keeps ALL
+  units or a fixed finite quantity (§9.1).
+- **Finite reservation** — a saved amount to keep, independent of current stock. Bank may allocate
+  it across individual current stacks; rearranging stacks keeps the amount, not old slot identity.
 - **Account-bound** — an item usable by any character on the account, but not sellable on the
   Trading Post (§11.1).
 - **Soulbound** — an item usable only by the one character it's bound to, and not sellable (§11.1).
@@ -31,8 +36,9 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
   listing now (instant), or place/match a buy order and wait (listing) (§20).
 - **Instant sell / listing sell** — the two ways to sell: accept an existing buy order now
   (instant), or list the item and wait for a buyer (listing) (§20).
-- **Blocked reason** — the specific reason a requirement or recipe couldn't be resolved (e.g.
-  `PRICE_UNAVAILABLE`, `BUYING_DISABLED`); shown instead of silently hiding the result (§42).
+- **Blocked reason** — the backend diagnostic reason a requirement or recipe could not proceed
+  (e.g. `PRICE_UNAVAILABLE`, `BUYING_DISABLED`). It can explain why further crafts stopped after
+  valid earlier crafts. Normal tables omit generic state labels; tree messages stay item-specific (§42).
 - **Craftable count** — how many times a recipe can be executed under the current settings,
   determined by a full recursive simulation, not just direct ingredients (§28).
 - **Coordinated plan** — a Crafting Profit plan spanning multiple characters, where different steps
@@ -40,6 +46,10 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
 - **Transferable intermediate** — a crafted intermediate item that is not soulbound, and can
   therefore be produced by one character and used by another within a coordinated plan (§2.2.1).
 - **Simulation cap** — the intentional 250-craft limit per recipe per calculation (§28, UD-003).
+- **Material demand bound** — at most 2,500 required units of any one material item ID in a
+  candidate plan, counting all its accepted batches and recursive requirements (§42).
+- **Numeric range guard** — rejects quantity/money arithmetic outside the supported range instead
+  of wrapping, clamping or inventing a price or profit (`VALUE_RANGE`, §42).
 - **Provisional result** — an ordinary, fully calculated result whose account data or Trading Post
   prices had expired when it was calculated. The numbers are the normal ones for those inputs; what
   is provisional is the inputs, not the mathematics (§39–§40).
@@ -79,7 +89,9 @@ as possible when it genuinely isn't. See
 **What does "use own mats" mean?**
 When enabled, the calculation consumes materials you already own (from the combined
 [owned-material pool](README.md#the-owned-material-pool-bank-storage-and-characters)) before
-considering a purchase. When disabled, owned copies are ignored and the plan only considers buying.
+considering a purchase. When disabled, owned copies are ignored.
+Recursive crafting remains available under the normal recipe rules with either setting. Disabling
+owned stock does not itself enable purchases; **Allow buying** independently controls buying.
 
 **Why does an owned tradable material still have an opportunity cost?**
 Because using it up means you can no longer sell it. "No cash spent" isn't the same as "no economic
@@ -97,15 +109,28 @@ the item and waits for a buyer, at the sell-listing price. See
 [Trading Post price modes](README.md#trading-post-price-modes-instant-vs-listing).
 
 **Why can a result be blocked instead of simply omitted?**
-So "this can't currently be evaluated" (e.g. a missing price, buying disabled, over budget) stays
-visibly distinct from "this was evaluated and isn't profitable." Hiding the row would make those two
-very different situations look identical. See
+So "this can't currently be evaluated" (e.g. a missing price, buying disabled, over budget) remains
+distinct from "this was evaluated and isn't profitable." The API keeps the reason; normal tables
+omit generic state badges and the resolution tree shows affected items and actual sourcing.
+Display filters can hide rows without changing their backend result. See
 [Unavailable prices and blocked results](README.md#unavailable-prices-and-blocked-results).
 
 **Why is crafting simulation capped at 250?**
 It's an intentional, project-chosen limit to keep calculations bounded, not a game rule. Craftable
 count and total profit for a recipe never exceed what 250 crafts would produce, even if more
 materials are available. See [The 250-craft simulation cap](README.md#the-250-craft-simulation-cap).
+
+**Why did a plan stop before 250 crafts?**
+Inventory, buying settings, recipe eligibility, budget and daily allowances can stop it sooner.
+The separate **2,500-unit limit per material** and numeric-range checks can also stop a large
+plan. Earlier complete Profit batches remain valid. See
+[The separate material and numeric bounds](README.md#the-separate-material-and-numeric-bounds).
+
+**Can I keep 250 Ectos while using the rest?**
+Yes. In Bank or Materials, right-click Ectos, choose **Reserve quantity…** and enter 250.
+Enable **Respect excluded items/ mats** in Crafting Profit. With 300 in that selected store,
+50 remain usable. Reservations save automatically for this account in this browser. See
+[Keeping materials for later](README.md#keeping-materials-for-later).
 
 **Why is Total Sell Value minus my costs more than the Total Profit shown?**
 Because the 15% Trading Post selling fee is deducted from profit only (`DOMAIN_SPEC.md` §25,

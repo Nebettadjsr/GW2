@@ -1,0 +1,54 @@
+{
+  "applicationCommit" : "d713eb46c03e3c5cfa3cdfc90ad5d5216b559752",
+  "processors" : 2,
+  "catalogSha256" : "18250726a75ac6c68c622f979c0203c498327b4e21b5292345ec82c915a12033",
+  "graphCorpus" : "Existing public persisted catalog, copied read-only; SQL fixture on isolated database, not live account data",
+  "snapshotGraph" : {
+    "loadMillis" : [ 214.6866, 279.4436, 121.2137, 103.3663, 90.5335, 77.2682 ],
+    "preparedStatementsAcrossSixLoads" : 18,
+    "newSnapshotSawNewRecipe" : true,
+    "oldSnapshotStayedOldAfterConcurrentCommit" : true,
+    "recipes" : 13213,
+    "ingredients" : 41383,
+    "sql" : [ "    SELECT recipe_id, item_id, count\n    FROM recipe_ingredients\n    ORDER BY recipe_id\n", "    SELECT recipe_id, output_item_id, output_item_count,min_rating, disciplines\n    FROM recipes\n    ORDER BY recipe_id\n", "    SELECT item_id, name, icon_path, icon_url, vendor_value\n    FROM items\n    WHERE item_id = ANY(?)\n" ],
+    "sameSnapshotReloadsDifferentObjects" : true
+  },
+  "rootSelection" : {
+    "experiment" : "existing private per-root evaluator invoked reflectively with the entire graph and unchanged permissions; no optimized production implementation",
+    "allCatalogRoots" : 13000,
+    "selectedRoots" : 250,
+    "control" : "existing public all-root planner",
+    "allowedRecipesIncludingNonRootDependencies" : 496,
+    "pairs" : [ {
+      "selectedRootMillis" : 51.8004,
+      "run" : 0,
+      "allRootMillis" : 115.7198,
+      "visibleResultsEqual" : true
+    }, {
+      "selectedRootMillis" : 43.5924,
+      "run" : 1,
+      "allRootMillis" : 68.4039,
+      "visibleResultsEqual" : true
+    }, {
+      "selectedRootMillis" : 33.8312,
+      "run" : 2,
+      "allRootMillis" : 71.8811,
+      "visibleResultsEqual" : true
+    }, {
+      "selectedRootMillis" : 34.1608,
+      "run" : 3,
+      "allRootMillis" : 42.2172,
+      "visibleResultsEqual" : true
+    }, {
+      "selectedRootMillis" : 21.4522,
+      "run" : 4,
+      "allRootMillis" : 40.9596,
+      "visibleResultsEqual" : true
+    }, {
+      "selectedRootMillis" : 17.4936,
+      "run" : 5,
+      "allRootMillis" : 30.3273,
+      "visibleResultsEqual" : true
+    } ]
+  }
+}

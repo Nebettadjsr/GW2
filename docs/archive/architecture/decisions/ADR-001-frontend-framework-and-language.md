@@ -127,13 +127,13 @@ These are current policy observations, not guarantees about future versions.
 
 ## References
 
-- [Target architecture](../../TARGET_ARCHITECTURE.md), sections cited above.
-- [Current architecture](../../CURRENT_ARCHITECTURE.md), sections 5.5–5.9.
-- [Roadmap](../../ROADMAP.md), Phase 5; [test strategy](../../TEST_STRATEGY.md), section 12.
-- [UD-006](../../../agent/user-decisions/UD-006-backend-web-framework.md),
-  [UD-007](../../../agent/user-decisions/UD-007-http-long-running-sync-approach.md),
-  [UD-008](../../../agent/user-decisions/UD-008-frontend-framework-and-language.md).
-- [AR-001](../../../agent/architect-requests/AR-001-frontend-framework-and-language.md).
+- [Target architecture](../TARGET_ARCHITECTURE.md), sections cited above.
+- [Current architecture](../CURRENT_ARCHITECTURE.md), sections 5.5–5.9.
+- [Roadmap](../../../ROADMAP.md), Phase 5; [test strategy](../../../TEST_STRATEGY.md), section 12.
+- [UD-006](../../agent/user-decisions/UD-006-backend-web-framework.md),
+  [UD-007](../../agent/user-decisions/UD-007-http-long-running-sync-approach.md),
+  [UD-008](../../agent/user-decisions/UD-008-frontend-framework-and-language.md).
+- [AR-001](../../agent/architect-requests/AR-001-frontend-framework-and-language.md).
 - Official technology sources are linked next to the supported claims; consulted
   2026-09-24. Comparative fit and simplicity conclusions are architectural judgment,
   not benchmarks, adoption statistics or measured coding-agent performance.

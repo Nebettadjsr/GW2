@@ -2,7 +2,6 @@
 
 A practical reference for understanding the status codes returned by the GW2 crafting planner. This document explains **what a code means, why it occurs, and how to interpret it** in Crafting Profit and Crafting Discovery. It is a developer guide, not a replacement for the authoritative domain rules.
 
-**Recommended repository location:** `docs/CRAFTING_STATUS_REFERENCE.md`  
 **Authoritative specification:** [`DOMAIN_SPEC.md` §42](DOMAIN_SPEC.md) (blocking reasons), §2.1.1 (Profit presentation), §2.2.2 (Discovery), §44 (resolution tree)  
 **Backend definitions:** [`craft/BlockedReason.java`](../backend/src/main/java/craft/BlockedReason.java), [`craft/ResolutionState.java`](../backend/src/main/java/craft/ResolutionState.java)  
 **Frontend wording:** [`rowState.ts`](../frontend/src/crafting/rowState.ts), [`resolutionPresentation.ts`](../frontend/src/crafting/resolutionPresentation.ts)
@@ -15,9 +14,9 @@ A practical reference for understanding the status codes returned by the GW2 cra
 
 For example, `craftableCount = 5` together with `blockedReason = BUYING_DISABLED` means five crafts were counted, but another craft could not be completed because a required purchase is disabled. It does **not** mean that the five completed crafts are invalid.
 
-## 2. All eight `BlockedReason` values
+## 2. All ten `BlockedReason` values
 
-The enum defines **eight values in total: `NONE` plus seven reasons a path may stop**.
+The enum defines **ten values in total: `NONE` plus nine reasons a path may stop**.
 
 ### `NONE` — No blocking reason
 
@@ -98,6 +97,39 @@ The enum defines **eight values in total: `NONE` plus seven reasons a path may s
 **Discovery:** The Discovery specification has **no cumulative purchase budget**. This reason should not normally arise from Discovery's one-attempt calculation; if it does, inspect the backend request and configuration before assuming it is a meaningful Discovery restriction.
 
 **UI:** Do not show the generic budget reason as a normal detail status; preserve it in backend/API diagnostics and retain the backend-supplied quantities and amounts.
+
+### `MATERIAL_LIMIT` — Candidate plan exceeds a material's demand bound
+
+**Meaning:** The plan would require more than **2,500 units of one material item ID**. Count
+repeated sibling and recursive ingredient requirements and every accepted Profit batch, whether
+units come from stock, crafted intermediates, purchases or reused surplus. This is separate from
+the 250-craft simulation cap and the table's changeable displayed-row limit.
+
+**Developer check:** Inspect accumulated demand for that item across the attempted plan. Failed
+speculative alternatives must roll back their demand and stock/cost effects; each candidate root
+has independent accounting. A fitting alternative recipe or direct purchase may still succeed.
+The saved Bank/Materials reservation target itself is not limited to 2,500.
+
+**Interpretation:** An excessive attempt is rejected as a whole. Profit retains earlier complete
+batches, while Discovery's single attempt cannot become a partial successful discovery.
+
+**UI:** Keep the code in backend/API diagnostics. Do not present an enormous truncated shopping
+list, invent a successful partial root or call a requirement uncraftable merely because this
+particular plan crossed the bound.
+
+### `VALUE_RANGE` — Quantity or money arithmetic is out of range
+
+**Meaning:** A quantity, copper product/sum, revenue, fee or profit cannot be represented in the
+calculation's supported range. Copper totals use the signed 32-bit range; calculations check
+products and totals before accepting them rather than allowing integer wraparound.
+
+**Developer check:** Reproduce the first excessive operation and its upstream inputs. Negative
+purchase costs caused by overflow must never become profitable crafts. Reject and roll back the
+affected attempt; do not clamp its values. A valid alternative may still fit, and earlier accepted
+Profit batches remain valid when only the next batch exceeds the range.
+
+**UI:** Preserve unavailable versus known-zero values and the backend reason. Do not turn the
+guard into a fabricated negative cost, inflated profit, or a new normal row-state badge.
 
 ## 3. Result states that are not `BlockedReason` values
 

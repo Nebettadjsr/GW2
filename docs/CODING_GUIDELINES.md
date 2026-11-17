@@ -23,7 +23,7 @@ change like this — that's wasted context/tokens for something that doesn't nee
 - a change you can already tell will touch multiple existing components.
 
 For those, actually evaluate the options against the project before choosing: how each fits
-`CURRENT_ARCHITECTURE.md`/`TARGET_ARCHITECTURE.md`, how it interacts with the other parts of
+`ARCHITECTURE.md`, how it interacts with the other parts of
 the codebase it will be shared with, and — only when directly relevant, not as a routine
 scan — whether it conflicts with clearly related planned work. Prefer the approach that
 minimizes conflicts with other in-flight/planned work and minimizes refactor work later, not

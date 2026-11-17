@@ -8,7 +8,7 @@ This project is under active development. Security fixes are applied to the curr
 
 Please do **not** open a public GitHub issue for a vulnerability that could expose credentials, private account data, or provide unauthorized access.
 
-Instead, contact the maintainer privately using the contact information available on the maintainer's GitHub profile. Include:
+Instead, contact the maintainer privately at **kontakt@gw2-crafting.de**. Include:
 
 - a description of the issue;
 - steps to reproduce it;

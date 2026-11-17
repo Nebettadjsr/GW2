@@ -1,0 +1,9 @@
+{
+  "logicalElapsedMs": 6000,
+  "triggerCount": 1,
+  "statusRequests": 10,
+  "uniqueTasks": [
+    "/api/sync/tasks/task-ACCOUNT_SYNC"
+  ],
+  "boundary": "Mounted shell tracker and Profit recovery on identical running task, fake clock, no live backend"
+}

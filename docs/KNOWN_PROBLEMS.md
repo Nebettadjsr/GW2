@@ -1,91 +1,55 @@
-# GW2 Tool — Known Problems
+# Known problems
 
-## 1. Purpose and maintenance rule
+Reviewed against source on 17 November 2026. This register contains current defects, risks and concrete follow-ups. Remove resolved findings when current code and verification establish closure; GitHub retains their history. [DOMAIN_SPEC](DOMAIN_SPEC.md) owns behavior and [Architecture](ARCHITECTURE.md) owns structural constraints.
 
-This document is the **current open-problem register** for defects, architectural risks, ambiguities, technical debt, and incomplete functionality that still apply to the repository. The legacy JavaFX desktop interface no longer exists (`STORY-UI-004`), so the findings that were limited to it have been removed from this register rather than carried forward; the browser is the only interface a finding here can describe.
+There are five remaining findings. Empty legacy categories and resolved JavaFX commentary have been removed. None of these findings is an authorization to change product policy or restart the retired capacity programme.
 
-Use it as current-state input, not as a historical changelog:
+## KP-12 Mixed inventory generations across sources
 
-- Keep only findings that are still open, unresolved, or explicitly require follow-up.
-- Before adding or carrying forward a finding, check the current implementation, GitHub issues and PRs, and historical story results for evidence that later work already resolved it.
-- When a DONE story or current-code verification establishes that a finding is resolved, **remove the finding from this file** instead of appending a long resolution history here. Story files and the backlog retain that history.
-- Do not remove a finding merely because related work exists. If closure is not established, keep the finding and update only the current facts that matter.
-- Do not duplicate the same underlying problem under multiple historical headings. Consolidate extensions into the live finding.
-- Preserve the distinction between **Observed fact**, **Inferred risk**, and **Recommendation**. A recommendation is not evidence that a fix was implemented.
-- A project/code-health review that touches this file should leave it cleaner than it found it: reconcile stale entries against completed work, remove confirmed-resolved findings, merge duplicates, and avoid retaining obsolete audit totals or rankings.
+**Observed:** account refresh is coordinated by a per-account single writer; each source publishes atomically, and Profit captures its inputs in one repeatable-read snapshot. Bank, Materials and character inventory can nevertheless have different source completion times. The upstream responses are not one atomic game-account snapshot.
 
-`CURRENT_ARCHITECTURE.md` owns the structural map; `DOMAIN_SPEC.md` and accepted user decisions own domain rules; `TARGET_ARCHITECTURE.md` owns target constraints. This file records where the current implementation still conflicts with, risks, or incompletely realizes those authorities.
+**Risk:** a stack moved between stores can temporarily appear in both cached source generations until the corresponding sources refresh. Single-writer admission prevents the previously claimed concurrent same-account writer race; it does not make independently refreshed source snapshots coherent.
 
-No finding in this document by itself authorizes an implementation change. Normal planning and Product Owner decision boundaries still apply.
+**Follow-up:** decide whether coherent cross-source publication is needed and preserve the accepted refresh scope and honest freshness reporting. Do not equate this finding with accepted upstream API lag.
 
----
+Evidence: `application/ScopedAccountRefreshCoordinator.java`, `application/AccountRefreshService.java`, `application/ProfitInputSession.java`, `sync/AccountSync.java` and `repo/AccountSourcePublication.java`. Existing single-writer and repeatable-read tests verify those protections; they do not prove a coherent upstream instant.
 
-## 2. Crafting-domain correctness and calculation risks
+## KP-16 File graph cache validation and corruption recovery
 
-No open calculation finding. Candidate selection and intermediate surplus are covered by the crafting correctness regression suite.
+**Observed:** `repo.CraftingGraphCache.load()` reuses its in-memory graph, and otherwise reads an existing file without validating the stored source key or age. Invalid JSON is not automatically rebuilt. Rebuilds are synchronized and written through a temporary file with atomic replacement where supported. Snapshot-bound Profit reads use `loadForSnapshot(connection)` and bypass this file.
 
+**Risk:** consumers of the shared file can repeatedly fail on corrupt derived data or retain a graph from a different source until invalidation/rebuild. This is not a claim that every Profit request reparses that file.
 
----
+**Follow-up:** validate source identity and recover by rebuilding disposable derived data. Preserve synchronized publication and the existing pinned-snapshot path.
 
-## 3. Crafting presentation and explanation risks
+Evidence: `repo/CraftingGraphCache.java`, especially `load`, `loadForSnapshot`, `rebuild` and `invalidate`.
 
-No open finding. KP-08, KP-09 and KP-11 described the legacy JavaFX shopping lists, monetary formatting and a transient debug label; `STORY-UI-004` deleted those views, and the browser presentation they were contrasted against was never affected. The story files retain the history.
+## KP-17 Incremental TP refresh retains quotes after confirmed absence
 
----
+**Observed:** ordinary `sync.TpSync.fetchTpBatchParsed` skips a requested ID when the single-item 404 fallback returns null; an earlier stored quote remains. The owner full-catalog path uses `fetchTpBatchStrict`, which already writes `TpPrice.noData` for that absence. Profit reports quote age separately.
 
-## 4. Synchronization, persistence, cache, and data-freshness risks
+**Risk:** incremental refresh can leave an obsolete quote in storage after the upstream explicitly reports no quote. Freshness metadata alone does not persist that absence.
 
-### KP-12 — Account refresh can publish inconsistent inventory snapshots across sources (CH-04)
+**Follow-up:** align ordinary refresh's confirmed-absence semantics with the documented quote contract, distinguishing absence from a transient upstream failure. Preserve the full-catalog behavior already implemented.
 
+Evidence: `sync/TpSync.java` (`fetchTpBatchParsed`, `fetchTpBatchStrict`), `api/tp/TpPriceApi.java` (`fetchSingle`).
 
-**Observed fact:** bank/material/character sources fetch and publish separately under one account coordinator. Each source publishes atomically, and Crafting Profit captures its inputs in one `REPEATABLE READ` transaction. These guarantees do not make the upstream bank and material-storage responses represent one instant: their published source generations can still differ in age.
+## KP-30 Broad graph and root work for narrow crafting scopes
 
-**Inferred risk:** moving a stack from bank to material storage can leave its old bank quantity alongside its refreshed storage quantity in Profit indefinitely until a full account refresh; even full refresh has intermediate mixed snapshots. Concurrent runs can publish older fetches after newer ones. This is an application-created consistency problem, distinct from accepted GW2 API lag (DOMAIN_SPEC §39). **Recommendation:** define coherent account snapshot publication/refresh ownership and accurate freshness reporting; preserve or explicitly decide refresh scope.
+**Observed:** snapshot-bound calculation loads the complete recipe graph and broad item/quote inputs. Coordinated evaluation receives the global recipe set even for a narrow visible scope; disallowed roots can be rejected early, so this does not imply every root receives a full recursive simulation. Candidate queries also read broad ingredient data before discipline filtering.
 
+**Risk:** repeated graph construction, indexing and root iteration may do avoidable work. Shared dependency, alternative-recipe and valuation needs make filtering the entire graph to visible rows unsafe.
 
+**Follow-up:** consider graph-generation reuse and separate evaluation roots from the complete dependency graph, with targeted equivalence checks when pursued. No new load-testing programme or measured production speedup is claimed.
 
-### KP-16 — Persisted graph cache lacks source validation and corrupt-file recovery (CH-08)
+Evidence: `repo/CraftingGraphCache.loadForSnapshot`, `application/CraftingProfitService`, `craft/CraftingPlanner`, `repo/RecipeRepository`.
 
+## KP-32 Incremental recipe checks miss changes under unchanged IDs
 
-**Observed fact:** `CraftingGraphCache.load()` accepts an existing working-directory cache without checking its stored key, age or source database. A corrupt existing file is parsed repeatedly rather than treated as rebuildable derived data. Current code coordinates load/rebuild/invalidation within each cache instance and writes through a temporary file with atomic replacement where supported (replacement fallback otherwise); a failed database rebuild leaves the previous file intact. Pinned database-snapshot graph reads bypass this shared file.
+**Observed:** `sync.RecipeSync.syncAllRecipesGlobalSafe()` skips detail fetches when recipe IDs match a complete local publication. In-place changes to a recipe's output, ingredients or disciplines are therefore not detected by that check. The separate owner full-catalog operation deliberately reloads all details even when IDs match.
 
-**Inferred risk:** file-backed graph consumers can use stale recipes after a database/source change that is not accompanied by invalidation, and corrupt derived data can cause persistent read failures. **Recommendation:** validate cache source identity and recover from corrupt derived data. Do not reintroduce the already-corrected delete-before-rebuild or direct-final-file-write claims. File caching remains an allowed architectural choice.
+**Risk:** the periodic membership check can leave changed details stale until another trigger downloads them.
 
+**Follow-up:** retain the cheap membership check while defining an affordable policy for detecting same-ID edits. Do not claim the owner full operation has the same limitation.
 
-### KP-17 — Trading Post 404 responses preserve old usable quotes (CH-09)
-
-
-**Observed fact:** after a 404 batch or a missing ID in a 206 batch, single-item 404 returns null. `fetchTpBatchParsed` skips that ID, unlike an explicit `TpPrice.noData` quote which writes NULLs. Any existing quote stays unchanged in low-level storage/readers. Profit now separately reports its age in the freshness envelope, but a confirmed upstream absence is still not recorded as such.
-
-**Inferred risk:** refresh can report success while an item that no longer has a quote retains an old price used by calculations; missing IDs can also be retried repeatedly without recording the absence. **Recommendation:** distinguish confirmed absence from transient failure and define its persisted quote state.
-
-
-
----
-
-## 7. Incomplete or obsolete implementation
-
-No open finding.
-
----
-
-## 8. Platform and performance follow-up
-
-### KP-30 — Full-catalog work persists for narrow crafting scopes (CH-21; follow-up required)
-
-
-**Observed fact:** each reload parses the entire graph cache, constructs its output index, collects all graph item IDs and loads all those items/quotes. The planner constructs another output index and evaluates every global recipe before the caller keeps visible rows. Even a selected discipline uses an unrestricted ingredient-table load for its recipe query. These paths were traced, not inferred from method names.
-
-**Inferred risk requiring measurement:** avoidable graph/collection construction and forbidden-root simulation may materially affect narrow scopes and rapid repeated reloads; transitive ingredient/valuation needs mean simply restricting everything to visible rows would be unsafe. **Recommendation:** profile this concrete chain only if pursued, separating necessary dependency closure from redundant roots/indexes. This is not a claim that the accepted seven-second Profit gate has regressed, nor authorization to accelerate the deferred Discovery performance work.
-
-
----
-
-### KP-32 — Global recipe change detection misses edits under unchanged IDs
-
-**Observed fact:** `RecipeSync.syncAllRecipesGlobalSafe()` compares the remote recipe ID set with the local `recipes.recipe_id` set and returns without detail requests when the sets match and the catalog publication marker is complete. Incomplete publication is retried, but a completed catalog's recipe detail fields and ingredients are not checked for in-place changes unless some recipe ID is also added or removed.
-
-**Inferred risk:** an ArenaNet edit to an existing recipe's output, discipline, or ingredients can remain stale locally, and the crafting graph will not rebuild for that edit. The current six-hour job detects catalog membership changes, not full recipe freshness.
-
-**Recommendation:** retain the cheap ID-list gate while a future decision defines an affordable way to detect in-place detail changes; do not describe the current check as detecting every upstream recipe-data edit.
-
+Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFull`).
