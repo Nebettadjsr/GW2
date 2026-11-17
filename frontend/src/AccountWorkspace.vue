@@ -25,7 +25,7 @@ import SyncScreen from './sync/SyncScreen.vue'
  * (`FRONTEND_UX_GUIDELINES.md` 2, 3).
  *
  * Below 1024 CSS pixels every tool destination shows a notice instead of its screen and starts no
- * account work; the KeepAlive screens are only deactivated, so widening restores them as they were.
+ * account work. A screen already admitted on a supported width stays mounted (hidden, inert) when the window narrows, so pending work and inputs survive; widening shows it as it was.
  *
  * Each destination is a real URL (`useHashRoute`), so Back, Forward, a bookmark and a reload all work
  * normally and each screen has its own document title. Navigating issues no request of the shell's
@@ -51,6 +51,18 @@ const isTool = computed(() => !onHome.value && !onInfoPage.value)
 /** Tool destinations are blocked below the supported width; the workspace itself stays mounted. */
 const toolsBlocked = computed(() => isTool.value && !desktop.value)
 const toolOpen = computed(() => isTool.value && desktop.value)
+/**
+ * The tool destination whose screen was admitted on a supported width. Narrowing the window keeps that
+ * one instance mounted (hidden and inert) so its pending work and inputs survive a width-only change;
+ * any navigation while narrow drops it, and a narrow viewport never admits a screen.
+ */
+const admittedId = ref<string | null>(null)
+watch([() => route.current.value.id, desktop, isTool], ([id, wide, tool]) => {
+  if (!tool) admittedId.value = null
+  else if (wide) admittedId.value = id
+  else if (admittedId.value !== id) admittedId.value = null
+}, { immediate: true, flush: 'sync' })
+const mountTool = computed(() => isTool.value && (desktop.value || admittedId.value === route.current.value.id))
 const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
 const onCraftingPage = computed(() => ['crafting', 'discovery'].includes(route.current.value.id))
 const craftingReady = computed(() => !['checking', 'syncing'].includes(bootstrap.phase.value))
@@ -119,7 +131,9 @@ watch(
     -->
     <DesktopWidthNotice v-if="toolsBlocked" :heading="route.current.value.label" />
 
-    <SyncScreen v-if="onSystemStatus && toolOpen" />
+    <div class="tool-stage" :hidden="toolsBlocked" :inert="toolsBlocked">
+    <SyncScreen v-if="onSystemStatus && mountTool" />
+    </div>
 
     <HomeScreen v-if="onHome" @navigate="onNavigate" />
 
@@ -154,17 +168,18 @@ watch(
       returning neither resets the selection nor posts a calculation. Bank and Materials have no such
       input, so each keeps reading its own route when opened (STORY-WEB-003).
     -->
+    <div class="tool-stage" :hidden="toolsBlocked" :inert="toolsBlocked">
     <KeepAlive>
-      <CraftingProfitScreen v-if="toolOpen && route.current.value.id === 'crafting' && craftingReady" />
+      <CraftingProfitScreen v-if="mountTool && route.current.value.id === 'crafting' && craftingReady" />
     </KeepAlive>
 
     <KeepAlive>
-      <CraftingDiscoveryScreen v-if="toolOpen && route.current.value.id === 'discovery' && craftingReady" />
+      <CraftingDiscoveryScreen v-if="mountTool && route.current.value.id === 'discovery' && craftingReady" />
     </KeepAlive>
 
     <!-- Characters keeps its selection and tab while the user visits another page of this account. -->
     <KeepAlive>
-      <CharactersScreen v-if="toolOpen && route.current.value.id === 'characters'" />
+      <CharactersScreen v-if="mountTool && route.current.value.id === 'characters'" />
     </KeepAlive>
 
     <!--
@@ -172,10 +187,11 @@ watch(
       selection to preserve, and its result is a snapshot of live Trading Post prices — so opening it
       again should calculate again rather than re-present an older snapshot as current.
     -->
-    <EctoSalvageScreen v-if="toolOpen && route.current.value.id === 'ecto'" />
+    <EctoSalvageScreen v-if="mountTool && route.current.value.id === 'ecto'" />
 
-    <BankScreen v-else-if="toolOpen && route.current.value.id === 'bank'" />
-    <MaterialsScreen v-else-if="toolOpen && route.current.value.id === 'materials'" />
+    <BankScreen v-else-if="mountTool && route.current.value.id === 'bank'" />
+    <MaterialsScreen v-else-if="mountTool && route.current.value.id === 'materials'" />
+    </div>
     </template>
   </main>
 
