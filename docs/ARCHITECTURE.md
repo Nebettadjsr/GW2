@@ -52,6 +52,20 @@ without introducing extra services solely to make the design more elaborate.
 
 ## 3. Browser responsibilities and assets
 
+The [supported browser viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns
+tool availability, the width notice and public-reading exceptions. The frontend capability
+gate must run before account restoration and initial tool mounting. A blocked initial route
+must not acquire an account context or make hidden feature requests. Width changes preserve
+already mounted account/crafting/character state rather than recreating the workspace merely
+to render the notice; existing account-generation guards still own account isolation.
+This UI capability check does not grant or replace backend authorization.
+
+Controlled real-browser journeys use the production frontend with a synthetic HTTP boundary.
+They verify real navigation, event handling, native focus and request wiring, independently
+of Vitest/JaCoCo coverage. They do not prove backend economics, live ArenaNet behavior or
+production capacity. Their command, CI execution and evidence format belong in TEST_STRATEGY;
+CURRENT_STATE_SPEC distinguishes implemented changes from the actual deployed revision.
+
 The browser presents backend results and owns filtering, sorting, selection and loading/error
 state. Crafting Profit, Discovery, recipe eligibility, recursive resolution, opportunity cost,
 daily rules, tree quantities and purchase/owned-material values remain authoritative backend

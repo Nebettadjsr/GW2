@@ -661,17 +661,19 @@ silent:
 | Type check | `npm run type-check` | strict typing across `.ts` and `.vue` | that received JSON matches those types |
 | Component/unit | `npm test` | rendering, interaction, request construction, state transitions | that the real backend connection works |
 | Production build | `npm run build` | the locked dependency set builds to static assets | runtime behavior |
-| Browser smoke | `npm run smoke:browser`, `npm run smoke:account` | a real browser retrieves and renders real backend results, compared against the very response it received | performance (§34), any state the live data did not contain, and whether a compared value is domain-correct |
+| Automatic controlled browser journeys (STORY-COV-006) | `npm run smoke:ci` | a real browser drives the built app through public reading, connection, failure/recovery, account switching, the supported-tool viewport boundary and reservations against an owned synthetic API | real backend/SQL/upstream behavior, production performance or additional Vitest/JaCoCo line coverage |
+| Explicit real-backend browser smoke | `npm run smoke:browser`, `npm run smoke:account` | a real browser retrieves and renders real backend results, compared against the very response it received | performance (§34), any state the live data did not contain, and whether a compared value is domain-correct |
 | Browser smoke, controlled boundary | `npm run smoke:sync` | a real browser drives controls whose live counterpart would mutate data, and presents the answers | that a real operation ran, or anything about the backend's own behavior |
-| Browser layout and accessibility | `npm run smoke:layout`, `npm run smoke:profit` | measured reflow at several viewport widths and at increased text size, keyboard focus order and visible focus, computed text/background contrast, per-destination URLs and titles, measured side-by-side versus stacked result/detail placement with keyboard-operated selection, and a measured sticky offset against a taller sibling column | conformance beyond the combinations it measured, and anything about real data or performance |
+| Focused controlled layout and accessibility | `npm run smoke:layout`, `npm run smoke:profit` | supported desktop layout, increased text size, keyboard focus and contrast, URLs/titles, result/detail placement, selection and sticky positioning where the script explicitly measures them | automatic acceptance of legacy phone-tool scenarios, unvisited combinations, real data or performance |
 | Browser asynchronous lifecycle, controlled boundary | `npm run smoke:profit:refresh` | a real browser rendering a scripted sequence of cached, replaced and failed refresh answers: the indicator's measured border and cycling animation, preserved controls and selection across an automatic replacement, a detail answered from newer inputs than its row, and termination with a retry | that the backend produces any of those sequences, and anything about refresh timing or a recovery budget measured on a real clock |
 | Backend contract connection | `npm run check:profit:envelope` | that the shape a controlled-boundary check imitates is the shape the running backend sends, read out of the response the browser itself received, with the page's state asserted against it | row economics, timing, and any sequence the backend did not happen to produce in that visit |
 
-The browser smoke check needs the backend and the dev server already running; it drives an
-installed Chrome/Edge and asserts on what the page actually rendered and which backend routes the
-browser actually called. Mocked levels cannot substitute for it, and it cannot substitute for §34:
-a smoke run records that results arrived and were displayed, not that a full page met a timing
-budget. Record the database/environment a smoke run used, without exposing secrets.
+The explicit real-backend smoke commands need their backend and frontend already running.
+They assert against actual received responses; controlled-browser journeys cannot establish
+that integration. The automatic `smoke:ci` selection instead serves built assets and synthetic
+API responses in owned loopback origins: it starts no application backend or database. Neither
+kind establishes the performance claims in §34. Record the environment and measurement scope
+without exposing credentials.
 
 A special state that the live database does not currently produce (for example an unavailable
 price) is covered at the component level with a controlled response, and the Result says so rather
@@ -686,21 +688,18 @@ browser evidence for source the browser never loaded.
 
 ### Fresh-runtime prerequisite after substantial changes
 
-After a substantial backend/frontend integration change—especially an API contract, DTO field,
-route, configuration or other change that can be hidden by a long-running process—browser and
-integration observations must use a freshly started runtime. Build the current source, stop the
-backend and frontend processes that may still serve older assets/classes, start the current
-backend and frontend, verify the expected process owns the configured ports, and only then run
-the check. A browser refresh alone is insufficient when a Java backend or dev server remains
-running. This is not required for trivial presentation-only edits that cannot affect served
-behavior. Record the revision and any restart limitation in the story Result; never treat a
-check against an unidentified long-running process as evidence for the current source.
+After substantial integration changes, a real-backend observation needs identified current
+frontend/backend code. Use isolated owned processes and ports, rebuild/restart only those
+processes when needed, and preserve the ordinary user application. A browser refresh alone
+does not update an old Java process. Controlled journeys build the current frontend first and
+start their own static/API origins; no Java restart is needed for them. Record revision and
+runtime limits, and never claim evidence for current source from an unidentified older process.
 
 ## 12.3 Checking controls that would mutate data
 
 A read-only screen can be smoke-checked against the live backend; a control that starts a
 synchronization cannot, because running it to see the button work would spend the GW2 API budget
-and write to the user's database. Two rules follow:
+and write to the user's database. Three rules follow:
 
 1. **Point the real browser at a controlled origin instead of dropping the level.** The check serves
    the built assets and answers the trigger and status routes itself, with scripted task lifecycles
@@ -715,13 +714,20 @@ and write to the user's database. Two rules follow:
    touched" check into a live synchronization. Bind and navigate to `127.0.0.1` explicitly, fail on
    a `listen` error rather than ignoring it, and assert the check's own server served the page.
 
-Asynchronous polling is tested with faked timers and hand-resolved promises, never with real
-delays: a test asserts how many status requests were issued, that none overlapped, and that they
-stopped — none of which a wall-clock wait can establish reliably.
+Unit/component polling tests use fake timers and hand-resolved promises to verify request
+counts, serialization and termination. Browser journeys use bounded event/DOM waits against
+controlled responses; avoid arbitrary sleeps and do not infer a real performance budget from
+their execution time.
 
 ## 12.4 Checking presentation and accessibility
 
 Layout, focus and contrast claims are *measured in a real browser*, never inferred from the stylesheet.
+Apply the [supported-tool viewport policy](DOMAIN_SPEC.md#1-purpose): verify the notice at
+1023 CSS pixels and supported tools at 1024 CSS pixels and representative wider desktop sizes.
+Below the threshold, test the boundary notice and navigation rather than a phone layout for
+the tools. Home, guides and legal reading pages remain exempt and may be checked at narrow
+widths. Keep desktop keyboard/focus, short-height and zoom/text-enlargement assertions; zoom
+that takes the effective CSS viewport below the threshold should produce the notice.
 Six rules keep such a check honest:
 
 1. **Measure the rendered combination, not the declared value.** Contrast is computed from the
@@ -752,6 +758,56 @@ Six rules keep such a check honest:
    the next reader guessing. Collect the elements whose right edge passes the viewport and report
    them with the failure — a single unbreakable label is a common cause, and it is invisible in a
    scroll-width number alone.
+
+## 12.5 Automatic desktop user journeys
+
+[Issue #243, STORY-COV-006](https://github.com/Nebettadjsr/GW2/issues/243) adds the required
+controlled-browser selection. Its integration is verified on the PR head; this contract does
+not claim a completed run or a deployed change. From `frontend/`, after `npm ci` and
+`npm run build`:
+
+```bash
+node node_modules/playwright-core/cli.js install --with-deps --no-shell chromium
+export GW2_BROWSER_PATH="$(node --input-type=module -e "import { chromium } from 'playwright-core'; process.stdout.write(chromium.executablePath())")"
+npm run smoke:ci
+```
+
+The CLI comes from the locked `playwright-core` package. Do not use an unpinned `npx` package
+download or add a second test framework. CI writes the resolved executable to `GITHUB_ENV`
+for subsequent steps. Windows may use installed Chrome/Edge through `resolveBrowserPath`,
+or install the matching managed Chromium without Linux system-dependency setup:
+
+```powershell
+node node_modules/playwright-core/cli.js install --no-shell chromium
+$env:GW2_BROWSER_PATH = node --input-type=module -e "import { chromium } from 'playwright-core'; process.stdout.write(chromium.executablePath())"
+npm run smoke:ci
+```
+
+`smoke:ci` invokes `node scripts/run-desktop-journeys.mjs`. It runs the curated current journeys
+sequentially, including the existing reservation journey. It is not a blanket invocation of
+every historical `smoke:*` script. The runner uses the built app, an explicitly owned
+`127.0.0.1` origin, synthetic account proof/data, strict API method/route/context checks and
+blocked real upstream traffic. Occupied ports, stale/incomplete bundles, missing browsers,
+unexpected requests and failed assertions are failures, not skipped success. Public document
+build inputs/output must be current too. No real API key, application backend or database is
+required. Fixtures provide backend results; browser checks do not reimplement economic rules.
+
+Use finite browser action/navigation and per-journey/run limits. Close owned pages, browser
+contexts, browser processes and stub servers on both success and failure, including failures
+during launch. Do not attach to the ordinary user application or kill a process merely because
+it owns an expected test port.
+
+Results go to `frontend/quality-reports/desktop-journeys/` by default, overridable with
+`GW2_SMOKE_OUTPUT`. Record named journey/step outcomes, the revision/build/browser scope,
+and bounded failure details. Capture relevant screenshots/traces before closing failed pages.
+Use synthetic inputs only; avoid secrets and unbounded body/log dumps. CI uploads journey
+results and available failure artifacts with `if: always()`. An absent or incomplete result
+must not be interpreted as a passing journey. Screenshot/trace evidence does not replace the
+owner's visual acceptance for a changed UI layout.
+
+Browser outcome counts are separate from the Vitest/JaCoCo percentages in §26 and
+[Quality metrics](QUALITY_METRICS.md). A controlled pass establishes the named journeys and
+viewport combinations, not exhaustive end-to-end coverage or a production latency claim.
 
 ---
 
@@ -1318,8 +1374,8 @@ is, what it runs, what it cannot run, and what "verified" therefore means.
 | Where | Runs | Authoritative for |
 |---|---|---|
 | Local (implementing agent, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
-| GitHub Actions (`.github/workflows/ci.yml`) | complete backend/frontend default suites with coverage, type-check/build, workflow helper tests and actionlint | that the default product and workflow checks pass on the PR head |
-| Local, explicitly invoked during pairing | Layer 4 live GW2 API smoke (§31.4), the browser smoke scripts (§12.2), real-database `*IT` equivalence/performance checks (§34, §35.2) | the things the gate cannot run at all — see §36.4 |
+| GitHub Actions (`.github/workflows/ci.yml`) | complete default suites with coverage, type/build, workflow checks, and the STORY-COV-006 controlled browser selection after build | that required deterministic checks and named synthetic journeys pass on the PR head |
+| Local, explicitly invoked during pairing | live GW2 API smoke (§31.4), real-backend/full-stack browser checks, focused additional controlled journeys, populated-database `*IT` checks (§34, §35.2) | the explicitly observed integration/state/measurement scope that default CI does not establish |
 
 Neither side's scope is reduced by this split: the gate runs the same commands the
 developer runs, with the same test selection. What changed is *who pays for the
@@ -1335,7 +1391,7 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
   select `*Test` classes only, so every `*IT` class stays excluded exactly as it
   is locally. The build has no platform-specific classifier, so the same command
   runs on a developer machine and on the Linux runner.
-- **Frontend** — `npm ci`, then `npm run test:coverage -- --reporter=default --reporter=github-actions`, then `npm run build`, which type-checks first (§12.1).
+- **Frontend** — `npm ci`, Vitest coverage with `npm run test:coverage -- --reporter=default --reporter=github-actions`, and the type-checking `npm run build`. STORY-COV-006 adds the locked Chromium installation and `npm run smoke:ci` after that build, as a separately named step inside the existing required frontend job (§12.5). Its failure fails that job; keep journey outcomes separate from code-coverage percentages. Upload available journey results/failure artifacts with `if: always()`.
 - **Workflow checks** — actionlint validates the workflows; `python -m unittest discover -s .github/scripts` runs the helper and configuration tests, with native Nginx supplied where required.
 
 ## 36.3 Required services and configuration
@@ -1356,6 +1412,10 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
   secrets, and no secret of any kind is required by the gate today.
 - **The CI jobs require no application secret.** Agent workflows use their own scoped
   GitHub and model credentials; those are not application test inputs.
+- **Controlled browser runtime:** the locked `playwright-core` CLI installs its matching
+  Chromium and Linux dependencies. `GW2_BROWSER_PATH` names that executable explicitly.
+  The journey process owns its static/API origin; it needs no separately running application
+  backend/database and must block real upstream traffic (§12.5).
 
 ## 36.4 What the gate deliberately cannot verify
 
@@ -1363,11 +1423,15 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
   by definition.
 - **Real-database `*IT` equivalence and performance checks (§34, §35.2)** read a
   populated real database; CI has an empty one. They stay local and explicit.
-- **Browser smoke scripts (§12.2)** need a real Chrome/Edge binary and a running
-  origin, and remain local.
+- **Real-backend/full-stack browser checks (§12.2)** still require explicitly prepared
+  application/data environments and remain separately invoked. Installing Chromium does not
+  make a controlled fixture equivalent to a live backend, database or production deployment.
 
-A green gate therefore means "the deterministic default suites pass", not "every
-layer passed". It is the regression gate, not the whole strategy.
+A green gate means the default deterministic suites and integrated controlled journeys pass,
+not that every layer or live integration passed. Browser evidence is limited to the actual
+curated scenarios and supported desktop boundary; reading-page exemptions retain their own
+narrow checks. Until STORY-COV-006's runner/workflow is integrated, its new journey contract
+is pending and must not be inferred from an older green frontend run.
 
 ## 36.5 What "verified" means for a story
 

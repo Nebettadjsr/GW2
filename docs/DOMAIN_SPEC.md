@@ -23,6 +23,36 @@ This document is the authoritative source for intended domain behavior.
 
 Implementation details such as JavaFX, PostgreSQL, Java classes, REST APIs, containers, or frontend technology do not belong here unless they affect domain semantics.
 
+### Supported browser viewport
+
+**Product Owner decision, 17 November 2026; STORY-COV-006 (#243).** Account tools are
+supported at a browser viewport width of at least **1024 CSS pixels**, including exactly
+1024. This applies to Crafting Profit, Crafting Discovery, Ecto Salvage, System Status,
+Bank, Materials and Characters. Determine capability from the current viewport, not a
+user-agent string or an assumed device type. Phone/tablet layouts for these tools are
+not supported product requirements.
+
+Below that width, show **"Please use a PC or a wider browser window"** and briefly explain
+the minimum width. Unsupported tool controls are unavailable; navigation to public reading
+pages remains usable. Home, its beginner-guide tabs, Legal notice, Privacy and Cookies &
+browser storage remain readable at narrower widths and issue no API calls or retained-key
+restoration merely because they were opened.
+
+An initial direct load of a blocked tool must not restore/prove a retained key, make hidden
+tool API requests, calculate or start synchronization. Resizing across the boundary must not
+disconnect, clear credentials or saved reservations, change the route, reset retained
+crafting/character selections, or duplicate a calculation solely because the notice appeared
+or disappeared. Widening makes the existing destination available without requiring key
+entry again. Work already admitted need not be cancelled; do not imply that narrowing the
+window cancelled it. These rules do not change ordinary account expiry, grants or refresh
+semantics.
+
+Keep keyboard access, focus handling, browser zoom and short-height scrolling usable at
+supported tool widths. Browser zoom is evaluated through the resulting CSS viewport;
+it is not an exemption from the width boundary. Public reading pages continue to reflow.
+The notice is a product support boundary, not account authorization or evidence that a
+particular physical device is a PC.
+
 ---
 
 # 2. Domain Objectives
@@ -69,8 +99,8 @@ from the backend; no presentation layer calculates fees or profit.
 
 The entire recipe row must be selectable, with an accessible keyboard equivalent
 and a visible selection indicator. On wide screens, selection populates a dedicated
-right-hand detail panel that remains visible while scrolling; small screens may
-use a suitable responsive arrangement. Show applicable buy cost prominently with
+right-hand detail panel that remains visible while scrolling; adapt within the supported
+desktop viewport contract above. Show applicable buy cost prominently with
 cost wording and the negative/cost visual treatment, a clearly labelled Trading
 Post price for one output item, useful recipe and shopping/material information,
 and a GW2 Wiki link when a reliable URL can be constructed. Remove a redundant

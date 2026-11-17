@@ -8,7 +8,7 @@ The GitHub Actions `Coverage KPI report` job publishes per-module/package rates 
 
 ## Verified CI baseline
 
-Source: [PR #242](https://github.com/Nebettadjsr/GW2/pull/242) test commit `5aa6c2bcf9168397e470a6cc00ae80645cfb7497`, successful [CI run 44032869374](https://github.com/Nebettadjsr/GW2/actions/runs/44032869374), generated 17 November 2026. Downloaded and inspected that day: `coverage-reports` artifact `14306345927`, `coverage-kpi/coverage-kpi.json`, cross-checked with its `coverage-input/java-coverage/jacoco.xml`. These are results for that commit; the following documentation refresh changes no measured source or tests.
+Source: [PR #242](https://github.com/Nebettadjsr/GW2/pull/242) test commit `5aa6c2bcf9168397e470a6cc00ae80645cfb7497`, successful [CI run 44032869374](https://github.com/Nebettadjsr/GW2/actions/runs/44032869374), generated 17 November 2026. Downloaded and inspected that day: `coverage-reports` artifact `14306345927`, `coverage-kpi/coverage-kpi.json`, cross-checked with its `coverage-input/java-coverage/jacoco.xml`. These numbers describe that commit. Later source, test or browser-journey changes require their own evidence; do not infer a new result from this baseline.
 
 | Area | Line coverage | Branch coverage |
 | --- | --- | --- |
@@ -17,6 +17,28 @@ Source: [PR #242](https://github.com/Nebettadjsr/GW2/pull/242) test commit `5aa6
 | Combined weighted | 92.71% (14,543 / 15,687) | 83.57% (9,585 / 11,470) |
 
 Both application modules exceed the line target; both still have branch gaps. A combined percentage does not establish adequate coverage of any individual critical path.
+
+## Browser journey evidence
+
+[STORY-COV-006 / issue #243](https://github.com/Nebettadjsr/GW2/issues/243) adds a separate
+controlled real-browser gate: `npm run smoke:ci` invokes
+`node scripts/run-desktop-journeys.mjs` after the frontend build in the required frontend
+CI job. Its named journeys cover public reading, connection, failure/recovery, account
+switching, the supported-tool viewport boundary and reservations. The synthetic API origin
+does not establish real backend/SQL/upstream behavior or production capacity.
+
+Report journey/step outcomes, exact source revision, browser/build scope and available bounded
+failure diagnostics. Default output is `frontend/quality-reports/desktop-journeys/`, overridable
+with `GW2_SMOKE_OUTPUT`; CI uploads available results/screenshots/traces with `if: always()`.
+A failed journey fails the frontend job. Missing or incomplete artifacts are not a passed run.
+
+These are **journey outcomes, not line/branch coverage**. Do not add browser step counts to
+Vitest test counts or JaCoCo/Vitest covered-line totals, and do not claim that controlled
+journeys increased the percentage without a separately measured coverage change. The
+existing KPI baseline above remains unchanged. Integration and journey results for #243 are
+pending the implementation's actual run; no pass count, new percentage or deployment is
+asserted here. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
+owns commands, viewport checks and evidence limits.
 
 ## Current improvement candidates
 

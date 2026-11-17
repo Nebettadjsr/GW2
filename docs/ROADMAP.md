@@ -12,19 +12,36 @@ The observed deployed revision and runtime evidence belong in [Current state](CU
 
 ## Current authorized work
 
-The owner authorized documentation cleanup and reconciliation, followed by resuming useful maintenance and raising meaningful test coverage on 17 November 2026.
+The owner authorized documentation cleanup and reconciliation, followed by useful maintenance
+and meaningful coverage work on 17 November 2026. The cleanup is merged in #241 and account
+HTTP/session coverage #111 is delivered through #242. These completions do not imply another
+production deployment.
 
-1. Archive retired records, consolidate architecture documentation, reconcile the domain specification, and document the actual agent/GitHub delivery process.
-2. Refresh coverage from successful current CI artifacts and complete a bounded coverage story against active behavior. Keep the 90% line/branch target informational and preserve existing assertions.
-3. Reconcile [known problems](KNOWN_PROBLEMS.md) against current code and merged evidence. Remove resolved findings; retain concrete functional and performance follow-ups that still apply.
+The next authorized slice is [#243, STORY-COV-006](https://github.com/Nebettadjsr/GW2/issues/243):
+curated real-browser desktop journeys, the owner-confirmed
+[viewport policy](DOMAIN_SPEC.md#supported-browser-viewport), removal of unsupported phone-tool
+test repetitions and maintained process/testing documentation. Reuse the production build and
+existing Playwright-core/controlled-origin helpers. The planned aggregate is `npm run smoke:ci`
+(`node scripts/run-desktop-journeys.mjs`) after build in the required frontend CI job. This is
+implementation scope, not a claim that the command or new notice is already delivered.
 
-Default CI, current-head native review and any issue-specific local checks remain required. New UI layouts need owner review in the local app. The documentation task does not authorize a feature redesign or an infrastructure service change.
+Independent QA owns tests, fixtures/helpers and explained mobile-test removals for this session;
+Claude implements the released source/package/CI scope. Preserve desktop feature assertions,
+native keyboard/focus, short-height and zoom accessibility. Report named browser journeys
+separately from line/branch coverage; keep the 90% code-coverage target informational. No live
+user keys, capacity workloads or hosted test service are required.
+
+Default CI, current-head native review and issue-specific local evidence remain required.
+The new notice must be available in an isolated local app for concrete owner visual approval;
+#243 remains held with `pairing` until that acceptance. Oracle deployment is separate.
+Continue reconciling [known problems](KNOWN_PROBLEMS.md) against current code/merged evidence;
+remove resolved findings and retain concrete future performance work.
 
 ## Prepared maintenance candidates
 
 | Issue | Remaining scope |
 | --- | --- |
-| [#111](https://github.com/Nebettadjsr/GW2/issues/111) | Account HTTP route mapping, session recovery and refusal behavior coverage. |
+| [#243](https://github.com/Nebettadjsr/GW2/issues/243) | Authorized desktop-browser journeys and viewport support notice; held for scoped QA and local UI acceptance. |
 | [#21](https://github.com/Nebettadjsr/GW2/issues/21) | Broader coverage improvements, selected from current package and branch gaps. |
 | [#60](https://github.com/Nebettadjsr/GW2/issues/60) | Optional real-database fixture migration and account-task lookup semantics. |
 | [#228](https://github.com/Nebettadjsr/GW2/issues/228) | Portable production configuration for the restricted database role and HTTPS origin. |

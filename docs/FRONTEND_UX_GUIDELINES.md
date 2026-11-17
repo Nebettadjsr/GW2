@@ -6,6 +6,11 @@ This document owns reusable web presentation and interaction requirements. It im
 
 The Product Owner's visual-design direction of 2026-09-25 extends that foundation: build an attractive, responsive, Guild Wars 2-inspired website with a coherent visual identity, polished feedback and natural browser behavior. The requirements below describe intended presentation, not a claim that the existing frontend already implements it.
 
+The later [supported browser viewport decision](DOMAIN_SPEC.md#supported-browser-viewport)
+governs tool availability and supersedes earlier phone/tablet tool-layout expectations.
+Public reading pages retain their responsive presentation. The remaining requirements apply
+within that product support policy.
+
 `ARCHITECTURE.md` owns frontend/backend responsibilities and API contracts; `DOMAIN_SPEC.md` owns calculation behavior; `TEST_STRATEGY.md` owns testing methodology. These guidelines do not introduce domain rules or change those boundaries. Preserve useful workflows and information separation in the browser; the retired desktop interface is not a visual specification.
 
 When reviewing visible crafting or Trading Post wording, use [`crafting/GLOSSARY.md`](crafting/GLOSSARY.md) as the canonical mapping between interface labels and game/economic terms. Keep detailed definitions there; this document governs presentation and `DOMAIN_SPEC.md` governs normative calculation semantics.
@@ -62,7 +67,7 @@ ALL selection outline. Both fully covered and partially covered stacks use that 
 partial stacks also have the native mixed checkbox state, while untouched duplicates
 stay ordinary. Provide accessible "keeping N" labels but draw no clipped "Keep N" text
 inside the tile. A compact readable note list sits to the right of each Bank tab grid and
-each Materials category grid on desktop, and below that grid at narrow widths. Deduplicate
+each Materials category grid, reflowing below it when needed within supported tool widths. Deduplicate
 notes per grid and show cached item name (honest Item #ID fallback), saved fixed target and
 source without clamping the target to stock. Keep horizontal scrolling within the grid;
 the page must not overflow. Tile titles and ARIA labels use cached item names with an ID
@@ -112,7 +117,11 @@ Builds sizing refinement (2026-11-08): use the Equipment composition's content w
 
 ### 2.3 System Status: account controls and owner administration
 
-Present the saved own-account counts as a compact summary grid inside the Account data card, with clear labels and prominent numbers. Reflow it to fewer columns on narrow screens; keep refresh date/source metadata separate from the count summary. The Product Owner accepted the owner-only Accounts/catalog/actions layout on 2026-11-11 and the revised regular-user layout on 2026-11-12. Preserve both accepted layouts during maintenance.
+Present the saved own-account counts as a compact summary grid inside the Account data card,
+with clear labels and prominent numbers. Reflow to fewer columns when needed within supported
+tool widths; keep refresh date/source metadata separate from the count summary. The Product
+Owner accepted the owner-only Accounts/catalog/actions layout on 2026-11-11 and the revised
+regular-user layout on 2026-11-12. Preserve both accepted layouts during maintenance.
 
 Ordinary layout (accepted 2026-11-12): the Account data card uses the full content width and shows four own-account counts (Characters, Unlocked recipes, Material types, Total materials stored). Shared service health is one compact, `role="status"` line (items and recipes, Trading Post prices; OK/Running/Problem/Not run yet) instead of two large cards. A count is never shown as 0 unless that source was published empty; "Not loaded yet", "Unknown" and "may be out of date" are distinct, and sources the key does not permit are omitted. The owner-only accounts/catalog/actions composition accepted on 2026-11-11 is preserved, with the common account-count summary added. Visual approval is complete; a future deliberate redesign requires its own Product Owner review.
 
@@ -163,15 +172,30 @@ WebP assets, useful alternative text, intrinsic dimensions, lazy loading and res
 sources where available; a link opens the full image. Unfilled screenshot positions render
 nothing until an image is supplied. Essential instructions remain readable without images.
 
-## 3. Layout and responsive behavior
+## 3. Desktop tools and public reading layouts
+
+Render the width notice required by [the product policy](DOMAIN_SPEC.md#supported-browser-viewport)
+as clear readable page content, with an accessible heading/status and short explanation.
+Keep global navigation and public-page links usable. Unsupported tool controls must not
+remain interactive behind an overlay. Changing only the notice must preserve the current
+route, account and kept-alive tool state; reopening a supported viewport is not a new account
+connection or a reason to submit another calculation. Move focus out of content made
+unavailable without trapping it or stealing it repeatedly on resize. The concrete new notice
+requires Product Owner review in the local application before acceptance.
 
 Use the restrained dark, Guild Wars 2-inspired visual identity in section 9, with readable typography, consistent spacing and clear group boundaries. Favor clarity over decoration, hierarchy over raw density, and user-relevant information over diagnostic data. Visual polish is part of the intended result; it must support rather than obscure the data.
 
 Use sensible maximum content widths and bounded reading widths; do not stretch every control or table across every available pixel. Data-heavy regions may use more space than explanatory text. Define shared spacing, typography, surface and state treatments rather than unrelated per-page styles.
 
-Layouts must reflow with available width. On wide screens, primary results and selected-result details may sit side by side; on narrow screens, move details below results or into an accessible dedicated detail view. Grouped settings may collapse behind a clearly labelled control. Keep important actions and current state easy to locate in every arrangement.
+Tool layouts must remain usable across supported desktop widths and short viewport heights.
+Primary results and selected detail retain their accepted hierarchy, with any necessary
+reflow or regional scrolling preserving every value and action. Public Home, guide and
+information pages reflow at narrower widths. No phone-specific tool composition is required.
 
-A table may scroll horizontally when comparison genuinely requires two dimensions. Confine that scrolling to its region; the surrounding page must reflow. Avoid clipped controls, inaccessible detail regions, overlapping content and a fixed-width desktop canvas. Choose breakpoints from content needs, not a single assumed device size.
+A table may scroll horizontally when comparison genuinely requires two dimensions. Confine
+that scrolling to its labelled region and preserve keyboard access. Avoid clipped controls,
+inaccessible details or overlapping content at supported widths. Public reading pages must
+not inherit a tool's wide canvas. Use content-driven breakpoints within the product policy.
 
 ## 4. Crafting Profit information hierarchy
 
@@ -208,7 +232,11 @@ System Status keeps account data as its own concise card and gives one short exp
 
 Use WCAG 2.2 Level AA as the general baseline where reasonably applicable. Use semantic landmarks, headings, real buttons/links, labelled inputs, meaningful table headers and accessible names. Every workflow, including selection, settings disclosure, navigation and details, must be operable by keyboard with visible focus and a logical focus order.
 
-Provide sufficient text/control contrast in the dark theme, readable text at browser zoom, and meaningful reflow at narrow widths. Do not rely on hover or color alone. Announce relevant status changes without repeatedly interrupting the user. If a dialog is used, manage entry/return focus, keyboard dismissal and focus containment appropriately. Prefer ordinary semantic controls over custom widgets when they meet the interaction need.
+Provide sufficient text/control contrast, readable browser zoom, supported-desktop scrolling
+and meaningful narrow reflow for public reading pages. Do not rely on hover or color alone.
+Announce relevant status changes without repeatedly interrupting the user. If a dialog is used,
+manage entry/return focus, keyboard dismissal and focus containment appropriately. Prefer
+ordinary semantic controls over custom widgets when they meet the interaction need.
 
 **Scannable help and modals.** Help must be scannable at a glance: a short heading, a few short separated facts or numbered steps (semantic lists, bold only a short leading phrase), and detail behind a collapsed native `<details>`; never a paragraph wall. Keep actions and official links in a footer apart from prose. A help popup is a true modal: native `<dialog>` with `showModal()` and a dimmed, lightly blurred `::backdrop`, centered, about 30rem wide (39rem for the longer safety explanation), at least 1.25rem padding, 1.5 line-height, constrained to the viewport and scrolling inside only when needed. Background is inert, focus stays inside, and Escape or Close returns focus to the trigger. Opening or closing must cause zero layout shift: no background element, scroll offset or page width may move (use `scrollbar-gutter: stable`), and nothing is inserted inline. Replace routine status sentences with state-bearing controls; keep sentences for errors, retries and working states.
 
@@ -225,7 +253,12 @@ record concrete gaps and verification in the GitHub issue or pull request. Asses
 screen during implementation; a planning assessment based on documentation is not a visual
 inspection.
 
-Verify representative wide and narrow layouts, keyboard navigation, visible focus, meaningful status/error states, and selected-detail interaction. Use frontend tests for rendering, interaction and state with controlled backend values, including values chosen to reveal accidental recalculation. Record browser/viewport evidence and limitations. Follow `TEST_STRATEGY.md` for test-layer choices; do not duplicate domain tests in the frontend.
+Verify supported desktop layouts, the capability boundary and public-reading exceptions,
+keyboard navigation, visible focus, meaningful status/error states and selected details.
+Use controlled values that reveal accidental frontend recalculation. Retain real-browser
+journeys for native event/focus/navigation and integrated request wiring; unit tests alone
+do not establish those properties. Record named journeys, viewports and evidence limitations
+under TEST_STRATEGY. Do not duplicate domain tests or call browser journey counts code coverage.
 
 Existing functionality and backend contracts must survive presentation changes. Preserve
 the page-load requirement in `ARCHITECTURE.md` and verify any concrete
@@ -269,11 +302,24 @@ Define default, hover, focus, active, selected, disabled and busy treatments for
 
 Use a recognizable site header with logo/wordmark, concise destination links and a clear active page. Give each page a meaningful title and, where helpful, one short introductory sentence. Keep ordinary vertical document scrolling and a modest footer for useful guide/about links when those destinations exist. Preserve space for results rather than surrounding them with permanent toolbars, window-like chrome or multiple nested scrolling panes.
 
-Navigation destinations must use real links, support direct URLs and normal browser Back/Forward, and have meaningful document titles. Actions use buttons. A compact mobile navigation menu must remain keyboard-accessible, expose its open state and close predictably. Avoid requiring a modal for every detail; inline or dedicated detail regions generally preserve browsing context better. Sticky headers or actions are useful only when they do not obscure content or consume excessive mobile height.
+Navigation destinations use real links, direct URLs, normal Back/Forward and meaningful
+document titles. Actions use buttons. Navigation remains keyboard-accessible, including
+public reading at narrow widths and the unsupported-tool notice. Avoid a modal for every
+detail; inline or dedicated regions usually preserve browsing context better. Sticky
+elements must not obscure content or consume excessive height in a short desktop viewport.
 
-Use fluid widths and content-driven breakpoints. Around 1200–1440px is a starting maximum width for data-rich pages; explanatory copy needs a narrower reading measure. On phones, use a single-column flow, wrap action groups, stack settings and prioritize the essential result columns or a clearly labelled compact representation. Preserve access to all information and comparison tasks. Do not silently drop important values. Wide tables may retain region-level scrolling as section 3 permits, with a visible cue that more columns are available.
+Use fluid widths and content-driven breakpoints within the supported tool range. Around
+1200–1440px is a starting maximum width for data-rich pages; explanatory copy needs a narrower
+reading measure. Preserve all information and comparison tasks at supported widths. Wide
+tables may retain region-level scrolling with a visible cue. Public reading pages use a
+single-column flow and wrap their navigation/actions when their narrower layout needs it.
 
-Check representative phone, tablet and desktop widths (for example 360, 768 and 1440px), intermediate widths, portrait/landscape and browser zoom. These are verification examples, not mandatory breakpoint values. Avoid page-wide horizontal overflow and fixed-height panels that trap content. Make touch targets comfortably sized and separated, aiming for approximately 44px for primary mobile controls. Essential actions must not depend on hover; tooltips supplement visible labels rather than replacing them.
+Check normal desktop, the exact supported boundary and the unsupported notice immediately
+below it, plus short desktop height and browser zoom. Narrow public-page checks remain
+applicable; phone/tablet tool-layout passes are retired. Avoid page-wide overflow and
+fixed-height panels that trap content in supported layouts. Retain comfortable control
+targets and keyboard alternatives; essential actions must not depend on hover. Tooltips
+supplement visible labels rather than replacing them.
 
 ## 12. Graphics, iconography and motion
 
@@ -306,7 +352,11 @@ Do not add artificial delays to show an animation. Skeletons must resemble the e
 
 Normal pages should communicate what the user can do and what happened, without requiring knowledge of the backend. Keep request IDs, endpoint paths, HTTP jargon, raw state enums, debug counters and repetitive polling messages out of the normal workflow. For example, prefer “Could not load prices. Try again.” over a raw endpoint/error dump. Relevant failures and uncertain outcomes must still be visible; simplifying wording must not turn them into success. Secondary diagnostic disclosure is for genuinely useful troubleshooting, not a default panel on every page.
 
-Visual acceptance under section 8 must include the actual loading, empty, failure and image-fallback states as well as populated pages. Check consistent palette/type/spacing across screens, mobile navigation, touch and keyboard interaction, contrast, reduced motion and layout stability. Capture representative browser evidence. Decorative polish must preserve real-data completeness and the existing page-load budget; a loading animation is not evidence that a page has completed loading.
+Visual acceptance under section 8 includes loading, empty, failure and image-fallback states,
+populated desktop pages, the support notice and public-page reflow. Check consistent
+palette/type/spacing, keyboard/focus, contrast, reduced motion and layout stability. Capture
+representative browser evidence. Decorative polish preserves real-data completeness and the
+existing page-load budget; a loading animation does not establish completed loading.
 
 ### Delete cached data (STORY-DELETE-002)
 
