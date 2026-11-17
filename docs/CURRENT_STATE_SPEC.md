@@ -119,8 +119,11 @@ Issue #243 branch (not yet merged or deployed; the live Oracle revision is uncha
 pixels (`matchMedia`, `useDesktopTools`) every tool destination shows `DesktopWidthNotice` and does not
 restore a retained key, bootstrap or mount screens; Home and the legal/privacy/storage pages stay
 public. `npm run smoke:ci` runs six controlled-browser journeys after the build in the frontend CI job
-(Chromium via the locked playwright-core CLI) and uploads `desktop-browser-journeys` evidence. Owner
-visual review of the notice is still pending.
+(Chromium via the locked playwright-core CLI) and uploads `desktop-browser-journeys` evidence
+with seven-day retention. Independent QA verified 27 focused tests, type-check/build and all
+six journeys at `2d9e389` on 17 November 2026. The implementation's earlier CI run
+[44135086310](https://github.com/Nebettadjsr/GW2/actions/runs/44135086310) also passed the new
+browser step. Owner visual review and final-head CI/review remain pending.
 
 Before #236 merged, independent QA passed 306 relevant backend checks, 213 focused frontend
 checks, type/build and 19 controlled visible desktop/narrow browser phases. Full frontend CI

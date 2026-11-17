@@ -8,19 +8,25 @@ The GitHub Actions `Coverage KPI report` job publishes per-module/package rates 
 
 ## Verified CI baseline
 
-Source: [PR #242](https://github.com/Nebettadjsr/GW2/pull/242) test commit `5aa6c2bcf9168397e470a6cc00ae80645cfb7497`, successful [CI run 44032869374](https://github.com/Nebettadjsr/GW2/actions/runs/44032869374), generated 17 November 2026. Downloaded and inspected that day: `coverage-reports` artifact `14306345927`, `coverage-kpi/coverage-kpi.json`, cross-checked with its `coverage-input/java-coverage/jacoco.xml`. These numbers describe that commit. Later source, test or browser-journey changes require their own evidence; do not infer a new result from this baseline.
+Source: STORY-COV-006 candidate `8e3942c5994addaf48e39e1449880be09b065864`, successful
+[CI run 44135086310](https://github.com/Nebettadjsr/GW2/actions/runs/44135086310), generated
+17 November 2026. This PR-triggered run measured GitHub merge revision
+`c227a04bf1d09850818c9ba918ea486adf47d3ad`, as recorded in `coverage-kpi.json`.
+Downloaded and inspected that day: `coverage-reports` artifact `14350698995`, with its
+raw JaCoCo counters cross-checked. These numbers describe that identified run, not later
+review corrections. Final-head CI and owner acceptance still require their own evidence.
 
 | Area | Line coverage | Branch coverage |
 | --- | --- | --- |
-| Java backend | 91.36% (10,517 / 11,512) | 81.42% (5,376 / 6,603) |
-| Frontend TypeScript | 96.43% (4,026 / 4,175) | 86.48% (4,209 / 4,867) |
-| Combined weighted | 92.71% (14,543 / 15,687) | 83.57% (9,585 / 11,470) |
+| Java backend | 91.40% (10,522 / 11,512) | 81.42% (5,376 / 6,603) |
+| Frontend TypeScript | 96.43% (4,053 / 4,203) | 86.49% (4,244 / 4,907) |
+| Combined weighted | 92.75% (14,575 / 15,715) | 83.58% (9,620 / 11,510) |
 
 Both application modules exceed the line target; both still have branch gaps. A combined percentage does not establish adequate coverage of any individual critical path.
 
 ## Browser journey evidence
 
-[STORY-COV-006 / issue #243](https://github.com/Nebettadjsr/GW2/issues/243) adds a separate
+[STORY-COV-006 / issue #243](https://github.com/Nebettadjsr/GW2/issues/243) implements a separate
 controlled real-browser gate: `npm run smoke:ci` invokes
 `node scripts/run-desktop-journeys.mjs` after the frontend build in the required frontend
 CI job. Its named journeys cover public reading, connection, failure/recovery, account
@@ -29,16 +35,24 @@ does not establish real backend/SQL/upstream behavior or production capacity.
 
 Report journey/step outcomes, exact source revision, browser/build scope and available bounded
 failure diagnostics. Default output is `frontend/quality-reports/desktop-journeys/`, overridable
-with `GW2_SMOKE_OUTPUT`; CI uploads available results/screenshots/traces with `if: always()`.
+with `GW2_SMOKE_OUTPUT`; CI uploads available results/screenshots/traces as
+`desktop-browser-journeys` with `if: always()` and seven-day retention.
 A failed journey fails the frontend job. Missing or incomplete artifacts are not a passed run.
 
 These are **journey outcomes, not line/branch coverage**. Do not add browser step counts to
 Vitest test counts or JaCoCo/Vitest covered-line totals, and do not claim that controlled
 journeys increased the percentage without a separately measured coverage change. The
-existing KPI baseline above remains unchanged. Integration and journey results for #243 are
-pending the implementation's actual run; no pass count, new percentage or deployment is
-asserted here. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
+existing KPI baseline above remains unchanged. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
 owns commands, viewport checks and evidence limits.
+
+Independent local QA on `2d9e389760854fcf69ed46eea46ce4be266e872f` passed 27 focused
+automated checks, the fresh type-checking production build and all six curated controlled
+browser journeys. These are scoped local results, not a new full-suite coverage measurement.
+CI run `44135086310` also passed its Chromium installation, browser-journey and evidence-upload
+steps for the earlier identified candidate. Subsequent review identified in-flight Profit and
+Ecto resize-state gaps requiring additional regressions and correction; the earlier six-journey
+pass does not establish their resolution. Final-head CI, review closure and owner visual
+acceptance remain pending. No merge, deployment or real-upstream success is implied.
 
 ## Current improvement candidates
 

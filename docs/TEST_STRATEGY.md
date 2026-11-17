@@ -722,7 +722,7 @@ their execution time.
 ## 12.4 Checking presentation and accessibility
 
 Layout, focus and contrast claims are *measured in a real browser*, never inferred from the stylesheet.
-Apply the [supported-tool viewport policy](DOMAIN_SPEC.md#1-purpose): verify the notice at
+Apply the [supported-tool viewport policy](DOMAIN_SPEC.md#supported-browser-viewport): verify the notice at
 1023 CSS pixels and supported tools at 1024 CSS pixels and representative wider desktop sizes.
 Below the threshold, test the boundary notice and navigation rather than a phone layout for
 the tools. Home, guides and legal reading pages remain exempt and may be checked at narrow
@@ -761,10 +761,9 @@ Six rules keep such a check honest:
 
 ## 12.5 Automatic desktop user journeys
 
-[Issue #243, STORY-COV-006](https://github.com/Nebettadjsr/GW2/issues/243) adds the required
-controlled-browser selection. Its integration is verified on the PR head; this contract does
-not claim a completed run or a deployed change. From `frontend/`, after `npm ci` and
-`npm run build`:
+[Issue #243, STORY-COV-006](https://github.com/Nebettadjsr/GW2/issues/243) implements the
+required controlled-browser selection. Current-head CI and required owner visual acceptance
+remain separate from a local pass. From `frontend/`, after `npm ci` and `npm run build`:
 
 ```bash
 node node_modules/playwright-core/cli.js install --with-deps --no-shell chromium
@@ -773,8 +772,8 @@ npm run smoke:ci
 ```
 
 The CLI comes from the locked `playwright-core` package. Do not use an unpinned `npx` package
-download or add a second test framework. CI writes the resolved executable to `GITHUB_ENV`
-for subsequent steps. Windows may use installed Chrome/Edge through `resolveBrowserPath`,
+download or add a second test framework. CI exports `GW2_BROWSER_PATH` in the same shell step
+that runs `npm run smoke:ci`. Windows may use installed Chrome/Edge through `resolveBrowserPath`,
 or install the matching managed Chromium without Linux system-dependency setup:
 
 ```powershell
@@ -792,16 +791,18 @@ unexpected requests and failed assertions are failures, not skipped success. Pub
 build inputs/output must be current too. No real API key, application backend or database is
 required. Fixtures provide backend results; browser checks do not reimplement economic rules.
 
-Use finite browser action/navigation and per-journey/run limits. Close owned pages, browser
-contexts, browser processes and stub servers on both success and failure, including failures
-during launch. Do not attach to the ordinary user application or kill a process merely because
-it owns an expected test port.
+The runner bounds each of its two sequential child processes to 180 seconds, with a further
+10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to
+eight minutes. Close owned pages, contexts, browser processes and stub servers on success and
+failure, including launch failure. Do not attach to the ordinary user application or kill a
+process merely because it owns an expected test port.
 
 Results go to `frontend/quality-reports/desktop-journeys/` by default, overridable with
 `GW2_SMOKE_OUTPUT`. Record named journey/step outcomes, the revision/build/browser scope,
 and bounded failure details. Capture relevant screenshots/traces before closing failed pages.
 Use synthetic inputs only; avoid secrets and unbounded body/log dumps. CI uploads journey
-results and available failure artifacts with `if: always()`. An absent or incomplete result
+results and available failure artifacts as `desktop-browser-journeys` with `if: always()` and
+seven-day retention. An absent or incomplete result
 must not be interpreted as a passing journey. Screenshot/trace evidence does not replace the
 owner's visual acceptance for a changed UI layout.
 
@@ -1427,11 +1428,11 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
   application/data environments and remain separately invoked. Installing Chromium does not
   make a controlled fixture equivalent to a live backend, database or production deployment.
 
-A green gate means the default deterministic suites and integrated controlled journeys pass,
-not that every layer or live integration passed. Browser evidence is limited to the actual
-curated scenarios and supported desktop boundary; reading-page exemptions retain their own
-narrow checks. Until STORY-COV-006's runner/workflow is integrated, its new journey contract
-is pending and must not be inferred from an older green frontend run.
+A green gate means the default deterministic suites and controlled journeys pass, not that
+every layer or live integration passed. Browser evidence is limited to the actual curated
+scenarios and supported desktop boundary; reading-page exemptions retain their own narrow
+checks. A local browser pass or an older green frontend run cannot replace required checks
+on the current PR head.
 
 ## 36.5 What "verified" means for a story
 

@@ -165,7 +165,7 @@ preserves each run instead of canceling it when another commit arrives.
 |---|---|
 | `Workflow checks` | actionlint 1.7.12, native nginx test runtime, Python helper tests |
 | `Backend tests (Maven)` | Java 25, isolated PostgreSQL 17, `./mvnw -B -ntp test jacoco:report` |
-| `Frontend tests (Vitest)` | Node 22, `npm ci`, Vitest coverage, type-check/build; STORY-COV-006 adds the controlled journey step described below |
+| `Frontend tests (Vitest)` | Node 22, `npm ci`, Vitest coverage, type-check/build and the controlled browser journey step described below |
 | `Coverage KPI report` | Combine available JaCoCo/Vitest reports for the source revision |
 
 The Maven default includes database-backed `*Test` classes using isolated schemas;
@@ -176,11 +176,11 @@ journeys are a separate deterministic CI selection; they do not verify productio
 
 ### Controlled desktop journeys: STORY-COV-006
 
-[Issue #243](https://github.com/Nebettadjsr/GW2/issues/243) adds `npm run smoke:ci`
+[Issue #243](https://github.com/Nebettadjsr/GW2/issues/243) implements `npm run smoke:ci`
 (`node scripts/run-desktop-journeys.mjs`) after the production frontend build,
-inside the existing required frontend job. This is the implementation contract;
-the PR's exact-head run must establish integration and results before acceptance.
-An older green frontend check is not evidence that this new step ran.
+inside the existing required frontend job. The PR's exact-head CI and required
+owner visual acceptance remain separate from local verification. An older green
+frontend check is not evidence that this step ran for the current head.
 
 The runner executes a curated sequence of real-browser journeys against fresh
 built assets and owned `127.0.0.1` synthetic API origins. It covers public reading,
@@ -189,26 +189,28 @@ boundary and reservations. It blocks real upstream traffic and needs no real
 GW2 key, application backend or database. It does not invoke every legacy
 `smoke:*` script, some of which require live or full-stack environments.
 
-The [product viewport policy](DOMAIN_SPEC.md#1-purpose) owns the threshold and
+The [product viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns the threshold and
 public-page exemptions. Browser evidence checks the notice at 1023 CSS pixels,
 tools at 1024 and wider desktop sizes, and preserves desktop keyboard/focus,
 short-height and zoom checks. Home, guides and legal reading pages remain
 available below the tool threshold; their narrow checks are still relevant.
 
 The existing locked `playwright-core` CLI installs matching Chromium and Linux
-dependencies; CI exports its executable through `GW2_BROWSER_PATH` rather than
-depending on a runner's preinstalled browser. Journeys run sequentially with
-finite action/run bounds and guaranteed owned-process/server cleanup. An occupied
+dependencies; the browser run step exports its executable as `GW2_BROWSER_PATH`
+in the same shell before `npm run smoke:ci`, rather than depending on a runner's
+preinstalled browser. Two child processes run sequentially, each bounded to
+180 seconds plus 10 seconds for owned-resource teardown, with no retries. The
+CI step has an eight-minute timeout. An occupied
 port, unexpected request, stale bundle or missing browser fails verification.
 See [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
 for local/Linux/Windows commands and fixture boundaries.
 
 Named outcomes and bounded failure logs/screenshots/traces are written to
 `frontend/quality-reports/desktop-journeys/`, overridable by `GW2_SMOKE_OUTPUT`,
-and uploaded with `if: always()`. A journey failure fails the required frontend
-job. These results do not alter Vitest/JaCoCo percentages or prove production
-latency. Record the exact revision and actual run; no browser pass or deployment
-is claimed merely by adding this contract.
+and uploaded as `desktop-browser-journeys` with `if: always()` and seven-day
+retention. A journey failure fails the required frontend job. These results do
+not alter Vitest/JaCoCo percentages or prove production latency. Record the exact
+revision and actual run; local verification does not imply a merge or deployment.
 
 Artifacts are `java-coverage`, `frontend-coverage` and combined
 `coverage-reports`. The combined report supplies raw sources, module/package

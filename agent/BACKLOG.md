@@ -29,9 +29,11 @@ capacity programme is authorized.
 [Issue #243](https://github.com/Nebettadjsr/GW2/issues/243) owns acceptance criteria, source/test
 scope and current execution status. Its prerequisites #111/#242 and #240/#241 are merged.
 Provide the notice through the real App capability boundary and preserve existing account,
-crafting and character state on resize. The planned curated aggregate is `npm run smoke:ci`
+crafting and character state on resize. The curated aggregate is `npm run smoke:ci`
 (`node scripts/run-desktop-journeys.mjs`) after build in the existing required frontend CI job.
-The notice, `smoke:ci` and the CI step are implemented on the #243 branch; local owner visual review and exact-head CI/review remain pending, so nothing is deployed.
+The notice, `smoke:ci` and the CI step are implemented on the #243 branch. Independent QA
+passes 27 focused tests, a fresh build and six browser journeys at `2d9e389`. Local owner
+visual review and final-head CI/review remain pending; this change is not deployed.
 
 Cover public reading/connection, saved reservations into Profit/search/detail, recoverable
 failure/retry, account isolation and the viewport boundary through real Chromium with controlled

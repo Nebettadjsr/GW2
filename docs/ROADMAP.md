@@ -21,9 +21,10 @@ The next authorized slice is [#243, STORY-COV-006](https://github.com/Nebettadjs
 curated real-browser desktop journeys, the owner-confirmed
 [viewport policy](DOMAIN_SPEC.md#supported-browser-viewport), removal of unsupported phone-tool
 test repetitions and maintained process/testing documentation. Reuse the production build and
-existing Playwright-core/controlled-origin helpers. The planned aggregate is `npm run smoke:ci`
-(`node scripts/run-desktop-journeys.mjs`) after build in the required frontend CI job. This is
-implementation scope, not a claim that the command or new notice is already delivered.
+existing Playwright-core/controlled-origin helpers. The implementation branch provides
+`npm run smoke:ci` (`node scripts/run-desktop-journeys.mjs`) after build in the required
+frontend CI job. Independent QA passes its six curated journeys; local owner acceptance
+and final-head CI/review remain required before merging. It is not deployed.
 
 Independent QA owns tests, fixtures/helpers and explained mobile-test removals for this session;
 Claude implements the released source/package/CI scope. Preserve desktop feature assertions,
