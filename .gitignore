@@ -34,6 +34,13 @@ Thumbs.db
 .env
 compose.env
 
+# SSH keys downloaded from the Oracle Console; keep the actual files outside the repository.
+/ssh-key-*.key
+/ssh-key-*.key.pub
+
+# Private local deployment guide, including operator credentials and SSH key.
+/ORACLE_DEPLOYMENT_LOCAL.md
+
 # Derived/rebuildable data (auto-rebuilt by craft.CraftingGraphCache.load() when absent)
 crafting_graph_cache.json
 .aider*

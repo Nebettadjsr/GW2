@@ -1,0 +1,8 @@
+{
+  "logicalElapsedMs": 20000,
+  "simulatedResponseMs": 12000,
+  "documentHidden": true,
+  "requests": 5,
+  "peakOverlapping": 3,
+  "boundary": "Mounted production SyncScreen, fake clock and controlled API; browser background timer throttling not simulated"
+}

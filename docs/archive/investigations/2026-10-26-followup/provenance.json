@@ -1,0 +1,44 @@
+{
+  "baseline": "d713eb46c03e3c5cfa3cdfc90ad5d5216b559752",
+  "date": "2026-10-26",
+  "purpose": "Investigation only; production source and configuration unchanged",
+  "platform": "Windows x86_64, Java 25.0.1; isolated PostgreSQL 17.11 in Linux x86_64 Docker",
+  "backendJvmOptions": "-Xmx2g -XX:ActiveProcessorCount=2",
+  "databaseOutsideJvmEnvelope": true,
+  "oracleArmQualificationExecuted": false,
+  "catalogSha256": "18250726a75ac6c68c622f979c0203c498327b4e21b5292345ec82c915a12033",
+  "probeOriginalPaths": [
+    "backend/src/test/java/craft/FollowupInvestigationIT.java",
+    "backend/src/test/java/sync/FollowupReliabilityIT.java",
+    "backend/src/test/java/api/tp/FollowupRateLimitIT.java",
+    "frontend/src/sync/__tests__/FollowupPolling.spec.ts",
+    "frontend/scripts/followup-desktop-profile.mjs"
+  ],
+  "setup": [
+    "Extract public-catalog.zip to quality-reports/catalog.json at repository root",
+    "Restore probe files from probes/ to their original paths in a disposable baseline checkout",
+    "Configure DATABASE_URL, DATABASE_USER and DATABASE_PASSWORD for a dedicated disposable PostgreSQL 17 database",
+    "Backend command runs from repository root; frontend commands run from frontend/",
+    "Prepend the Windows PowerShell executable directory to PATH if mvnw.cmd cannot find powershell"
+  ],
+  "commands": [
+    ".\\backend\\mvnw.cmd -q -f backend/pom.xml -Dtest=FollowupInvestigationIT -Dgw2.investigation.catalog=../quality-reports/catalog.json \"-DargLine=-Xmx2g -XX:ActiveProcessorCount=2\" test",
+    ".\\backend\\mvnw.cmd -q -f backend/pom.xml -Dtest=FollowupReliabilityIT,FollowupRateLimitIT test",
+    "npm ci",
+    "npm run build",
+    "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5175 --strictPort",
+    "node scripts/followup-desktop-profile.mjs",
+    "npx vitest run src/sync/__tests__/FollowupPolling.spec.ts"
+  ],
+  "desktopRepeat": {
+    "GW2_PROFILE_COUNTS": "13213",
+    "GW2_PROFILE_OUTPUT": "quality-reports/followup-repeat"
+  },
+  "limitations": [
+    "No production traffic, real account load, native ARM64, full-stack constrained allocation or sustained hosting test",
+    "Root selection uses synthetic binary dependencies and reflective invocation of the existing evaluator; no production optimization implemented",
+    "Browser uses real recipe topology but synthetic economics and intercepted HTTP, no icon downloads",
+    "Polling uses fake clocks, not browser background timer throttling",
+    "429 sleeps recorded, not performed; HTTPS tested at servlet contract, not deployed TLS"
+  ]
+}

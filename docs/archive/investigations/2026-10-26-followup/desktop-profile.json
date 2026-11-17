@@ -1,0 +1,207 @@
+{
+  "commit": "d713eb46c03e3c5cfa3cdfc90ad5d5216b559752",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "boundary": "Unchanged production frontend, intercepted HTTP fixtures. Real catalog names/topology; invented positive economics to keep all rows visible. Not backend or Oracle latency.",
+  "catalogSha256": "18250726a75ac6c68c622f979c0203c498327b4e21b5292345ec82c915a12033",
+  "browser": "156.0.8078.47",
+  "cases": [
+    {
+      "count": 1000,
+      "payloadBytes": 936532,
+      "gzipLevel6Bytes": 31710,
+      "brotliQuality5Bytes": 22284,
+      "pureJsonParseMs": [
+        1.5,
+        1.3999998569488525,
+        1.4000000953674316
+      ],
+      "initial": {
+        "json": [
+          {
+            "start": 362.5,
+            "end": 367.69999980926514
+          }
+        ],
+        "end": 515,
+        "dom": 5408,
+        "heap": 7864120,
+        "longTasks": [
+          {
+            "start": 414,
+            "duration": 55
+          }
+        ]
+      },
+      "showAll": {
+        "elapsedMs": 263.7000000476837,
+        "dom": 21158,
+        "heap": 12466459
+      },
+      "sortMs": 214.5,
+      "filter": {
+        "elapsedMs": 81.90000009536743,
+        "dom": 127,
+        "heap": 17922683
+      },
+      "restore": {
+        "elapsedMs": 233.20000004768372,
+        "dom": 21158,
+        "heap": 26450989
+      },
+      "longTasks": [
+        {
+          "start": 414,
+          "duration": 55
+        },
+        {
+          "start": 551.0999999046326,
+          "duration": 184
+        },
+        {
+          "start": 818.2999999523163,
+          "duration": 150
+        },
+        {
+          "start": 1087,
+          "duration": 168
+        }
+      ],
+      "calculations": 1,
+      "pageErrors": []
+    },
+    {
+      "count": 5000,
+      "payloadBytes": 4611206,
+      "gzipLevel6Bytes": 160406,
+      "brotliQuality5Bytes": 110798,
+      "pureJsonParseMs": [
+        6.799999952316284,
+        6.800000190734863,
+        6.699999809265137
+      ],
+      "initial": {
+        "json": [
+          {
+            "start": 318,
+            "end": 337.5
+          }
+        ],
+        "end": 459.89999985694885,
+        "dom": 5408,
+        "heap": 13492226,
+        "longTasks": []
+      },
+      "showAll": {
+        "elapsedMs": 1147.9000000953674,
+        "dom": 105158,
+        "heap": 46603927
+      },
+      "sortMs": 1197.7999999523163,
+      "filter": {
+        "elapsedMs": 260.40000009536743,
+        "dom": 127,
+        "heap": 63221493
+      },
+      "restore": {
+        "elapsedMs": 965.7000000476837,
+        "dom": 105158,
+        "heap": 91677699
+      },
+      "longTasks": [
+        {
+          "start": 496.7000000476837,
+          "duration": 1035
+        },
+        {
+          "start": 1711.3999998569489,
+          "duration": 993
+        },
+        {
+          "start": 2961.2999999523163,
+          "duration": 93
+        },
+        {
+          "start": 3081.5,
+          "duration": 794
+        }
+      ],
+      "calculations": 1,
+      "pageErrors": []
+    },
+    {
+      "count": 13213,
+      "payloadBytes": 12419136,
+      "gzipLevel6Bytes": 547934,
+      "brotliQuality5Bytes": 352867,
+      "pureJsonParseMs": [
+        30.40000009536743,
+        30.700000047683716,
+        29.5
+      ],
+      "initial": {
+        "json": [
+          {
+            "start": 511.7999999523163,
+            "end": 613.2000000476837
+          }
+        ],
+        "end": 752.5999999046326,
+        "dom": 5408,
+        "heap": 27282113,
+        "longTasks": [
+          {
+            "start": 511.7999999523163,
+            "duration": 100
+          }
+        ]
+      },
+      "showAll": {
+        "elapsedMs": 3348,
+        "dom": 277631,
+        "heap": 117132077
+      },
+      "sortMs": 2923.199999809265,
+      "filter": {
+        "elapsedMs": 682.5,
+        "dom": 127,
+        "heap": 187142406
+      },
+      "restore": {
+        "elapsedMs": 5283.700000047684,
+        "dom": 277631,
+        "heap": 210871158
+      },
+      "longTasks": [
+        {
+          "start": 511.7999999523163,
+          "duration": 100
+        },
+        {
+          "start": 840.7000000476837,
+          "duration": 3130
+        },
+        {
+          "start": 4449.099999904633,
+          "duration": 2432
+        },
+        {
+          "start": 7390.900000095367,
+          "duration": 289
+        },
+        {
+          "start": 7740.5,
+          "duration": 4322
+        },
+        {
+          "start": 12774.599999904633,
+          "duration": 91
+        }
+      ],
+      "calculations": 1,
+      "pageErrors": []
+    }
+  ]
+}

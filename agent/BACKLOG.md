@@ -1,103 +1,31 @@
-# Planning backlog
+# Supervised work and handoffs
 
-Updated: 2026-11-16. Interactive Codex supervises; GitHub issues, PRs and their checks own execution
-status. This file contains planning order, authorization and handoff boundaries only.
-Observed runtime facts belong in [Current State](../docs/CURRENT_STATE_SPEC.md).
+Updated 17 November 2026. GitHub issues, PRs, reviews and CI own execution state. This file records current owner authorization and handoff constraints. The [roadmap](../docs/ROADMAP.md) owns future scope; [Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) explains the implemented process.
 
-## Owner authorization and scope
+## Current owner authorization
 
-The owner approved the current Home/guide and legal copy, publication of the calculation fix,
-general public access, and the two-line value display. Earlier local-only/preview-only holds for
-that scope are superseded. After publication the owner authorized useful maintenance and review
-of open issues/PRs. Today's UI pairing is finished; this is not permission to redesign approved pages.
+The owner explicitly authorized repository documentation cleanup and update, followed by resuming the workflow to raise test coverage and reconcile known problems. Archive the legacy stories, architecture requests, user decisions and rationale; preserve current rules in maintained documents. Consolidate architecture if the current/target split no longer serves the delivered application. Document the actual agent workflow and audit current app behavior against the domain specification.
 
-### Overnight Bank/Materials request
+Complete the documentation work before activating the next implementation run. The coverage request continues existing #21/#111 scope; it is not authorization to introduce new authentication policy, redesign accepted UI or recreate a capacity programme.
 
-The owner now authorizes this focused follow-up while away, including implementation and testing.
-It supersedes the no-new-UI-work limit only for these requested interactions. Finished work that
-does not require visual/product approval may be published; incomplete work and new layouts stay
-local for the morning. Preserve unrelated edits and current public behavior outside this scope.
+## Confirmed earlier scope
 
-- Make the entire selectable item/material tile toggle protection, with one accessible toggle per action.
-- Save selection changes immediately per verified account/store; remove Save selection, Discard changes
-  and pending-change text. Preserve category/preset actions and honest storage-failure handling.
-- Offer a right-click quantity reservation: a fixed reserved count leaves excess owned copies usable
-  by Profit when protection is enabled. Distinguish quantity reservations with a border and concise
-  contextual text; normal click still supplies whole-item protection.
-- Offer a right-click shortcut to Profit with that material in the search field.
-- Show the actual item/material name on hover, falling back honestly only when metadata is absent.
+- Public Home, legal pages, calculation bounds and the Bank/Materials reservation correction are approved and deployed. The owner confirmed the finished behavior works. Earlier local-only holds for those completed releases are superseded.
+- The owner approved the existing visible Oracle release process. A deployment uses an explicitly selected reviewed commit and protected host configuration; merges alone do not deploy. New UI layouts still return to the owner in the local application.
+- The owner explicitly requested the detailed private deployment guide on 17 November. Its credential-bearing file is ignored and restricted locally; do not copy its contents into Git, issues or workflow documentation.
+- Pre-release load/capacity measurements, VM work, additional-user-key searches and broad analysis work are withdrawn. Preserve concrete future optimization opportunities and use actual production observations without claiming a supported-user capacity.
+- Preserve unrelated maintainer changes, normal local application sessions and account data. No real-account mutations are authorized for verification. Hosting/provider changes, paid services, billing and genuine product choices remain owner decisions.
 
-First prepare additive batch item-name metadata for old-client compatibility. Then prepare one
-combined local-review reservation UX contract, including authoritative backend quantity handling.
-Keep source-specific and character-inventory rules intact. Avoid Profit recalculation while its
-cached screen is inactive; use the latest saved choices when returning to it. Partial reservations
-across heterogeneous binding/owner buckets need an explicit product rule; keep that edge local
-and record the morning question rather than silently selecting an allocation policy.
+## Next implementation handoff
 
-### Morning Bank/Materials correction
+Prepare [#111](https://github.com/Nebettadjsr/GW2/issues/111), account HTTP mapping and session-recovery coverage, using the latest successful CI artifact and current [Architecture](../docs/ARCHITECTURE.md). Keep [#21](https://github.com/Nebettadjsr/GW2/issues/21) open for remaining relevant gaps. [#60](https://github.com/Nebettadjsr/GW2/issues/60) and [#228](https://github.com/Nebettadjsr/GW2/issues/228) remain separate maintenance candidates.
 
-The owner accepts the other preview features and authorizes these local corrections. Reservation
-text belongs in a readable area to the right of each Bank tab/material category grid, with a narrow
-layout fallback; remove the clipped text inside item tiles and use a solid yellow reservation border.
-Bank clicks now select the actual clicked stack independently. A numeric target allocates in Bank
-slot order: four stacks of 250 with target 250 reserve one stack; target 300 reserves 250 from the
-first and 50 from the second. Actual backend exclusion must match the displayed selected rows,
-including their bindings. This supersedes the earlier item-wide Bank click contract. Materials,
-autosave, cached search, names and offscreen calculation guards retain their accepted behavior.
-After rearranging or splitting stacks in game, the owner chose to keep the reserved item amount
-and redistribute it over current matching stacks. Preserve the fixed target even when stock is
-temporarily lower or absent; never reserve a different item that replaced an old slot.
-Initially keep the corrected layout in the running local preview for visual review. The owner's
-subsequent explicit instruction, "when u done pls publish it on the website", authorizes merge and
-publication of this completed correction after verification, without another approval request.
-This supersedes the local-only hold for this Bank/Materials correction; it does not expand its scope.
+A released handoff identifies goal, dependencies, acceptance criteria, meaningful checks, current documentation and remaining decisions. The supervisor releases one dependency-complete issue at a time after inspecting that handoff. A draft or an `auto` label alone does not start Claude.
 
-The pre-release capacity programme, additional-key search and associated measurement/analysis
-work are withdrawn. Preserve concrete future performance improvements. No supported-user capacity
-is promised. Do not restart local Docker/VM, load tests or the retired programme under this scope.
+For this supervised session, independent QA owns test and fixture authorship. Claude implements any explicitly required production scope and runs checks; the supervisor does not silently replace either role. This is a scoped override of the general programmer-authors-tests workflow. Preserve assertions and explain every test correction. Require current-head CI, completed native review and necessary local evidence before merging.
 
-The existing visible Oracle release process is authorized. Hosting, new paid services,
-subscription/API billing and genuine product choices remain owner decisions. The owner rejects
-a delegated Oracle setup manual; maintain the existing runtime documentation concisely.
-Never delete live owner data for verification.
+## Acceptance and continuity
 
-## Planning candidates
+Do not mark source-audit findings resolved without current implementation and verification evidence. Keep remaining defects and performance opportunities in their owning documents. Record actual CI/review/deployment results in GitHub and observed runtime state in CURRENT_STATE_SPEC, rather than accumulating a second execution ledger here.
 
-These are candidates for a bounded planner handoff and supervisor release, not automatic
-implementation selections. Consult the linked GitHub issue for its current execution state.
-
-1. [#228](https://github.com/Nebettadjsr/GW2/issues/228): make production Compose portable for the
-   restricted application database role and canonical HTTPS origin. Preserve the actual host's
-   protected override until a separately reviewed change replaces it. Keep fresh-cache/Flyway
-   behavior simple; PostgreSQL is disposable cache, without preservation obligations.
-2. [#111](https://github.com/Nebettadjsr/GW2/issues/111): meaningful account request-mapping and
-   session-recovery coverage, within the current verified-account boundary.
-3. [#60](https://github.com/Nebettadjsr/GW2/issues/60): optional real-database fixtures and account
-   task-lookup semantics; distinguish refetchable cache behavior from durable data obligations.
-4. [#21](https://github.com/Nebettadjsr/GW2/issues/21): refine the broader coverage request into
-   bounded checks of currently under-covered behavior before selecting implementation work.
-
-Preserve concrete optimization candidates in the owning problem/investigation documents.
-Do not turn the retired measurements into launch dependencies or recreate an execution ledger here.
-
-## Handoff and review controls
-
-The planner proposes a contract containing goal, owner, dependencies, acceptance criteria,
-meaningful test plan, authoritative references and unresolved decisions. The supervisor inspects
-feasibility and releases one dependency-complete implementation story at a time. Do not dispatch
-Claude merely because a plan exists. No new automatic dispatch is selected by this file.
-
-For the current invocation, independent QA owns test/fixture authorship. Claude implements the
-released product scope; the supervisor does not silently replace either role. Preserve meaningful
-assertions and fix material review findings. Require exact-head CI, native review and necessary
-local evidence before accepting a PR.
-
-Every new UI layout returns to the owner in the local application for explicit visual approval
-under [Supervisor Instructions](SUPERVISOR_INSTRUCTIONS.md). Browser checks and screenshots do not
-substitute for that approval. Preserve accepted feature behavior through DOMAIN_SPEC, the crafting
-glossary and FRONTEND_UX_GUIDELINES instead of duplicating their detailed contracts here.
-
-The ordinary local app and unrelated maintainer edits remain available during maintenance.
-Preserve account data when restarting it. Keep private deployment inputs and temporary evidence
-out of tracked files; stop owned review processes and remove completed disposable worktrees.
-GitHub owns execution history; CURRENT_STATE_SPEC owns the observed deployment and its limits.
+The [previous handoff](../docs/archive/agent/BACKLOG-2026-11-16.md) retains the detailed historical Bank/Materials request. Old harness records are in [the archive](../docs/archive/README.md) and are not executable instructions.

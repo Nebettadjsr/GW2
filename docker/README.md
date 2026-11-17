@@ -45,7 +45,7 @@ docker compose --env-file compose.env up --build --wait
 
 The local configuration file is gitignored. The repository-root development `.env` and its database credentials or GW2 key are not passed to these containers. Changing the database password after initialization requires resetting this stack's cache volume so PostgreSQL initializes with the new password.
 
-## Production-preparation configuration
+## Production configuration and public Oracle host
 
 [`compose.production.yaml`](compose.production.yaml) is a standalone alternative to `compose.yaml` (never combine them). `GW2_STACK_DB_PASSWORD` is required: unset or blank makes Compose refuse to render, and there is no `gw2-local-only` fallback. Only the explicit variables in the file reach the containers; a developer's `DATABASE_*` or `GW2_API_KEY` is not forwarded. Supply the settings with `--env-file` from a file outside the repository:
 
@@ -53,11 +53,13 @@ The local configuration file is gitignored. The repository-root development `.en
 docker compose -f compose.production.yaml --env-file /path/to/production.env config   # static check, no daemon
 ```
 
-It publishes only the frontend, on loopback by default, over plain HTTP. This is preparation, not a finished HTTPS deployment: the real host, domain, TLS/edge and legal values are not configured, and `Forwarded`/`X-Forwarded-*` headers are deliberately not trusted.
+This file publishes only the frontend, on loopback by default, over plain HTTP. It does not configure a public TLS edge or a separate restricted database application role. `Forwarded`/`X-Forwarded-*` headers are deliberately not trusted.
+
+The public Oracle deployment is already running behind host Nginx and Certbot. **Every command on that host must also use its protected HTTPS Compose override and explicit production environment file**; the standalone production file is not a complete reproduction of the live deployment. The override supplies the exact canonical HTTPS origin and the separate restricted `gw2_app` credential. See [Current State](../docs/CURRENT_STATE_SPEC.md#required-host-configuration) for the verified inputs and [#228](https://github.com/Nebettadjsr/GW2/issues/228) for the portable-configuration follow-up. Do not run the local reset commands below against the public stack.
 
 Both Compose files also forward optional `GW2_OWNER_ACCOUNT_GUID` (blank grants nobody; a malformed value fails backend startup), pass the optional public `VITE_OPERATOR_*`/`VITE_HOSTING_REGION`/`VITE_PUBLIC_DOMAIN`/`VITE_CONTACT_EMAIL` values to the frontend build (unset stays "not configured"), and bound each container's stdout/stderr with `GW2_STACK_LOG_MAX_SIZE` (default `10m`) and `GW2_STACK_LOG_MAX_FILE` (default `3`). These are size and file-count bounds, not a time guarantee. The proxy access log records only method, path without query string, status, size and timing; request-bound error lines (which echo the request line, query string and Referer even at critical level) are suppressed, while startup events stay in the global error log. Activity and performance come from the existing owner operations aggregates, and CPU/RAM from Oracle metrics.
 
-Checks: `python -m unittest discover -s .github/scripts` renders both files with synthetic values and a poisoned environment and runs a throwaway nginx for the logging check. CI installs the native Nginx runtime so that check executes; platforms without it report an explicit skip. A running production-style stack, TLS/origin/cookie behavior through the real edge, owner separation, CSV export, deletion and restart/volume checks remain target-environment evidence not yet run.
+Checks: `python -m unittest discover -s .github/scripts` renders both files with synthetic values and a poisoned environment and runs a throwaway Nginx for the logging check. CI installs native Nginx so that check executes; platforms without it report an explicit skip. Public release verification has separately checked the real HTTPS/Origin/session boundary, restricted DB role, private ports and application health. Controlled CSV/deletion/browser and container checks have their own evidence; do not infer an exhaustive live journey from the static Compose checks. [Current State](../docs/CURRENT_STATE_SPEC.md#verification-evidence-and-limits) records the published release and limits.
 
 ## Status, logs and shutdown
 
@@ -69,23 +71,29 @@ docker compose down
 
 `down` stops the entire stack and keeps its cache volumes. Start again with the startup command above. If you use `compose.env`, include `--env-file compose.env` in these commands too.
 
-To discard this stack's database and icon caches and let the app fetch them again:
+To discard this local stack's database, icon and operational-history caches:
 
 ```sh
 docker compose down --volumes
 docker compose up --build --wait
 ```
 
-The `gw2-postgres` volume holds PostgreSQL data and `gw2-icons` holds downloaded icons. Both are disposable caches. These commands target the `gw2` Compose project; if you set another project name with `-p`, use that name consistently.
+The `gw2-postgres` volume holds PostgreSQL data, `gw2-icons` downloaded icons and `gw2-ops` sparse activity CSV/index files. They are disposable caches; deleting `gw2-ops` discards its historical observations. These commands target the local `gw2` Compose project; if you set another project name with `-p`, use that name consistently.
 
-This is the local HTTP stack. Public hosting and TLS are described separately in the [roadmap](../docs/ROADMAP.md). For automated verification, see [current architecture](../docs/CURRENT_ARCHITECTURE.md#docker-compose-stack-story-infra-008) and [compose smoke](../scripts/compose-smoke.sh).
+These startup/reset commands describe the local HTTP stack. See [Architecture](../docs/ARCHITECTURE.md) and [Current State](../docs/CURRENT_STATE_SPEC.md#public-oracle-deployment) for the public host, and [compose smoke](../scripts/compose-smoke.sh) for automated stack verification.
 
-## Search-engine indexing (noindex)
+## Search-engine indexing
 
-The frontend image sends `X-Robots-Tag: noindex, nofollow` on every response (including errors and
-`/api/`), and `index.html` carries the matching meta tag. The owner additionally requested a site-wide
-crawl block: `/robots.txt` serves `User-agent: *` and `Disallow: /` as plain text, without a sitemap.
-This applies to every current path, including the SPA's shared root document and its hash routes.
+The frontend defaults to `X-Robots-Tag: noindex, nofollow` (including errors and `/api/`), and
+`index.html` carries the matching meta tag. Home has one separate public HTML
+entry, `welcome.html`, served at `/welcome`. Its successful/cached responses and HTML metadata allow
+indexing; errors remain noindex. Direct `/welcome.html` requests redirect to the clean URL.
+`robots.txt` denies all paths except `/welcome` and `/assets/`, the resources needed to render it.
+Assets themselves retain their noindex response header. No sitemap is published. Tool/hash pages
+and the legal/privacy/storage pages remain excluded.
+
+The public Oracle deployment applies the same successful-Welcome-only exception at its HTTPS edge;
+see [current state](../docs/CURRENT_STATE_SPEC.md) for the exact revision and verification evidence.
 Crawlers blocked by robots.txt cannot read the pages' noindex tags; a search engine can still list
 a blocked URL discovered elsewhere without indexing its contents. See
 [Google's distinction between crawling and indexing](https://developers.google.com/search/docs/crawling-indexing/robots/intro).

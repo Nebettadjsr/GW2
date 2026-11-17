@@ -1,41 +1,72 @@
-# GW2 repository guide
+# GW2 programmer guide
 
-GW2 is a crafting and economy application. The active browser UI is Vue/TypeScript; the backend is Java 25, Maven, Spring Boot, PostgreSQL, and the Guild Wars 2 API. The intended hosted, containerized platform is still being built. Read only the documentation and code relevant to the issue at hand.
+GW2 is a live crafting/economy web application: Vue/TypeScript frontend, Java 25,
+Maven/Spring Boot backend, PostgreSQL and the GW2 API. Read only the issue's
+relevant documentation/code. [Development workflow](docs/DEVELOPMENT_WORKFLOW.md)
+describes actual GitHub automation, evidence, recovery and release.
 
-## Work from GitHub issues
+## Assigned GitHub work
 
-You are the programmer. Codex on GitHub plans under `agent/PLANNER_INSTRUCTIONS.md`; the interactive Codex supervisor approves readiness under `agent/SUPERVISOR_INSTRUCTIONS.md`. Read the setup/activation status in `agent/BACKLOG.md` before beginning work. Draft backlog entries are not implementation authorization. Do not dispatch a run, activate a draft, choose the next milestone or change acceptance criteria yourself. Report discoveries to the supervisor/planner; implement only the assigned approved story, including its tests.
+You are the programmer. The explicitly assigned Codex planner proposes work;
+interactive Codex supervises/releases it under the contracts in `agent/`.
+Read current authorization in `agent/BACKLOG.md` and the approved issue.
+Drafts do not authorize implementation. Do not activate work, choose another
+milestone, change criteria, dispatch runs, merge or deploy yourself.
 
-An issue states the goal, acceptance criteria, constraints, and dependencies. Work on one issue per branch and pull request. Do not start an issue whose listed dependencies are unmerged. Link the issue in the PR. If a requirement needs a Product Owner decision, ask on the issue or PR and apply `needs-decision`; do not invent product behavior. Record a small, nonblocking improvement as a follow-up issue rather than expanding the current PR. An acceptance criterion or material correctness/security gap is blocking.
+One issue gets one branch and PR. Read its goal, acceptance criteria, constraints,
+dependencies and existing PR review/CI feedback. Do not start before dependencies
+merge. Ask genuine product questions in the issue/PR with `needs-decision`;
+do not invent behavior. Use follow-ups for small nonblocking improvements
+instead of expanding scope. Missing criteria/material correctness gaps block.
 
-Implementing agents may write production code, tests, and fixtures together. Run the narrow relevant checks locally and let CI run the complete Maven and Vitest suites. In the PR, list checks actually run, local-only checks still needed, and the reason for any removed or weakened assertion. Respond to review findings on the same branch.
+Normally implement meaningful tests/fixtures with code. A scoped approved issue
+or session may give independent QA that ownership; honor the override. Run narrow
+checks locally and let CI run full default suites. Report actual commands/results,
+local checks still needed, unresolved gaps and reasons for changed/weakened
+assertions. Keep the temporary workflow report current before lengthy checks.
+The workflow commits, pushes and publishes PR evidence.
 
-## Documentation ownership
+## Owning documentation
 
-- `docs/DOMAIN_SPEC.md`: product and domain behavior.
-- `docs/crafting/GLOSSARY.md`: canonical player-facing crafting terms.
-- `docs/CURRENT_STATE_SPEC.md` and `docs/CURRENT_ARCHITECTURE.md`: observed current behavior and structure.
-- `docs/TARGET_ARCHITECTURE.md`: selected target architecture and open technical choices.
-- `docs/ROADMAP.md`: phase sequence and exit criteria.
-- `docs/FRONTEND_UX_GUIDELINES.md`: browser UX requirements.
-- `docs/TEST_STRATEGY.md` and `docs/QUALITY_METRICS.md`: test layers, coverage, and reporting.
-- `docs/CODING_GUIDELINES.md`: implementation conventions.
-- `agent/stories/` and `agent/user-decisions/`: historical story and decision records; active work is tracked in GitHub issues.
+| Document | Owns |
+|---|---|
+| `docs/DOMAIN_SPEC.md` | Domain/product rules |
+| `docs/crafting/GLOSSARY.md` | Player-facing crafting terms |
+| `docs/CURRENT_STATE_SPEC.md` | Observed runtime/build/deployment facts |
+| `docs/ARCHITECTURE.md` | Current structure, selected boundaries and open choices |
+| `docs/ROADMAP.md` | Product direction and exit criteria |
+| `docs/FRONTEND_UX_GUIDELINES.md` | Browser UX |
+| `docs/TEST_STRATEGY.md`, `docs/QUALITY_METRICS.md` | Verification and measured coverage |
+| `docs/CODING_GUIDELINES.md` | Implementation conventions |
+| `docs/DEVELOPMENT_WORKFLOW.md` | Implemented GitHub process |
 
-Read the owning document before changing its subject. Update current documentation when delivered behavior changes. Existing code proves current behavior, not intended behavior.
+Read the owner before changing its subject; update relevant docs with delivered
+behavior. Code establishes observations, not new product intent. Historical
+decisions/contracts are in `docs/archive/`, not today's work queue.
 
-## Domain and architecture
+## Domain boundaries
 
-The backend owns authoritative business logic and GW2 API access. Server deployment secrets remain backend-only; browser-held read-only GW2 keys follow UD-018 and `docs/TARGET_ARCHITECTURE.md` section 8.2. Use proportionate handling: ordinary browser retention, account separation and basic hygiene, without adding high-sensitivity credential infrastructure. Domain logic must not depend on JavaFX, HTTP, JSON transport models, PostgreSQL/JDBC/SQL, Docker, or GW2 API response models. External systems use clear adapters. PostgreSQL is a disposable cache of GW2 API data under UD-016; missing or inconsistent data is re-fetched. Ectoplasm Salvage has the explicit browser calculation exception in `docs/TARGET_ARCHITECTURE.md` section 4.2 and `docs/DOMAIN_SPEC.md`.
+Backend owns authoritative business logic/GW2 API access. Deployment secrets
+remain backend-only. Browser-held read-only GW2 keys follow Architecture's
+account/session rules: proportionate retention and account isolation, without
+high-sensitivity credential infrastructure.
 
-Do not silently choose a technology that `docs/TARGET_ARCHITECTURE.md` marks TBD. Preserve existing behavior unless the issue or authoritative spec changes it. Prefer incremental changes with clear responsibility boundaries.
+Domain logic cannot depend on JavaFX, HTTP, JSON transport models,
+PostgreSQL/JDBC/SQL, Docker or GW2 API response models. Use adapters for external
+systems. PostgreSQL is disposable cache; missing/inconsistent data is re-fetched.
+Ectoplasm Salvage has the documented browser-calculation exception.
+Do not silently decide a genuinely unresolved technology/product choice.
+Prefer incremental changes and simple responsibility boundaries.
 
-## Checks and review
+## Checks and care
 
-Use `docs/TEST_STRATEGY.md` to choose meaningful tests. Backend CI runs Maven; frontend CI runs Vitest, type checking, and build. Real-database `*IT`, browser smoke, and live GW2 API checks are local-only unless an issue explicitly adds a suitable CI environment. Never claim an unrun check passed.
+Use the Test strategy for meaningful assertions. CI supplies an isolated
+PostgreSQL service for database-backed `*Test` cases; `*IT` remains outside
+the default naming set. Browser smoke/live API checks require their explicit
+setup/evidence. Never claim unrun checks passed or use real owner credentials
+for routine tests.
 
-Reviewers compare the PR with its issue, the owning docs, the test diff, and the actual CI result. They may accept a sound implementation that differs in minor details from the proposed approach when the acceptance criteria are met; record a small follow-up issue if useful. Request changes for unmet criteria, unsafe behavior, or inadequate verification.
-
-Keep the PR focused and report observed facts separately from inferences and recommendations. Preserve unrelated maintainer changes. Stop processes you start before finishing.
-
-Return deliverables to the main project and remove temporary worktrees and disposable logs after use. Preserve required measurement evidence without leaving scratch files in the project root.
+Preserve unrelated maintainer edits. Keep the diff focused; separate facts,
+inferences and recommendations. Return deliverables to the main project and
+stop owned processes/remove disposable worktrees after use. Keep secrets,
+temporary reports and scratch output out of tracked files.

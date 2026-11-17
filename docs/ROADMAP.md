@@ -1,118 +1,48 @@
-# GW2 active roadmap
+# GW2 roadmap
 
-Updated: 2026-11-13. Owner: GitHub Codex planner; changes are reviewed by the interactive Codex supervisor.
+Updated 17 November 2026. Product intent belongs to the Product Owner. GitHub issues and pull requests own execution status; [the supervisor backlog](../agent/BACKLOG.md) records authorization and the next handoff. See [Development workflow](DEVELOPMENT_WORKFLOW.md) for the implemented process.
 
-**Workflow execution authorized by the Product Owner on 2026-11-07; interactive Codex supervises one released story at a time.** Draft order, active handoffs and execution evidence live in [the backlog](../agent/BACKLOG.md) and GitHub issues/PRs. The Product Owner owns product intent and material hosting/budget decisions.
+## Delivered baseline
 
-## Roles
+The application is publicly available on Oracle at `https://gw2-crafting.de/welcome`. The single-host frontend, backend and PostgreSQL stack, HTTPS, account isolation, legal pages and owner activity downloads are deployed. The active UI includes Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials and Characters with equipment, inventory and build views.
 
-- Interactive Codex supervises readiness, progress, failures and acceptance.
-- Codex on GitHub plans milestones and bounded issue contracts.
-- Claude implements released stories and their tests.
-- Codex PR review and CI check delivered changes; planning is an explicit separate invocation.
+Bank and Materials protection includes immediate saving, whole-tile selection, finite reservations, independent Bank-stack allocation, readable reservation notes, names and the shortcut to ingredient search. The owner has accepted the shipped correction. Detailed product behavior belongs in [DOMAIN_SPEC](DOMAIN_SPEC.md) and [UX guidelines](FRONTEND_UX_GUIDELINES.md), rather than a second feature contract here.
 
-Contracts and invocation details: [agent roles](../agent/README.md). These files do not install a scheduler or start a planner/Claude run.
+The observed deployed revision and runtime evidence belong in [Current state](CURRENT_STATE_SPEC.md); [Architecture](ARCHITECTURE.md) defines boundaries and the remaining host configuration dependency.
 
-## Milestone 1: public-production readiness on Oracle Always Free
+## Current authorized work
 
-### Goal
+The owner authorized documentation cleanup and reconciliation, followed by resuming useful maintenance and raising meaningful test coverage on 17 November 2026.
 
-Prepare the application for a public, containerized deployment on Oracle Always Free while preserving correctness, account isolation and a usable desktop experience. Public-production readiness includes material protection, Characters, owner administration and automatic inventory freshness, plus the deployment items below. It does not require a capacity or resource-measurement programme.
+1. Archive retired records, consolidate architecture documentation, reconcile the domain specification, and document the actual agent/GitHub delivery process.
+2. Refresh coverage from successful current CI artifacts and complete a bounded coverage story against active behavior. Keep the 90% line/branch target informational and preserve existing assertions.
+3. Reconcile [known problems](KNOWN_PROBLEMS.md) against current code and merged evidence. Remove resolved findings; retain concrete functional and performance follow-ups that still apply.
 
-### Capacity experiments ended
+Default CI, current-head native review and any issue-specific local checks remain required. New UI layouts need owner review in the local app. The documentation task does not authorize a feature redesign or an infrastructure service change.
 
-The Product Owner ended the resource/capacity experiment programme (2026-11-14). Capacity discovery, workload profiling, recorded-interaction replay, VM/container/JVM resource observation and the informational Performance workflow are **retired and are not launch requirements**. Their tooling was removed by STORY-LAUNCH-001 (audit: [launch tooling audit](investigations/launch-001-tooling-audit.md)); earlier reports and measurements are kept only as historical evidence and prove no capacity. The related issues #116, #154, #189 and #191 are not to be repeated. Supervisor-recorded superseding authorization is in the [active backlog](../agent/BACKLOG.md).
+## Prepared maintenance candidates
 
-### Confirmed hosting target
+| Issue | Remaining scope |
+| --- | --- |
+| [#111](https://github.com/Nebettadjsr/GW2/issues/111) | Account HTTP route mapping, session recovery and refusal behavior coverage. |
+| [#21](https://github.com/Nebettadjsr/GW2/issues/21) | Broader coverage improvements, selected from current package and branch gaps. |
+| [#60](https://github.com/Nebettadjsr/GW2/issues/60) | Optional real-database fixture migration and account-task lookup semantics. |
+| [#228](https://github.com/Nebettadjsr/GW2/issues/228) | Portable production configuration for the restricted database role and HTTPS origin. |
 
-The Product Owner confirmed Oracle Always Free on 2026-11-07; Cloudflare is not the requested hosting target. Preserve the portable single-host frontend/backend/PostgreSQL deployment in `TARGET_ARCHITECTURE.md` section 12.
+Consult the live issue before selecting it. Preserve the deployed protected Compose override until a reviewed replacement is proven. PostgreSQL remains a disposable GW2 cache, without backup or preservation work.
 
-Target: ARM64 Ampere A1, combined 2 OCPU / 12 GB RAM for the entire deployment, including OS, Docker, PostgreSQL, backend, frontend and monitoring overhead. This is an allocation ceiling, not permission for Java alone to use 12 GB. Oracle's [Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm), checked 2026-11-07, specify 1,500 OCPU-hours and 9,000 GB-hours monthly (2 OCPU / 12 GB) plus 200 GB combined boot/block storage. No target host is currently verified.
+## Deferred Mystic Forge support
 
-### Sequence
+The owner approved future inclusion of Mystic Forge recipes, including intermediate steps, behind `Allow Mystic Forge recipes` below `Allow daily craft`. The current UI placeholder remains disabled. Forge recipes do not require a crafting discipline or crafting rating; list and detail calculations must eventually honor the same setting.
 
-1. Keep ordinary correctness coverage (Maven, Vitest, type-check, build, account isolation, focused browser and container smoke) green.
-2. Complete the accepted feature milestones below (material protection, Characters, owner administration, inventory freshness).
-3. Resolve the open deployment facts (operator identity, legal facts, domain, Oracle region, deployment credentials) with the Product Owner.
-4. Run a production-style stack smoke on the target host as a deployment gate; this is later work and is not part of the cleanup story.
-5. Supervisor reviews CI, code review, local-only evidence and remaining risks. Unknown facts are reported gaps, not passed gates.
+Recipe coverage, random-output handling and valuation policy still need a concrete contract. Do not invent those rules or activate implementation from the placeholder. The original [owner request](archive/agent/product-owner-requests/mystic-forge-crafting.md) is preserved as history; this section retains its pending scope.
 
-### Exit criteria
+## Concrete future optimization
 
-- The selected topology runs the application on the Oracle host with all runtime, storage and network components accounted for.
-- Production images contain no test recorder, proxy, timing overlay, debug route or test-only bypass.
-- Default CI (Maven suite, Vitest coverage, type-check, build, workflow-helper checks) passes; account isolation and real-database checks pass locally.
-- Operator and legal information, domain and credentials are supplied by the Product Owner and are not invented.
+Keep source-backed opportunities such as graph reuse, narrower root evaluation, large-list rendering, polling coalescence, cache recovery and upstream quote handling available for later prioritization. [Known problems](KNOWN_PROBLEMS.md) owns open findings; the [optimization report](OPTIMIZATION_INVESTIGATION_REPORT.md) identifies dated experiments and hypotheses. Historical timings are not current production guarantees.
 
-Historical documents ([performance measurements](PERFORMANCE_MEASUREMENTS.md), [workload profile](PERFORMANCE_WORKLOAD_PROFILE.md), [optimization investigation](OPTIMIZATION_INVESTIGATION_REPORT.md)) are not launch requirements. Completed pooling, simulation-state reuse, recipe-payload reuse and Bank/Materials refresh improvements stay as delivered.
+## Retired programme
 
-## Milestone 2: protect selected materials from Crafting Profit
+The owner ended the pre-release capacity/resource programme on 14 November 2026. Extra API-key searches, VM or container load tests, interaction recording/replay and the informational Performance workflow are retired. Issues #116, #154, #189 and #191 were withdrawn. Do not recreate that programme as a gate for maintenance or public hosting.
 
-### Confirmed product intent
-
-Users saving for a legendary or another goal can protect owned item/material types selected in Bank and Materials from Crafting Profit consumption. Buying replacements remains allowed when buying is enabled. Implement selection, request/settings transport and authoritative backend calculation behavior together; hiding results alone does not meet the goal.
-
-### Confirmed product/UI contract
-
-- Product behavior: [DOMAIN_SPEC.md section 9.1](DOMAIN_SPEC.md). Protect quantities independently in Bank and Materials while preserving character inventory and normal acquisition rules for replacements.
-- Selection UI: [FRONTEND_UX_GUIDELINES.md section 2.1](FRONTEND_UX_GUIDELINES.md). Tile checkboxes plus explicit confirmation, presets for every tier T1–T6 and room for more, Profit toggle/count, short empty-selection warning and links back to relevant selection pages.
-- Remember the committed selection and activation setting per account on the same browser. No cross-device synchronization is required.
-
-These choices were confirmed by the Product Owner. The planner can now refine the bounded story contracts, including a UI review of exact preset membership, labels and interactions. Individual stories still require supervisor release under the execution authorization recorded in the backlog.
-
-### Acceptance and resource constraints
-
-- Bank and Materials edit independent selections by item type within each store; real inventory quantities remain visible and unchanged. Bulk/save/discard actions stay on their own page, preserve absent-item preferences, and apply consistently to repeated stacks in that store.
-- The backend applies the approved restriction throughout Crafting Profit, including recursive ingredients. List/detail calculations, costs, quantities, shopping lists and any cached results must agree with the same effective settings.
-- Feature disabled or an empty list preserves existing results. Account changes must not reuse another account's selections or stale in-flight results. Discovery and Ecto are outside the requested scope.
-- Preserve existing selection/navigation, sorting, filtering, refresh and item-link interactions; define accessible keyboard operation and a visible enabled/count summary. Consult the Product Owner for unresolved UI decisions rather than inventing them.
-- Prefer a compact, validated item-ID selection and constant-time membership checks within existing calculation boundaries. Reuse existing request/account state; no new service, polling loop or per-item upstream fetch is justified by this feature. Persistence architecture follows the answer above.
-- Preserve bounded selection payloads and account isolation. Do not introduce per-account catalog copies or shared mutable calculation state. Observe actual operational health after launch; a new feature-overhead benchmark is not a launch requirement.
-
-Status: the paired selection and Crafting UI approved on 2026-11-08 is integrated with its regression and documentation baseline, including source-specific protection, ingredient checkbox eligibility and category-local preset placement. Detailed production preparation is in the [backlog](../agent/BACKLOG.md).
-
-## Milestone 3: Characters overview and equipment-first details
-
-### Goal and scope
-
-Add a GW2efficiency-inspired roster with concise information and click-through character details. Primary purpose: inspect armor/weapons/other equipment to see ascended/legendary items and remaining gear gaps. Include character inventory and builds. Story is deferred by Product Owner decision (2026-11-07). Discovered recipes are excluded; map completion is deferred for a later Product Owner decision.
-
-Owning scope: [DOMAIN_SPEC.md section 56](DOMAIN_SPEC.md). UI intent: [FRONTEND_UX_GUIDELINES.md section 2.2](FRONTEND_UX_GUIDELINES.md). Do not infer every statistic, sharing/export option or character renderer from the supplied screenshots.
-
-### Sequence and exit criteria
-
-1. Audit existing character synchronization/storage and current API data/permissions for equipment, inventory and builds. Include all saved available equipment/build tabs using adjacent in-game-style tabs, in original slot order, with the in-game active tab initially selected. Story remains outside this sequence.
-2. Prepare a concrete overview/detail UI proposal for Product Owner review, prioritizing equipment quality visibility. Set bounded read/refresh and cache contracts; reuse current account and shared metadata infrastructure.
-3. Implement reviewed data/API and equipment/overview stories, then inventory/build details. Every story includes meaningful tests; pending API/product choices block only the affected work.
-4. Verify account isolation, metadata-based rarity, missing versus empty slots, template-reference deduplication, refresh/recovery and navigation. Do not change existing crafting inventory totals through duplicated template equipment.
-5. Preserve page-scoped loading, retained data and bounded metadata/upstream work. Do not add per-character polling, a new service or eager loading of unrelated details. Monitor real production use through the existing operations facilities.
-
-Status: the approved roster, character summary, Equipment, Inventory and Builds layouts are integrated after CI and review, with their regression and documentation baseline. Preserve the Product Owner's 2026-11-08 visual decisions during maintenance. Story/recipes/map exclusions remain unchanged. Production deployment remains separate work.
-
-## Operational follow-up: owner administration and automatic inventory refresh
-
-Confirmed scope: [DOMAIN_SPEC.md section 57](DOMAIN_SPEC.md), [UX sections 2.3–2.4](FRONTEND_UX_GUIDELINES.md) and [owner authorization target](TARGET_ARCHITECTURE.md). Only the Product Owner's verified account gets global item/recipe/full-TP controls and detailed diagnostics. Other users get their account connection/freshness/refresh controls and generic shared health. Backend authorization is required before public deployment; a hidden button is not the acceptance criterion.
-
-The paired Bank/Materials/Characters implementation uses automatic page-scoped stale refresh, retained saved data and a compact updating hint. Keep manual full-account refresh in System Status. Reconcile and verify shared admission, missing-grant/error recovery, retained inspected equipment and account switching before acceptance. Do not refresh unrelated sources when navigating a feature page.
-
-Prepare separate backend authorization, status UI and inventory freshness stories. Verify owner versus non-owner direct requests, task visibility, key replacement, empty owner configuration, account switching, duplicate refresh admission and stale/error recovery. Batch and bound full-catalog admin work. Implementation follows supervisor release of a concrete contract.
-
-Current sequence: the owner backend and full-catalog operations are integrated, and the System Status owner and regular-user layouts are visually accepted. The resource/capacity experiment tooling that was prepared in #193 has been retired (see Milestone 1). Deployment owner configuration and the production-style stack smoke remain separately authorized work.
-
-System Status visual decisions: owner-only composition accepted on 2026-11-11; regular-user account overview (own-account counts, compact service line) accepted on 2026-11-12. Preserve the accepted layouts; execution and final quality evidence belong to #182 / #183.
-
-## Deferred crafting extension and live verification
-
-The Product Owner approved future Mystic Forge recipe support behind `Allow Mystic Forge recipes`, below `Allow daily craft`; it is currently a disabled UI placeholder. Forge steps will use that setting rather than a crafting discipline/rating. [The product request](../agent/product-owner-requests/mystic-forge-crafting.md) owns the remaining data/random-output questions. Do not activate calculation work merely because the placeholder exists.
-
-The pre-launch propagation/economics investigation [#154](https://github.com/Nebettadjsr/GW2/issues/154), capacity planning #191, broad investigation #116 and experiment-observer fix #189 were withdrawn as not planned on 2026-11-14. Their investigations are not passed gates or prerequisites for launch. Retain concrete functional defects and optional optimization follow-ups for later prioritization.
-
-## Existing architecture and historical migration
-
-### Correctness prerequisite: owned non-tradable valuation
-
-Product Owner clarification: owned non-tradable/bound inputs, especially daily materials, must use recursive crafting-input value before vendor fallback rather than automatic zero. The owning rule is `DOMAIN_SPEC.md` sections 11.1–11.2. Issue [#132](https://github.com/Nebettadjsr/GW2/issues/132) is complete through accepted PR [#133](https://github.com/Nebettadjsr/GW2/pull/133), merged as `23ce30d`, including cumulative mixed-pool rounding, cycle safety and valued-bound list/detail tests. This implementation prerequisite for material protection is satisfied.
-
-[Domain specification](DOMAIN_SPEC.md), [current architecture](CURRENT_ARCHITECTURE.md), [target architecture](TARGET_ARCHITECTURE.md), [test strategy](TEST_STRATEGY.md) and recorded user decisions remain authoritative. This roadmap does not change their business or architecture rules.
-
-The previous Phase 0–9 migration roadmap is retained in Git history at baseline `d713eb46c03e3c5cfa3cdfc90ad5d5216b559752:docs/ROADMAP.md`. Historical phase references in ADRs describe that plan. Previous completion statements are historical evidence, not a fresh health certification.
+Use actual production activity and Oracle monitoring to observe the live service. No supported-user capacity is promised. Historical plans and measurements are in [the archive](archive/README.md).

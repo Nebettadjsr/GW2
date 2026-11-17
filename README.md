@@ -10,7 +10,7 @@
 
 **Turn the materials and recipes you already have into useful crafting opportunities.** Nebet's GW2 Crafting Tool combines your Guild Wars 2 account data, recipe knowledge, inventory and Trading Post prices to help you discover recipes, evaluate crafting profit and plan which materials to use, craft or buy.
 
-> **Development note:** This project is also an experiment in AI-assisted, agentic software development. An orchestrated agent workflow helps plan, implement, review and verify changes. The development process is documented separately in the [Agentic Development Experiment](agent/README.md); the rest of this README is about the application.
+> **Development note:** Development uses GitHub issues, branches, pull requests, CI and Codex review, with Codex supervising/planning and Claude implementing. The actual process and automation are documented in [Development workflow](agent/README.md); the rest of this README is about the application.
 
 ![Crafting Profit web interface](docs/images/craftingProfit-01-10-2026.jpg)
 
@@ -62,11 +62,16 @@ Salvage results are modeled using expected yields, rather than guaranteed drops.
 
 The application synchronizes account data from the official Guild Wars 2 API, including character crafting disciplines and levels, known recipes, character inventories, bank contents and material storage. Dedicated Bank and Materials views make those resources accessible in the browser.
 
+- Click an item tile to reserve its stock; selections save automatically per account and store.
+- Reserve individual Bank stacks or enter a quantity to keep, leaving excess available for Profit.
+- Open a material's context menu to find crafting recipes that use it.
+- Inspect characters' bags, equipment, saved build tabs and supported attribute projections.
+
 ### System Status
 
-A dedicated System Status page shows the state of account synchronization, global game data and the shared Trading Post price cache. It also provides manual account and global-data refresh actions. The page is intended to grow into an administration interface as the project expands.
+A dedicated System Status page provides account connection, saved-data/source status, full account refresh and a generic shared-health summary. The configured owner additionally receives detailed catalog diagnostics, global refresh controls and sparse activity history with day/week CSV downloads.
 
-Crafting Profit's **Refresh data & results** action refreshes the relevant account data, updates missing or older Trading Post quotes as needed, and recalculates the results. Global game data is also checked automatically in the background.
+Crafting Profit's **Refresh data & results** asks the backend to calculate from cached inputs and admit any needed account/Trading Post refresh. Stale usable results stay visible while refresh runs; the browser recalculates afterwards. Global game data is also checked automatically in the background.
 
 ## How the calculations work
 
@@ -85,9 +90,9 @@ For more detail, see the [Crafting Guide](docs/crafting/README.md), [Crafting Gl
 
 ## Project status and roadmap
 
-**The Vue/TypeScript web frontend has replaced JavaFX as the application's interface.** Crafting Profit, Crafting Discovery, Ectoplasm Salvage, account views and System Status are available in the browser. The project remains under active development and is not yet a packaged public multi-user service.
+The application is publicly available at **[gw2-crafting.de](https://gw2-crafting.de/welcome)**. The browser is its only interface. Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, Characters, beginner guides and System Status are implemented. The Java backend isolates cached game data by each verified GW2 account GUID.
 
-Planned work includes multi-user and GW2-account isolation, containerized deployment of the application and PostgreSQL, deployment configuration and further improvements to the existing views. System Status is planned to evolve into an admin page.
+Frontend, backend and PostgreSQL run as separate containers on the Oracle host behind HTTPS. Development continues on meaningful test coverage, concrete defects and performance improvements. No supported-user capacity is claimed; the current backend runs as one process. See [Current State](docs/CURRENT_STATE_SPEC.md) for the deployed revision and verified limits.
 
 See the [Roadmap](docs/ROADMAP.md) for detailed priorities and progress.
 
@@ -116,7 +121,7 @@ Open **http://127.0.0.1:8088**. See [Docker setup](docker/README.md) for configu
 
 For development without containers, run the servers below.
 
-**Requirements:** Java 25, PostgreSQL, Node.js/npm and a Guild Wars 2 API key with the permissions required for account synchronization. The PostgreSQL schema and runtime configuration must be set up for your environment; consult the repository configuration and development documentation.
+**Requirements:** Java 25, PostgreSQL and Node.js/npm (Node 22 is used by CI). Set the database values in a local ignored `.env` using [`.env.example`](.env.example); Flyway initializes or updates the cache schema at startup. A read-only GW2 API key is needed when connecting an account, not to start the application or open its public pages.
 
 **1. Start the backend** from `backend/` (the Maven module root; it still reads the repository-root `.env` when `backend/` has none):
 
@@ -169,11 +174,12 @@ The repository also includes integration tests and browser smoke checks. See the
 
 - [Crafting Guide](docs/crafting/README.md) — player-focused explanation of crafting calculations and views.
 - [Crafting Glossary](docs/crafting/GLOSSARY.md) — terminology and UI labels.
-- [Crafting Status Reference](docs/CRAFTING_STATUS_REFERENCE.md) — developer reference for crafting states and blocking reasons.
+- [Crafting Status Reference](docs/CRAFTING_STATUS_LABEL_REFERENCE.md) — developer reference for crafting states and blocking reasons.
 - [Roadmap](docs/ROADMAP.md) — planned application work.
 - [Domain Specification](docs/DOMAIN_SPEC.md) — authoritative crafting and economy rules.
 - [Current State](docs/CURRENT_STATE_SPEC.md) — implemented behavior and limitations.
-- [Architecture](docs/CURRENT_ARCHITECTURE.md) — current application structure.
+- [Architecture](docs/ARCHITECTURE.md) — current structure, binding boundaries and deferred choices.
+- [Development workflow](agent/README.md) — roles, GitHub automation, review and release process.
 - [Known Problems](docs/KNOWN_PROBLEMS.md) — open defects and limitations.
 
 ## Contributing and community
@@ -182,7 +188,7 @@ Bug reports, feature requests and contributions are welcome. Use [GitHub Issues]
 
 ## Guild Wars 2 API keys
 
-Enter your key in the browser connection panel. The backend validates the account identity, separates its cached data by the stable account GUID, and receives the key transiently for ArenaNet calls. Browser session storage is intentionally sufficient for these low-risk read-only game-data tokens; see [UD-018](agent/user-decisions/UD-018-proportionate-gw2-key-handling.md). No key vault or separate app login is needed. Cached game data is disposable and can be fetched again (UD-016). Do not commit keys or deliberately include them in logs or public bug reports.
+Enter your key in the browser connection panel. The backend validates the account identity, separates its cached data by the stable account GUID, and receives the key transiently for ArenaNet calls. Browser session storage is intentionally sufficient for these low-risk read-only game-data tokens; see [Account access and key handling](docs/ARCHITECTURE.md). No key vault or separate app login is needed. Cached game data is disposable and can be fetched again. Disconnect removes the key/connection; **Delete cached data** removes that account's cached data and saved browser reservations. Do not commit keys or deliberately include them in logs or public bug reports.
 
 ## Disclaimer
 

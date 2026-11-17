@@ -1,0 +1,132 @@
+{
+  "commit": "d713eb46c03e3c5cfa3cdfc90ad5d5216b559752",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "boundary": "Unchanged production frontend, intercepted HTTP fixtures. Real catalog names/topology; invented positive economics to keep all rows visible. Not backend or Oracle latency.",
+  "catalogSha256": "18250726a75ac6c68c622f979c0203c498327b4e21b5292345ec82c915a12033",
+  "browser": "156.0.8078.47",
+  "cases": [
+    {
+      "count": 13213,
+      "payloadBytes": 12419136,
+      "gzipLevel6Bytes": 547934,
+      "brotliQuality5Bytes": 352867,
+      "pureJsonParseMs": [
+        22.59999990463257,
+        22.600000143051147,
+        22.200000047683716
+      ],
+      "compressionSamples": {
+        "gzipLevel1": [
+          {
+            "milliseconds": 23.16470000000004,
+            "bytes": 734236
+          },
+          {
+            "milliseconds": 22.587999999999965,
+            "bytes": 734236
+          },
+          {
+            "milliseconds": 23.15599999999995,
+            "bytes": 734236
+          }
+        ],
+        "gzipLevel6": [
+          {
+            "milliseconds": 62.65089999999998,
+            "bytes": 547934
+          },
+          {
+            "milliseconds": 58.88549999999998,
+            "bytes": 547934
+          },
+          {
+            "milliseconds": 58.74840000000006,
+            "bytes": 547934
+          }
+        ],
+        "brotliQuality5": [
+          {
+            "milliseconds": 66.85390000000007,
+            "bytes": 352867
+          },
+          {
+            "milliseconds": 71.64789999999994,
+            "bytes": 352867
+          },
+          {
+            "milliseconds": 64.33350000000019,
+            "bytes": 352867
+          }
+        ]
+      },
+      "initial": {
+        "json": [
+          {
+            "start": 512.9000000953674,
+            "end": 608
+          }
+        ],
+        "end": 739.5999999046326,
+        "dom": 5408,
+        "heap": 27307285,
+        "longTasks": [
+          {
+            "start": 512.9000000953674,
+            "duration": 94
+          }
+        ]
+      },
+      "showAll": {
+        "elapsedMs": 2830.9000000953674,
+        "dom": 277631,
+        "heap": 117125333
+      },
+      "sortMs": 2459.2999999523163,
+      "filter": {
+        "elapsedMs": 568.0999999046326,
+        "dom": 127,
+        "heap": 186901078
+      },
+      "restore": {
+        "elapsedMs": 3250.699999809265,
+        "dom": 277631,
+        "heap": 210856878
+      },
+      "longTasks": [
+        {
+          "start": 512.9000000953674,
+          "duration": 94
+        },
+        {
+          "start": 777.4000000953674,
+          "duration": 2681
+        },
+        {
+          "start": 3831.2000000476837,
+          "duration": 70
+        },
+        {
+          "start": 3901.5999999046326,
+          "duration": 2120
+        },
+        {
+          "start": 6331.700000047684,
+          "duration": 242
+        },
+        {
+          "start": 6628,
+          "duration": 2654
+        },
+        {
+          "start": 9748.799999952316,
+          "duration": 67
+        }
+      ],
+      "calculations": 1,
+      "pageErrors": []
+    }
+  ]
+}

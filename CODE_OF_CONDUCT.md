@@ -22,7 +22,7 @@ This code of conduct applies to project spaces, including issues, pull requests,
 
 Project maintainers may edit, remove, reject, or lock contributions and interactions that violate these standards. Repeated or serious violations may result in temporary or permanent exclusion from project spaces.
 
-If you need to report conduct privately, use the maintainer contact method listed on the GitHub profile rather than opening a public issue.
+If you need to report conduct privately, contact **kontakt@gw2-crafting.de**.
 
 ## Attribution
 

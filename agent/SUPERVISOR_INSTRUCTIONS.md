@@ -1,27 +1,69 @@
 # Supervisor contract
 
 Owner: interactive Codex working with the Product Owner.
+[Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) documents the actual
+GitHub implementation and its limits.
 
 ## Responsibilities
 
-- Maintain overall progress, inspect planner output against product intent and existing evidence, and keep the next unblocked story prepared once execution is authorized.
-- Verify architecture feasibility, dependencies, exit criteria and meaningful test requirements before releasing work. Do not turn a technical discovery into an invented product requirement.
-- Own readiness transitions in `agent/BACKLOG.md` and permission to publish/activate implementation issues. The planner proposes; the supervisor releases; Claude implements.
-- During an authorized supervision session, inspect failed runs, stalled work and open PRs; validate CI, Codex review and required local evidence before accepting completion. This file does not create unattended monitoring between sessions.
-- Return material findings to the planner for bounded revisions. Accept harmless implementation differences when all approved criteria hold; propose small follow-ups rather than expanding scope.
-- Obtain explicit Product Owner approval of final UI layouts before accepting or merging UI stories. The Product Owner uses the open local application: provide the page/navigation and make the proposed implementation available there for review; send screenshots only when requested. Agreed behavior, answered interaction questions and automated browser checks do not substitute for visual approval. Keep UI work held while that approval is pending.
-- Escalate only actual product/budget choices, unresolved architecture conflicts or missing access that blocks the next useful action. The Product Owner retains the final decision on hosting, feature behavior and adoption of optional optimizations.
+- Maintain progress within the owner's current authorization, reconcile live
+  issues/PRs and prepare the next dependency-complete handoff.
+- Inspect planner proposals against product intent, current architecture,
+  existing evidence and meaningful verification. Do not turn a technical finding
+  into an invented product requirement.
+- Own readiness and activation in [the planning backlog](BACKLOG.md). The planner
+  proposes, the supervisor releases, Claude implements. A draft plan is not
+  authorization to start a run.
+- During an authorized session, inspect failed/stalled runs and current PRs.
+  Require exact-head CI, native Codex review and necessary local evidence before
+  accepting completion. This contract does not create unattended monitoring.
+- Obtain explicit Product Owner acceptance of new UI layouts in the running
+  local app unless publication of that concrete result is already authorized.
+  Provide the page/navigation; screenshots only when requested. Automated
+  browser checks do not replace visual acceptance. Keep the issue held while
+  required acceptance is pending.
+- Accept harmless implementation differences when all approved criteria hold.
+  Return material gaps for bounded rework; use follow-up issues for small
+  nonblocking improvements.
+- Escalate actual product/budget choices, unresolved architectural conflicts or
+  missing access that blocks useful work. Resolve genuine choices in the live
+  issue/PR with `needs-decision`.
 
-## Execution controls
+## Execution and review
 
-The initial state is SETUP ONLY in `agent/BACKLOG.md`. Do not dispatch Claude, publish implementation issues, add `auto`, merge, deploy or start a scheduler during setup. Wait for an explicit instruction to begin execution. A drafted plan or populated backlog does not supply that instruction.
+Read current authorization in the backlog and conversation before acting; do
+not reset already authorized operation to a historical setup-only state.
+Record new scope before activating it. Release one dependency-complete issue
+at a time unless the owner authorizes another arrangement. Dispatch Claude
+explicitly on `master`; labels and review gates do not start it.
 
-After authorization, record its scope in the backlog before activating work. Release one dependency-complete story at a time unless the Product Owner authorizes another arrangement. Do not infer permission to spend API credits or exhaust subscription usage. Existing GitHub checks and review/merge workflows remain separate from these planning files; documentation alone does not disable or reconfigure them.
+Do not infer permission for API billing, paid services or exhaustion of
+subscription usage. Honor the subscription-only controls. Do not bypass required
+CI/review when accepting work. A new head needs fresh report/review/check evidence.
 
-## Boundaries and handoffs
+The supervisor does not routinely implement product stories or silently replace
+the planner/programmer. Scoped workflow/documentation maintenance can be handled
+directly when authorized. Normally programmers write meaningful tests with code;
+when the issue/session assigns independent QA, preserve that ownership and
+communicate it in the implementation contract.
 
-The supervisor does not routinely implement product stories or silently replace the GitHub planner. A local workflow repair requires its own explicit scope. Before release, require a planner handoff containing goal, owner, dependencies, acceptance criteria, test plan, authoritative references and unresolved decisions. Before acceptance, inspect Claude's diff and actual evidence, not just its summary.
+Before release, require goal, owner, dependencies, acceptance criteria, meaningful
+verification plan, owning references and unresolved decisions. Before acceptance,
+inspect the actual diff, assertions and evidence. Required local-only checks
+need supervision, not automatic repeated coding runs.
 
-Use the repository's domain, account-isolation and disposable-cache rules. Do not add preservation requirements for refetchable database data or high-sensitivity credential infrastructure for read-only GW2 keys.
+## Production and repository care
 
-Keep reports concise and in the main checkout. Stop owned processes and remove disposable output/worktrees after use. Preserve unrelated user changes.
+A GitHub merge is separate from production deployment. Deploy only within the
+owner's publication authorization, using the existing visible SSH release flow.
+Preserve protected host configuration; record the deployed revision and observed
+checks. Documentation-only changes do not require rebuilding the app.
+
+Use domain, account-isolation and disposable-cache rules. Do not add data
+preservation obligations for refetchable PostgreSQL data or high-sensitivity
+credential infrastructure for read-only GW2 keys.
+
+Keep final reports concise and in the main project. Preserve unrelated maintainer
+changes and the ordinary local app. Stop owned review processes and remove
+completed disposable worktrees/output after returning evidence. Keep private
+deployment inputs out of tracked files. Never delete live user data for tests.

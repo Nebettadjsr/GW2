@@ -1,44 +1,93 @@
 # Repository instructions
 
-GW2 uses GitHub issues, branches, pull requests, CI, and Codex review for development. The previous Python story harness is preserved by the `pre-github-flow` tag. Select current work from GitHub issues.
+GW2 develops through GitHub issues, branches, PRs, CI and native Codex review.
+Select current work from GitHub. [Development workflow](docs/DEVELOPMENT_WORKFLOW.md)
+is the detailed process reference; [agent/](agent/README.md) routes current roles.
+Historical artifacts are under [docs/archive/](docs/archive/README.md); the
+retired executable Python harness is recoverable from tag `pre-github-flow`.
 
 ## Role routing
 
-- Supervisor (interactive Codex): follow `agent/SUPERVISOR_INSTRUCTIONS.md`.
-- Planner (Codex on GitHub, explicitly assigned a planning task): follow `agent/PLANNER_INSTRUCTIONS.md`. Planning does not include implementation or starting Claude.
-- Programmer (Claude): follow `CLAUDE.md` and the approved issue contract.
-- Codex PR review remains review mode under the Code Review Rules below; a review event is not a planning invocation.
+- Interactive Codex supervisor: [supervisor contract](agent/SUPERVISOR_INSTRUCTIONS.md).
+- Explicitly assigned Codex planner: [planner contract](agent/PLANNER_INSTRUCTIONS.md).
+  Planning does not include implementation or starting Claude.
+- Claude programmer: [CLAUDE.md](CLAUDE.md) and the approved issue contract.
+- Native Codex PR review follows the Code Review Rules below. Review is not
+  a planning invocation.
 
-`docs/ROADMAP.md` owns milestone intent; `agent/BACKLOG.md` owns draft planning order and handoffs. GitHub issues/PRs own execution evidence. Historical `agent/stories/` is not the active backlog. The setup status and activation rules are in `agent/BACKLOG.md`.
+`docs/ROADMAP.md` owns product direction; `agent/BACKLOG.md` owns draft order,
+authorization and handoffs. GitHub issues/PRs own execution evidence.
 
 ## Work contract
 
-- Read the linked issue, its dependencies, and only the relevant authoritative docs and code. One issue gets one branch and PR. Do not implement an issue before its dependencies are merged.
-- Implement code and meaningful tests together. The old separation between QA and coding agents no longer applies. Run narrow local checks, report exact results, and let CI run the full default suites.
-- An issue's acceptance criteria and owning product documents govern behavior. Ask for a Product Owner decision in the issue or PR with `needs-decision` when requirements are genuinely open. Do not invent a product rule.
-- A reviewer may accept an implementation that differs slightly from the proposed approach if every acceptance criterion is met and the result is sound. Create a follow-up issue for a small, nonblocking correction. A missing criterion or material defect blocks merging.
-- Do not edit historical story status, backlog state, or runtime artifacts to represent GitHub progress. GitHub issues, PRs, and CI are the live state.
+- Read the assigned issue, dependencies and relevant owning docs/source. One
+  issue gets one branch and PR. Do not implement before dependencies merge.
+- Normally implement code and meaningful tests together. A scoped approved issue
+  or session may assign independent QA to tests/fixtures; honor that override.
+  Run narrow checks and report exact results; CI runs complete default suites.
+- Issue acceptance criteria and owning product docs govern behavior. Ask genuine
+  Product Owner questions in the issue/PR using `needs-decision`; never invent
+  product rules.
+- Accept sound minor implementation differences when all criteria hold. Record
+  a small nonblocking correction as follow-up work. Missing criteria/material
+  defects block acceptance.
+- Keep live state in GitHub. Do not edit historical status fields or recreate
+  an executable file-based story/decision queue.
 
 ## Authoritative documents
 
-`docs/DOMAIN_SPEC.md` owns domain behavior; `docs/crafting/GLOSSARY.md` owns player-facing terms. `docs/CURRENT_STATE_SPEC.md` and `docs/CURRENT_ARCHITECTURE.md` describe what exists. `docs/TARGET_ARCHITECTURE.md` records selected target architecture and unresolved choices. `docs/ROADMAP.md` owns phases and exit criteria. `docs/TEST_STRATEGY.md`, `docs/QUALITY_METRICS.md`, `docs/FRONTEND_UX_GUIDELINES.md`, and `docs/CODING_GUIDELINES.md` own their respective methods and conventions. Historical decisions are under `agent/user-decisions/` and `docs/architecture/decisions/`.
+- `docs/DOMAIN_SPEC.md`: domain behavior.
+- `docs/crafting/GLOSSARY.md`: player-facing crafting terms.
+- `docs/CURRENT_STATE_SPEC.md`: observed runtime/build/deployment facts.
+- `docs/ARCHITECTURE.md`: current structure, selected boundaries and open choices.
+- `docs/ROADMAP.md`: product direction and exit criteria.
+- `docs/TEST_STRATEGY.md`, `docs/QUALITY_METRICS.md`,
+  `docs/FRONTEND_UX_GUIDELINES.md`, `docs/CODING_GUIDELINES.md`: respective
+  verification, coverage, UX and implementation conventions.
+- `docs/DEVELOPMENT_WORKFLOW.md`: implemented development process.
+- `docs/archive/agent/user-decisions/` and
+  `docs/archive/architecture/decisions/`: historical decision rationale.
 
-Distinguish observed fact, inference, and recommendation. Current implementation is evidence of current behavior, not intended behavior. Do not duplicate authoritative information across documents.
+Distinguish observed facts, inferences and recommendations. Existing code proves
+current behavior, not intended behavior. Avoid duplicating authoritative rules.
 
 ## Architecture constraints
 
-The backend owns authoritative business logic and GW2 API access. The frontend does not call the GW2 API directly. Server deployment secrets remain backend-only; browser-held read-only GW2 keys follow UD-018 and `docs/TARGET_ARCHITECTURE.md` section 8.2. Treat those keys proportionately: ordinary retention and account separation, without adding high-sensitivity credential infrastructure. Domain logic must not depend on JavaFX, HTTP, JSON transport models, PostgreSQL/JDBC/SQL, Docker, or GW2 API response models. External systems belong behind clear boundaries. PostgreSQL is a disposable cache of GW2 API data (UD-016); lost or inconsistent data is re-fetched. Ectoplasm Salvage is the explicit browser calculation exception documented in `docs/TARGET_ARCHITECTURE.md` section 4.2. Do not silently settle a target technology marked TBD. Prefer incremental changes and the simplest design that preserves correctness and testability.
+The backend owns authoritative business logic and GW2 API access; the frontend
+does not call that API directly. Deployment secrets remain backend-only.
+Read-only browser-held GW2 keys follow the current Architecture account/session
+rules (historical UD-018): ordinary retention, account separation and basic
+hygiene, without high-sensitivity credential infrastructure.
+
+Domain logic must not depend on JavaFX, HTTP, JSON transport models,
+PostgreSQL/JDBC/SQL, Docker or GW2 API response models. External systems belong
+behind adapters. PostgreSQL is a disposable cache: lost/inconsistent data is
+re-fetched (historical UD-016). Ectoplasm Salvage is the explicit documented
+browser-calculation exception. Do not silently settle an unresolved technology
+choice. Prefer incremental changes and clear, simple responsibility boundaries.
 
 ## Verification and repository care
 
-CI runs the Maven and Vitest suites. Real-database `*IT`, browser smoke, and live GW2 API checks require explicit local evidence when an issue depends on them. Explain removed or weakened assertions in the PR. Never invent test results. Preserve unrelated maintainer edits, keep diffs focused, and stop any process you start.
+CI runs Maven/Vitest, type/build and workflow checks. Default CI includes isolated
+database-backed `*Test` cases; `*IT`, browser smoke and live API checks need
+explicit applicable evidence when the issue depends on them. Explain removed or
+weakened assertions. Never invent test results.
 
-Keep deliverables in the main project. Put disposable logs/builds in ignored output directories or OS temporary storage; remove temporary worktrees and stop their processes after returning results. Preserve measurements needed to support a report, without duplicating reports or retaining unrelated scratch output.
+Preserve unrelated maintainer edits, keep diffs focused and stop owned processes.
+Return deliverables to the main project. Use ignored output/OS temporary storage
+for disposable logs/builds; clean up completed temporary worktrees. Preserve
+evidence needed by a report without retaining unrelated scratch output.
 
 ## Code Review Rules
 
-- Compare a PR with its linked issue and the owning product documents. Flag a missing acceptance criterion when it changes observable behavior; cite the criterion and the conflicting code or test.
-- Flag removed, skipped, or weakened assertions when they leave required behavior unverified and the PR gives no sound reason or replacement evidence.
-- Flag new frontend calculations of authoritative domain results, direct frontend calls to the Guild Wars 2 API, or exposed backend secrets. The backend owns those responsibilities, except for the documented Ectoplasm Salvage calculation.
+- Compare the PR with its linked issue and owning product docs. Flag missing
+  criteria that affect observable behavior; cite the criterion and conflicting
+  code/test.
+- Flag removed, skipped or weakened assertions when required behavior is left
+  unverified without a sound reason or replacement evidence.
+- Flag new frontend calculation of authoritative domain results, direct frontend
+  GW2 API calls or exposed backend secrets, except the documented Ectoplasm
+  Salvage calculation.
 
-Repository files are UTF-8. On Windows, use `apply_patch` for edits containing non-ASCII text; PowerShell 5.1 may corrupt characters piped into another program.
+Repository files are UTF-8. On Windows use `apply_patch` for non-ASCII edits;
+PowerShell 5.1 may corrupt characters piped into another program.

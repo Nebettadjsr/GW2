@@ -87,10 +87,10 @@ and keeps its existing `ACCOUNT_DATA_STALE` response policy.
 
 ## References
 
-- Issue/story: `agent/stories/STORY-APP-014-cached-profit-refresh-coordination.md` (acceptance
+- Issue/story: `docs/archive/agent/stories/STORY-APP-014-cached-profit-refresh-coordination.md` (acceptance
   criteria 5 and 8). Originally reported as
-  `agent/stories/STORY-PERF-003-refresh-phase-five-page-budget-evidence.md` Follow-up Finding F002
-  and queued as `agent/stories/STORY-WEB-033-recover-overlapping-account-refresh-scopes.md`, which
+  `docs/archive/agent/stories/STORY-PERF-003-refresh-phase-five-page-budget-evidence.md` Follow-up Finding F002
+  and queued as `docs/archive/agent/stories/STORY-WEB-033-recover-overlapping-account-refresh-scopes.md`, which
   was superseded without implementation because its refresh-before-result requirement conflicts
   with resolved UD-015.
 - Code change/commit: `src/main/java/application/AccountRefreshCoordinator.java` (new),

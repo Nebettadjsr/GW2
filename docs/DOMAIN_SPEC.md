@@ -4,7 +4,7 @@
 
 ### Product risk policy
 
-Read-only GW2 API keys provide account identification and ArenaNet game-data access. Apply the proportionate handling policy in [UD-018](../agent/user-decisions/UD-018-proportionate-gw2-key-handling.md); high-sensitivity credential infrastructure is not a product requirement. Account separation and correct calculations remain required. Cached GW2 data is disposable and re-fetchable under UD-016. TARGET_ARCHITECTURE sections 8–8.2 own storage and transport choices.
+Read-only GW2 API keys provide account identification and ArenaNet game-data access. Apply the proportionate handling policy in [UD-018](archive/agent/user-decisions/UD-018-proportionate-gw2-key-handling.md); high-sensitivity credential infrastructure is not a product requirement. Account separation and correct calculations remain required. Cached GW2 data is disposable and re-fetchable under UD-016. [Architecture](ARCHITECTURE.md#5-account-access-credentials-and-deletion) owns storage and transport choices.
 
 This document defines the business/domain rules of the GW2 Tool independently from its technical implementation.
 
@@ -27,7 +27,9 @@ Implementation details such as JavaFX, PostgreSQL, Java classes, REST APIs, cont
 
 # 2. Domain Objectives
 
-The application supports three major domain use cases.
+The application supports three calculation use cases, complemented by account inspection,
+material reservations, account controls and a public guide. Sections 55–59 describe those
+additional product workflows.
 
 ## 2.1 Crafting Profit Analysis
 
@@ -51,8 +53,8 @@ The analysis may consider:
 
 For the human-facing names used for Trading Post quote sides and crafting values, see the canonical [Crafting Glossary](crafting/GLOSSARY.md). This specification remains authoritative for their domain meaning; the glossary explains how those concepts appear in the interface.
 
-The web view must preserve useful information hierarchy and interactions without
-visually copying JavaFX. The comparison table must include recipe/item, craftable
+The web view must preserve useful information hierarchy and interactions. The
+comparison table must include recipe/item, craftable
 count, own materials value, profit per craft, total sell value and total profit.
 Label each monetary value's per-craft or total basis; keep secondary diagnostics
 in selected-result details. Total sell value is the applicable Trading Post sell
@@ -81,7 +83,7 @@ those executions against the real inventory, settings, eligibility, prices and
 recursive recipes; the frontend renders the resulting quantities without
 reconstructing them. Crafting Discovery may continue to explain one output
 batch because it has no selected Profit result quantity. See
-`TARGET_ARCHITECTURE.md` section 10.2 for the transport and resolution contract.
+`ARCHITECTURE.md` for the transport and resolution contract.
 For a Profit row with zero counted crafts, the tree may show its first blocked
 attempt and must identify that basis rather than implying a counted output.
 
@@ -210,8 +212,8 @@ a requirement, the parent craft is unavailable. Absence from the synchronized
 to reject an ingredient. A missing usable purchase quote still follows the normal
 `PRICE_UNAVAILABLE` behavior. This is the former non-Trading-Post control's enabled
 behavior, made permanent by the Product Owner's 2026-09-29 decision; the control and
-its restrictive blocked reason have been removed. Crafting Discovery and JavaFX
-continue to use the same normal resolver behavior.
+its restrictive blocked reason have been removed. Crafting Discovery continues to
+use the same normal resolver behavior.
 
 Profit, costs and important totals must be easy to scan with consistent application
 colors and emphasis; signs, wording or other non-color cues must carry meaning too.
@@ -248,7 +250,7 @@ In Crafting Profit, `All characters` means a coordinated account-wide plan acros
 ## 2.2.2 Crafting Discovery web presentation
 
 Provide a dedicated Crafting Discovery Helper page in the main navigation.
-JavaFX is a functional reference, not a visual specification. Follow the shared
+Follow the shared
 frontend UX guidelines with grouped controls, a scan-friendly comparison list
 and a dedicated selected-result detail area.
 
@@ -279,8 +281,8 @@ max-buy behavior. Use the selected character as the sole inventory context.
 Selection uses recipe identity, not table position. Where supported by supplied
 data, details show recipe information, material requirements, owned/missing
 quantities, buy requirements/costs, the resolution tree, shopping/material lists
-and the same actionable item statuses as Crafting Profit. Follow TARGET_ARCHITECTURE
-section 13's fresh-detail consistency contract; do not derive missing economics.
+and the same actionable item statuses as Crafting Profit. Follow the fresh-detail
+consistency contract in ARCHITECTURE.md; do not derive missing economics.
 
 Use the application-wide icon strategy when available, established signed money
 formatting/treatments, keyboard-operable selection and clear loading, empty,
@@ -480,11 +482,42 @@ It does not necessarily represent what the Guild Wars 2 crafting UI can physical
 
 ## 9.1 Protected materials in Crafting Profit
 
-The user can protect selected item types independently in Bank and Materials. With protection enabled, only the owned quantity in the selected store is unavailable to Crafting Profit. The same item can be protected in Bank while its material-storage quantity remains usable, or vice versa; selecting both protects both stores. Character inventory is unaffected by those store selections. Within a store, a selection reserves ALL stacks of the item type, or (STORY-MAT-004, draft pending Product Owner visual review) a finite target quantity per store and item: a request carrying `protectedBankQuantities`/`protectedMaterialQuantities` keeps that many units unavailable (300 owned, keep 250 leaves 50; stock 200 with target 250 leaves 0; stock 400 leaves 150). The target is fixed, not the current stock count, is subtracted once per item and store across duplicate stacks before aggregation, and is not subject to the 2,500-unit plan-demand cap. Where ALL and a finite target overlap, ALL wins. **Bank stack allocation (Product Owner decision, 2026-11-16; the former mixed-binding hold is resolved):** the finite target is a fixed total per item. A Bank request may carry `protectedBankAllocations`, a complete guarded group per item of `{slot,itemId,reservedUnits,observedCount,binding,boundTo}` covering every current positive-count row, including zero allocations. If the current rows of that item still match the complete group, the clicked allocation is used; if item, count, binding, owner or row membership changed, and for numeric or stale fallback, the target is allocated over the current matching-item stacks in ascending Bank slot order. The kept amount stays fixed after rearranging, splitting, absence or low stock. Trusted current database rows are reserved before binding/owner classification, so a reserved stack never reaches the binding aggregation. Materials item-wide actions and legacy/bulk ALL selections remain dominant. Not yet deployed. This store-specific scope was confirmed by the Product Owner on 2026-11-08.
+The user can protect items independently in Bank and Materials. With protection enabled, only
+the owned quantity in the selected store is unavailable to Crafting Profit. The same item can
+be protected in Bank while its material-storage quantity remains usable, or vice versa;
+selecting both protects both stores. Character inventory is unaffected by these selections.
+
+A reservation either excludes ALL units of the item in that store or keeps a fixed finite
+quantity. For example, 300 owned with a target of 250 leaves 50 usable; stock of 200 leaves
+none usable; later stock of 400 leaves 150 usable. The saved target does not shrink to current
+stock and survives low stock or absence. It is subtracted once per item and store across
+duplicate stacks before aggregation. It is independent of section 42's 2,500-unit plan-demand
+cap. A target accepts whole quantities from 0 through 2,147,483,647; zero clears it. An invalid
+entry or manual stack total outside this range leaves the previous valid reservation unchanged.
+Where an ALL selection and a finite target overlap, ALL wins.
+
+**Bank stacks (Product Owner decision, 2026-11-16; approved and shipped).** Clicking one Bank
+stack changes only that stack's allocation: a fully reserved stack becomes unreserved; an
+unreserved or partially reserved stack becomes fully reserved. Other current stack allocations
+stay unchanged, and their new sum becomes the fixed item target. Numeric entry allocates the
+target across current same-item stacks in ascending Bank slot order: four stacks of 250 with
+target 300 reserve `[250, 50, 0, 0]`. If the player rearranges or splits stacks, preserve the
+item's reserved amount and redistribute it across its current stacks, rather than attaching
+the reservation permanently to an old slot.
+
+To preserve the clicked distribution while the observed layout still matches, requests may
+carry `protectedBankAllocations`: a complete guarded group per item of
+`{slot,itemId,reservedUnits,observedCount,binding,boundTo}`, including zero allocations for all
+current positive-count rows. Only a complete matching current layout uses those hints. A
+change to item, count, binding, owner or row membership falls back to the fixed target in
+ascending current slot order. Reserve trusted rows before binding/owner classification; do
+not treat client hints as inventory facts. Materials item-wide actions and legacy/bulk ALL
+selections retain their store-wide meaning. The store-specific scope was confirmed on
+2026-11-08; the subsequent stack correction does not change Materials behavior.
 
 Protection restricts owned-stock availability; it does not ban the item from the recipe graph. Only when the "Allow buying" checkbox is enabled may the calculation buy replacements, under the existing prices, budget and acquisition rules. Existing intermediate-crafting rules still apply without consuming protected owned copies, including indirectly through subrecipes. Do not remove or overwrite actual cached inventory to apply protection.
 
-Disabled protection or an empty committed selection preserves ordinary calculation behavior. List results, selected-result details, quantities, costs and shopping lists must use the same effective protection settings. Any calculated-result identity/cache must distinguish those settings. Discovery and Ecto behavior are unchanged.
+Disabled protection or an empty saved selection preserves ordinary calculation behavior. List results, selected-result details, quantities, costs and shopping lists must use the same effective protection settings, including finite quantities and Bank allocation hints. Any calculated-result identity/cache must distinguish those settings. Discovery and Ecto behavior are unchanged.
 
 Selection and activation preferences are remembered per verified GW2 account on the same browser across restarts; cross-device synchronization is not required. They must never leak between accounts. The autosave, quantity and preset rules belong in `FRONTEND_UX_GUIDELINES.md`, section 2.1.
 
@@ -1072,6 +1105,10 @@ Recursive requirements must be included.
 
 Per resolved UD-003, simulation intentionally evaluates at most 250 crafts of a recipe, even when materials would permit more. This is an intentional domain limit; no additional user-visible capped indicator is required.
 
+Section 42's separate material-demand and numeric-range bounds can stop the plan sooner.
+The 250-craft simulation cap, the 2,500-unit per-material demand bound, and the changeable
+250-row display limit are three different limits.
+
 ---
 
 # 29. Allowed Recipe Set
@@ -1273,7 +1310,9 @@ latest synchronized account snapshot
 
 rather than guaranteed real-time game state.
 
-The UI should eventually make snapshot freshness visible where relevant.
+Show snapshot freshness where it affects the result, using the established compact
+updating/error presentation rather than a routine timestamp paragraph on every inventory
+page. Sections 2.2.1 and 57 own selection preservation and automatic refresh behavior.
 
 ---
 
@@ -1341,7 +1380,8 @@ MATERIAL_LIMIT
 VALUE_RANGE
 ```
 
-All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are assigned by the planner rather than only declared (`docs/KNOWN_PROBLEMS.md` §3.5).
+All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are
+assigned by the planner rather than only declared. `NONE` is the additional nonblocking enum value.
 
 For Crafting Profit rows, `resultAvailable` and `blockedReason` are separate
 contract fields. Their meanings are:
@@ -1465,7 +1505,8 @@ Relevant parameters include:
 - ectoplasm acquisition cost,
 - expected Dust per Ectoplasm,
 - expected Luck per Ectoplasm,
-- Dust sale value.
+- Dust sale value,
+- selected salvage tool's coin cost per use and any separately shown Gem cost.
 
 Trading Post sales of recovered materials use net proceeds under sections 25 and
 46. The fee policy is shared; the expected salvage-yield model remains distinct.
@@ -1478,6 +1519,11 @@ Economic net cost per Ectoplasm is acquisition cost minus expected recovered
 Dust value after section 25's 15% deduction. Calculate expected gross recovered
 value from the unchanged expected Dust yield and selected gross Dust sale price;
 do not round each Dust unit into a modeled sale transaction before scaling yield.
+
+The displayed effective Luck cost also includes the selected salvage tool's coin usage
+cost. For a selected batch, it is consumed Ecto value plus tool coin cost minus expected
+Dust proceeds after fees. Any Gem usage is an additional separately displayed cost,
+not converted into coin or silently treated as included in that coin result.
 
 Profit is expected recovered sale value minus the 15% fee and acquisition cost.
 Section 47 retains its existing fee-inclusive economic net-cost basis for Luck.
@@ -1504,12 +1550,17 @@ and:
 ```text
 cost_per_1000_luck
     =
-net_cost_per_ecto
+(net_cost_per_ecto + selected_tool_coin_cost_per_use)
     ×
 ectos_required
 ```
 
 Expected drop-rate parameters must be treated as configurable/empirical assumptions rather than absolute game guarantees.
+
+Magic Find targets use the account's remaining Luck and round the required number of
+Ectos up to a whole Ecto. Use the same selected yields, price modes and salvage tool as
+the main result; distinguish consumed Ecto value from effective cost after recovered
+Dust and tool costs. Missing account Luck does not mean zero consumed Luck.
 
 ---
 
@@ -1550,6 +1601,12 @@ Unknown prices must never become zero-cost purchases.
 ### Recursive resolution must terminate
 
 Cycles must not cause infinite recursion.
+
+### Material demand and numeric values must stay within their bounds
+
+Enforce section 42's 2,500-unit demand bound before expanding an excessive requirement.
+Quantity and copper arithmetic must not wrap, clamp or create negative purchase costs.
+An out-of-range attempt is rejected and rolled back; earlier accepted batches stay valid.
 
 ### Recipe restrictions must be respected
 
@@ -1745,7 +1802,7 @@ Luck costs. Displayed results include Trading Post selling fees while raw price
 quotations remain distinguishable from net sale proceeds.
 
 The obsolete JavaFX `EctoView` and the former backend-owned Ecto calculation flow
-are not requirements; see `TARGET_ARCHITECTURE.md` section 4.2. This decision
+are not requirements; see `ARCHITECTURE.md`. This decision
 remains scoped to Ectoplasm Salvage.
 
 **Status:** DECIDED
@@ -1824,7 +1881,9 @@ It was reconstructed from:
 - project documentation,
 - explicit domain decisions made during the redesign process.
 
-The previously identified domain questions DQ-001 through DQ-010 are resolved and incorporated into the normative sections of this specification.
+The domain questions DQ-001 through DQ-011 are resolved and incorporated into the normative
+sections of this specification. Their historical records provide rationale; this document
+owns the rules that continue to apply.
 
 This document should now serve as the primary domain reference for:
 
@@ -1856,7 +1915,12 @@ Provide an account-scoped character overview and a selectable character detail v
 
 Equipment details cover armor, weapons and other equipped items, with item identity, slot and actual rarity. Determine quality from item metadata, not the equipped skin or icon color. Distinguish an empty slot from missing, unavailable or stale data. Do not count equipment-template references to one item as multiple owned copies or feed duplicate references into the crafting inventory pool.
 
-The Product Owner approved the roster, shared character summary and Equipment/Inventory presentation on 2026-11-08; exact layout and sorting are owned by UX guidelines §2.2. Playtime, deaths, creation date and next birthday come from the account-scoped backend projection. Overview sorting defaults to descending playtime and must not cause per-character detail downloads. Builds UI remains separate work; its data and shared reference metadata are already available.
+The Product Owner approved the roster, shared character summary, Equipment/Inventory and
+centered Builds presentation on 2026-11-08; exact layout and sorting are owned by UX
+guidelines §2.2. Playtime, deaths, creation date and next birthday come from the account-scoped
+backend projection. Overview sorting defaults to descending playtime and must not cause
+per-character detail downloads. Builds shows saved land/aquatic skills and complete
+specialization trait choices, with selected traits distinguished from other choices.
 
 The attribute block is a backend projection of level-80 land base attributes plus the inspected equipment, including supported intrinsic stats, upgrades, infusions and shared Jade Bot equipment. Keep weapon-set projections distinct. Apply only explicitly modelled passive build effects from the same character's saved active build with compatible parent coverage; never parse arbitrary trait text as a rule or claim a complete combat simulation. The initial reviewed passives include Necromancer Spiteful Fortitude and Death Perception. Unmodelled or incompatible build data leaves equipment values available with incomplete calculation metadata. User options select PvE/WvW and Reinforced Armor (off by default because the API cannot observe the buff). Food, boons, temporary effects, shroud and kill stacks are not presumed active. Backend diagnostics retain these limitations; normal tooltips show useful item effects rather than technical caveats. Matching one character's screenshot does not establish exact in-game parity for every build.
 
@@ -1866,7 +1930,10 @@ Story is deferred by Product Owner decision (2026-11-07). Equipment, inventory a
 
 Discovered recipes are excluded from this view. Map completion is deferred pending a later Product Owner decision. Public sharing, exports, editing in-game equipment/builds and a build-optimization engine are not requested by this feature. Screenshots illustrate the desired overview-to-details interaction; they do not implicitly require every field/control shown there.
 
-Reuse verified-account access and backend-owned GW2 calls. Character reads/refresh failures and missing grants must not appear as an empty roster or empty equipment. Preserve useful last-synchronized data with clear freshness/error state where appropriate. All character work forms part of final Oracle Always Free qualification.
+Reuse verified-account access and backend-owned GW2 calls. Character reads/refresh failures
+and missing grants must not appear as an empty roster or empty equipment. Preserve useful
+last-synchronized data with clear freshness/error state where appropriate. The retired
+pre-release capacity-measurement programme is not a character-feature acceptance requirement.
 
 ---
 
@@ -1884,6 +1951,118 @@ Full-catalog semantics (Product Owner decision, 2026-11-08, STORY-STATUS-004): t
 
 Bank, Materials and Characters must not expose manual refresh or saved-reload buttons. Show the saved account-scoped view immediately when available; retain its source timestamps internally without routine freshness paragraphs. Automatically request permitted stale sources while retaining the old view and showing a compact updating hint. Keep equipment and the inspected saved template visible throughout refresh. Replace data after successful publication; unknown task outcome is not success. On failure retain the prior view with stale/error information and direct users to System Status. Missing data triggers the initial-load path rather than a misleading empty inventory.
 
-Navigation refreshes only page-relevant sources: Bank uses BANK; Materials uses MATERIALS; Characters uses CHARACTERS and required optional character details; Crafting Profit uses its required recipes, Bank, Materials and Characters; Ecto uses Luck. Opening Characters does not refresh recipes or materials. The explicit full-account operation remains in System Status. This approved freshness behavior is separate from the pending owner/admin authorization boundary; it does not establish that public administrative access is safe.
+Navigation refreshes only page-relevant sources: Bank uses BANK; Materials uses MATERIALS;
+Characters uses CHARACTERS and required optional character details; Crafting Profit uses its
+required recipes, Bank, Materials and Characters; Ecto uses Luck. Opening Characters does
+not refresh recipes or materials. The explicit full-account operation remains in System
+Status. Shared administration and its diagnostic responses enforce the owner boundary at
+the backend; opening a page never grants administrative authority.
 
-Use the same freshness/admission principles as Crafting Profit. Coalesce same-account refresh work across views, respect grants and source coverage, and avoid retry loops or per-view background jobs. Exact freshness/retry policy follows the existing contracts and must be explicit in the implementation story. Account changes must clear old account data and prevent stale responses from being displayed under the new account.
+Use the same freshness/admission principles as Crafting Profit. Coalesce same-account refresh work across views, respect grants and source coverage, and avoid retry loops or per-view background jobs. Exact freshness/retry policy follows the existing contracts and must be explicit in the implementation issue. Account changes must clear old account data and prevent stale responses from being displayed under the new account.
+
+## 57.1 Owner application activity and log downloads
+
+Application activity is a separate owner-only view, not a public diagnostic endpoint or a
+load-generation tool. It reports observed request counts, failures, latency summaries,
+database size and distinct verified accounts with eligible foreground activity in the
+trailing five minutes. Keep that five-minute estimate distinct from the stored-account
+and last-60-minute account counts. Startup, interrupted observation, unavailable history
+and truncated data must remain explicit; they are not known zero or capacity estimates.
+
+Observe actual application requests without introducing visitor heartbeats. Session,
+system/owner, health, asset requests and task-status polling do not create application
+activity records. Persist minute aggregates only for minutes containing observed activity;
+idle periods create no empty history records. Stored aggregates do not contain account
+IDs, character names, IP addresses or API keys. In-memory identities used to count
+distinct foreground accounts are not exported.
+
+The owner chooses one retained UTC day or week from a readable dropdown, newest first
+within each group, with the newest available day selected initially. The server supplies
+each file's interval, filename, size and partial/open/closed/pruned/truncated state.
+Download exactly that server-described CSV; do not ask the owner to enter raw timestamps
+or silently substitute another interval if the chosen file has expired. The normal view
+loads when opened or explicitly refreshed, not through a background polling timer.
+Retention, observation intervals and operation commands are maintained in
+`OPERATIONS_RUNBOOK.md`; changing documentation does not create a measurement programme.
+
+---
+
+# 58. Account Connection, Saved Data and Deletion
+
+No separate application sign-up, email or password is required. A read-only GW2 API key
+proves the ArenaNet account and determines which permitted game-data operations are
+available. Identify saved data by the verified stable account ID, never by a client-chosen
+account ID or the key string. A different valid key for the same account reaches the same
+saved game data; another account cannot read or act on it. Respect both key permissions
+and any upstream URL restrictions.
+
+The browser retains the key for its tab session so navigation and reloads do not require
+another paste. A fresh tab normally starts without it; duplicated or restored tabs may
+retain it. Clearing cached images/files alone does not reliably remove it. The backend
+uses the key transiently for proof and necessary upstream work and does not persist it
+in the database or application logs. Storage and transport details belong to the
+architecture document.
+
+An authorised application session lasts at most 15 minutes after proof (and no longer
+than an upstream credential expiry). A retained valid key can renew it on demand. Key
+revocation at ArenaNet prevents a new proof, but an existing app session can remain valid
+until its lease expires. Replacement, disconnect and account change discard old visible
+account state and reject late responses associated with it.
+
+**Disconnect** forgets this tab's key and account state and requests the end of its server
+session. It does not delete cached database data or browser material preferences. If
+server logout fails, local disconnect still takes effect and the failure is disclosed.
+
+**Delete cached data** is an explicit, confirmed action for the verified current account.
+It removes that account's cached database records, invalidates all of its current app
+sessions, clears its saved material reservations/preferences in this browser, and signals
+other same-origin tabs to stop using the deleted account. Other devices' local preferences
+must be cleared there. Deletion does not change the GW2 account, revoke its ArenaNet key,
+delete shared game data or erase aggregate operational history/provider records. Later
+explicit connection can fetch the account again; there is no automatic re-proof/retry
+that silently repopulates deleted data.
+
+Unfinished account-refresh work prevents deletion until it finishes. A server-rejected
+deletion leaves database data and sessions unchanged. A denied, failed or unknown response
+must not clear local preferences or report success; another attempt requires fresh
+confirmation. Do not infer the server's final state from an unknown network outcome or a
+cancelled dialog. Account caches
+have no automatic inactivity expiry and remain until explicitly deleted or the disposable
+cache is cleared. No backup, archive or preservation process is required for these caches.
+
+Saved game data includes the verified account ID, Bank and Materials items, unlocked
+recipes, character names/profiles/disciplines, inventory/equipment/builds, account Luck
+and source/activity timestamps. Account IDs and character names are account-linked data,
+not a guarantee of anonymity. Do not claim the site processes no personal data merely
+because it does not ask for real names or email addresses.
+
+---
+
+# 59. Public Home, Guide and Information Pages
+
+Home is the default landing page at `/welcome`. It welcomes players, explains who the
+tools are for, outlines the available features and account-to-crafting workflow, and
+offers personal GW2 beginner tips. The guide is an approachable account of useful
+experiences, not an exhaustive game manual or a promised gold-per-hour farming route.
+Its reading tabs and screenshot layout follow `FRONTEND_UX_GUIDELINES.md` §2.5.
+
+Home and the footer's Legal notice, Privacy and Cookies & browser storage pages are
+readable without a connection. Opening them must not restore a retained key, fetch
+account data or start account synchronization. Normal navigation preserves already
+mounted account screens and their useful selections/results.
+
+Legal information identifies the operator and contact, describes the project as an
+independent unofficial fan project with no ArenaNet/NCSOFT affiliation or endorsement,
+credits the rights holders of game content, and links the public source repository,
+licence and contribution channels. The application licence does not relicense game
+artwork or other third-party content. Privacy/storage explanations must match actual
+key/session retention, account-linked caching, deletion, hosting, contact handling and
+limited operational monitoring. Advertising trackers and third-party analytics are
+not part of the current product; do not imply a consent banner is needed for trackers
+the site does not use.
+
+Only Home is intended for search-engine indexing. Account/tool and legal/storage pages
+remain excluded. The crawler policy permits the exact `/welcome` document and required
+static assets while disallowing other paths, and the application sets the corresponding
+index/noindex page metadata. Crawler directives express indexing preferences; they do
+not make public legal pages private or replace account authorization.

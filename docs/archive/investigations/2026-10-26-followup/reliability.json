@@ -1,0 +1,18 @@
+{
+  "slowHttp" : {
+    "cancelledByClientTimeout" : false,
+    "stillWaitingAfterMs" : 1517.5836,
+    "scope" : "Injected loopback stalled response; external 1500ms observer budget, no production timeout claimed"
+  },
+  "tpConnection" : {
+    "configuredPoolSize" : 8,
+    "leasesHeldWhileUpstreamBlocked" : 1,
+    "leasesAfterCompletion" : 0
+  },
+  "httpsProxy" : {
+    "explicitAllowedPublicOriginAccepts" : true,
+    "boundary" : "Servlet origin/cookie contract, not a deployed TLS browser test",
+    "defaultHttpHopAcceptsExternalHttpsOrigin" : false,
+    "nonLoopbackCookieIsSecure" : true
+  }
+}

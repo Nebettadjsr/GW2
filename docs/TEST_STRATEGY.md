@@ -2,7 +2,7 @@
 
 ## GitHub issue and pull-request verification
 
-The implementing agent authors and maintains production code, tests, and fixtures together to meet the issue's acceptance criteria. Existing coverage can be reused; a low-risk change may need no new test when the PR states why. Changed or weakened assertions require an evidence-backed reason in the PR. CI runs the default backend and frontend suites. Codex reviews the issue, behavior, documentation, and test diff; a green suite alone does not establish completion. Questions requiring a Product Owner decision stay on the issue or PR with `needs-decision`.
+The implementing agent normally authors and maintains production code, tests, and fixtures together to meet the issue's acceptance criteria. An explicit issue or supervisor handoff can instead assign test and fixture authorship to independent QA; preserve that scoped ownership until the handoff changes it. Existing coverage can be reused; a low-risk change may need no new test when the PR states why. Changed or weakened assertions require an evidence-backed reason in the PR. CI runs the default backend and frontend suites. Codex reviews the issue, behavior, documentation, and test diff; a green suite alone does not establish completion. Questions requiring a Product Owner decision stay on the issue or PR with `needs-decision`. The actual delivery process is documented in [Development workflow](DEVELOPMENT_WORKFLOW.md).
 
 ## 1. Purpose
 
@@ -884,17 +884,17 @@ If behavior intentionally changes during refactoring, that change must be explic
 
 ---
 
-# 19. Migration Testing
+# 19. Boundary Refactoring
 
-During migration from JavaFX desktop to web architecture:
+When refactoring an application or transport boundary:
 
 - keep domain tests independent of UI technology,
 - preserve existing validated calculation behavior,
-- add backend API tests when endpoints appear,
+- add backend API tests when a changed endpoint needs them,
 - add frontend tests only for presentation/interaction,
 - do not rewrite domain tests just because the UI changes.
 
-The same domain test suite should survive the removal of JavaFX.
+The domain suite should survive changes to presentation and transport technology.
 
 ---
 
@@ -974,9 +974,9 @@ Test names should describe the business behavior being protected.
 
 ---
 
-# 24. Initial Test Priorities
+# 24. Regression Priorities
 
-The first testing phase should focus on the existing crafting engine before broad infrastructure testing.
+Preserve the existing crafting engine's core behavior when selecting regression checks.
 
 Priority order:
 
@@ -999,11 +999,11 @@ These areas have the highest likelihood of causing hidden regressions.
 
 ---
 
-# 25. Initial Testing Goal
+# 25. Testing Goal
 
-The first milestone is not "100% test coverage."
+Coverage does not replace meaningful regression confidence.
 
-The first milestone is:
+The continuing goal is:
 
 > The central crafting calculation can be changed without relying on manual testing to discover unrelated breakage.
 
@@ -1050,7 +1050,7 @@ scripts, deployment configuration, static assets, and external-system code that 
 reasonably be isolated for unit testing may be recorded as unavailable or excluded with a
 specific rationale. Business logic, adapters, and error paths must not be excluded merely
 because they are difficult to test. Java line and branch coverage, frontend line and branch
-coverage, and Python line and branch coverage are reported where each tool supports them.
+coverage are reported where each tool supports them. The retired Python harness is outside the current application coverage scope; workflow helpers have their own deterministic tests.
 
 Do not create meaningless tests solely to increase coverage percentage.
 
@@ -1110,29 +1110,19 @@ A CI failure is investigated on the current PR branch. The implementing agent fi
 
 # 28. Current-State Reality
 
-The project now has a standard build system (Maven, via `./mvnw`) and a test framework (JUnit 5, run through Surefire), but still lacks:
+The Java 25 backend uses Maven, JUnit Jupiter and Surefire, with JaCoCo reports. The Vue/TypeScript frontend uses Vitest, jsdom, type checking and the production Vite build. Domain tests exercise independent crafting types; repository and HTTP tests supply their required real PostgreSQL or fake upstream boundaries.
 
-- clean architectural boundaries (the domain layer currently depends on repository types — see `docs/KNOWN_PROBLEMS.md`),
-- easy dependency injection,
-- isolated domain classes,
-- broad test coverage (current test count/status lives in `agent/PROJECT_STATE.md`, not here).
+Current coverage is recorded in [Quality metrics](QUALITY_METRICS.md), with a successful CI revision and artifact. Open structural or behavior findings belong in [Known problems](KNOWN_PROBLEMS.md). Neither test counts nor old harness state are evidence for the current commit.
 
-That setup should remain minimal.
-
-Do not introduce a large testing platform beyond what the current testing need actually requires.
+Keep new tooling proportional to the check it enables. Do not introduce a testing platform solely to reproduce a retired migration or measurement programme.
 
 ---
 
 # 29. Tooling Decisions
 
-JUnit 5 (`org.junit.jupiter:junit-jupiter`), managed as a Maven dependency and run via `maven-surefire-plugin`, is now the project's test framework.
+JUnit Jupiter (`org.junit.jupiter:junit-jupiter`), managed by the Spring Boot BOM and run via `maven-surefire-plugin`, is the backend test framework.
 
-Not yet decided:
-
-```text
-Mockito or simple handwritten fakes
-Testcontainers for PostgreSQL integration
-```
+Current tests use hand-written fakes and stubs where needed. Real PostgreSQL tests use isolated schemas on a supplied PostgreSQL server, including the CI service container. No Testcontainers requirement is selected.
 
 The CI gate (§36) does not resolve the Testcontainers question: it supplies an
 isolated, disposable PostgreSQL *service container* to the pipeline, which is how
@@ -1140,7 +1130,7 @@ isolated, disposable PostgreSQL *service container* to the pipeline, which is ho
 own server. A test-managed container remains a candidate for making the two
 environments identical.
 
-These remain candidates, not mandatory decisions.
+Future tooling remains a scoped implementation choice requiring a concrete need and review; it is not a prerequisite for the current suite.
 
 The selected tooling should favor:
 
@@ -1154,7 +1144,7 @@ The selected tooling should favor:
 
 # 30. Status
 
-This document defines the target testing strategy for the GW2 Tool.
+This document defines the maintained testing strategy for the GW2 Tool.
 
 Its primary role is to prevent the previous failure mode where:
 
@@ -1165,7 +1155,7 @@ fix bug A
 → accidentally break C
 ```
 
-The initial implementation effort should focus on high-value domain and characterization tests around the crafting engine before major refactoring or web migration begins.
+Prioritize uncovered active behavior and regression risks in the existing application. The desktop-to-web migration is complete; retired phase gates do not define today's test queue.
 
 ---
 
@@ -1225,17 +1215,15 @@ Formalizes §10's closing line into its own layer:
 
 ---
 
-# 32. Layer 5 — JavaFX UI Verification (retired)
+# 32. Browser UI verification
 
-This layer (TestFX against the JavaFX application, established by STORY-UI-001) was retired with the desktop UI. `STORY-UI-004` removed the application and its 31 desktop-only test and fixture files, and `STORY-INFRA-005` removed the `testfx-junit5` and JavaFX dependencies, the `javafx.*` properties and the CI platform flag. No TestFX or JavaFX tooling remains in the build, and no desktop-session check is owed by any story. The detailed methodology is available in git history only.
-
-The number §32 is kept so that existing cross-references stay stable. UI-observable behavior is now verified in the browser layers: Vitest component and unit tests, the type-checking build, and the local browser smoke scripts (§12). Backend behavior behind the UI is covered by Layers 1–4 and the Spring Boot HTTP boundary layer (§35).
+UI-observable behavior is verified by Vitest component/unit tests, the type-checking build and focused real-browser checks (§12). Backend behavior behind the UI is covered by Layers 1–4 and the Spring Boot HTTP boundary (§35). There is no desktop UI or TestFX verification requirement. The section number is retained for existing references.
 
 ---
 
 # 33. Test Effort Proportionality
 
-For PROJECT HEALTH REVIEW tasks, verification is an evidence source under `docs/TARGET_ARCHITECTURE.md` §21, not an automatic requirement to run broad suites or add tests. Use that policy to bound review checks; the implementation-change rules below remain unchanged.
+For a source or documentation audit, verification supplies evidence for the specific finding; it does not automatically require broad suites or new tests. Implementation changes follow the rules below.
 
 Broad, layered coverage (§3's pyramid, Layers 1–4 and 6) is the project's goal, not a checklist every change must exhaust. Test effort — which layers are touched, how many tests are written, how heavy each one is — must stay proportional to the size and risk of the actual change, never padded out for thoroughness alone.
 
@@ -1249,17 +1237,15 @@ Concretely:
 
 ---
 
-# 34. Real-user Crafting Profit performance acceptance
+# 34. Scoped performance evidence
 
-The acceptance threshold and timing scope belong to `TARGET_ARCHITECTURE.md` §17. Under resolved UD-013, reproducible measured compliance and the required quality gates suffice; no additional manual Product Owner acceptance is required. Measure the real application's navigation event through completed calculation and table/control rendering on the user's current real PostgreSQL database. Include UI-thread completion/rendering, not just background-worker return or the first row appearing. Existing miniature/disposable-schema UI fixtures and mocked application adapters remain useful for correctness but cannot supply performance acceptance evidence.
+The owner ended the pre-release capacity/resource programme. Ordinary maintenance does not require a VM, load test, extra real-user keys, a broad benchmark matrix or an owner-database run. Existing cached-page responsiveness and bounded recovery requirements remain in [Architecture](ARCHITECTURE.md); removing the programme does not establish measured compliance with them.
 
-Record reproducible baseline and post-change runs: revision, hardware/JVM/database environment, selected scope/settings, relevant data counts, cache state, individual elapsed times and maximum. Include the default All scope, the first opening after startup and repeat openings; do not select only favorable warm-cache runs. Attribute major pipeline stages without excluding them from the end-to-end total. Preserve full requested results and verify relevant calculations/ownership/limits have not changed. Keep any correctness tests that mutate fixtures isolated; do not point their setup/teardown at the user's database or reduce/replace real data for a faster benchmark. Measurement must not disclose credentials or private account contents.
+When a separately released issue addresses a concrete performance problem, choose a targeted before/after check that can answer its question. Record source revision, environment, scope/settings, data scale, cache state, individual observations and limitations. Verify that relevant economic results, ordering, ownership and quantity limits remain equivalent. Use isolated fixtures for tests that write data; never repurpose the owner's or production database for setup/teardown.
 
-Report missing environment access honestly; small synthetic data, unit-test duration, service-only timings and a loading placeholder cannot prove compliance. Record measurements, limitations and criterion compliance in the normal executing story Result. Clarifications or exceptions changing agreed requirements require Product Owner input; historical measurements do not accept behavior they did not exercise.
+Distinguish server time, initial complete usable page, later refreshed replacement and resource use. A first row or loading state is not a complete usable page. A unit-test duration, synthetic fixture or backend-only timer cannot establish a real-user browser budget or supported-user capacity. Include cold and repeat behavior when the scoped claim depends on them, and report unavailable evidence without inventing a result.
 
-For the cached-result contract in `TARGET_ARCHITECTURE.md` §9.1 and §17, separately identify initial usable calculation completion and each subsequent refreshed replacement by calculation context and captured input versions. Apply quiescence sampling within that context so later asynchronous replacement does not extend the initial interval. Measure fresh inputs, expired account inputs, expired TP quotes, both expired, overlapping insufficient-scope account work, missing inputs and failure/timeout recovery. Record refresh start-to-terminal timing, refreshed calculation/rendering and navigation-to-final-result separately from the initial cached-page interval. No separate numerical refresh-speed budget is established; assess the existing bounded recovery contract. A no-usable-cache loading state cannot prove seven-second compliance: explicitly report readiness wait and eventual calculation/rendering instead. Record effective settings from an actual backend echo or rendered control, not a missing reporting hook.
-
-Detect page completion by quiescence, not by the first rows appearing: sample the displayed state until it stops changing, and report the moment of the last observed change, excluding the settling window itself from the elapsed time. Include the identity of the row objects in that sample, so a redundant second reload that recomputes identical numbers is still observed. Verify that the completed table answers a real displayed-value read before treating it as interactive. A performance change to shared calculation code additionally needs a real-data equivalence check: record every computed result from the real database across the settings combinations the change can reach, before the change, and compare afterwards. Such a reference contains real account-derived values, so it stays out of version control and the comparison is a deliberate before/after step rather than a standing test.
+Keep account-derived comparisons private. A live-user check requires its own explicit scope; it is not an automatic prerequisite for coverage work or documentation cleanup. Historical observations remain in the archive and are not fresh acceptance evidence.
 
 ---
 
@@ -1285,7 +1271,7 @@ The methodology below applies unchanged to every route added afterwards — `STO
 
 Name these `*IT` so Surefire's default patterns exclude them (§36.2), and run them explicitly. They boot the real application on a random port with the real application service and no schema override, so they read the developer's real database exactly as the running application does.
 
-- **Timing** (§34, and `TARGET_ARCHITECTURE.md` §17 at this boundary): measure wall-clock from issuing the HTTP request to holding the *complete* response body, so routing, calculation and full JSON serialization are all inside the timer. Report the first request after startup separately from repeats, report the maximum, and record row count, response size, settings, data scale and environment. Context/server startup sits outside the per-request timer and must be stated as such. Backend request time is one part of the §17 navigation-to-complete-page budget and is never reported as proof of it.
+- **Timing, when the issue requires it** (§34): measure from issuing the HTTP request to holding the complete response body. Report startup versus repeat scope, row count, response size, settings, data scale and environment. A backend-only observation does not prove a browser navigation-to-complete-page requirement.
 - **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
 - **Compare a nullable field's JSON null against the source null explicitly.** Jackson's `asInt()`/`asText()` on a JSON null return `0`/`""`, so a naive comparison agrees with a mapping that substituted a zero for an absent value — which is precisely the distinction a response carrying absent items, quantities or display metadata exists to preserve. Read such fields through a null-returning helper, and print how many rows actually carried a null, so a run's output says whether the real data exercised that path at all.
 - These print evidence and, for timing, assert nothing — matching `application.CraftingProfitServiceRealDbPerfIT`'s precedent. The equivalence check does assert, since a mismatch is a defect rather than a measurement.
@@ -1301,7 +1287,7 @@ Name these `*IT` so Surefire's default patterns exclude them (§36.2), and run t
 - **Wait for a terminal state with a bounded poll that fails loudly** (a deadline plus an `AssertionError` naming the task), not a fixed sleep. Poll through the status route where the route is what is under test, and through the facility where it is not.
 - **Use the real task facility, not a stub, in the trigger's own tests.** The asynchrony, the identifier and the admission rule *are* the contract; a same-thread fake would pass while proving none of them. The application service is still substituted, so no GW2 API call or database write happens.
 - **Assert exactly-once delegation per accepted task, and zero for a rejected one.** A validation test must show both that the service was never called and that no task was admitted — the latter is visible in a following trigger being accepted rather than refused as already-running, since an admitted task would still be unfinished.
-- **Assert every documented lifetime property of the facility**, including the retention bound and the answer for an unknown identifier. Those properties are written down as facts in `CURRENT_ARCHITECTURE.md`, so they need a test rather than a claim; the retention test simply submits one more task than the bound.
+- **Assert every documented lifetime property of the facility**, including the retention bound and the answer for an unknown identifier. Those properties are written down as facts in `ARCHITECTURE.md`, so they need a test rather than a claim; the retention test simply submits one more task than the bound.
 - **Assert the absence of things too, in a failure body**: that it contains no successful-completion wording, and that the exception's own text — hosts, endpoints, JDBC URLs — is not in it. A failure path is where disclosure conventions actually get broken.
 - **Do not require live account mutation to test a task protocol.** Trigger validation, the 404, the 405 and the framework's own routing can be verified against a really running server without starting a synchronization; whether the accepted path was exercised live must then be recorded as a limitation rather than implied.
 - **Where a second trigger shares the facility, test the operation key's independence, not just its exclusion** (`STORY-API-004`). Registering both triggers against one real facility, holding the first operation at its latch and then submitting the *other* one is what distinguishes "one unfinished task per operation" from "one unfinished task"; asserting only the 409 on a repeat of the same operation cannot tell the two rules apart. Await the second task's own terminal state rather than reading its delegation count straight after the 202 — it runs on another thread, so an immediate count is a race, not an observation.
@@ -1323,7 +1309,7 @@ is, what it runs, what it cannot run, and what "verified" therefore means.
 | Where | Runs | Authoritative for |
 |---|---|---|
 | Local (implementing agent, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
-| GitHub Actions (`.github/workflows/ci.yml`) | the complete default suites: `./mvnw test` and the frontend `npm test` plus type-check/build; the legacy harness job remains only until decommission | that the default product suites pass on the PR head |
+| GitHub Actions (`.github/workflows/ci.yml`) | complete backend/frontend default suites with coverage, type-check/build, workflow helper tests and actionlint | that the default product and workflow checks pass on the PR head |
 | Local, explicitly invoked during pairing | Layer 4 live GW2 API smoke (§31.4), the browser smoke scripts (§12.2), real-database `*IT` equivalence/performance checks (§34, §35.2) | the things the gate cannot run at all — see §36.4 |
 
 Neither side's scope is reduced by this split: the gate runs the same commands the
@@ -1333,16 +1319,15 @@ attempt.
 
 ## 36.2 What the gate runs
 
-Two test jobs, in parallel, on every pushed commit and every pull request, followed by a coverage report job:
+Backend, frontend and workflow-check jobs run on pushes, pull requests and explicit CI dispatch. A coverage report job summarizes the product reports:
 
-- **Backend** — `./mvnw -B -ntp test` on `ubuntu-latest`,
+- **Backend** — `./mvnw -B -ntp test jacoco:report` on `ubuntu-latest`,
   against a `postgres:17` service container. Surefire's default patterns still
   select `*Test` classes only, so every `*IT` class stays excluded exactly as it
   is locally. The build has no platform-specific classifier, so the same command
   runs on a developer machine and on the Linux runner.
-- **Frontend** — `npm ci`, then `npm test` (Vitest, with Vitest's own
-  `github-actions` reporter added so failures become annotations), then
-  `npm run build`, which type-checks first (§12.1).
+- **Frontend** — `npm ci`, then `npm run test:coverage -- --reporter=default --reporter=github-actions`, then `npm run build`, which type-checks first (§12.1).
+- **Workflow checks** — actionlint validates the workflows; `python -m unittest discover -s .github/scripts` runs the helper and configuration tests, with native Nginx supplied where required.
 
 ## 36.3 Required services and configuration
 

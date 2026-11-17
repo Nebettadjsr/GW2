@@ -1,0 +1,6 @@
+{
+  "requestedSleepMillis" : [ 3600000, 3600000, 3600000, 3600000 ],
+  "actualSleepMillis" : 0,
+  "requests" : 5,
+  "scope" : "Loopback 429 fixture, replaced sleeper records intended delays; production retry policy unchanged"
+}

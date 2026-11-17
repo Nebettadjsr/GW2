@@ -1,8 +1,6 @@
 # Owner activity retrieval runbook
 
-Short operator steps for the bounded application-activity history (STORY-OPS-001/002). The history is
-disposable and lossy by design: this is neither a backup nor a recovery procedure. Nothing here claims an Oracle
-deployment exists or that monitoring or log forwarding is configured.
+Operator steps for the deployed application's bounded activity history. The history is disposable and lossy. Current hosting facts belong in [Current state](CURRENT_STATE_SPEC.md); this guide explains the owner download UI and direct retrieval. Oracle metrics availability still depends on the provider's monitoring configuration.
 
 ## Owner UI retrieval
 
@@ -38,21 +36,20 @@ groups per minute and roughly 150–200 bytes per row, plus one small CSV header
 
 Idle hours add nothing. User count changes counters, not the number of per-user rows. The actual size
 depends on active route groups and numeric widths; current storage limits and coverage flags are defined
-in `CURRENT_ARCHITECTURE.md`. A weekly download streams retained days without storing a second copy.
+in `ARCHITECTURE.md`. A weekly download streams retained days without storing a second copy.
 
 ## Direct aggregate-file retrieval
 
-The history is sparse per-UTC-day files `activity-YYYY-MM-DD.csv` in the `gw2-ops` volume mounted at
-`/app/data/ops` of the Compose service `backend` (`docker/compose.yaml`, `OPS_HISTORY_DIR`). The set is bounded.
+The history is sparse per-UTC-day files `activity-YYYY-MM-DD.csv` in the `gw2-ops` volume mounted at `/app/data/ops` of the backend. The deployed container is `gw2-production-backend-1`. The set is bounded.
 
-1. Identify the service and volume: `docker compose -f docker/compose.yaml ps backend` and `docker volume ls --filter name=gw2-ops`.
+1. On the Oracle SSH host, identify the service with `sudo -n docker ps --filter name=gw2-production-backend-1` and `sudo -n docker volume ls --filter name=gw2-ops`.
 2. Do not stop the application or database for retrieval.
 3. Copy only the needed day files (over SSH, run on the host):
    ```
    mkdir -p ./ops-export
-   docker compose -f docker/compose.yaml cp backend:/app/data/ops/activity-2026-11-14.csv ./ops-export/
+   sudo -n docker cp gw2-production-backend-1:/app/data/ops/activity-2026-11-14.csv ./ops-export/
    ```
-   From a workstation: `scp user@host:ops-export/*.csv .`
+   Replace the example date with an existing UTC day. From the configured Windows workstation, SCP uses the existing `gw2-production` SSH alias and config; the copied file's path is relative to the directory used above. The owner UI is the simpler normal download path.
 4. Do not print environment variables, cookies, request headers or unrelated application logs.
 5. Record filenames, byte sizes and checksums: `ls -l ./ops-export` and `sha256sum ./ops-export/*.csv`.
 6. Expect the retained set to stay within its configured bound.

@@ -2,7 +2,7 @@
 
 **Historical, programme ended, not a launch requirement.** The STORY-PERF-005 application benchmark harness,
 host/guest/container collectors, interaction recorder, journey runner, profit-page timer and the informational
-Performance workflow were removed by STORY-LAUNCH-001 ([audit](investigations/launch-001-tooling-audit.md)).
+Performance workflow were removed by STORY-LAUNCH-001 ([audit](launch-001-tooling-audit.md)).
 The retired experiment entry points are available in Git history only. Ordinary correctness commands and
 populated-fixture support remain maintained; consult the audit and test strategy for their current locations.
 

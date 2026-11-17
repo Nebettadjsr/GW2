@@ -1,101 +1,65 @@
-# Claude GitHub Action setup and limits
+# Claude GitHub configuration
 
-The repository's `.github/workflows/claude.yml` uses the owner's Claude Pro
-subscription. It runs only when **Nebettadjsr** selects **Actions → Run next
-ready story with Claude → Run workflow**, leaves the branch set to **master**,
-and clicks **Run workflow**. No issue number is required. Each click authorizes
-one run. Issue labels, comments, pushes, and schedules do not start Claude.
-There is no time-of-day gate; the owner can choose when to spend usage.
-After a workflow fix, start a new run with this button on `master`.
-GitHub's **Re-run jobs** repeats the original run's commit and workflow version.
+For the complete selection, implementation, review, rework and release process,
+use [Development workflow](DEVELOPMENT_WORKFLOW.md). This page owns setup and
+usage configuration for the existing integration.
 
-The button checks open GitHub stories. A story labeled `auto` is eligible when
-its listed dependencies are closed with linked PRs merged into `master`, and
-it has no `pairing`, `needs-decision` or `blocked` label. An open PR is selected only when
-Codex has marked its issue
-`needs-rework`; such PRs take priority over new stories. Otherwise the oldest
-eligible issue is selected. The workflow reports the choice or the reason
-nothing is ready in the Actions run summary. With no ready story, it stops
-before accessing the Claude token. The `auto` label means a planning session
-has prepared the story for unattended implementation; `pairing` means local
-supervision is required. After a rework run publishes its branch, the workflow
-clears `needs-rework` while CI and Codex review the new commit. It does not
-automatically retry a PR. The GitHub review/CI gate restores `needs-rework` when
-the current commit has a completed Codex finding, failed CI, or a run report
-listing unresolved gaps or remaining checks. The next button press resumes that
-PR. Old-commit failures cannot requeue newer work. Java 25 and disposable
-PostgreSQL are supplied so Claude can run the required isolated database tests.
-Before reworking an existing PR, preparation merges current `master` into its
-branch, including merged prerequisites and workflow changes. A merge conflict
-stops preparation before Claude starts and requires a supervised resolution.
-An otherwise clean PR behind `master` is also queued for this preparation and
-fresh checks when branch protection requires an up-to-date branch.
-Claude writes a temporary run report with
-its changes, checks, and gaps. The workflow places it in a new PR or adds it
-as a comment on a rework PR; a missing report is shown explicitly for review.
+## Integrations and credentials
 
-The separate `review-merge.yml` workflow may squash-merge a Claude story PR
-after the current head has green Maven, Vitest, coverage, and workflow checks and the
-native Codex review summary reports a completed review with no findings for
-that same head. It requires a linked open `auto` story, a same-repository Claude
-story branch, a run report, and explicit statements that no local-only checks
-or unresolved gaps remain. `pairing`, `needs-decision`, `blocked`, and
-`needs-rework` hold the merge. Other PRs still need a supervised merge. A
-new commit invalidates the prior review and CI evidence until both repeat.
-The workflow check uses actionlint to validate GitHub expression contexts and
-action inputs/outputs as well as YAML syntax, and runs the workflow helper tests.
+1. Install the [Claude GitHub App](https://github.com/apps/claude) for
+   `Nebettadjsr/GW2`.
+2. In the owner's normal terminal, run `claude auth status` to confirm the
+   subscription-backed `claude.ai` login. Run `claude setup-token` and copy the
+   generated token privately.
+3. Store it under **Settings > Secrets and variables > Actions** as repository
+   secret `CLAUDE_CODE_OAUTH_TOKEN`.
+4. Configure a fine-grained GitHub token restricted to this repository with
+   **Pull requests: read/write**, stored as `GW2_AUTOMATION_TOKEN`. It publishes
+   PRs/report comments whose events can start CI/review. Workflow-file publication
+   may require additional workflows permission; denied publication is captured
+   by the recovery path.
+5. Enable native Codex PR review separately. `AGENTS.md` supplies review rules.
+   The Claude workflow does not install or start a Codex planning service.
 
-To inspect the queue before pressing the button, use GitHub Issues filtered by
-[`auto`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aauto),
-[`pairing`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Apairing),
-or [`needs-decision`](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision).
-The Actions run summary shows the selected issue and why any earlier `auto`
-issues were skipped.
+Tracked files contain secret names only. Keep values out of tracked files,
+reports, PRs, issues and chat. Deployment credentials are separate from the
+disposable CI database settings.
 
-Planning sessions prepare and label the milestone's dependent stories in advance.
-The selector automatically unlocks each one when its prerequisites have merged;
-no per-click planning message is needed. The gate maintains review/rework state
-without invoking a model or starting Claude. It cannot invent new stories or make
-Product Owner decisions: a new planning session is needed when the prepared
-milestone queue is exhausted or a material requirements question arises.
+## Run configuration
 
-## One-time setup
+The only implementation trigger is explicit dispatch of `claude.yml` on
+`master`, by `Nebettadjsr`. Use **Actions > Run next ready story with Claude >
+Run workflow**, or an authorized GitHub API/CLI equivalent. Each run selects
+one eligible issue; an empty queue does not invoke Claude.
 
-1. Install the [Claude GitHub App](https://github.com/apps/claude) on **Nebettadjsr/GW2**.
-2. In a normal PowerShell terminal, run `claude auth status` to confirm
-   `subscriptionType: "pro"` and `authMethod: "claude.ai"`. Run
-   `claude setup-token` and copy the generated token privately.
-3. In **Settings → Secrets and variables → Actions → New repository secret**,
-   create `CLAUDE_CODE_OAUTH_TOKEN` with that token as its value.
-4. Create a fine-grained GitHub personal access token restricted to
-   **Nebettadjsr/GW2**, with **Pull requests** read/write permission. Store it
-   as a second Actions repository secret named `GW2_AUTOMATION_TOKEN`. The
-   workflow uses it to open a PR or comment with run evidence so that PR CI
-   and review run automatically.
+| Setting | Current implementation |
+|---|---|
+| Credential | `CLAUDE_CODE_OAUTH_TOKEN` |
+| Paid API fallback | Disabled: job sets `ANTHROPIC_API_KEY` empty |
+| Turn allowance | 40 default; repository variable `CLAUDE_MAX_TURNS` accepts 1-100 |
+| Job timeout | 45 minutes |
+| Parallel implementation | One concurrency group; active run is not canceled |
+| Runtime | Java 25, disposable PostgreSQL 17, placeholder GW2 key |
+| Recovery artifact retention | Seven days |
 
-Never paste token values in an issue, PR, chat, or committed file.
+These controls do not enforce remaining five-hour/weekly subscription usage.
+Usage is shared with other Claude sessions. Check the owner's Usage page or
+local `/usage` before a long session. Keep Usage credits disabled when execution
+must remain within the subscription; do not change to API billing without
+authorization.
 
-## Usage limits
+After changing a workflow, dispatch a fresh run on `master`. GitHub **Re-run
+jobs** repeats the original workflow revision. Recovery artifacts contain
+unverified work, not an accepted implementation.
 
-One run at a time is allowed. Each run defaults to **40 Claude turns** and a
-**45-minute** job timeout. Change the `CLAUDE_MAX_TURNS` repository **variable**
-(Settings → Secrets and variables → Actions → Variables) to an integer from 1
-to 100 to override the turn allowance. This is not a secret. These are bounds per run, not token or subscription
-budget limits. GitHub's `claude setup-token` credential cannot read the
-subscription's usage percentages on a clean runner, so this workflow cannot
-enforce a five-hour or weekly percentage threshold. Anthropic's own plan limits
-are the final stop. A single manually started run may still consume substantial
-usage; check Claude **Settings → Usage** or `/usage` locally before starting.
+## Queue and results
 
-Keep **Usage credits** disabled if the intent is to remain strictly within the
-Pro subscription allowance. Claude's five-hour and weekly limits are shared
-with Claude Chat and local Claude Code. Reaching a plan limit pauses work when
-credits are disabled.
+- [Ready automatic issues](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aauto)
+- [Supervised pairing issues](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Apairing)
+- [Open product decisions](https://github.com/Nebettadjsr/GW2/issues?q=is%3Aissue+is%3Aopen+label%3Aneeds-decision)
+- [Implementation runs](https://github.com/Nebettadjsr/GW2/actions/workflows/claude.yml)
 
-If Claude fails or exhausts its turns, the run remains failed and no code or
-acceptance report is published to the PR. The run's **Artifacts** section keeps
-a `claude-recovery-<issue>-<attempt>` artifact for seven days with a binary Git
-patch (including new non-ignored files), its base commit, and the run report if
-Claude wrote one. A planning session can recover those edits before the next
-manually authorized attempt. No automatic retry starts, and a hard cancellation
-or lost runner can prevent recovery capture.
+The Actions summary explains selection/skips; issue/PR evidence records contract,
+checks and review. Report gaps or pending local checks block merge but do not
+automatically requeue Claude. The detailed workflow lists the actual conditions
+that add `needs-rework`.

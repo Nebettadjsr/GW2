@@ -74,10 +74,10 @@ CH-15. No milestone acceptance, runtime validation or performance result is clai
 
 ## References
 
-- [Target architecture](../../TARGET_ARCHITECTURE.md), sections 13.2-13.5.
-- [Current architecture](../../CURRENT_ARCHITECTURE.md), section 5.12.
-- [Domain specification](../../DOMAIN_SPEC.md), sections 28 and 44.
-- [Known problems](../../KNOWN_PROBLEMS.md), CH-15.
+- [Target architecture](../TARGET_ARCHITECTURE.md), sections 13.2-13.5.
+- [Current architecture](../CURRENT_ARCHITECTURE.md), section 5.12.
+- [Domain specification](../../../DOMAIN_SPEC.md), sections 28 and 44.
+- [Known problems](../../../KNOWN_PROBLEMS.md), CH-15.
 - [Original contract rationale](ADR-002-resolution-tree-http-contract.md).
-- [Trace result](../../../agent/stories/STORY-DOM-020-semantic-resolution-trace.md).
-- [Dispatched request](../../../agent/architect-requests/AR-003-resolution-root-identity.md).
+- [Trace result](../../agent/stories/archive/milestone-05/STORY-DOM-020-semantic-resolution-trace.md).
+- [Dispatched request](../../agent/architect-requests/AR-003-resolution-root-identity.md).
