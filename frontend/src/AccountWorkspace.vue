@@ -83,6 +83,16 @@ watch(desktop, wide => {
 
 const main = ref<HTMLElement | null>(null)
 
+// A native modal stays in the document's top layer even when its screen is hidden, which would keep
+// the notice's Home link and the site navigation inert. Release any open modal when tools become
+// blocked; the screen instance (and its draft state) stays mounted and nothing reopens on widening.
+watch(toolsBlocked, blocked => {
+  if (!blocked) return
+  for (const stage of main.value?.querySelectorAll<HTMLElement>('.tool-stage') ?? []) {
+    for (const dialog of stage.querySelectorAll<HTMLDialogElement>('dialog[open]')) dialog.close()
+  }
+}, { flush: 'post' })
+
 /**
  * The compact activity indication next to the synchronization destination. It reports what this page
  * is tracking and nothing else — no progress, and no claim about work the backend may be doing that
