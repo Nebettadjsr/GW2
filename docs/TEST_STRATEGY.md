@@ -795,6 +795,9 @@ Viewport regressions include an unfinished Profit answer held across narrowing a
 while blocked: widening must show it without a second calculation. Ecto quantity, salvage/tool
 and price modes survive width-only changes without refetching, while actual navigation retains
 its normal reset/refetch. Reaching an unopened tool while narrow must not start hidden work.
+Real-Chromium regressions also open Help and Delete confirmation before narrowing: neither
+may remain native-modal or block an ordinary Home click. The admitted form draft/key survive
+a width-only return without reopening or refetch. Never confirm deletion in these journeys.
 
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to

@@ -120,13 +120,16 @@ pixels (`matchMedia`, `useDesktopTools`) every tool destination shows `DesktopWi
 blocked tool loads do not restore a retained key, bootstrap or mount screens. An already-admitted
 current screen stays mounted inside a hidden, inert region across width-only changes; real route
 changes keep their normal lifecycle. Home and the legal/privacy/storage pages stay public.
-`npm run smoke:ci` runs eight controlled-browser journeys after the build in the frontend CI job
+Open native tool dialogs close on blocking, releasing public navigation without discarding
+the admitted screen or its draft. `npm run smoke:ci` runs ten controlled-browser journeys
+after the build in the frontend CI job
 (Chromium via the locked playwright-core CLI) and uploads `desktop-browser-journeys` evidence
 with seven-day retention. Independent QA verified 30 focused tests, type-check/build and all
-eight journeys at `f94694e0c66664dfa8359b7994d1430d327cdc02` on 17 November 2026, including
-pending Profit and Ecto state preservation across resize. The implementation's earlier CI run
-[44135086310](https://github.com/Nebettadjsr/GW2/actions/runs/44135086310) also passed the new
-browser step. Owner visual review and final-head CI/review remain pending.
+ten journeys at `906a8084b0573dda1dc50f822e7147f1c063f94d` on 17 November 2026, including
+pending Profit/Ecto state preservation and native-dialog navigation across resize. Full CI run
+[44140588439](https://github.com/Nebettadjsr/GW2/actions/runs/44140588439) at that revision
+passed, including 951 frontend tests and all ten browser journeys. Owner visual review and
+final-head CI/review remain pending.
 
 Before #236 merged, independent QA passed 306 relevant backend checks, 213 focused frontend
 checks, type/build and 19 controlled visible desktop/narrow browser phases. Full frontend CI

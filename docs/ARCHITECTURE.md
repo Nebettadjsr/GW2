@@ -61,6 +61,9 @@ to render the notice. The admitted current route stays mounted inside a hidden, 
 region; width changes must not invoke navigation deactivation or discard pending answers.
 Navigation while narrow does not admit an unopened tool. Actual route changes retain their
 normal lifecycle, and account-generation guards still own account isolation.
+Before leaving a tool hidden, close its open native dialogs through their normal close
+lifecycle so the modal top layer cannot leave public navigation inert. Preserve the admitted
+screen and its drafts; widening does not reopen the dialogs.
 This UI capability check does not grant or replace backend authorization.
 
 Controlled real-browser journeys use the production frontend with a synthetic HTTP boundary.
