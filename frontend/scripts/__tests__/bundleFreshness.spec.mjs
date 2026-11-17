@@ -56,6 +56,21 @@ function makeTree({ sourceModified = BEFORE_BUILD, withDist = true, withAsset = 
 }
 
 describe('bundle freshness guard', () => {
+  it('checks the independently built public Home entry and its referenced assets', () => {
+    const root = makeTree()
+    const inputs = [...INPUTS, 'welcome.html']
+    writeAt(join(root, 'welcome.html'), '<div id="app"></div>', OLDEST_INPUT)
+    expect(describeBundleFreshness({ frontendDir: root, inputs }).reason).toContain('dist/welcome.html is missing')
+    writeAt(join(root, 'dist', 'welcome.html'), '<script src="/assets/missing-home.js"></script>', BUILT_AT)
+    expect(describeBundleFreshness({ frontendDir: root, inputs }).reason).toContain('welcome.html references assets/missing-home.js')
+    writeAt(join(root, 'dist', 'welcome.html'), '<script src="/assets/index-abc123.js"></script>', OLDEST_INPUT)
+    expect(describeBundleFreshness({ frontendDir: root, inputs }).reason).toContain('dist/welcome.html is stale')
+    writeAt(join(root, 'dist', 'welcome.html'), '<a href="/#/legal">Legal</a><script src="/assets/index-abc123.js"></script>', BUILT_AT)
+    expect(describeBundleFreshness({ frontendDir: root, inputs }).fresh).toBe(true)
+    writeAt(join(root, 'welcome.html'), '<div>updated Home</div>', AFTER_BUILD)
+    expect(describeBundleFreshness({ frontendDir: root, inputs }).fresh).toBe(false)
+  })
+
   it('rejects a missing bundle and names the build command', () => {
     const verdict = describeBundleFreshness({ frontendDir: makeTree({ withDist: false }), inputs: INPUTS })
 

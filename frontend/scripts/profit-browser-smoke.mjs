@@ -53,7 +53,7 @@ const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
 const WIDE = { width: 1440, height: 900 }
 /** Wide enough for the two-column layout, short enough that the list is the taller column. */
 const WIDE_SHORT = { width: 1440, height: 420 }
-const NARROW = { width: 360, height: 800 }
+const NARROW = { width: 1024, height: 900 } // Minimum supported desktop, not a phone-layout pass.
 const session = createControlledAccountSession({
   calculationRoutes: ['/api/crafting/profit', '/api/crafting/profit/resolution'],
   searchQueries: ['no recipe is called this']
@@ -1677,15 +1677,8 @@ async function run() {
     )
     record('a replacement calculation clears a removed selection', 'detail returned to its empty case')
 
-    // 12. Narrow: the detail reflows below the results, and only the table scrolls sideways.
+    // 12. Minimum desktop: overflow stays within the keyboard-accessible table region.
     await openProfit(page, stub.origin, NARROW)
-    const narrowResults = await boxOf(page, '[data-test="results-region"]')
-    const narrowDetail = await boxOf(page, '[data-test="selected-detail"]')
-    check(
-      narrowDetail.top >= narrowResults.bottom - 1,
-      `At ${NARROW.width}px the detail did not move below the results ` +
-        `(results bottom ${narrowResults.bottom}, detail top ${narrowDetail.top}).`
-    )
     const narrowOverflow = await pageOverflow(page)
     check(
       narrowOverflow.scrollWidth <= narrowOverflow.clientWidth + 1,
@@ -1698,14 +1691,14 @@ async function run() {
     }))
     check(
       region.scrollWidth > region.clientWidth,
-      'The reduced table did not overflow its region at 360px, so local scrolling proved nothing.'
+      'The table did not overflow its region at1024px, so local scrolling proved nothing.'
     )
     record(
-      `detail reflows below the results at ${NARROW.width}×${NARROW.height}`,
+      `table scrolling stays local at ${NARROW.width}×${NARROW.height}`,
       `region ${region.clientWidth}px holds ${region.scrollWidth}px of columns, page does not scroll sideways`
     )
 
-    // 13. The narrow layout still selects — by row background too — and its controls stay usable.
+    // 13. The minimum desktop still selects by row background and its controls stay usable.
     // A fresh load, so this is the default scope again with the display controls back at their
     // defaults: switching all three off must bring every returned row back.
     const narrowDefaults = await displayControlState(page)

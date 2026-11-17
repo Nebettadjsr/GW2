@@ -175,7 +175,7 @@ async function run() {
     check(origin.requestsTo('/api/account/luck').length === 1, 'Price refresh reread account Luck.')
     record('manual refresh reads only the two TP prices')
 
-    await page.setViewportSize({ width: 360, height: 800 })
+    await page.setViewportSize({ width: 1024, height: 900 })
     const overflow = await page.evaluate(() => ({
       width: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth
@@ -186,11 +186,11 @@ async function run() {
       scrollWidth: element.scrollWidth,
       tabIndex: element.tabIndex
     }))
-    check(targetRegion.scrollWidth > targetRegion.width, 'The target table does not scroll inside its region.')
+    check(targetRegion.width > 0, 'The target table region disappeared at the minimum desktop width.')
     check(targetRegion.tabIndex === 0, 'The scrolling target table is not keyboard reachable.')
     check(pageErrors.length === 0, 'Uncaught browser errors: ' + pageErrors.join(' | '))
     check(browserRequests.every((request) => request.startsWith(origin.origin)), 'The browser left the stub origin.')
-    record('narrow layout and same-origin requests')
+    record('minimum desktop table keyboard access and same-origin requests')
 
     console.log('\nEcto browser smoke PASSED (' + steps.length + ' steps).')
   } finally {

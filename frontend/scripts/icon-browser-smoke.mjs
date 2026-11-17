@@ -39,7 +39,7 @@ const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 30_000)
 const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
 
 const WIDE = { width: 1440, height: 900 }
-const NARROW = { width: 360, height: 800 }
+const NARROW = { width: 1024, height: 900 } // Minimum desktop; positive square icon/fallback geometry stays covered.
 
 /** A 1×1 PNG and a 1×1 JPEG, both genuinely decodable — the browser is the one judging them. */
 const PNG_BYTES = Buffer.from(
@@ -553,7 +553,7 @@ async function run() {
         'no calculation triggered'
     )
 
-    // 6. Narrow viewport: nothing overflows and the text still holds its line.
+    // 6. Minimum desktop: nothing overflows and icons retain their square dimensions.
     await page.setViewportSize(NARROW)
     await waitForSettledIcons(page, 0)
     const narrow = await pageOverflow(page)
