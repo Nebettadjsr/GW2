@@ -15,12 +15,17 @@ import SiteFooter from './shell/SiteFooter.vue'
 import SiteHeader from './shell/SiteHeader.vue'
 import PageHeader from './shell/PageHeader.vue'
 import { useHashRoute } from './shell/useHashRoute'
+import DesktopWidthNotice from './shell/DesktopWidthNotice.vue'
+import { useDesktopTools } from './shell/useDesktopTools'
 import { provideSyncOperations } from './sync/provideSyncOperations'
 import SyncScreen from './sync/SyncScreen.vue'
 
 /**
  * The application shell: one site header with the navigation, and the open application area below it
  * (`FRONTEND_UX_GUIDELINES.md` 2, 3).
+ *
+ * Below 1024 CSS pixels every tool destination shows a notice instead of its screen and starts no
+ * account work; the KeepAlive screens are only deactivated, so widening restores them as they were.
  *
  * Each destination is a real URL (`useHashRoute`), so Back, Forward, a bookmark and a reload all work
  * normally and each screen has its own document title. Navigating issues no request of the shell's
@@ -35,20 +40,34 @@ import SyncScreen from './sync/SyncScreen.vue'
  * second polling loop. Nothing is persisted: a reload starts with no tracked task.
  */
 const route = useHashRoute()
+const desktop = useDesktopTools()
 const sync = provideSyncOperations()
 const bootstrap = useAccountBootstrap()
 const isConnected = computed(() => connection.phase === 'connected')
 const isConnecting = computed(() => connection.phase === 'restoring' || connection.phase === 'connecting')
 const onInfoPage = computed(() => isInfoDestination(route.current.value))
 const onHome = computed(() => route.current.value.id === 'home')
+const isTool = computed(() => !onHome.value && !onInfoPage.value)
+/** Tool destinations are blocked below the supported width; the workspace itself stays mounted. */
+const toolsBlocked = computed(() => isTool.value && !desktop.value)
+const toolOpen = computed(() => isTool.value && desktop.value)
 const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
 const onCraftingPage = computed(() => ['crafting', 'discovery'].includes(route.current.value.id))
 const craftingReady = computed(() => !['checking', 'syncing'].includes(bootstrap.phase.value))
 
 // Only crafting needs these combined inputs on first use. Other pages recover their own sources.
+// A blocked (narrow) viewport defers this first read; widening starts it once. Width changes alone
+// never repeat a read that already happened.
+let bootstrapDeferred = false
 watch(() => isConnected.value && onCraftingPage.value, needed => {
-  if (needed) void bootstrap.run()
+  if (!needed) return
+  if (desktop.value) void bootstrap.run()
+  else bootstrapDeferred = true
 }, { immediate: true })
+watch(desktop, wide => {
+  if (wide && bootstrapDeferred && isConnected.value && onCraftingPage.value) void bootstrap.run()
+  if (wide) bootstrapDeferred = false
+})
 
 const main = ref<HTMLElement | null>(null)
 
@@ -98,13 +117,15 @@ watch(
       or not an account is connected — a direct URL or reload while disconnected must still reach it.
       Every other destination needs the account and points to System Status instead of repeating the form.
     -->
-    <SyncScreen v-if="onSystemStatus" />
+    <DesktopWidthNotice v-if="toolsBlocked" :heading="route.current.value.label" />
+
+    <SyncScreen v-if="onSystemStatus && toolOpen" />
 
     <HomeScreen v-if="onHome" @navigate="onNavigate" />
 
     <InfoPage v-if="onInfoPage" :page="route.current.value.id" />
 
-    <section v-if="!onHome && !onInfoPage && !onSystemStatus && !isConnected" class="account-needed">
+    <section v-if="toolOpen && !onSystemStatus && !isConnected" class="account-needed">
     <PageHeader :heading="route.current.value.label" />
     <p role="status" data-test="connection-needed">
       <template v-if="isConnecting">Checking your GW2 API key…</template>
@@ -116,10 +137,10 @@ watch(
     </section>
 
     <template v-if="isConnected">
-    <p v-if="onCraftingPage && bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
+    <p v-if="toolOpen && onCraftingPage && bootstrap.phase.value === 'syncing'" class="account-bootstrap" role="status" data-test="bootstrap-syncing">
       Loading crafting data…
     </p>
-    <p v-else-if="onCraftingPage && bootstrap.phase.value === 'failed'" class="account-bootstrap account-bootstrap--failed" role="alert" data-test="bootstrap-failed">
+    <p v-else-if="toolOpen && onCraftingPage && bootstrap.phase.value === 'failed'" class="account-bootstrap account-bootstrap--failed" role="alert" data-test="bootstrap-failed">
       {{ bootstrap.error.value }}
       <button type="button" @click="bootstrap.run()">Try again</button>
     </p>
@@ -134,16 +155,16 @@ watch(
       input, so each keeps reading its own route when opened (STORY-WEB-003).
     -->
     <KeepAlive>
-      <CraftingProfitScreen v-if="route.current.value.id === 'crafting' && craftingReady" />
+      <CraftingProfitScreen v-if="toolOpen && route.current.value.id === 'crafting' && craftingReady" />
     </KeepAlive>
 
     <KeepAlive>
-      <CraftingDiscoveryScreen v-if="route.current.value.id === 'discovery' && craftingReady" />
+      <CraftingDiscoveryScreen v-if="toolOpen && route.current.value.id === 'discovery' && craftingReady" />
     </KeepAlive>
 
     <!-- Characters keeps its selection and tab while the user visits another page of this account. -->
     <KeepAlive>
-      <CharactersScreen v-if="route.current.value.id === 'characters'" />
+      <CharactersScreen v-if="toolOpen && route.current.value.id === 'characters'" />
     </KeepAlive>
 
     <!--
@@ -151,10 +172,10 @@ watch(
       selection to preserve, and its result is a snapshot of live Trading Post prices — so opening it
       again should calculate again rather than re-present an older snapshot as current.
     -->
-    <EctoSalvageScreen v-if="route.current.value.id === 'ecto'" />
+    <EctoSalvageScreen v-if="toolOpen && route.current.value.id === 'ecto'" />
 
-    <BankScreen v-else-if="route.current.value.id === 'bank'" />
-    <MaterialsScreen v-else-if="route.current.value.id === 'materials'" />
+    <BankScreen v-else-if="toolOpen && route.current.value.id === 'bank'" />
+    <MaterialsScreen v-else-if="toolOpen && route.current.value.id === 'materials'" />
     </template>
   </main>
 

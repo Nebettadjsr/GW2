@@ -115,6 +115,13 @@ universal time-based deletion guarantee. See [OPERATIONS_RUNBOOK](OPERATIONS_RUN
 
 ### Verification evidence and limits
 
+Issue #243 branch (not yet merged or deployed; the live Oracle revision is unchanged): below 1024 CSS
+pixels (`matchMedia`, `useDesktopTools`) every tool destination shows `DesktopWidthNotice` and does not
+restore a retained key, bootstrap or mount screens; Home and the legal/privacy/storage pages stay
+public. `npm run smoke:ci` runs six controlled-browser journeys after the build in the frontend CI job
+(Chromium via the locked playwright-core CLI) and uploads `desktop-browser-journeys` evidence. Owner
+visual review of the notice is still pending.
+
 Before #236 merged, independent QA passed 306 relevant backend checks, 213 focused frontend
 checks, type/build and 19 controlled visible desktop/narrow browser phases. Full frontend CI
 passed 933 tests; exact-head review and required CI were green. The hosted verifier passed

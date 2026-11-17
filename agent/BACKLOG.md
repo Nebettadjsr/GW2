@@ -31,7 +31,7 @@ scope and current execution status. Its prerequisites #111/#242 and #240/#241 ar
 Provide the notice through the real App capability boundary and preserve existing account,
 crafting and character state on resize. The planned curated aggregate is `npm run smoke:ci`
 (`node scripts/run-desktop-journeys.mjs`) after build in the existing required frontend CI job.
-Do not claim that command, notice or CI evidence is delivered before implementation verifies it.
+The notice, `smoke:ci` and the CI step are implemented on the #243 branch; local owner visual review and exact-head CI/review remain pending, so nothing is deployed.
 
 Cover public reading/connection, saved reservations into Profit/search/detail, recoverable
 failure/retry, account isolation and the viewport boundary through real Chromium with controlled

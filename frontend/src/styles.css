@@ -946,3 +946,9 @@ html {
   font-size: var(--text-sm);
   line-height: 1.6;
 }
+
+.desktop-notice {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
