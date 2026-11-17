@@ -362,13 +362,73 @@ async function ectoResizeState({ page, api, origin, step }) {
   step('actual navigation still resets Ecto and fetches fresh inputs once on return')
 }
 
+async function modalResize({ page, api, origin, step }, kind) {
+  await page.goto(`${origin}/#/synchronization`)
+  const initialStatus = page.waitForResponse(response => new URL(response.url()).pathname === '/api/system/status/details')
+  await connect(page, KEY_A)
+  await initialStatus
+  const trigger = kind === 'help' ? 'help-create' : 'delete-cached-data'
+  const dialog = kind === 'help' ? 'help-dialog' : 'delete-dialog'
+  const open = async () => {
+    await get(page, trigger).click()
+    await get(page, dialog).waitFor()
+    assert.equal(await get(page, dialog).evaluate(node => node.open && node.matches(':modal')), true,
+      `${kind} did not enter the native modal top layer`)
+  }
+  await open()
+  const beforeResize = api.calls.length
+  await page.setViewportSize({ width: 1023, height: 900 })
+  await notice(page)
+  await quietFrame(page)
+  const modalCount = await page.locator('dialog:modal').count()
+  let homeError = null
+  try {
+    // No Escape, force-click or widening: the real pointer must reach the public destination now.
+    const home = kind === 'help' ? get(page, 'desktop-width-notice').getByRole('link', { name: 'Back to Home', exact: true }) : get(page, 'nav-home')
+    await home.click({ timeout: 1500 })
+    await get(page, 'home-screen').waitFor()
+  } catch (error) { homeError = error.message }
+  assert.equal(modalCount, 0, `${kind} remained in the native top layer below1024px; Home click: ${homeError ?? 'succeeded'}`)
+  assert.equal(homeError, null, `${kind} still prevented ordinary public Home navigation`)
+  assert.equal(api.calls.length, beforeResize, 'Closing a width-blocked popup or reading Home started account work')
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), KEY_A)
+  assert.equal(api.calls.some(call => call.method === 'DELETE' || /delete/i.test(call.path)), false, 'Opening a confirmation submitted deletion')
+  step(`${kind} closes its native modal on narrowing; actual Home pointer navigation works without Escape or widening`)
+
+  // Real Home navigation can recreate System Status. The next pass isolates width-only state retention.
+  await go(page, 'synchronization')
+  await notice(page)
+  const returnedStatus = page.waitForResponse(response => new URL(response.url()).pathname === '/api/system/status/details')
+  await page.setViewportSize(WIDE)
+  await get(page, 'disconnect').waitFor()
+  await returnedStatus
+  await get(page, 'api-key-input').fill('synthetic-unsent-modal-draft')
+  await open()
+  const beforeWidthOnly = api.calls.length
+  await page.setViewportSize({ width: 1023, height: 900 })
+  await notice(page)
+  await quietFrame(page)
+  assert.equal(await page.locator('dialog:modal').count(), 0, `${kind} did not close on a second width-only change`)
+  await page.setViewportSize(WIDE)
+  await get(page, 'api-key-input').waitFor()
+  assert.equal(await get(page, 'api-key-input').inputValue(), 'synthetic-unsent-modal-draft')
+  assert.equal(await get(page, 'disconnect').isVisible(), true)
+  assert.equal(await page.locator('dialog:modal').count(), 0, `${kind} reopened automatically on widening`)
+  assert.equal(api.calls.length, beforeWidthOnly, 'Popup resize reset/reproved/refetched the admitted System Status screen')
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), KEY_A)
+  assert.equal(api.calls.some(call => call.method === 'DELETE' || /delete/i.test(call.path)), false)
+  step(`${kind} width-only closure keeps the admitted form draft/key/connection without reopening or extra requests`)
+}
+
 /** Compatibility inventory entry reuses the current recovery story rather than removed buttons. */
 export async function runUserJourneys({ recoveryOnly = false } = {}) {
   await mkdir(OUTPUT, { recursive: true })
   const cases = recoveryOnly ? [['failure-recovery', recoveryJourney]] : [
     ['public-reading', publicReading, { width: 360, height: 800 }], ['connection', connectionJourney],
     ['failure-recovery', recoveryJourney], ['account-isolation', isolationJourney], ['desktop-boundary', boundaryJourney],
-    ['pending-profit-resize', pendingProfitResize], ['ecto-resize-state', ectoResizeState]
+    ['pending-profit-resize', pendingProfitResize], ['ecto-resize-state', ectoResizeState],
+    ['help-dialog-resize', context => modalResize(context, 'help')],
+    ['delete-confirmation-resize', context => modalResize(context, 'delete')]
   ]
   try {
     console.log(`Bundle: ${requireFreshBundle()}`)
