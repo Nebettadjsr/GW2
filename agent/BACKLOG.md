@@ -33,8 +33,9 @@ crafting and character state on resize. The curated aggregate is `npm run smoke:
 (`node scripts/run-desktop-journeys.mjs`) after build in the existing required frontend CI job.
 The notice, `smoke:ci` and the CI step are implemented on the #243 branch. Independent QA
 passes 30 focused tests, a fresh build and ten browser journeys at `906a808`, including the
-review-driven pending-Profit, Ecto and native-modal resize regressions. Local owner
-visual review and final-head CI/review remain pending; this change is not deployed.
+review-driven pending-Profit, Ecto and native-modal resize regressions. Local owner visual
+review remains pending; require current-head CI/review before acceptance and consult the PR
+for their live status. This change is not deployed.
 
 Cover public reading/connection, saved reservations into Profit/search/detail, recoverable
 failure/retry, account isolation and the viewport boundary through real Chromium with controlled

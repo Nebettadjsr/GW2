@@ -128,8 +128,9 @@ with seven-day retention. Independent QA verified 30 focused tests, type-check/b
 ten journeys at `906a8084b0573dda1dc50f822e7147f1c063f94d` on 17 November 2026, including
 pending Profit/Ecto state preservation and native-dialog navigation across resize. Full CI run
 [44140588439](https://github.com/Nebettadjsr/GW2/actions/runs/44140588439) at that revision
-passed, including 951 frontend tests and all ten browser journeys. Owner visual review and
-final-head CI/review remain pending.
+passed, including 951 frontend tests and all ten browser journeys. Owner visual review is
+still pending. [PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns live final-head
+CI/review and merge status; the identified evidence above is a recorded measurement.
 
 Before #236 merged, independent QA passed 306 relevant backend checks, 213 focused frontend
 checks, type/build and 19 controlled visible desktop/narrow browser phases. Full frontend CI

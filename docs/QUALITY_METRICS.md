@@ -55,8 +55,9 @@ survives narrowing without recalculation, and Ecto preserves inputs without widt
 while retaining normal navigation reset. Two further Chromium regressions reproduced native
 Help/Delete confirmation dialogs trapping navigation when hidden. The correction closes them
 without discarding the admitted form/key or confirming deletion; both real Home clicks pass.
-Final-head CI, review closure and owner visual
-acceptance remain pending. No merge, deployment or real-upstream success is implied.
+Final-head CI/review and owner visual acceptance remain required; [PR #244](https://github.com/Nebettadjsr/GW2/pull/244)
+owns their live status. The owner visual check is still pending. No merge, deployment or
+real-upstream success is implied by these measurements.
 
 ## Current improvement candidates
 
