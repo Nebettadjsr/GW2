@@ -20,6 +20,8 @@ export function createJourneyBackend() {
   let holdBank = false
   let heldBank = null
   let heldTask = null
+  let holdProfit = false
+  let heldProfit = null
 
   function snapshot(owner = account) {
     const value = bankSnapshot(300)
@@ -51,8 +53,12 @@ export function createJourneyBackend() {
         return sendJson(200, { accountId: account, accessContext: context,
           expiresAt: '2099-01-01T00:00:00Z', grants: ['account', 'inventories', 'characters', 'unlocks'] })
       }
-      assert.notEqual(context, null, `Protected request preceded proof: ${path}`)
-      assert.equal(ticket, context, `Wrong account context on ${path}`)
+      const sharedItemRead = ['/api/items/metadata', '/api/items/prices'].includes(path)
+      if (sharedItemRead) assert.equal(ticket, undefined, `Public item read carried account context on ${path}`)
+      else {
+        assert.notEqual(context, null, `Protected request preceded proof: ${path}`)
+        assert.equal(ticket, context, `Wrong account context on ${path}`)
+      }
       const keyed = ['/api/sync/account', '/api/sync/account/bank'].includes(path)
       assert.equal(key, keyed ? (account === ACCOUNT_A ? KEY_A : KEY_B) : undefined, `Wrong key forwarding on ${path}`)
       if (path === '/api/session/logout') {
@@ -87,6 +93,13 @@ export function createJourneyBackend() {
       if (path === TABLE || path === DETAIL) {
         assert.equal(request.method, 'POST')
         const input = JSON.parse(body)
+        if (path === TABLE && holdProfit) {
+          holdProfit = false
+          const value = tableResponse(input, 'held-profit-answer')
+          value.rows[0].outputName = 'Held Profit Answer'
+          heldProfit = () => sendJson(200, value)
+          return
+        }
         return sendJson(200, path === TABLE ? tableResponse(input, 'journey-result') : detailResponse(input))
       }
       assert.equal(request.method, 'GET')
@@ -103,6 +116,25 @@ export function createJourneyBackend() {
         return sendJson(200, value)
       }
       if (path === '/api/account/materials') return sendJson(200, materials)
+      if (path === '/api/items/metadata') {
+        assert.equal(url.searchParams.get('ids'), '19721,24277,44602,23041,89409,67027,19986')
+        return sendJson(200, { items: [19721, 24277, 44602, 23041, 89409, 67027, 19986].map(itemId => ({
+          itemId, name: itemId === 19721 ? 'Glob of Ectoplasm' : itemId === 24277 ? 'Pile of Crystalline Dust' : 'Salvage tool', iconUrl: null
+        })) })
+      }
+      if (path === '/api/items/prices') {
+        assert.equal(url.searchParams.get('ids'), '19721,24277')
+        return sendJson(200, { prices: [
+          { itemId: 19721, buyUnitCopper: 100, sellUnitCopper: 120 },
+          { itemId: 24277, buyUnitCopper: 200, sellUnitCopper: 240 }
+        ] })
+      }
+      if (path === '/api/account/luck') return sendJson(200, {
+        consumedLuck: 14134, currentLuckMagicFindPercent: 50, cumulativeLuckForCurrentPercent: 13790,
+        nextMagicFindPercent: 51, cumulativeLuckForNextPercent: 14550, luckRemainingToNextPercent: 416,
+        luckRemainingToCap: 4281316, cumulativeLuckForCap: 4295450, fetchedAt: '2099-01-01T00:00:00Z',
+        targets: [{ kind: 'PLUS_5', magicFindPercent: 55, cumulativeLuck: 17930, luckRemaining: 3796 }]
+      })
       if (path === '/api/crafting/selector-options') return sendJson(200, {
         defaultScopeKind: 'ALL', disciplines: ['Armorsmith'], characterOptionCount: 0, characterOptions: [] })
       if (path === '/api/system/status') return sendJson(200, { globalHealth: 'OK', priceHealth: 'OK',
@@ -120,9 +152,12 @@ export function createJourneyBackend() {
     holdNextBank() { holdBank = true },
     hasHeldBank: () => heldBank !== null,
     hasHeldTask: () => heldTask !== null,
+    holdNextProfit() { holdProfit = true },
+    hasHeldProfit: () => heldProfit !== null,
+    releaseProfit() { heldProfit?.(); heldProfit = null },
     releaseBank() { heldBank?.(); heldBank = null },
     failRefresh() { heldTask?.(); heldTask = null },
     verify() { assert.deepEqual(failures, [], 'Controlled HTTP boundary violations') },
-    cleanup() { heldBank?.(); heldTask?.(); heldBank = null; heldTask = null }
+    cleanup() { heldBank?.(); heldTask?.(); heldProfit?.(); heldBank = null; heldTask = null; heldProfit = null }
   }
 }

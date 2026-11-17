@@ -2,8 +2,9 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connectKey, connection, installAccountSession, resetAccountSession, STORAGE_KEY } from '@/api/accountSession'
 import { installAccountTransport } from '@/api/http'
-import { bankWithEmptySlots, materialStorage } from '@/account/__tests__/accountFixtures'
+import { bankWithEmptySlots, deferred, materialStorage } from '@/account/__tests__/accountFixtures'
 import { profitResponse, resolutionResponse, selectorOptions } from '@/crafting/__tests__/fixtures'
+import { accountLuck, itemMetadata, itemPrices } from '@/ecto/__tests__/currentEctoFixtures'
 
 // Real App, routes, session, KeepAlive and clients. Only viewport and HTTP answers are controlled.
 beforeAll(async () => { await import('../App.vue') }, 30_000)
@@ -14,6 +15,7 @@ let wrapper: VueWrapper | null = null
 let width = 1440
 const media = new Set<{ query: string; list: MediaQueryList; listeners: Set<(event: MediaQueryListEvent) => void> }>()
 const requests: string[] = []
+let heldProfit: Promise<Response> | null = null
 const originalWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth')
 
 function matches(query: string): boolean {
@@ -42,6 +44,7 @@ beforeEach(() => {
   width = 1440
   media.clear()
   requests.length = 0
+  heldProfit = null
   window.sessionStorage.clear()
   window.localStorage.clear()
   resetAccountSession()
@@ -63,10 +66,13 @@ beforeEach(() => {
     if (path === '/api/session') return json({ accountId: ACCOUNT, accessContext: 'desktop-context',
       expiresAt: '2099-01-01T00:00:00Z', grants: ['account', 'inventories', 'characters', 'unlocks'] })
     if (path === '/api/crafting/selector-options') return json(selectorOptions)
-    if (path === '/api/crafting/profit') return json(profitResponse())
+    if (path === '/api/crafting/profit') return heldProfit ?? json(profitResponse())
     if (path === '/api/crafting/profit/resolution') return json(resolutionResponse(JSON.parse(String(init?.body))))
     if (path === '/api/account/bank') return json(bankWithEmptySlots)
     if (path === '/api/account/materials') return json(materialStorage)
+    if (path.startsWith('/api/items/metadata?')) return json(itemMetadata)
+    if (path.startsWith('/api/items/prices?')) return json(itemPrices)
+    if (path === '/api/account/luck') return json(accountLuck)
     if (path === '/api/system/status') return json({ globalHealth: 'OK', priceHealth: 'OK' })
     if (path === '/api/system/status/details') return json({ error: 'FORBIDDEN', message: 'Not owner' }, 403)
     throw new Error(`Unexpected controlled request: ${path}`)
@@ -179,5 +185,71 @@ describe('desktop tool boundary through the real App', () => {
     await flushPromises()
     notice(app)
     expect(requests).toEqual([])
+  })
+
+  it('does not mount a previously unopened tool while narrow after another tool was admitted', async () => {
+    await connectKey(KEY)
+    const app = await open('/#/crafting')
+    await resize(1023)
+    notice(app)
+    const before = [...requests]
+    await app.get('[data-test="nav-ecto"]').trigger('click')
+    await flushPromises()
+    notice(app)
+    expect(requests).toEqual(before)
+    expect(app.find('[data-test="ecto-screen"]').exists()).toBe(false)
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe(KEY)
+  })
+
+  it('accepts the pending Profit answer while blocked and does not calculate again merely on widening', async () => {
+    await connectKey(KEY)
+    const answer = deferred<Response>()
+    heldProfit = answer.promise
+    const app = await open('/#/crafting')
+    expect(requests.filter(path => path === '/api/crafting/profit')).toHaveLength(1)
+    await resize(1023)
+    notice(app)
+    heldProfit = null // Any erroneous second request receives a fresh ordinary response, not a reused Response body.
+    answer.resolve(json(profitResponse()))
+    await flushPromises()
+    expect(requests.filter(path => path === '/api/crafting/profit')).toHaveLength(1)
+    await resize(1024)
+    expect(app.find('[data-test="desktop-width-notice"]').exists()).toBe(false)
+    expect(requests.filter(path => path === '/api/crafting/profit')).toHaveLength(1)
+    expect(app.find('[data-test="profit-table"]').exists()).toBe(true)
+    expect(app.get('[data-test="profit-table"]').isVisible()).toBe(true)
+    expect(app.get('[data-test="profit-table"]').text()).toContain(profitResponse().rows![0]!.outputName)
+  })
+
+  it('preserves Ecto inputs and settings across width changes but still resets on actual navigation', async () => {
+    await connectKey(KEY)
+    const app = await open('/#/ecto')
+    await app.get('#ecto-count').setValue('42')
+    await app.findAll('.salvage-row').find(button => button.text().includes('Basic / Copper-Fed'))!.trigger('click')
+    await app.findAll('.tool-choice__button').find(button => button.text() === 'Copper-Fed')!.trigger('click')
+    await app.findAll('.tp-block')[0]!.findAll('button').find(button => button.text().includes('Buy order'))!.trigger('click')
+    await app.findAll('.tp-block')[1]!.findAll('button').find(button => button.text().includes('Listing sell'))!.trigger('click')
+    const result = app.get('[data-test="ecto-calculation"]').text()
+    const before = [...requests]
+    await resize(1023)
+    notice(app)
+    const ecto = app.find('[data-test="ecto-screen"]')
+    expect(ecto.exists() && ecto.isVisible()).toBe(false)
+    await resize(1024)
+    expect(requests).toEqual(before)
+    expect(app.get('#ecto-count').element).toHaveProperty('value', '42')
+    expect(app.get('.salvage-row[aria-pressed="true"]').text()).toContain('Basic / Copper-Fed')
+    expect(app.get('.tool-choice__button--selected').text()).toBe('Copper-Fed')
+    expect(app.findAll('.tp-block')[0]!.get('[aria-pressed="true"]').text()).toContain('Buy order')
+    expect(app.findAll('.tp-block')[1]!.get('[aria-pressed="true"]').text()).toContain('Listing sell')
+    expect(app.get('[data-test="ecto-calculation"]').text()).toBe(result)
+    await app.get('[data-test="nav-bank"]').trigger('click')
+    await flushPromises()
+    await app.get('[data-test="nav-ecto"]').trigger('click')
+    await flushPromises()
+    expect(app.get('#ecto-count').element).toHaveProperty('value', '100')
+    for (const prefix of ['/api/items/metadata?', '/api/items/prices?', '/api/account/luck']) {
+      expect(requests.filter(path => path.startsWith(prefix))).toHaveLength(2)
+    }
   })
 })

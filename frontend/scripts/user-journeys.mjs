@@ -299,6 +299,67 @@ async function boundaryJourney({ page, api, origin, step }) {
   assert.equal(api.calls.length, before, 'Widening repeated a completed calculation/proof/detail')
   assert.deepEqual(await page.evaluate(() => ({ key: sessionStorage.getItem('gw2.apiKey'), preferences: { ...localStorage } })), storage)
   step('exact1024 is supported; live1023→1024 preserves route, key, preferences, selection and controls without duplicate work')
+  await page.setViewportSize({ width: 1023, height: 900 })
+  await notice(page)
+  await go(page, 'ecto')
+  await notice(page)
+  assert.equal(api.calls.length, before, 'A previously admitted Profit screen enabled hidden first Ecto reads')
+  step('visiting previously unopened Ecto while narrow starts no hidden initial requests')
+}
+
+async function pendingProfitResize({ page, api, origin, step }) {
+  await page.goto(`${origin}/#/synchronization`)
+  await connect(page, KEY_A)
+  api.holdNextProfit()
+  await go(page, 'crafting')
+  await waitFor(api.hasHeldProfit, 'Expected held initial Profit answer')
+  assert.equal(count(api, '/api/crafting/profit'), 1)
+  await page.setViewportSize({ width: 1023, height: 900 })
+  await notice(page)
+  const answer = page.waitForResponse(response => new URL(response.url()).pathname === '/api/crafting/profit')
+  api.releaseProfit()
+  await answer
+  await quietFrame(page)
+  assert.equal(count(api, '/api/crafting/profit'), 1, 'A blocked pending answer caused another calculation')
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await get(page, 'profit-table').waitFor()
+  assert.equal(count(api, '/api/crafting/profit'), 1, 'Widening duplicated the pending calculation')
+  assert.match(await get(page, 'profit-table').innerText(), /Held Profit Answer/)
+  step('pending Profit answer released while blocked renders on widening with exactly one calculation')
+}
+
+async function ectoResizeState({ page, api, origin, step }) {
+  await page.goto(`${origin}/#/synchronization`)
+  await connect(page, KEY_A)
+  await go(page, 'ecto')
+  await get(page, 'ecto-result').waitFor()
+  await page.locator('#ecto-count').fill('42')
+  await page.getByRole('button', { name: /Basic \/ Copper-Fed/ }).click()
+  await page.locator('.tool-choice').getByRole('button', { name: 'Copper-Fed', exact: true }).click()
+  await page.locator('.tp-block').first().getByRole('button', { name: /Buy order/ }).click()
+  await page.locator('.tp-block').last().getByRole('button', { name: /Listing sell/ }).click()
+  const result = await get(page, 'ecto-calculation').innerText()
+  const before = api.calls.length
+  await page.setViewportSize({ width: 1023, height: 900 })
+  await notice(page)
+  assert.equal(await get(page, 'ecto-screen').isVisible(), false)
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await get(page, 'ecto-result').waitFor()
+  assert.equal(api.calls.length, before, 'Width-only Ecto change fetched inputs again')
+  assert.equal(await page.locator('#ecto-count').inputValue(), '42')
+  assert.match(await page.locator('.salvage-row[aria-pressed="true"]').innerText(), /Basic \/ Copper-Fed/)
+  assert.equal(await page.locator('.tool-choice__button--selected').innerText(), 'Copper-Fed')
+  assert.match(await page.locator('.tp-block').first().locator('[aria-pressed="true"]').innerText(), /Buy order/)
+  assert.match(await page.locator('.tp-block').last().locator('[aria-pressed="true"]').innerText(), /Listing sell/)
+  assert.equal(await get(page, 'ecto-calculation').innerText(), result)
+  step('Ecto42, selected method/tool and TP settings survive width-only changes with no refetch')
+  await go(page, 'bank')
+  await get(page, 'bank-slots').waitFor()
+  await go(page, 'ecto')
+  await get(page, 'ecto-result').waitFor()
+  assert.equal(await page.locator('#ecto-count').inputValue(), '100')
+  for (const path of ['/api/items/metadata', '/api/items/prices', '/api/account/luck']) assert.equal(count(api, path), 2)
+  step('actual navigation still resets Ecto and fetches fresh inputs once on return')
 }
 
 /** Compatibility inventory entry reuses the current recovery story rather than removed buttons. */
@@ -306,7 +367,8 @@ export async function runUserJourneys({ recoveryOnly = false } = {}) {
   await mkdir(OUTPUT, { recursive: true })
   const cases = recoveryOnly ? [['failure-recovery', recoveryJourney]] : [
     ['public-reading', publicReading, { width: 360, height: 800 }], ['connection', connectionJourney],
-    ['failure-recovery', recoveryJourney], ['account-isolation', isolationJourney], ['desktop-boundary', boundaryJourney]
+    ['failure-recovery', recoveryJourney], ['account-isolation', isolationJourney], ['desktop-boundary', boundaryJourney],
+    ['pending-profit-resize', pendingProfitResize], ['ecto-resize-state', ectoResizeState]
   ]
   try {
     console.log(`Bundle: ${requireFreshBundle()}`)
