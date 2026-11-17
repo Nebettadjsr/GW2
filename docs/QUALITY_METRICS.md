@@ -45,13 +45,14 @@ journeys increased the percentage without a separately measured coverage change.
 existing KPI baseline above remains unchanged. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
 owns commands, viewport checks and evidence limits.
 
-Independent local QA on `2d9e389760854fcf69ed46eea46ce4be266e872f` passed 27 focused
-automated checks, the fresh type-checking production build and all six curated controlled
+Independent local QA on `f94694e0c66664dfa8359b7994d1430d327cdc02` passed 30 focused
+automated checks, the fresh type-checking production build and all eight curated controlled
 browser journeys. These are scoped local results, not a new full-suite coverage measurement.
 CI run `44135086310` also passed its Chromium installation, browser-journey and evidence-upload
-steps for the earlier identified candidate. Subsequent review identified in-flight Profit and
-Ecto resize-state gaps requiring additional regressions and correction; the earlier six-journey
-pass does not establish their resolution. Final-head CI, review closure and owner visual
+steps for the earlier identified candidate. Review's in-flight Profit and Ecto resize-state gaps
+were reproduced by two failing regressions before correction. Both now pass: a pending answer
+survives narrowing without recalculation, and Ecto preserves inputs without width-only refetch
+while retaining normal navigation reset. Final-head CI, review closure and owner visual
 acceptance remain pending. No merge, deployment or real-upstream success is implied.
 
 ## Current improvement candidates

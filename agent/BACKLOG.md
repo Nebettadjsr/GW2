@@ -32,7 +32,8 @@ Provide the notice through the real App capability boundary and preserve existin
 crafting and character state on resize. The curated aggregate is `npm run smoke:ci`
 (`node scripts/run-desktop-journeys.mjs`) after build in the existing required frontend CI job.
 The notice, `smoke:ci` and the CI step are implemented on the #243 branch. Independent QA
-passes 27 focused tests, a fresh build and six browser journeys at `2d9e389`. Local owner
+passes 30 focused tests, a fresh build and eight browser journeys at `f94694e`, including the
+review-driven pending-Profit and Ecto resize regressions. Local owner
 visual review and final-head CI/review remain pending; this change is not deployed.
 
 Cover public reading/connection, saved reservations into Profit/search/detail, recoverable

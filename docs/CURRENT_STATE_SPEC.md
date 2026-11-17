@@ -116,12 +116,15 @@ universal time-based deletion guarantee. See [OPERATIONS_RUNBOOK](OPERATIONS_RUN
 ### Verification evidence and limits
 
 Issue #243 branch (not yet merged or deployed; the live Oracle revision is unchanged): below 1024 CSS
-pixels (`matchMedia`, `useDesktopTools`) every tool destination shows `DesktopWidthNotice` and does not
-restore a retained key, bootstrap or mount screens; Home and the legal/privacy/storage pages stay
-public. `npm run smoke:ci` runs six controlled-browser journeys after the build in the frontend CI job
+pixels (`matchMedia`, `useDesktopTools`) every tool destination shows `DesktopWidthNotice`. Initial
+blocked tool loads do not restore a retained key, bootstrap or mount screens. An already-admitted
+current screen stays mounted inside a hidden, inert region across width-only changes; real route
+changes keep their normal lifecycle. Home and the legal/privacy/storage pages stay public.
+`npm run smoke:ci` runs eight controlled-browser journeys after the build in the frontend CI job
 (Chromium via the locked playwright-core CLI) and uploads `desktop-browser-journeys` evidence
-with seven-day retention. Independent QA verified 27 focused tests, type-check/build and all
-six journeys at `2d9e389` on 17 November 2026. The implementation's earlier CI run
+with seven-day retention. Independent QA verified 30 focused tests, type-check/build and all
+eight journeys at `f94694e0c66664dfa8359b7994d1430d327cdc02` on 17 November 2026, including
+pending Profit and Ecto state preservation across resize. The implementation's earlier CI run
 [44135086310](https://github.com/Nebettadjsr/GW2/actions/runs/44135086310) also passed the new
 browser step. Owner visual review and final-head CI/review remain pending.
 

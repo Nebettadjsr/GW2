@@ -23,7 +23,7 @@ curated real-browser desktop journeys, the owner-confirmed
 test repetitions and maintained process/testing documentation. Reuse the production build and
 existing Playwright-core/controlled-origin helpers. The implementation branch provides
 `npm run smoke:ci` (`node scripts/run-desktop-journeys.mjs`) after build in the required
-frontend CI job. Independent QA passes its six curated journeys; local owner acceptance
+frontend CI job. Independent QA passes its eight curated journeys; local owner acceptance
 and final-head CI/review remain required before merging. It is not deployed.
 
 Independent QA owns tests, fixtures/helpers and explained mobile-test removals for this session;

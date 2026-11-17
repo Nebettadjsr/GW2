@@ -791,6 +791,11 @@ unexpected requests and failed assertions are failures, not skipped success. Pub
 build inputs/output must be current too. No real API key, application backend or database is
 required. Fixtures provide backend results; browser checks do not reimplement economic rules.
 
+Viewport regressions include an unfinished Profit answer held across narrowing and released
+while blocked: widening must show it without a second calculation. Ecto quantity, salvage/tool
+and price modes survive width-only changes without refetching, while actual navigation retains
+its normal reset/refetch. Reaching an unopened tool while narrow must not start hidden work.
+
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to
 eight minutes. Close owned pages, contexts, browser processes and stub servers on success and

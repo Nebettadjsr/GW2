@@ -57,7 +57,10 @@ tool availability, the width notice and public-reading exceptions. The frontend 
 gate must run before account restoration and initial tool mounting. A blocked initial route
 must not acquire an account context or make hidden feature requests. Width changes preserve
 already mounted account/crafting/character state rather than recreating the workspace merely
-to render the notice; existing account-generation guards still own account isolation.
+to render the notice. The admitted current route stays mounted inside a hidden, inert tool
+region; width changes must not invoke navigation deactivation or discard pending answers.
+Navigation while narrow does not admit an unopened tool. Actual route changes retain their
+normal lifecycle, and account-generation guards still own account isolation.
 This UI capability check does not grant or replace backend authorization.
 
 Controlled real-browser journeys use the production frontend with a synthetic HTTP boundary.
