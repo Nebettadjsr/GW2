@@ -153,7 +153,8 @@ describe('desktop tool boundary through the real App', () => {
     const before = [...requests]
     await resize(1023)
     expect(app.get('[data-test="desktop-width-notice"]').text()).toContain('1024')
-    expect(app.find('[data-test="calculation-controls"]').isVisible()).toBe(false)
+    const controls = app.find('[data-test="calculation-controls"]')
+    expect(controls.exists() && controls.isVisible()).toBe(false)
     expect(requests).toEqual(before)
     expect(connection.generation).toBe(generation)
     expect(connection.phase).toBe('connected')

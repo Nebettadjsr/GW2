@@ -16,6 +16,12 @@ const TIMEOUT = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 15_000)
 const WIDE = { width: 1440, height: 900 }
 const results = []
 let browser
+process.on('message', async message => {
+  if (message?.type !== 'gw2-journey-timeout') return
+  process.exitCode = 1
+  await browser?.close().catch(() => {}) // Cancels waits, then each active journey's finally closes its origin.
+})
+process.channel?.unref()
 
 async function waitFor(predicate, message) {
   const end = Date.now() + TIMEOUT

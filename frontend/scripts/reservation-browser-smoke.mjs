@@ -20,6 +20,13 @@ import { ITEM, TABLE, DETAIL, bankSnapshot, materials, tableResponse, detailResp
 
 const TIMEOUT = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 15000)
 const OUTPUT = resolve(process.env.GW2_SMOKE_OUTPUT ?? 'quality-reports/desktop-journeys')
+let browser
+process.on('message', async message => {
+  if (message?.type !== 'gw2-journey-timeout') return
+  process.exitCode = 1
+  await browser?.close().catch(() => {}) // The cancelled active check closes its origin in finally.
+})
+process.channel?.unref()
 const PREFIX = 'gw2.materialProtection.v1.00000000-0000-4000-8000-000000000194'
 const session = createControlledAccountSession({ calculationRoutes: [TABLE, DETAIL], searchQueries: ['Copper Ore', '19698'],
   searchResults: { '19698': [11] },
@@ -413,7 +420,6 @@ async function main() {
   console.log(`Bundle: ${requireFreshBundle()}`)
   const stub = await startStubOrigin({ port: Number(process.env.GW2_RESERVATION_SMOKE_PORT ?? 5184),
     distDir: fileURLToPath(new URL('../dist/', import.meta.url)), answerApi })
-  let browser
   try {
     browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
     await runViewport(browser, stub, { width: 1440, height: 900 })
