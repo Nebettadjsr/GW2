@@ -1267,6 +1267,15 @@ The methodology below applies unchanged to every route added afterwards — `STO
 - Where a boundary introduces per-request state, test isolation explicitly: issue successive *and* concurrent requests whose stubbed results are derived from each request's own input, then assert each response carries its own input's result and that no two requests shared a service instance. A stub that returns the same canned value for every call cannot detect leakage.
 - One context-startup test (`@SpringBootTest`) belongs in the default goal as evidence that the entry point genuinely boots and binds a port on the actual Java/Maven setup. Keep it from touching the database — with a per-request service factory, simply never invoking it is enough.
 
+Account access has a separate database-free MVC fixture in
+[`AccountAccessHttpFixture`](../backend/src/test/java/web/access/AccountAccessHttpFixture.java).
+It imports the production guard registration and session controller, uses real access/session
+services, and controls proof and time. The recovery and route-mapping tests assert refusal
+before dispatch, verified scope, grants, origins, cookies and absolute expiry. Recording
+handlers observe guard behavior; existing controller tests still own actual payload contracts.
+Keep fixture configuration excluded from unrelated Boot component scans. Focused coverage from
+these tests describes only that selection; complete CI owns package and overall measurements.
+
 ## 35.2 Real-database API checks (explicit runs only)
 
 Name these `*IT` so Surefire's default patterns exclude them (§36.2), and run them explicitly. They boot the real application on a random port with the real application service and no schema override, so they read the developer's real database exactly as the running application does.
