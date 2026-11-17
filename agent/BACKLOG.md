@@ -16,9 +16,9 @@ Complete the documentation work before activating the next implementation run. T
 - Pre-release load/capacity measurements, VM work, additional-user-key searches and broad analysis work are withdrawn. Preserve concrete future optimization opportunities and use actual production observations without claiming a supported-user capacity.
 - Preserve unrelated maintainer changes, normal local application sessions and account data. No real-account mutations are authorized for verification. Hosting/provider changes, paid services, billing and genuine product choices remain owner decisions.
 
-## Next implementation handoff
+## Coverage handoff
 
-Prepare [#111](https://github.com/Nebettadjsr/GW2/issues/111), account HTTP mapping and session-recovery coverage, using the latest successful CI artifact and current [Architecture](../docs/ARCHITECTURE.md). Keep [#21](https://github.com/Nebettadjsr/GW2/issues/21) open for remaining relevant gaps. [#60](https://github.com/Nebettadjsr/GW2/issues/60) and [#228](https://github.com/Nebettadjsr/GW2/issues/228) remain separate maintenance candidates.
+The first released slice is [#111](https://github.com/Nebettadjsr/GW2/issues/111), account HTTP mapping and session-recovery coverage, with independent QA tests in [PR #242](https://github.com/Nebettadjsr/GW2/pull/242). GitHub owns its current review/merge state. Use the full CI measurements in [Quality metrics](../docs/QUALITY_METRICS.md) for subsequent selection; focused counters do not replace that baseline. Keep [#21](https://github.com/Nebettadjsr/GW2/issues/21) open for remaining relevant gaps. [#60](https://github.com/Nebettadjsr/GW2/issues/60) and [#228](https://github.com/Nebettadjsr/GW2/issues/228) remain separate maintenance candidates.
 
 A released handoff identifies goal, dependencies, acceptance criteria, meaningful checks, current documentation and remaining decisions. The supervisor releases one dependency-complete issue at a time after inspecting that handoff. A draft or an `auto` label alone does not start Claude.
 

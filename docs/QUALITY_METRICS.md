@@ -8,13 +8,13 @@ The GitHub Actions `Coverage KPI report` job publishes per-module/package rates 
 
 ## Verified CI baseline
 
-Source: clean `master` commit `09d3443f1cefb7784e116fe4f097738f15299809`, successful [CI run 43821055103](https://github.com/Nebettadjsr/GW2/actions/runs/43821055103), generated 16 November 2026. Downloaded and inspected on 17 November 2026: `coverage-reports` artifact `14204318123`, `coverage-kpi/coverage-kpi.json`, cross-checked with its `coverage-input/java-coverage/jacoco.xml`. These are results for that commit, not claims about untested future changes.
+Source: [PR #242](https://github.com/Nebettadjsr/GW2/pull/242) test commit `5aa6c2bcf9168397e470a6cc00ae80645cfb7497`, successful [CI run 44032869374](https://github.com/Nebettadjsr/GW2/actions/runs/44032869374), generated 17 November 2026. Downloaded and inspected that day: `coverage-reports` artifact `14306345927`, `coverage-kpi/coverage-kpi.json`, cross-checked with its `coverage-input/java-coverage/jacoco.xml`. These are results for that commit; the following documentation refresh changes no measured source or tests.
 
 | Area | Line coverage | Branch coverage |
 | --- | --- | --- |
-| Java backend | 91.07% (10,484 / 11,512) | 80.71% (5,329 / 6,603) |
+| Java backend | 91.36% (10,517 / 11,512) | 81.42% (5,376 / 6,603) |
 | Frontend TypeScript | 96.43% (4,026 / 4,175) | 86.48% (4,209 / 4,867) |
-| Combined weighted | 92.50% (14,510 / 15,687) | 83.16% (9,538 / 11,470) |
+| Combined weighted | 92.71% (14,543 / 15,687) | 83.57% (9,585 / 11,470) |
 
 Both application modules exceed the line target; both still have branch gaps. A combined percentage does not establish adequate coverage of any individual critical path.
 
@@ -24,16 +24,46 @@ Selected package figures from the same artifact:
 
 | Area | Lines | Branches | Reason to inspect |
 | --- | --- | --- | --- |
-| Backend `web.access` | 84.80% | 72.49% | Account route mapping, session/recovery and refusal behavior; prepared issue #111. |
+| Backend `web.access` | 95.27% | 92.14% | Account route mapping and session/recovery coverage added in #111; named remaining defensive gaps below. |
 | Backend `sync` | 81.40% | 75.67% | Many remaining lines and upstream/publication failure branches. |
-| Backend `application.access` | 93.53% | 79.45% | Account proof, expiry and access-policy branches. |
+| Backend `application.access` | 95.59% | 80.82% | Account proof, expiry and access-policy branches. |
 | Backend `parser` | 98.12% | 73.81% | Malformed and optional payload branches; prioritize meaningful input cases. |
 | Backend `infra.db` | 79.17% | 65.38% | Connection/pool lifecycle and failure handling. |
 | Frontend `characters` | 95.95% | 78.19% | Equipment/build/inventory state and unavailable-data branches. |
 | Frontend `account` | 94.04% | 81.48% | Connection restoration, switching and deletion behavior. |
 | Frontend `home` | 67.57% | 88.46% | Inspect uncovered behavior before adding static-content assertions. |
 
-[Issue #21](https://github.com/Nebettadjsr/GW2/issues/21) remains the broader request. [Issue #111](https://github.com/Nebettadjsr/GW2/issues/111) is the prepared account-boundary slice. Refresh class/method counters from the current artifact before choosing exact cases. A low package percentage alone does not justify a production rewrite.
+[Issue #21](https://github.com/Nebettadjsr/GW2/issues/21) remains the broader request. Refresh class/method counters from the current artifact before choosing another slice. A low package percentage alone does not justify a production rewrite.
+
+## Account-boundary improvement (#111)
+
+Independent QA added 72 deterministic HTTP cases using the production guard registration,
+session controller and access/session services with a controlled proof port and clock.
+The focused check passed 103 cases, including 31 unchanged adjacent cases; the full CI run
+above then passed backend/frontend suites, build and workflow checks. Production code and
+existing assertions did not change.
+
+Compared with [baseline CI 43821055103](https://github.com/Nebettadjsr/GW2/actions/runs/43821055103)
+at `09d3443f1cefb7784e116fe4f097738f15299809`:
+
+| Boundary | Lines before / after | Branches before / after |
+| --- | --- | --- |
+| `web.access` | 251 / 282 of 296 | 166 / 211 of 229 |
+| `AccountAccessHttp` | 32 / 33 of 33 | 28 / 44 of 46 |
+| `AccountAccessInterceptor` | 121 / 128 of 135 | 101 / 121 of 130 |
+| `AccountAccessApiController` | 53 / 75 of 76 | 15 / 24 of 25 |
+| `RequestAccountContext` | 7 / 8 of 8 | 2 / 2 of 2 |
+
+The scoped operation mapping is now fully covered (16/16 lines, 15/15 branches).
+Tests verify refusal before dispatch, account/context isolation, minimal grants and URL
+restrictions, absolute expiry, renewal, logout, origin/cookie behavior, transient outages
+and deletion-busy installation. They make no claim about live ArenaNet availability or
+production capacity.
+
+Remaining boundary gaps include defensive null HTTP inputs, the post-proof renewal
+context-mismatch catch, interceptor error/lifecycle cleanup and query-parser edges.
+Owner-access and deletion-controller coverage also remain candidates where a meaningful
+behavioral case is missing; do not reactivate retired unscoped paths to chase percentages.
 
 ## Reading and refreshing reports
 
