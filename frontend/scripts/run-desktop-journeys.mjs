@@ -30,7 +30,10 @@ for (const [script, reportFile] of [['user-journeys.mjs', 'user-journeys.json'],
       if (child.connected) child.send({ type: 'gw2-journey-timeout' }, () => {})
       forcedStop = setTimeout(() => {
         // Last resort targets only this spawned child's process tree, never unrelated local sessions.
-        if (process.platform === 'win32') execFile('taskkill', ['/pid', String(child.pid), '/t', '/f'], () => {})
+        if (process.platform === 'win32') {
+          const taskkill = join(process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows', 'System32', 'taskkill.exe')
+          execFile(taskkill, ['/pid', String(child.pid), '/t', '/f'], () => {})
+        }
         else { try { process.kill(-child.pid, 'SIGKILL') } catch {} }
       }, CLEANUP_BUDGET_MS)
     }, CHILD_BUDGET_MS)
