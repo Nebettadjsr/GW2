@@ -13,15 +13,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Minimal in-process background-task facility for the HTTP sync/refresh triggers (STORY-API-003,
- * {@code TARGET_ARCHITECTURE.md} §23: the first implementation stays "as simple as practical", and
- * no queue or distributed job platform is required).
+ * Minimal in-process background-task facility for the HTTP sync/refresh triggers (STORY-API-003): the
+ * implementation stays as simple as practical, and no queue or distributed job platform is
+ * required.
  *
  * <p>Holds no Spring, HTTP or domain dependency: a caller supplies an operation key and a body, gets
  * an identifier back immediately, and polls {@link #find(String)}. Any later sync/refresh route can
  * reuse it by passing its own operation key.
  *
- * <p><b>Documented behavior</b> — the part callers and {@code CURRENT_ARCHITECTURE.md} rely on:
+ * <p><b>Documented behavior</b> — the part callers rely on:
  *
  * <ul>
  *   <li><b>Admission:</b> at most one unfinished task per operation key. Submitting a second one
