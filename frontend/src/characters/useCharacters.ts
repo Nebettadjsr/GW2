@@ -1,15 +1,18 @@
 /**
  * Read state for the Characters destination (STORY-CHAR-002).
  *
- * Three independent reads: the roster (CHARACTERS coverage), the selected character's detail, and its
- * equipment tabs (CHARACTER_EQUIPMENT_TABS coverage). Unavailable equipment never erases an admitted
- * roster. Every answer is guarded by the account generation it was requested under and by the
- * character that is still selected, so a late answer for a replaced account or a previous selection
- * is discarded. Nothing is derived from the data: absence of an equipment row is never turned into an
- * empty slot, and `tabs` absent is never read as `[]`.
+ * Independent reads: the roster (CHARACTERS coverage), the selected character's detail, and its
+ * equipment tabs (CHARACTER_EQUIPMENT_TABS coverage), plus lazily read inventory and the optional
+ * saved builds. Unavailable optional sources never erase an admitted roster. Every answer is guarded by
+ * the account generation it was requested under and by the character that is still selected, so a late
+ * answer for a replaced account or a previous selection is discarded. Nothing is derived from the data:
+ * absence of an equipment row is never turned into an empty slot, and `tabs` absent is never read as `[]`.
  *
- * Equipment recovery uses the existing refresh operation: at most one in flight, a bounded task wait,
- * one automatic attempt per workspace for a PENDING source, otherwise only on the user's request.
+ * Recovery of the optional equipment/builds sources uses the existing refresh operation through
+ * `refreshEquipment`/`recoverBuilds`: at most one equipment refresh in flight, a bounded task wait and
+ * bounded coverage retries. `refreshEquipment` catches its failure into `refreshMessage` (the screen
+ * forwards it as its refresh failure); `recoverBuilds` rejects. This hook starts none by itself: the
+ * owning screen decides when via the shared automatic account refresh, or on the user's request.
  */
 import { computed, getCurrentScope, onScopeDispose, ref, shallowRef } from 'vue'
 import { connection } from '@/api/accountSession'
@@ -37,8 +40,7 @@ function failureOf(cause: unknown): ReadFailure {
 export function useCharacters(
   api: CharactersApi = charactersApi,
   tasks: Pick<SyncApi, 'readTaskStatus'> = syncApi,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
-  managedRefresh = false
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
 ) {
   const generation = connection.generation
   let disposed = false
@@ -103,8 +105,9 @@ export function useCharacters(
   const inventoryFailure = ref<ReadFailure | null>(null)
   let inventoryId = 0
 
-  // Saved builds: read only for the selected character, solely to name its ACTIVE elite specialization
-  // in the header. Not retained across characters; any doubt falls back to the base profession.
+  // Saved builds: read only for the selected character. They decorate the header with the ACTIVE elite
+  // specialization (any doubt falls back to the base profession) and feed the inspectable Builds
+  // section (buildSource/buildTabs/shownBuild). Last-good builds are retained per character name.
   const buildPhase = ref<ReadPhase>('idle')
   const buildResponse = shallowRef<CharacterBuildTabsResponse | null>(null)
   /** Last Builds answer with tabs, per character name; account-bound because this state is. */
@@ -113,7 +116,6 @@ export function useCharacters(
   /** The saved build tab being inspected; independent of the equipment tab and of the active build. */
   const inspectedBuild = ref<number | null>(null)
   let buildId = 0
-  let buildRecoveryTried = false
   /** Bumped on every select/back so an old attempt for a same-name earlier selection cannot act. */
   let selectionToken = 0
 
@@ -159,10 +161,6 @@ export function useCharacters(
     }
     equipmentPhase.value = 'loaded'
     reconcile(name)
-    if (!managedRefresh && equipmentResponse.value?.state === 'PENDING' && !autoRecoveryTried) {
-      autoRecoveryTried = true
-      void refreshEquipment()
-    }
   }
 
   async function loadBuildTabs(name: string): Promise<void> {
@@ -187,11 +185,6 @@ export function useCharacters(
       buildFailure.value = failureOf(cause)
     }
     buildPhase.value = 'loaded'
-    // Optional source not covered yet: one automatic recovery attempt per selection, like equipment.
-    if (!managedRefresh && buildResponse.value?.state === 'PENDING' && !buildRecoveryTried) {
-      buildRecoveryTried = true
-      void recoverBuilds(name, selectionToken)
-    }
   }
 
   /**
@@ -202,21 +195,19 @@ export function useCharacters(
    */
   async function recoverBuilds(name: string, token: number = selectionToken): Promise<void> {
     const live = (): boolean => current() && selectedName.value === name && token === selectionToken
-    try {
-      if (equipmentAttempt) {
-        await equipmentAttempt
-        if (!live()) return
-        await loadBuildTabs(name)
-        if (!live() || buildResponse.value?.state !== 'PENDING') return
-      }
-      for (let attempt = 0; attempt <= EQUIPMENT_MAX_COVER_RETRIES; attempt += 1) {
-        if (!live()) return
-        const accepted = await api.startBuildTabsRefresh()
-        if (!live() || !(await awaitTask(accepted.statusUrl)) || !live()) return
-        if (accepted.coversRequest !== false) { await loadBuildTabs(name); return }
-      }
-      throw new Error('Build refresh is still waiting for another update')
-    } catch (cause) { if (managedRefresh) throw cause /* otherwise optional decoration: base profession */ }
+    if (equipmentAttempt) {
+      await equipmentAttempt
+      if (!live()) return
+      await loadBuildTabs(name)
+      if (!live() || buildResponse.value?.state !== 'PENDING') return
+    }
+    for (let attempt = 0; attempt <= EQUIPMENT_MAX_COVER_RETRIES; attempt += 1) {
+      if (!live()) return
+      const accepted = await api.startBuildTabsRefresh()
+      if (!live() || !(await awaitTask(accepted.statusUrl)) || !live()) return
+      if (accepted.coversRequest !== false) { await loadBuildTabs(name); return }
+    }
+    throw new Error('Build refresh is still waiting for another update')
   }
 
   /**
@@ -369,7 +360,6 @@ export function useCharacters(
     buildResponse.value = null
     buildFailure.value = null
     buildPhase.value = 'idle'
-    buildRecoveryTried = false
     inspectedBuild.value = null
   }
 
@@ -456,7 +446,6 @@ export function useCharacters(
   // Refresh of the optional equipment source, through the existing operation.
   const refreshing = ref(false)
   const refreshMessage = ref<string | null>(null)
-  let autoRecoveryTried = false
   /** The single in-flight equipment refresh attempt, shared by anything that needs to wait for it. */
   let equipmentAttempt: Promise<void> | null = null
 
