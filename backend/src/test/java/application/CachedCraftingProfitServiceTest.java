@@ -417,7 +417,7 @@ class CachedCraftingProfitServiceTest {
                     });
                     return states;
                 },
-                con -> coverage,
+                (con, scope) -> coverage,
                 priceRefresh,
                 tasks,
                 Clock.fixed(NOW, ZoneOffset.UTC),

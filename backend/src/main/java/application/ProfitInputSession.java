@@ -38,15 +38,6 @@ public final class ProfitInputSession implements AutoCloseable {
     private final Connection connection;
     private final AccountScope scope;
 
-    /**
-     * An unscoped session over an already-prepared connection. Kept with exactly this signature
-     * because {@code CraftingProfitServiceSessionTest.sessionOn} reaches it by reflection to build a
-     * session over a connection it supplies, without reaching a database.
-     */
-    private ProfitInputSession(Connection connection) {
-        this(connection, null);
-    }
-
     private ProfitInputSession(Connection connection, AccountScope scope) {
         this.connection = connection;
         this.scope = scope;
@@ -87,7 +78,7 @@ public final class ProfitInputSession implements AutoCloseable {
 
     /** A session with no connection: collaborators read through their own, as they did before. */
     public static ProfitInputSession detached() {
-        return new ProfitInputSession(null);
+        return new ProfitInputSession(null, null);
     }
 
     /** The pinned connection, or null for a {@link #detached()} session. */
@@ -96,11 +87,11 @@ public final class ProfitInputSession implements AutoCloseable {
     }
 
     /**
-     * The account this snapshot belongs to, or null when it has none.
+     * The account this snapshot belongs to, or null for a {@link #detached()} session.
      *
-     * <p>A null scope is not "the default account": production {@code open()} always binds one.
-     * Null belongs only to detached or reflection-created in-memory test seams. Collaborators
-     * branch on it to choose the scoped repository read, never to pick an account.
+     * <p>A null scope is not "the default account": production {@code open()} always binds one,
+     * and every connection-carrying session has one. Null belongs only to the connection-less
+     * in-memory test seam.
      */
     public AccountScope scope() {
         return scope;

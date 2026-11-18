@@ -101,9 +101,9 @@ class CachedCraftingProfitServiceKeyedTest {
                     return null;
                 });
         try {
-            Constructor<ProfitInputSession> ctor = ProfitInputSession.class.getDeclaredConstructor(Connection.class);
+            Constructor<ProfitInputSession> ctor = ProfitInputSession.class.getDeclaredConstructor(Connection.class, AccountScope.class);
             ctor.setAccessible(true);
-            return ctor.newInstance(con);
+            return ctor.newInstance(con, AccountScope.of(java.util.UUID.randomUUID()));
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
@@ -140,7 +140,7 @@ class CachedCraftingProfitServiceKeyedTest {
                     }
                     return states;
                 },
-                con -> new CalculationFreshness.PriceCoverage(
+                (con, scope) -> new CalculationFreshness.PriceCoverage(
                         10, covered ? 10 : 0, covered ? 0 : 10, 0, FRESH_AT, FRESH_AT, covered, "q"),
                 new TradingPostRefreshCoordinator(new TradingPostPriceRefreshService(noQuotes), tasks),
                 tasks,

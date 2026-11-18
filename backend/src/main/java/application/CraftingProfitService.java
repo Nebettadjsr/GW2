@@ -55,7 +55,8 @@ public class CraftingProfitService {
      * When it carries a connection, every input read below runs on
      * it, so one operation cannot mix input generations or pair part-written refresh data with an
      * older completion marker. A {@link ProfitInputSession#detached()} session keeps the previous
-     * behavior of letting each repository open its own connection.
+     * behavior of letting each repository open its own connection. Every connection-carrying
+     * session is bound to one verified account, so pinned reads are always account-scoped.
      */
     private final ProfitInputSession session;
 
@@ -233,15 +234,12 @@ public class CraftingProfitService {
         List<Recipe> visibleRecipes;
         if (choice == null || choice.kind == DiscChoice.Kind.ALL) {
             visibleRecipes = con == null ? recipeRepo.loadRecipes("All")
-                    : scope == null ? recipeRepo.loadRecipes(con, "All")
                     : recipeRepo.loadRecipes(con, scope, "All");
         } else if (choice.kind == DiscChoice.Kind.DISCIPLINE_ONLY) {
             visibleRecipes = con == null ? recipeRepo.loadRecipes(choice.discipline)
-                    : scope == null ? recipeRepo.loadRecipes(con, choice.discipline)
                     : recipeRepo.loadRecipes(con, scope, choice.discipline);
         } else { // CHAR_DISCIPLINE
             visibleRecipes = con == null ? recipeRepo.loadRecipesForCharacter(choice.charName, choice.discipline)
-                    : scope == null ? recipeRepo.loadRecipesForCharacter(con, choice.charName, choice.discipline)
                     : recipeRepo.loadRecipesForCharacter(con, scope, choice.charName, choice.discipline);
         }
 
@@ -312,8 +310,7 @@ public class CraftingProfitService {
                             settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations);
         }
         if (con == null) return invRepo.loadOwnedInventoryForCharacters(names);
-        return scope == null ? invRepo.loadOwnedInventoryForCharacters(con, names)
-                : invRepo.loadOwnedInventoryForCharacters(con, scope, names);
+        return invRepo.loadOwnedInventoryForCharacters(con, scope, names);
     }
 
     /**
@@ -328,9 +325,7 @@ public class CraftingProfitService {
         AccountScope scope = session.scope();
         List<CharacterRepository.DiscRow> craftingRows = con == null
                 ? charRepo.loadAllCharacterCrafting()
-                : scope == null
-                        ? charRepo.loadAllCharacterCrafting(con)
-                        : charRepo.loadAllCharacterCrafting(con, scope);
+                : charRepo.loadAllCharacterCrafting(con, scope);
         for (CharacterRepository.DiscRow row : craftingRows) {
             ratingByCharacter.computeIfAbsent(row.charName, k -> new HashMap<>()).put(row.discipline, row.rating);
         }
