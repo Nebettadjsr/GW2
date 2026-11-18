@@ -91,15 +91,11 @@ public final class TpSync {
 
     private static void syncTpPrices(Set<Integer> itemIds, TaskDeadline deadline, boolean strict) throws Exception {
 
-        // NOTE (TP refresh scope):
-        // This method intentionally refreshes TP prices only for items relevant to the current view
-        // (profit or discovery). Prices are not refreshed continuously and may be several minutes old.
-        // This is acceptable because GW2 TP prices change relatively slowly and manual refresh is used.
-        //
-        // time limit optimization:
-        // We exclude items whose tp_prices.fetched_at is newer than 10 minutes to avoid refetching
-        // recently synced prices. This significantly reduces API calls when refresh is triggered
-        // multiple times in a short period.
+        // Fetches exactly the IDs it is given, in ascending order, one committed batch at a time.
+        // Relevance and the ten-minute freshness filter are applied by the callers' collectors
+        // (TpPriceFreshness.STALE_SQL_PREDICATE) before this point; only the full-catalog operation
+        // bypasses them. Each batch is fetched and validated outside its transaction, so a later
+        // failure leaves earlier committed batches in place.
 
         List<Integer> ids = new ArrayList<>(itemIds);
         Collections.sort(ids);
