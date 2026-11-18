@@ -271,6 +271,42 @@ describe('EctoSalvageScreen', () => {
     expect(requests).toHaveLength(3)
   })
 
+  it('treats zero quotes as valid prices but missing quotes as unavailable, for quantity and target', async () => {
+    // Zero quotes: Ecto and Dust cost/yield nothing, yet the Silver-Fed tool still costs coin.
+    pricesAnswer = { prices: [
+      { itemId: ECTO_ID, buyUnitCopper: 0, sellUnitCopper: 0 },
+      { itemId: DUST_ID, buyUnitCopper: 0, sellUnitCopper: 0 }
+    ] }
+    let open = await openScreen()
+    expect(open.find('[data-test="ecto-result"]').exists()).toBe(true)
+    expect(calculationFigure(open, 'Ecto value consumed').text()).toContain('-0c')
+    expect(calculationFigure(open, 'Dust value after TP fees').text()).toContain('+0c')
+    expect(calculationFigure(open, 'Effective cost').text()).toBe('Effective cost60s 0c') // 100 x 60c
+    // First target: 4 Ectos x 60c, nothing recovered.
+    expect(open.findAll('.target-row')[0]?.element.children[3]?.textContent?.trim()).toBe('0c')
+    expect(open.find('.target-row .target-cost strong').text()).toBe('2s 40c')
+    wrapper?.unmount()
+
+    // Missing Ecto quote: nothing is invented, neither for the quantity nor for the target.
+    pricesAnswer = { prices: [{ itemId: DUST_ID, buyUnitCopper: 200, sellUnitCopper: 240 }] }
+    open = await openScreen()
+    expect(open.find('[data-test="ecto-result"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-calculation"]').text())
+      .toContain('The final cost will appear when Trading Post prices are available.')
+    expect(open.findAll('.target-row')[0]?.element.children[3]?.textContent?.trim()).toBe('Price unavailable')
+    expect(open.find('.target-row .target-cost strong').text()).toBe('Price unavailable')
+    wrapper?.unmount()
+
+    // Missing Dust quote: the Ecto value is known, the effective cost is not.
+    pricesAnswer = { prices: [{ itemId: ECTO_ID, buyUnitCopper: 100, sellUnitCopper: 120 }] }
+    open = await openScreen()
+    expect(open.find('[data-test="ecto-result"]').exists()).toBe(false)
+    expect(open.find('[data-test="ecto-calculation"]').text())
+      .toContain('The final cost will appear when Trading Post prices are available.')
+    expect(open.findAll('.target-row')[0]?.element.children[3]?.textContent?.trim()).toBe('4s 80c')
+    expect(open.find('.target-row .target-cost strong').text()).toBe('Price unavailable')
+  })
+
   it('uses the current and next cumulative Luck thresholds for level progress', async () => {
     const open = await openScreen()
     const bar = open.find('.luck-progress__bar')
