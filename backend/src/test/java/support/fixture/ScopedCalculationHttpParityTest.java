@@ -77,6 +77,12 @@ class ScopedCalculationHttpParityTest {
     private static final CraftingSettings DISCOVERY_LISTING = new CraftingSettings(true, true, 0, true, true, true);
     private static final CraftingSettings DISCOVERY_DETAIL = new CraftingSettings(true, true, 200_000, false, false, true);
 
+    /** The loaded fixture rows: the independent source contract for names, icons, quotes and recipe metadata. */
+    private static Map<String, List<ObjectNode>> FIXTURE;
+    private static final String ICON_1 = "https://render.guildwars2.com/file/AAAA1111/1001.png";
+    private static final String ICON_100 = "https://render.guildwars2.com/file/BBBB2222/1002.jpg";
+    private static final String ICON_102 = "https://render.guildwars2.com/file/CCCC3333/1003.png";
+
     @LocalServerPort int port;
     @Autowired CraftingGraphCache graphCache;
     private final HttpClient client = HttpClient.newHttpClient();
@@ -88,6 +94,7 @@ class ScopedCalculationHttpParityTest {
         Map<String, List<ObjectNode>> merged = new LinkedHashMap<>();
         for (String t : FixtureSnapshot.ALL_TABLES) merged.put(t, new ArrayList<>(base.rows(t)));
         extendWithThreeLevelChain(merged);
+        FIXTURE = merged;
         try (Connection c = PopulatedFixtureIsolationIT.connect()) {
             FixtureLoader.load(c, SCHEMA, new FixtureSnapshot(base.kind(), base.version(), merged, base.expected(),
                     base.sourceRevision(), null));
@@ -110,8 +117,19 @@ class ScopedCalculationHttpParityTest {
         t.get("recipe_ingredients").add(SyntheticFixtures.row("recipe_id", 20003, "item_id", 101, "count", 1));
         t.get("recipe_ingredients").add(SyntheticFixtures.row("recipe_id", 20003, "item_id", 4, "count", 2));
         t.get("tp_tradeable_items").add(SyntheticFixtures.row("item_id", 102, "fetched_at", SyntheticFixtures.FRESH));
-        t.get("tp_prices").add(SyntheticFixtures.row("item_id", 102, "buy_quantity", 500, "buy_unit_price", 9000,
+        // Banquet has a sell side only: its quote carries a JSON null buy price, not zero.
+        t.get("tp_prices").add(SyntheticFixtures.row("item_id", 102, "buy_quantity", 0, "buy_unit_price", null,
                 "sell_quantity", 500, "sell_unit_price", 9900, "fetched_at", SyntheticFixtures.FRESH));
+        // Icon metadata: accepted sources for 1, 100 and 102; an unacceptable source (101) and none (others) => null.
+        for (ObjectNode item : t.get("items")) {
+            switch (item.path("item_id").asInt()) {
+                case 1 -> item.put("icon_url", ICON_1);
+                case 100 -> item.put("icon_url", ICON_100);
+                case 102 -> item.put("icon_url", ICON_102);
+                case 101 -> item.put("icon_url", "http://example.invalid/not-render.png");
+                default -> { }
+            }
+        }
     }
 
     private static java.nio.file.Path cacheFile() {
@@ -203,12 +221,19 @@ class ScopedCalculationHttpParityTest {
         assertEquals("CALCULATED", aDefault.path("status").asText());
         assertTableEquivalent("A default", profit(a, PROFIT_DEFAULT), aDefault.path("rows"));
         assertTableEquivalent("B default", profit(b, PROFIT_DEFAULT), bDefault.path("rows"));
-        assertTableEquivalent("A buying", profit(a, PROFIT_BUYING), a.ok("/api/crafting/profit", profitBody(buying)).path("rows"));
-        assertTableEquivalent("B buying", profit(b, PROFIT_BUYING), b.ok("/api/crafting/profit", profitBody(buying)).path("rows"));
+        int[] aBuy = assertRows("A buying", profit(a, PROFIT_BUYING).visibleRecipes(), profit(a, PROFIT_BUYING).resultsByRecipeId(),
+                a.ok("/api/crafting/profit", profitBody(buying)).path("rows"));
+        int[] bBuy = assertRows("B buying", profit(b, PROFIT_BUYING).visibleRecipes(), profit(b, PROFIT_BUYING).resultsByRecipeId(),
+                b.ok("/api/crafting/profit", profitBody(buying)).path("rows"));
+        assertTrue(aBuy[1] + bBuy[1] > 0 && aBuy[2] + bBuy[2] > 0,
+                "buying runs must exercise missing materials with real purchase prices");
 
         // Independent fixture outcomes (hand arithmetic from SyntheticFixtures; see PopulatedFixtureHttpTest):
         // A holds 250 of item 1 and 180 of item 2 => 60 Dishes; B holds 12 and 9 => 3. A knows recipe 20002, B not.
         assertEquals(60, rowOf(aDefault.path("rows"), 20001).path("craftableCount").asInt());
+        // Hand arithmetic: without listing-sell the output sells instantly at item 100's buy quote 3100, so 60 crafts sell for 186000.
+        assertEquals(3100, rowOf(aDefault.path("rows"), 20001).path("revenueCopper").asInt());
+        assertEquals(186000, rowOf(aDefault.path("rows"), 20001).path("totalSellValueCopper").asInt());
         assertEquals(3, rowOf(bDefault.path("rows"), 20001).path("craftableCount").asInt());
         assertNotNull(rowOf(aDefault.path("rows"), 20002), "A knows the Feast recipe");
         assertNull(rowOf(bDefault.path("rows"), 20002), "B never unlocked the Feast recipe");
@@ -220,42 +245,190 @@ class ScopedCalculationHttpParityTest {
         assertRows(label, data.visibleRecipes(), data.resultsByRecipeId(), rows);
     }
 
-    private static void assertRows(String label, List<Recipe> visible, Map<Integer, CraftResult> results, JsonNode rows) {
+    /** Returns {positive results, rows with missing materials, missing entries with a purchase price, entries without one}. */
+    private static int[] assertRows(String label, List<Recipe> visible, Map<Integer, CraftResult> results, JsonNode rows) {
         assertTrue(!visible.isEmpty(), label + ": no rows to compare");
         assertEquals(visible.size(), rows.size(), label + ": the API dropped or added rows");
-        int positive = 0;
+        int[] stats = new int[4];
         for (int i = 0; i < visible.size(); i++) {
             Recipe recipe = visible.get(i);
-            JsonNode row = rows.get(i);
-            String where = label + " row " + i + " (recipe " + recipe.recipeId + ")";
-            assertEquals(recipe.recipeId, row.path("recipeId").asInt(), where + ": recipe id/order");
-            assertEquals(recipe.outputItemId, row.path("outputItemId").asInt(), where + ": output item");
-            assertEquals(recipe.minRating, row.path("minRating").asInt(), where + ": minRating");
+            assertEquals(recipe.recipeId, rows.get(i).path("recipeId").asInt(), label + " row " + i + ": recipe id/order");
             CraftResult expected = results.get(recipe.recipeId);
-            if (expected == null) {
-                assertEquals(false, row.path("resultAvailable").asBoolean(), where + ": result availability");
-                continue;
-            }
-            assertEquals(true, row.path("resultAvailable").asBoolean(), where + ": result availability");
-            assertEquals(expected.craftableCount, row.path("craftableCount").asInt(), where + ": craftableCount");
-            assertEquals(expected.buyCostCopper, row.path("buyCostCopper").asInt(), where + ": buyCostCopper");
-            assertEquals(expected.matsSellValueCopper, row.path("matsSellValueCopper").asInt(), where + ": matsSellValueCopper");
-            assertEquals(expected.revenueCopper, row.path("revenueCopper").asInt(), where + ": revenueCopper");
-            assertEquals(expected.profitCopper, row.path("profitCopper").asInt(), where + ": profitCopper");
-            assertEquals(expected.totalProfitCopper, row.path("totalProfitCopper").asInt(), where + ": totalProfitCopper");
-            assertEquals(expected.blockedReason.name(), row.path("blockedReason").asText(), where + ": blockedReason");
-            assertMissing(where + " missingToBuy", expected.missingToBuy, row.path("missingToBuy"));
-            assertMissing(where + " missingToBuyOne", expected.missingToBuyOne, row.path("missingToBuyOne"));
-            if (expected.craftableCount > 0) positive++;
+            assertRow(label + " row " + i + " (recipe " + recipe.recipeId + ")", recipe, expected, rows.get(i), stats);
         }
-        assertTrue(positive > 0, label + ": every compared row was zero - the comparison would be vacuous");
+        assertTrue(stats[0] > 0, label + ": every compared row was zero - the comparison would be vacuous");
+        return stats;
     }
 
-    private static void assertMissing(String where, Map<Integer, Integer> expected, JsonNode actual) {
+    // ---- independent fixture contract (loaded rows, never a production mapper)
+
+    private static ObjectNode fixtureRow(String table, String key, int id) {
+        for (ObjectNode r : FIXTURE.get(table)) if (r.path(key).asInt() == id) return r;
+        return null;
+    }
+
+    private static String fixtureName(int itemId) {
+        ObjectNode r = fixtureRow("items", "item_id", itemId);
+        return r == null ? null : r.path("name").asText();
+    }
+
+    /** Contract: only an https render.guildwars2.com /file/{sig}/{id}.{png|jpg} source yields /api/items/{id}/icon/{sha256(url)}.{ext}. */
+    private static String fixtureIcon(int itemId) {
+        ObjectNode r = fixtureRow("items", "item_id", itemId);
+        if (r == null || !r.hasNonNull("icon_url")) return null;
+        String url = r.get("icon_url").asText();
+        if (!url.matches("https://render\\.guildwars2\\.com/file/[0-9A-Fa-f]+/[1-9][0-9]*\\.(png|jpg)")) return null;
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(url.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return "/api/items/" + itemId + "/icon/" + java.util.HexFormat.of().formatHex(d) + url.substring(url.lastIndexOf('.'));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Expected {buy, sell} from the loaded tp_prices row, or null when the item has no quote row. */
+    private static Integer[] fixtureQuote(int itemId) {
+        ObjectNode r = fixtureRow("tp_prices", "item_id", itemId);
+        if (r == null) return null;
+        return new Integer[] {r.hasNonNull("buy_unit_price") ? r.get("buy_unit_price").asInt() : null,
+                r.hasNonNull("sell_unit_price") ? r.get("sell_unit_price").asInt() : null};
+    }
+
+    private static List<String> fixtureIngredientNames(int recipeId) {
+        List<String> names = new ArrayList<>();
+        for (ObjectNode r : FIXTURE.get("recipe_ingredients")) {
+            if (r.path("recipe_id").asInt() != recipeId) continue;
+            String n = fixtureName(r.path("item_id").asInt());
+            if (n != null && !names.contains(n)) names.add(n);
+        }
+        return names;
+    }
+
+    // ---- strict typed JSON access: a missing/null/string value never equals a number
+
+    private static int requireInt(JsonNode row, String field, String where) {
+        JsonNode n = row.get(field);
+        assertNotNull(n, where + ": " + field + " is absent");
+        assertTrue(n.isIntegralNumber(), where + ": " + field + " must be an integer but was " + n);
+        return n.asInt();
+    }
+
+    private static Integer nullableInt(JsonNode row, String field, String where) {
+        JsonNode n = row.get(field);
+        assertNotNull(n, where + ": " + field + " is absent (must be an explicit value or JSON null)");
+        if (n.isNull()) return null;
+        assertTrue(n.isIntegralNumber(), where + ": " + field + " must be an integer or null but was " + n);
+        return n.asInt();
+    }
+
+    private static String nullableText(JsonNode row, String field, String where) {
+        JsonNode n = row.get(field);
+        assertNotNull(n, where + ": " + field + " is absent (must be an explicit value or JSON null)");
+        if (n.isNull()) return null;
+        assertTrue(n.isTextual(), where + ": " + field + " must be text or null but was " + n);
+        return n.asText();
+    }
+
+    private static boolean requireBool(JsonNode row, String field, String where) {
+        JsonNode n = row.get(field);
+        assertNotNull(n, where + ": " + field + " is absent");
+        assertTrue(n.isBoolean(), where + ": " + field + " must be a boolean but was " + n);
+        return n.asBoolean();
+    }
+
+    private static void assertQuote(String where, int itemId, JsonNode actual) {
+        Integer[] q = fixtureQuote(itemId);
+        if (q == null) {
+            assertTrue(actual != null && actual.isNull(), where + ": unquoted item must serialise an explicit null price, was " + actual);
+            return;
+        }
+        assertTrue(actual != null && actual.isObject(), where + ": quote object expected, was " + actual);
+        assertEquals(q[0], nullableInt(actual, "buyUnitCopper", where), where + ": buy unit (null vs zero)");
+        assertEquals(q[1], nullableInt(actual, "sellUnitCopper", where), where + ": sell unit (null vs zero)");
+    }
+
+    /**
+     * The one shared row assertion for BOTH table rows and detail.row. Metadata, names, icons, quotes and
+     * ingredient names come from the loaded fixture; numbers come from the authoritative scoped domain result.
+     */
+    private static void assertRow(String where, Recipe recipe, CraftResult expected, JsonNode row, int[] stats) {
+        assertTrue(row != null && row.isObject(), where + ": row object expected");
+        assertEquals(recipe.recipeId, requireInt(row, "recipeId", where), where + ": recipeId");
+        ObjectNode fr = fixtureRow("recipes", "recipe_id", recipe.recipeId);
+        assertNotNull(fr, where + ": recipe missing from fixture");
+        assertEquals(fr.path("output_item_id").asInt(), requireInt(row, "outputItemId", where), where + ": outputItemId (fixture)");
+        assertEquals(fr.path("output_item_count").asInt(), requireInt(row, "outputCount", where), where + ": outputCount (fixture)");
+        assertEquals(fr.path("min_rating").asInt(), requireInt(row, "minRating", where), where + ": minRating (fixture)");
+        List<String> disciplines = new ArrayList<>();
+        for (JsonNode d : fr.path("disciplines")) disciplines.add(d.asText());
+        assertEquals(String.join(", ", disciplines), nullableText(row, "disciplines", where), where + ": disciplines (fixture)");
+        int out = fr.path("output_item_id").asInt();
+        assertEquals(fixtureName(out), nullableText(row, "outputName", where), where + ": outputName (fixture)");
+        assertEquals(fixtureIcon(out), nullableText(row, "iconUrl", where), where + ": iconUrl (fixture contract)");
+        assertQuote(where + " outputPrice", out, row.get("outputPrice"));
+        // The ingredient query orders by recipe only, so ingredient order is not a contract: compare the name set.
+        assertEquals(fixtureIngredientNames(recipe.recipeId).stream().sorted().toList(),
+                textList(row.get("ingredientNames"), where + " ingredientNames").stream().sorted().toList(),
+                where + ": ingredientNames (fixture)");
+
+        if (expected == null) {
+            assertEquals(false, requireBool(row, "resultAvailable", where), where + ": resultAvailable");
+            for (String f : new String[] {"craftableCount", "buyCostCopper", "matsSellValueCopper", "totalMatsSellValueCopper",
+                    "revenueCopper", "profitCopper", "totalSellValueCopper", "totalProfitCopper"}) {
+                assertNull(nullableInt(row, f, where), where + ": " + f + " must be JSON null without a result");
+            }
+            assertNull(nullableText(row, "blockedReason", where), where + ": blockedReason must be JSON null without a result");
+            assertEquals(0, row.path("missingToBuy").size(), where + ": missingToBuy");
+            assertEquals(0, row.path("missingToBuyOne").size(), where + ": missingToBuyOne");
+            assertEquals(false, requireBool(row, "unvaluedOwnedInput", where), where + ": unvaluedOwnedInput");
+            return;
+        }
+        assertEquals(true, requireBool(row, "resultAvailable", where), where + ": resultAvailable");
+        assertEquals(Integer.valueOf(expected.craftableCount), nullableInt(row, "craftableCount", where), where + ": craftableCount");
+        assertEquals(Integer.valueOf(expected.buyCostCopper), nullableInt(row, "buyCostCopper", where), where + ": buyCostCopper");
+        assertEquals(Integer.valueOf(expected.matsSellValueCopper), nullableInt(row, "matsSellValueCopper", where), where + ": matsSellValueCopper");
+        assertEquals(Integer.valueOf(expected.totalMatsSellValueCopper), nullableInt(row, "totalMatsSellValueCopper", where), where + ": totalMatsSellValueCopper");
+        assertEquals(Integer.valueOf(expected.revenueCopper), nullableInt(row, "revenueCopper", where), where + ": revenueCopper");
+        assertEquals(Integer.valueOf(expected.profitCopper), nullableInt(row, "profitCopper", where), where + ": profitCopper");
+        assertEquals(Integer.valueOf(expected.totalSellValueCopper), nullableInt(row, "totalSellValueCopper", where), where + ": totalSellValueCopper");
+        assertEquals(Integer.valueOf(expected.totalProfitCopper), nullableInt(row, "totalProfitCopper", where), where + ": totalProfitCopper");
+        assertEquals(expected.blockedReason == null ? null : expected.blockedReason.name(), nullableText(row, "blockedReason", where), where + ": blockedReason");
+        assertEquals(expected.unvaluedOwnedInput, requireBool(row, "unvaluedOwnedInput", where), where + ": unvaluedOwnedInput");
+        assertMissing(where + " missingToBuy", expected.missingToBuy, expected.materialPurchaseCosts, row.get("missingToBuy"), stats);
+        assertMissing(where + " missingToBuyOne", expected.missingToBuyOne, expected.materialPurchaseCostsOne, row.get("missingToBuyOne"), stats);
+        if (expected.craftableCount > 0) stats[0]++;
+    }
+
+    private static List<String> textList(JsonNode n, String where) {
+        assertTrue(n != null && n.isArray(), where + ": array expected, was " + n);
+        List<String> out = new ArrayList<>();
+        for (JsonNode e : n) {
+            assertTrue(e.isTextual(), where + ": text entries expected");
+            out.add(e.asText());
+        }
+        return out;
+    }
+
+    /** Entries must be in ascending item-id order (stable contract) with fixture names/icons/quotes and the domain's quantities and purchase prices. */
+    private static void assertMissing(String where, Map<Integer, Integer> expected,
+                                      Map<Integer, craft.MaterialPurchaseCost> purchases, JsonNode actual, int[] stats) {
+        assertTrue(actual != null && actual.isArray(), where + ": array expected, was " + actual);
         assertEquals(expected.size(), actual.size(), where + ": entry count");
-        for (JsonNode entry : actual) {
-            int itemId = entry.path("itemId").asInt();
-            assertEquals(expected.get(itemId), (Integer) entry.path("quantity").asInt(), where + ": quantity for item " + itemId);
+        if (!expected.isEmpty()) stats[1]++;
+        List<Integer> ids = new ArrayList<>(new java.util.TreeSet<>(expected.keySet()));
+        for (int i = 0; i < ids.size(); i++) {
+            int itemId = ids.get(i);
+            JsonNode e = actual.get(i);
+            String w = where + "[" + i + "] item " + itemId;
+            assertEquals(itemId, requireInt(e, "itemId", w), w + ": id/order");
+            assertEquals(expected.get(itemId), (Integer) requireInt(e, "quantity", w), w + ": quantity");
+            assertEquals(fixtureName(itemId), nullableText(e, "itemName", w), w + ": itemName (fixture)");
+            assertEquals(fixtureIcon(itemId), nullableText(e, "iconUrl", w), w + ": iconUrl (fixture contract)");
+            assertQuote(w + " price", itemId, e.get("price"));
+            craft.MaterialPurchaseCost p = purchases.get(itemId);
+            assertEquals(p == null ? null : p.unitPriceCopper(), nullableInt(e, "purchaseUnitPriceCopper", w), w + ": purchase unit (null vs zero)");
+            assertEquals(p == null ? null : p.totalPriceCopper(), nullableInt(e, "totalPurchaseCostCopper", w), w + ": purchase total (null vs zero)");
+            if (p != null && p.unitPriceCopper() != null) stats[2]++; else stats[3]++;
         }
     }
 
@@ -392,25 +565,7 @@ class ScopedCalculationHttpParityTest {
         assertEquals(expected.status() == CraftingResolutionDetail.Status.RESULT_UNAVAILABLE ? "RESULT_UNAVAILABLE" : "AVAILABLE",
                 actual.path("treeStatus").asText(), where + ": tree status");
 
-        JsonNode row = actual.path("row");
-        Recipe recipe = expected.recipe();
-        assertEquals(recipe.recipeId, row.path("recipeId").asInt(), where + " row: recipe id");
-        assertEquals(recipe.outputItemId, row.path("outputItemId").asInt(), where + " row: output item");
-        assertEquals(recipe.outputCount, row.path("outputCount").asInt(), where + " row: output count");
-        assertEquals(recipe.minRating, row.path("minRating").asInt(), where + " row: min rating");
-        CraftResult result = expected.row();
-        if (result == null) {
-            assertEquals(false, row.path("resultAvailable").asBoolean(), where + " row: availability");
-        } else {
-            assertEquals(true, row.path("resultAvailable").asBoolean(), where + " row: availability");
-            assertEquals(result.craftableCount, row.path("craftableCount").asInt(), where + " row: craftableCount");
-            assertEquals(result.buyCostCopper, row.path("buyCostCopper").asInt(), where + " row: buyCostCopper");
-            assertEquals(result.matsSellValueCopper, row.path("matsSellValueCopper").asInt(), where + " row: matsSellValueCopper");
-            assertEquals(result.revenueCopper, row.path("revenueCopper").asInt(), where + " row: revenueCopper");
-            assertEquals(result.profitCopper, row.path("profitCopper").asInt(), where + " row: profitCopper");
-            assertEquals(result.totalProfitCopper, row.path("totalProfitCopper").asInt(), where + " row: totalProfitCopper");
-            assertEquals(result.blockedReason.name(), row.path("blockedReason").asText(), where + " row: blockedReason");
-        }
+        assertRow(where + " row", expected.recipe(), expected.row(), actual.get("row"), new int[4]);
 
         CraftTraceNode root = expected.explanation().root();
         if (root == null) {

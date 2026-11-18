@@ -1382,7 +1382,12 @@ for two accounts with overlapping ids. Each HTTP payload is compared with the in
 same verified account (the application service, never a production DTO mapper as the oracle), together with
 hand-written fixture outcomes so that a wrong-on-both-sides result is caught. It covers Profit default and buying
 settings, Discovery selected character/discipline defaults and listing prices, row count/order and every
-authoritative value, both missing-material maps, JSON null versus zero on nullable tree fields, the complete
+authoritative value of one shared row assertion that protects table rows and `detail.row` alike (metadata, output
+count, disciplines, names, icon URLs, ingredient names, output and material quotes, every domain total including
+`totalMatsSellValueCopper` and `totalSellValueCopper`, `unvaluedOwnedInput`, `blockedReason`, result-unavailable rows),
+both missing-material lists (ascending item id, quantities, names/icons/quotes, purchase unit/total with null versus
+zero; names, icons and quotes are checked against the loaded fixture rows, numbers against the scoped domain result),
+strictly typed JSON (an absent or null required field never equals zero), JSON null versus zero on nullable tree fields, the complete
 recursive resolution tree (fields, child order and count) for Profit and Discovery, and the
 `RECIPE_NOT_IN_CALCULATION` 404 including a recipe only the other account has. It asserts positive results and a
 tree depth of at least three, so the comparisons are not vacuous. Isolated controller contract tests (§35.1) remain
