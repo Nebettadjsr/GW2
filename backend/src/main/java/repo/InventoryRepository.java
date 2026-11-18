@@ -435,16 +435,7 @@ public class InventoryRepository {
             }
         }
 
-        Set<Integer> itemIds = new HashSet<>();
-        itemIds.addAll(sellable.keySet());
-        itemIds.addAll(bound.keySet());
-
-        Map<Integer, OwnedQuantity> result = new HashMap<>();
-        for (int itemId : itemIds) {
-            result.put(itemId, new OwnedQuantity(sellable.getOrDefault(itemId, 0), bound.getOrDefault(itemId, 0)));
-        }
-
-        return result;
+        return combine(sellable, bound);
     }
 
     private static void classifyOwnedRow(int itemId, int count, String binding, String boundTo,
