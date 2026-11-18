@@ -14,13 +14,12 @@ import java.sql.SQLException;
 import java.util.List;
 
 /**
- * HTTP boundary for the crafting scope-selector read (STORY-API-006, TARGET_ARCHITECTURE.md §9):
+ * HTTP boundary for the crafting scope-selector read:
  * the options a browser needs to build Crafting Profit's single Discipline selector
  * (DOMAIN_SPEC.md §2.2.1) and post a scope back to {@code POST /api/crafting/profit}.
  *
- * <p>Thin by construction: it calls the existing {@link CharacterSelectionService} read the JavaFX
- * selectors already use (§5.1/§5.2 of CURRENT_ARCHITECTURE.md) and copies the rows into transport
- * records. It queries no repository, computes no eligibility and re-orders nothing - the character
+ * <p>Thin by construction: it calls the {@link CharacterSelectionService} read and copies the rows
+ * into transport records. It queries no repository, computes no eligibility and re-orders nothing - the character
  * options come back in exactly the order and with exactly the values the service reported.
  *
  * <p>Unlike the calculation routes this one holds a single shared service instance: the service
@@ -31,11 +30,11 @@ import java.util.List;
 public class CraftingSelectorOptionsApiController {
 
     /**
-     * The generic discipline entries, in the order the JavaFX Crafting Profit selector lists them
+     * The generic discipline entries, in the order the Crafting Profit selector lists them
      * between {@code All} and the character-specific entries.
      *
      * <p>Mirrored here for the same reason {@link CraftingProfitApiMapper}'s defaults are: this is
-     * the JavaFX view's established presentation list, not a fact any application service reports,
+     * the selector's established presentation list, not a fact any application service reports,
      * and the two entry points must offer the caller the same choices. Selecting one still means
      * what it has always meant - a {@code DISCIPLINE} scope covering all synced characters having
      * that discipline - and nothing here narrows that set.

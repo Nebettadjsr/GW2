@@ -18,11 +18,10 @@ import web.dto.AccountSourceFreshnessDto;
 import java.util.List;
 
 /**
- * HTTP boundary for the account-bank read (STORY-API-007, TARGET_ARCHITECTURE.md §9): the slots a
- * browser needs to render the bank grid the JavaFX Bank view already shows.
+ * HTTP boundary for the account-bank read: the slots a browser needs to render the bank grid.
  *
- * <p>Thin by construction: it calls the existing {@link BankContentsService} read {@code BankView}
- * uses (§5.12/§6 of CURRENT_ARCHITECTURE.md) and copies the rows into transport records. It queries
+ * <p>Thin by construction: it calls the {@link BankContentsService} read and copies the rows into
+ * transport records. It queries
  * no repository, synchronizes nothing, writes nothing, calls the GW2 API not at all and runs no
  * crafting calculation - it drops, adds, reorders and aggregates nothing either.
  *
@@ -75,7 +74,7 @@ public class BankContentsApiController {
      *
      * <p>The one derived value is {@code iconUrl}: this application's image URL for the slot's item,
      * computed from the retained source the same batch read already carried
-     * (TARGET_ARCHITECTURE.md §12.1). No lookup, no request and no calculation happens per slot, and
+     * (see {@code docs/ARCHITECTURE.md}). No lookup, no request and no calculation happens per slot, and
      * the backend's local {@code iconPath} stays out of the response.
      */
     private static List<BankContentsResponse.BankSlotDto> toSlots(List<BankRepository.BankSlotRow> rows) {

@@ -3,8 +3,7 @@ package web.dto;
 import java.util.List;
 
 /**
- * Transport response body for {@code GET /api/crafting/selector-options} (STORY-API-006,
- * TARGET_ARCHITECTURE.md §9).
+ * Transport response body for {@code GET /api/crafting/selector-options}.
  *
  * <p>Carries everything a browser needs to build Crafting Profit's single scope selector
  * (DOMAIN_SPEC.md §2.2.1) and nothing else: which entry is preselected, the generic discipline
