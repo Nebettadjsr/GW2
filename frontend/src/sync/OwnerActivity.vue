@@ -28,15 +28,12 @@ const exportError = ref<string | null>(null)
 const exporting = ref(false)
 
 let epoch = 0
-let controller: AbortController | null = null
 let exportController: AbortController | null = null
 let exportToken = 0
 let unmounted = false
 
 function invalidate(): void {
   epoch += 1
-  controller?.abort()
-  controller = null
   cancelExport()
   summary.value = null
   periods.value = []
