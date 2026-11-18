@@ -27,9 +27,6 @@ const outputQuoteUnavailable = computed(() => {
   return quote === null || quote === undefined || (quote.buyUnitCopper === null && quote.sellUnitCopper === null)
 })
 
-function unavailable(value: number | null): string {
-  return value === null ? NO_VALUE : formatCopper(value)
-}
 </script>
 
 <template>
@@ -60,18 +57,18 @@ function unavailable(value: number | null): string {
 
       <div v-if="!row.resultAvailable" class="stack" data-test="discovery-detail-state">
         <span :class="`status status--${state.tone}`" data-test="discovery-detail-status">{{ state.label }}</span>
-        <p v-if="!row.resultAvailable" data-test="discovery-detail-status-explanation">{{ state.explanation }}</p>
+        <p data-test="discovery-detail-status-explanation">{{ state.explanation }}</p>
       </div>
 
       <section class="detail__section" aria-labelledby="discovery-calculation-heading">
         <h3 id="discovery-calculation-heading">Calculation</h3>
         <dl class="detail-values" data-test="discovery-detail-calculation">
           <dt>Output sell value</dt>
-          <dd class="numeric" data-test="discovery-detail-output-revenue">{{ unavailable(row.totalSellValueCopper) }}</dd>
+          <dd class="numeric" data-test="discovery-detail-output-revenue">{{ formatCopper(row.totalSellValueCopper) }}</dd>
           <dt>Own materials</dt>
-          <dd class="numeric">{{ unavailable(row.totalMatsSellValueCopper) }}</dd>
+          <dd class="numeric">{{ formatCopper(row.totalMatsSellValueCopper) }}</dd>
           <dt>Bought materials</dt>
-          <dd class="numeric">{{ unavailable(row.buyCostCopper) }}</dd>
+          <dd class="numeric">{{ formatCopper(row.buyCostCopper) }}</dd>
           <dt>Profit <span class="value-note">after 15% TP fees</span></dt>
           <dd class="numeric">
             <span :class="`money money--${moneyTone(row.totalProfitCopper)}`" data-test="discovery-detail-profit">
@@ -88,8 +85,8 @@ function unavailable(value: number | null): string {
           <a v-if="wikiHref !== null" :href="wikiHref" target="_blank" rel="noopener noreferrer">GW2 Wiki: {{ recipeLabel(row) }}</a>
         </p>
         <dl v-if="row.outputPrice !== null && (row.outputPrice.buyUnitCopper !== null || row.outputPrice.sellUnitCopper !== null)" class="detail-values" data-test="discovery-detail-output-quote">
-          <dt>Instant sell</dt><dd class="numeric">{{ unavailable(row.outputPrice.buyUnitCopper) }}</dd>
-          <dt>Listing sell</dt><dd class="numeric">{{ unavailable(row.outputPrice.sellUnitCopper) }}</dd>
+          <dt>Instant sell</dt><dd class="numeric">{{ formatCopper(row.outputPrice.buyUnitCopper) }}</dd>
+          <dt>Listing sell</dt><dd class="numeric">{{ formatCopper(row.outputPrice.sellUnitCopper) }}</dd>
         </dl>
       </section>
 
@@ -107,8 +104,8 @@ function unavailable(value: number | null): string {
           <li v-for="item in purchases" :key="item.itemId" data-test="discovery-missing-item">
             <span class="material-name"><ItemIcon :icon-url="item.iconUrl" :item-id="item.itemId" loading="lazy" />{{ materialLabel(item) }}</span>
             <span class="material-quantity numeric">{{ formatStackQuantity(item.quantity) }}</span>
-            <span class="material-price">Price / item: {{ unavailable(item.purchaseUnitPriceCopper) }}</span>
-            <span class="material-total">Total: {{ unavailable(item.totalPurchaseCostCopper) }}</span>
+            <span class="material-price">Price / item: {{ formatCopper(item.purchaseUnitPriceCopper) }}</span>
+            <span class="material-total">Total: {{ formatCopper(item.totalPurchaseCostCopper) }}</span>
           </li>
         </ul>
       </section>

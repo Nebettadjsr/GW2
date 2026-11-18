@@ -13,7 +13,7 @@ import {
 } from './fixtures'
 
 /**
- * The shared item image in its Crafting Profit consumers (`TARGET_ARCHITECTURE.md` 12.1, AR-005):
+ * The shared item image in its Crafting Profit consumers (`docs/ARCHITECTURE.md` section 3, `docs/FRONTEND_UX_GUIDELINES.md` section 12):
  * the comparison rows, the selected recipe's detail, the materials still to buy, and the resolution
  * tree.
  *

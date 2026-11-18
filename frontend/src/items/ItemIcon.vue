@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 /**
- * The one image component every item view uses (`TARGET_ARCHITECTURE.md` 12.1, AR-005).
+ * The one image component every item view uses (`docs/ARCHITECTURE.md` section 3, `docs/FRONTEND_UX_GUIDELINES.md` section 12).
  *
  * It renders an ordinary `<img>` pointing at the **application-relative URL the backend supplied**,
  * verbatim. It never builds a URL of its own: not from an item id, not from a recipe id, and never

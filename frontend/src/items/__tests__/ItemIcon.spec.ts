@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import ItemIcon from '../ItemIcon.vue'
 
 /**
- * The shared item image component (`TARGET_ARCHITECTURE.md` 12.1, AR-005).
+ * The shared item image component (`docs/ARCHITECTURE.md` section 3, `docs/FRONTEND_UX_GUIDELINES.md` section 12).
  *
  * jsdom neither fetches nor decodes an image, so these checks pin what the component *renders and
  * decides*: the address it puts in `src`, the attributes that govern how the browser fetches it, and
