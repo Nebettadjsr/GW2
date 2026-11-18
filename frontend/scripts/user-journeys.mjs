@@ -311,6 +311,7 @@ async function boundaryJourney({ page, api, origin, step }) {
   await page.setViewportSize({ width: 1024, height: 900 })
   await page.evaluate(() => window.scrollTo({ left: 0, top: 0 }))
   await get(page, 'calculation-controls').waitFor()
+  await get(page, 'desktop-width-notice').waitFor({ state: 'detached' })
   assert.equal(await get(page, 'desktop-width-notice').count(), 0)
   assert.equal(await get(page, 'detail-name').innerText(), selected)
   assert.equal(await get(page, 'max-displayed').inputValue(), '7')
