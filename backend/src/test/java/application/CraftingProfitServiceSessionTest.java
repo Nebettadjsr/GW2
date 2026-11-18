@@ -84,23 +84,10 @@ class CraftingProfitServiceSessionTest {
         assertEquals(List.of(), reads.onOwnConnection);
     }
 
-    @Test
-    void aDetachedSessionKeepsThePreviousBehaviorOfEachRepositoryOpeningItsOwnConnection() throws Exception {
-        Reads reads = new Reads();
-        service(reads, null).reload(DiscChoice.all(), settings(true));
-
-        assertEquals(List.of(), reads.onPinnedConnection);
-        assertEquals(List.of("recipes:All", "quotes", "items", "characterCrafting", "inventory"),
-                reads.onOwnConnection,
-                "a detached session must not change how the existing callers read");
-    }
-
     // ---------- fixtures ----------
 
     private CraftingProfitService service(Reads reads, Connection connection) {
-        ProfitInputSession captured = connection == null
-                ? ProfitInputSession.detached()
-                : sessionOn(connection);
+        ProfitInputSession captured = sessionOn(connection);
         return new CraftingProfitService(
                 new RecordingRecipeRepository(reads),
                 new RecordingInventoryRepository(reads),

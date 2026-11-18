@@ -46,7 +46,7 @@ public class CraftingDiscoveryService {
     /** The authorized account of this request-local instance; null only on the unbound builder. */
     private final model.AccountScope scope;
     /** Account-scoped reads of this instance; null only on the unbound builder. */
-    private final ScopedInputs inputs;
+    private ScopedInputs inputs;
     private java.time.Clock clock = java.time.Clock.systemUTC();
     /** Account max age; null means published inputs are never reported stale. */
     private java.time.Duration accountMaxAge;
@@ -198,6 +198,9 @@ public class CraftingDiscoveryService {
     /** Sets the account freshness policy used to classify published inputs as stale. */
     public CraftingDiscoveryService withFreshness(java.time.Clock clock, java.time.Duration accountMaxAge) {
         this.clock = clock;
+        // The scoped reads stamp activity with the bound clock: rebind so a policy set after
+        // forScope still governs both marker classification and activity recording.
+        if (scope != null) this.inputs = binding.bind(scope, clock);
         this.accountMaxAge = accountMaxAge;
         return this;
     }

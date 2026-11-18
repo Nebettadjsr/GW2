@@ -187,7 +187,7 @@ class CachedCraftingProfitServiceScopedTest {
                 new ProfitInputSession.Factory() {
                     @Override public ProfitInputSession open(AccountScope scope) throws SQLException {
                         opened.add(scope);
-                        return ProfitInputSession.detached();
+                        return ProfitInputSession.detached(scope);
                     }
                 },
                 session -> new CraftingProfitService(null, null, null, null, null, null, null, session) {

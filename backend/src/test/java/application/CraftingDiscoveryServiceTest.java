@@ -45,6 +45,27 @@ class CraftingDiscoveryServiceTest {
     private static final model.AccountScope SCOPE =
             model.AccountScope.of(java.util.UUID.fromString("00000000-0000-0000-0000-0000000000a1"));
 
+    @Test
+    void freshnessClockSetBeforeOrAfterBindingIsTheClockTheScopedReadsAreBoundWith() {
+        java.time.Clock before = java.time.Clock.fixed(java.time.Instant.parse("2026-01-01T00:00:00Z"), java.time.ZoneOffset.UTC);
+        java.time.Clock after = java.time.Clock.fixed(java.time.Instant.parse("2026-06-01T00:00:00Z"), java.time.ZoneOffset.UTC);
+        java.util.List<java.time.Clock> bound = new ArrayList<>();
+        var unbound = new CraftingDiscoveryService(new FakeTpPriceRepository(), new FakeItemRepository(),
+                new FakeCraftingGraphCache(List.of(RECIPE)), new RecordingCraftingPlanner(),
+                (scope, clock) -> {
+                    bound.add(clock);
+                    return null;
+                });
+
+        unbound.withFreshness(before, java.time.Duration.ofHours(1)).forScope(SCOPE);
+        assertSame(before, bound.get(bound.size() - 1), "clock set before binding is used");
+
+        var service = unbound.forScope(SCOPE);
+        service.withFreshness(after, java.time.Duration.ofHours(1));
+        assertSame(after, bound.get(bound.size() - 1),
+                "withFreshness after forScope must rebind the scoped reads with the new clock");
+    }
+
     private static CraftingSettings settings(boolean useOwnMats, boolean allowBuying) {
         return new CraftingSettings(useOwnMats, allowBuying, 0, false, false, false);
     }

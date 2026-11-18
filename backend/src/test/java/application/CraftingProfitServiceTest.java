@@ -44,6 +44,10 @@ class CraftingProfitServiceTest {
     private static final Recipe RECIPE = new Recipe(
             1, 100, 1, 0, "Artificer", List.of(new Ingredient(200, 2)));
 
+    /** Explicitly scoped, connection-less session: the fakes below answer the scoped reads. */
+    private static final ProfitInputSession SESSION =
+            ProfitInputSession.detached(model.AccountScope.of(java.util.UUID.randomUUID()));
+
     private static CraftingSettings settings(boolean useOwnMats, boolean allowBuying) {
         return new CraftingSettings(useOwnMats, allowBuying, 0, false, false, false);
     }
@@ -56,7 +60,7 @@ class CraftingProfitServiceTest {
                                                       List<Recipe> graphRecipes,
                                                       RecordingCraftingPlanner planner) {
         return new CraftingProfitService(recipeRepo, invRepo, tpRepo, itemRepo, charRepo,
-                new FakeCraftingGraphCache(graphRecipes), planner);
+                new FakeCraftingGraphCache(graphRecipes), planner, SESSION);
     }
 
     @Test
@@ -224,7 +228,7 @@ class CraftingProfitServiceTest {
         var planner = new RecordingCraftingPlanner();
         var graphCache = new FakeCraftingGraphCache(List.of(RECIPE));
         var service = new CraftingProfitService(recipeRepo, new FakeInventoryRepository(), tpRepo,
-                new FakeItemRepository(), charRepo, graphCache, planner);
+                new FakeItemRepository(), charRepo, graphCache, planner, SESSION);
 
         service.reload(DiscChoice.all(), settings(true, true));
 
@@ -280,14 +284,14 @@ class CraftingProfitServiceTest {
         final List<String[]> characterQueries = new ArrayList<>();
 
         @Override
-        public List<Recipe> loadRecipes(String discipline) throws SQLException {
+        public List<Recipe> loadRecipes(java.sql.Connection con, model.AccountScope scope, String discipline) throws SQLException {
             if (failure != null) throw failure;
             disciplineQueries.add(discipline);
             return visible;
         }
 
         @Override
-        public List<Recipe> loadRecipesForCharacter(String charName, String discipline) throws SQLException {
+        public List<Recipe> loadRecipesForCharacter(java.sql.Connection con, model.AccountScope scope, String charName, String discipline) throws SQLException {
             if (failure != null) throw failure;
             characterQueries.add(new String[]{charName, discipline});
             return visible;
@@ -302,15 +306,17 @@ class CraftingProfitServiceTest {
         Set<Integer> capturedMaterialIds;
 
         @Override
-        public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames,
-                Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds) {
+        public CoordinatedInventory loadOwnedInventoryForCharacters(java.sql.Connection con, model.AccountScope scope,
+                Set<String> characterNames, Set<Integer> excludedBankIds, Set<Integer> excludedMaterialIds,
+                Map<Integer, Integer> bankQuantities, Map<Integer, Integer> materialQuantities,
+                List<craft.BankAllocation> bankAllocations) {
             capturedBankIds = excludedBankIds;
             capturedMaterialIds = excludedMaterialIds;
-            return loadOwnedInventoryForCharacters(characterNames);
+            return loadOwnedInventoryForCharacters(con, scope, characterNames);
         }
 
         @Override
-        public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames) {
+        public CoordinatedInventory loadOwnedInventoryForCharacters(java.sql.Connection con, model.AccountScope scope, Set<String> characterNames) {
             called = true;
             capturedNames = characterNames;
             return canned;
@@ -321,7 +327,7 @@ class CraftingProfitServiceTest {
         Map<Integer, PriceQuote> canned = Map.of();
 
         @Override
-        public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> itemIds) {
+        public Map<Integer, PriceQuote> loadTpQuotes(java.sql.Connection con, Set<Integer> itemIds) {
             return canned;
         }
     }
@@ -330,7 +336,7 @@ class CraftingProfitServiceTest {
         Map<Integer, ItemInfo> canned = Map.of();
 
         @Override
-        public Map<Integer, ItemInfo> loadItems(Set<Integer> itemIds) {
+        public Map<Integer, ItemInfo> loadItems(java.sql.Connection con, Set<Integer> itemIds) {
             return canned;
         }
     }
@@ -339,7 +345,7 @@ class CraftingProfitServiceTest {
         List<DiscRow> canned = List.of();
 
         @Override
-        public List<DiscRow> loadAllCharacterCrafting() {
+        public List<DiscRow> loadAllCharacterCrafting(java.sql.Connection con, model.AccountScope scope) {
             return canned;
         }
     }

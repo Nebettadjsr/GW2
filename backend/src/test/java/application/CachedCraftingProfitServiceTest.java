@@ -404,7 +404,7 @@ class CachedCraftingProfitServiceTest {
         return new CachedCraftingProfitService(
                 new ProfitInputSession.Factory() {
                     @Override public ProfitInputSession open(AccountScope scope) {
-                        return ProfitInputSession.detached();
+                        return ProfitInputSession.detached(scope);
                     }
                 },
                 profitServices,

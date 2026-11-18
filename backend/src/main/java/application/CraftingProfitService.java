@@ -54,8 +54,8 @@ public class CraftingProfitService {
      * The captured read view this service's operations load their inputs through.
      * When it carries a connection, every input read below runs on
      * it, so one operation cannot mix input generations or pair part-written refresh data with an
-     * older completion marker. A {@link ProfitInputSession#detached()} session keeps the previous
-     * behavior of letting each repository open its own connection. Every connection-carrying
+     * older completion marker. A {@link ProfitInputSession#detached(AccountScope)} session carries a scope but no
+     * connection: the in-memory seam tests use to substitute scoped repository reads. Every connection-carrying
      * session is bound to one verified account, so pinned reads are always account-scoped.
      */
     private final ProfitInputSession session;
@@ -68,42 +68,14 @@ public class CraftingProfitService {
     private Map<Integer, PriceQuote> lastTp = Map.of();
     private Map<Integer, CraftResult> lastResultsByRecipeId = Map.of();
 
-    public CraftingProfitService() {
-        this(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(),
-                new ItemRepository(), new CharacterRepository());
-    }
-
-    /** Request-local calculation state backed by the application's shared immutable graph snapshot. */
-    public CraftingProfitService(CraftingGraphCache graphCache) {
-        this(graphCache, ProfitInputSession.detached());
-    }
-
-    /** The same, reading every input through one captured snapshot session. */
+    /**
+     * Production wiring: request-local calculation state backed by the shared immutable graph
+     * snapshot, reading every input through one captured account-scoped snapshot session.
+     */
     public CraftingProfitService(CraftingGraphCache graphCache, ProfitInputSession session) {
         this(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(),
                 new ItemRepository(), new CharacterRepository(), graphCache, new CraftingPlanner(),
                 session);
-    }
-
-    public CraftingProfitService(RecipeRepository recipeRepo,
-                                 InventoryRepository invRepo,
-                                 TpPriceRepository tpRepo,
-                                 ItemRepository itemRepo,
-                                 CharacterRepository charRepo) {
-        this(recipeRepo, invRepo, tpRepo, itemRepo, charRepo,
-                new CraftingGraphCache(recipeRepo), new CraftingPlanner());
-    }
-
-    /** Full seam used by application-layer tests to substitute fake/in-memory adapters. */
-    public CraftingProfitService(RecipeRepository recipeRepo,
-                                 InventoryRepository invRepo,
-                                 TpPriceRepository tpRepo,
-                                 ItemRepository itemRepo,
-                                 CharacterRepository charRepo,
-                                 CraftingGraphCache graphCache,
-                                 CraftingPlanner planner) {
-        this(recipeRepo, invRepo, tpRepo, itemRepo, charRepo, graphCache, planner,
-                ProfitInputSession.detached());
     }
 
     /** The same seam, with the captured snapshot session the inputs are read through. */
@@ -122,7 +94,7 @@ public class CraftingProfitService {
         this.charRepo = charRepo;
         this.graphCache = graphCache;
         this.planner = planner;
-        this.session = session == null ? ProfitInputSession.detached() : session;
+        this.session = java.util.Objects.requireNonNull(session, "session");
     }
 
     /** Data loaded and computed for one reload() invocation, handed back to the presentation layer. */
@@ -233,14 +205,11 @@ public class CraftingProfitService {
         AccountScope scope = session.scope();
         List<Recipe> visibleRecipes;
         if (choice == null || choice.kind == DiscChoice.Kind.ALL) {
-            visibleRecipes = con == null ? recipeRepo.loadRecipes("All")
-                    : recipeRepo.loadRecipes(con, scope, "All");
+            visibleRecipes = recipeRepo.loadRecipes(con, scope, "All");
         } else if (choice.kind == DiscChoice.Kind.DISCIPLINE_ONLY) {
-            visibleRecipes = con == null ? recipeRepo.loadRecipes(choice.discipline)
-                    : recipeRepo.loadRecipes(con, scope, choice.discipline);
+            visibleRecipes = recipeRepo.loadRecipes(con, scope, choice.discipline);
         } else { // CHAR_DISCIPLINE
-            visibleRecipes = con == null ? recipeRepo.loadRecipesForCharacter(choice.charName, choice.discipline)
-                    : recipeRepo.loadRecipesForCharacter(con, scope, choice.charName, choice.discipline);
+            visibleRecipes = recipeRepo.loadRecipesForCharacter(con, scope, choice.charName, choice.discipline);
         }
 
         Set<Integer> allowedRecipeIds = visibleRecipes.stream()
@@ -269,12 +238,8 @@ public class CraftingProfitService {
         }
 
         Connection con = session.connection();
-        Map<Integer, PriceQuote> tp = con == null
-                ? tpRepo.loadTpQuotes(itemIds)
-                : tpRepo.loadTpQuotes(con, itemIds);
-        Map<Integer, ItemRepository.ItemInfo> items = con == null
-                ? itemRepo.loadItems(itemIds)
-                : itemRepo.loadItems(con, itemIds);
+        Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(con, itemIds);
+        Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(con, itemIds);
 
         // Every scope uses the same per-step eligibility and ownership checks.
         List<CharacterCraftingProfile> roster = buildCoordinatedRoster(choice);
@@ -299,17 +264,9 @@ public class CraftingProfitService {
         if (settings.materialProtectionEnabled
                 && (!settings.protectedBankItemIds.isEmpty() || !settings.protectedMaterialItemIds.isEmpty()
                     || settings.hasFiniteReservations())) {
-            if (con == null && !settings.hasFiniteReservations()) {
-                // ALL-only protection keeps the established id-set read path.
-                return invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds);
-            }
-            return con == null
-                    ? invRepo.loadOwnedInventoryForCharacters(names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
-                            settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations)
-                    : invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
-                            settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations);
+            return invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
+                    settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations);
         }
-        if (con == null) return invRepo.loadOwnedInventoryForCharacters(names);
         return invRepo.loadOwnedInventoryForCharacters(con, scope, names);
     }
 
@@ -323,9 +280,7 @@ public class CraftingProfitService {
         Connection con = session.connection();
         Map<String, Map<String, Integer>> ratingByCharacter = new HashMap<>();
         AccountScope scope = session.scope();
-        List<CharacterRepository.DiscRow> craftingRows = con == null
-                ? charRepo.loadAllCharacterCrafting()
-                : charRepo.loadAllCharacterCrafting(con, scope);
+        List<CharacterRepository.DiscRow> craftingRows = charRepo.loadAllCharacterCrafting(con, scope);
         for (CharacterRepository.DiscRow row : craftingRows) {
             ratingByCharacter.computeIfAbsent(row.charName, k -> new HashMap<>()).put(row.discipline, row.rating);
         }
