@@ -60,7 +60,6 @@ describe('Bank and Materials selection', () => {
     expect(checkboxes.map((c) => (c.element as HTMLInputElement).checked)).toEqual([true, false, false, true])
     const state = useMaterialProtection().state
     expect(state.committed).toEqual([12134])
-    expect(state.committed).toEqual([12134])
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections)
       .toEqual({ bank: [], materials: [12134] })
     mats.unmount()
@@ -129,7 +128,6 @@ describe('Bank and Materials selection', () => {
     await box(w, 2).setValue(true) // 19698
     await box(w, 1).setValue(true) // 19697 also saves immediately
     expect(state.committed).toEqual([12134, 19697, 19698])
-    expect(state.committed).toEqual([12134, 19697, 19698])
 
     // Replacement: reordered positions, new counts, 12134 now three times, 19698 moved, a new item 555.
     const replacement = {
@@ -157,7 +155,6 @@ describe('Bank and Materials selection', () => {
     expect(boxes(w).map((c) => c.attributes('aria-label'))).toEqual(
       ['Protect Item #555', 'Protect Item #19698', 'Protect Item #12134', 'Protect Item #12134', 'Protect Item #12134', 'Protect Item #19697'])
     expect(state.committed).toEqual([12134, 19697, 19698])
-    expect(state.committed).toEqual([12134, 19697, 19698])
     expect(w.find('[data-test="selection-state"]').exists()).toBe(false)
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.materials)
       .toEqual([12134, 19697, 19698])
@@ -166,7 +163,6 @@ describe('Bank and Materials selection', () => {
     document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
     expect(api.materialCalls).toBe(3)
-    expect(state.committed).toEqual([12134, 19697, 19698])
     expect(state.committed).toEqual([12134, 19697, 19698])
   })
 
@@ -245,7 +241,6 @@ describe('Bank and Materials selection', () => {
     await flushPromises()
     const state = useMaterialProtection().state
     expect(state.committed).toEqual([])
-    expect(state.committed).toEqual([])
     expect(w.find('[data-test="selection-bar"]').exists()).toBe(true)
     late.resolve(materialStorage)
     await flushPromises()
@@ -285,7 +280,6 @@ describe('Selection presets', () => {
     await w.find('[data-test="preset-extra"]').trigger('click')
     await w.find('[data-test="preset-t1"]').trigger('click')
     expect(state.committed).toHaveLength(13)
-    expect(state.committed).toEqual(state.committed)
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.materials).toEqual(state.committed)
     expect(fetches).not.toHaveBeenCalled()
     fetches.mockRestore()
