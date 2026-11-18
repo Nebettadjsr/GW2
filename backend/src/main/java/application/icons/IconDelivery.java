@@ -16,7 +16,7 @@ import java.sql.SQLException;
 import java.util.Optional;
 
 /**
- * The application icon-delivery boundary of TARGET_ARCHITECTURE.md §12.1: it decides what one image
+ * The application icon-delivery boundary of docs/ARCHITECTURE.md: it decides what one image
  * request may produce, coordinating the persistent filesystem cache, the retained metadata and the
  * upstream adapter behind it. The HTTP controller over it only translates the outcome into a response.
  *
@@ -86,20 +86,7 @@ public class IconDelivery {
             return unavailable("icon metadata is unavailable");
         }
         if (retained.isEmpty()) return new IconDeliveryResult.NotFound("no retained icon metadata for this resource");
-        Optional<IconSource> source = IconSourcePolicy.accept(retained.get());
-        if (source.isEmpty()) {
-            return new IconDeliveryResult.NotFound("the resource's retained icon source is not an accepted source");
-        }
-        if (!source.get().sourceKey().equals(request.sourceKey())
-                || !source.get().extension().equals(request.extension())) {
-            return new IconDeliveryResult.NotFound("the requested icon key does not match the resource's source");
-        }
-        return switch (acquisition.acquire(source.get())) {
-            case IconAcquisitionResult.Available(StoredIcon icon) -> delivered(icon, request.extension());
-            case IconAcquisitionResult.UpstreamMissing ignored ->
-                    new IconDeliveryResult.NotFound("the image does not exist upstream");
-            case IconAcquisitionResult.Unavailable(String reason) -> unavailable(reason);
-        };
+        return acquireMatching(retained.get(), request.sourceKey(), request.extension(), "resource");
     }
 
     /**
@@ -140,27 +127,28 @@ public class IconDelivery {
             return new IconDeliveryResult.NotFound("no retained icon metadata for this item");
         }
 
-        Optional<IconSource> source = IconSourcePolicy.accept(retainedSource.get());
+        return acquireMatching(retainedSource.get(), request.sourceKey(), request.extension(), "item");
+    }
+
+    /**
+     * The shared miss tail: the retained source must be accepted and derive exactly the requested key and
+     * extension (an obsolete or foreign key is answered without any upstream access) before acquisition.
+     */
+    private IconDeliveryResult acquireMatching(String retainedSource, String sourceKey, String extension,
+                                               String subject) {
+        Optional<IconSource> source = IconSourcePolicy.accept(retainedSource);
         if (source.isEmpty()) {
-            return new IconDeliveryResult.NotFound("the item's retained icon source is not an accepted source");
+            return new IconDeliveryResult.NotFound("the " + subject + "'s retained icon source is not an accepted source");
         }
-
-        if (!matchesRequest(source.get(), request)) {
-            // The key the route asked for is not the one this item's current source derives: an
-            // obsolete or foreign key, answered without any upstream access.
-            return new IconDeliveryResult.NotFound("the requested icon key does not match the item's source");
+        if (!source.get().sourceKey().equals(sourceKey) || !source.get().extension().equals(extension)) {
+            return new IconDeliveryResult.NotFound("the requested icon key does not match the " + subject + "'s source");
         }
-
         return switch (acquisition.acquire(source.get())) {
-            case IconAcquisitionResult.Available(StoredIcon icon) -> delivered(icon, request.extension());
+            case IconAcquisitionResult.Available(StoredIcon icon) -> delivered(icon, extension);
             case IconAcquisitionResult.UpstreamMissing ignored ->
                     new IconDeliveryResult.NotFound("the image does not exist upstream");
             case IconAcquisitionResult.Unavailable(String reason) -> unavailable(reason);
         };
-    }
-
-    private static boolean matchesRequest(IconSource source, ItemIconUrls.ItemIconRequest request) {
-        return source.sourceKey().equals(request.sourceKey()) && source.extension().equals(request.extension());
     }
 
     private static IconDeliveryResult delivered(StoredIcon icon, String extension) {

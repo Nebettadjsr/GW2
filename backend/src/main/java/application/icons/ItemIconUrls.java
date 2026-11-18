@@ -6,7 +6,7 @@ import infra.icons.IconSourcePolicy;
 import java.util.Optional;
 
 /**
- * The application-relative icon URL of TARGET_ARCHITECTURE.md §12.1 -
+ * The application-relative icon URL -
  * {@code /api/items/{itemId}/icon/{sourceKey}.{ext}} - in one place: it is both formatted and parsed
  * here, so what a read emits and what the image endpoint accepts cannot drift apart.
  *
