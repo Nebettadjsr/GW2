@@ -8,7 +8,7 @@ const frontend = fileURLToPath(new URL('../', import.meta.url))
 const output = resolve(process.env.GW2_SMOKE_OUTPUT ?? join(frontend, 'quality-reports/desktop-journeys'))
 await mkdir(output, { recursive: true })
 const commands = []
-// At most180s per child plus10s for owned-resource teardown; two sequential children, no retries.
+// At most 180s per child plus 10s for owned-resource teardown; two sequential children, no retries.
 const CHILD_BUDGET_MS = 180_000
 const CLEANUP_BUDGET_MS = 10_000
 for (const [script, reportFile] of [['user-journeys.mjs', 'user-journeys.json'], ['reservation-browser-smoke.mjs', 'reservations.json']]) {
@@ -25,7 +25,7 @@ for (const [script, reportFile] of [['user-journeys.mjs', 'user-journeys.json'],
     let forcedStop
     const budget = setTimeout(() => {
       timedOut = true
-      error = `${script} exceeded${CHILD_BUDGET_MS}ms; closing its owned browser/server`
+      error = `${script} exceeded ${CHILD_BUDGET_MS}ms; closing its owned browser/server`
       append(Buffer.from(`\n${error}\n`))
       if (child.connected) child.send({ type: 'gw2-journey-timeout' }, () => {})
       forcedStop = setTimeout(() => {
