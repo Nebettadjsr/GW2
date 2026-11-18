@@ -11,8 +11,8 @@ import java.time.Clock;
 import java.time.Instant;
 
 /**
- * The transaction that publishes one account source (STORY-APP-015, TARGET_ARCHITECTURE.md §7.2
- * "Fetch and validate a source outside the database transaction, then publish all of its
+ * The transaction that publishes one account source (STORY-APP-015, docs/ARCHITECTURE.md §4
+ * (archived TARGET_ARCHITECTURE.md §7.2) "Fetch and validate a source outside the database transaction, then publish all of its
  * replacements/upserts/stale-row removals, generation/completion marker and account sync activity
  * in one transaction").
  *

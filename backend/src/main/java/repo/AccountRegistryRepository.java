@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * The account registry and its activity timestamps (STORY-APP-015, TARGET_ARCHITECTURE.md §7.1-7.2).
+ * The account registry and its activity timestamps (STORY-APP-015, docs/ARCHITECTURE.md §4, archived TARGET_ARCHITECTURE.md §7.1-7.2).
  *
  * <p>Registration is an {@code ON CONFLICT DO NOTHING} insert of the verified GUID, so it is
  * idempotent for concurrent callers by the primary key itself rather than by a check-then-insert
