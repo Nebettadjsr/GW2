@@ -4,8 +4,7 @@ import java.util.Optional;
 
 /**
  * The application layer's view of the existing in-process background-task facility
- * (TARGET_ARCHITECTURE.md §9.1: "Account refresh and TP refresh remain separate operations in the
- * existing asynchronous in-process task facility").
+ * in which account refresh and TP refresh remain separate operations.
  *
  * <p>A port rather than a direct dependency, so freshness coordination stays independent of the
  * HTTP boundary that owns the facility and of its transport DTOs, and so the deterministic

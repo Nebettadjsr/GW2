@@ -6,43 +6,33 @@ import sync.AccountSync;
 import repo.AccountSyncStateRepository;
 import java.util.List;
 import java.util.Set;
-import java.time.Instant;
 
 /**
- * Application-layer use case for account synchronization (TARGET_ARCHITECTURE.md §8), owning the
- * two pre-existing, distinctly scoped account-refresh sequences:
+ * Application-layer use case for account synchronization, owning the distinctly scoped
+ * account-refresh sequences:
  *
  * <ul>
- *   <li>{@link #refreshAll()} - the Sync Account flow (STORY-APP-004): account bank, account
- *       materials, account recipes, consumed account Luck, then every character's crafting ratings
- *       and recipes. Luck extends the original {@code Gw2App} button sequence. Also the
- *       sequence {@code CraftingDiscoveryView}'s periodic auto-refresh already ran
- *       (STORY-APP-008).</li>
- *   <li>{@link #refreshMaterialsAndRecipes()} - the narrower sequence
- *       {@code CraftingProfitView}'s periodic auto-refresh already ran (STORY-APP-008): account
- *       materials then account recipes only, deliberately without the bank and character steps.</li>
+ *   <li>{@link #refreshAll()} - account bank, account materials, account recipes, consumed account
+ *       Luck, then every character's crafting ratings and recipes.</li>
+ *   <li>{@link #refreshMaterialsAndRecipes()} - the narrower sequence of account materials then
+ *       account recipes only, deliberately without the bank and character steps.</li>
+ *   <li>{@link #refreshCraftingProfitData()} - the Crafting Profit inputs without Luck.</li>
  * </ul>
  *
- * <p>Holds no JavaFX dependency and performs no calculation; it only coordinates the
- * {@link AccountRefreshGateway} collaborator. A failure from any step propagates immediately and
- * short-circuits the remaining steps, matching the original straight-line call sequences (no
- * partial-completion handling existed before these extractions, so none is introduced here).
- *
- * <p>Replaces the previously unused top-level {@code AccountRefreshService}, which duplicated a
- * subset of this orchestration but had no call site in {@code Gw2App}
- * (docs/KNOWN_PROBLEMS.md §8).
+ * <p>Performs no calculation; it only coordinates the {@link AccountRefreshGateway} collaborator.
+ * In the unscoped sequences a failure from any step propagates immediately and short-circuits the
+ * remaining steps. The account-scoped {@code refreshSources} variants instead attempt every
+ * requested source independently.
  */
 public class AccountRefreshService {
 
     private final AccountRefreshGateway gateway;
-    private volatile Instant lastRefreshedAt;
-    private volatile String lastRefreshScope;
 
     public AccountRefreshService() {
         this(new AccountRefreshGateway());
     }
 
-    /** Seam used by application-layer tests to substitute a fake gateway (TARGET_ARCHITECTURE.md §25). */
+    /** Seam used by application-layer tests to substitute a fake gateway. */
     public AccountRefreshService(AccountRefreshGateway gateway) {
         this.gateway = gateway;
     }
@@ -53,13 +43,11 @@ public class AccountRefreshService {
         gateway.syncAccountRecipes();
         gateway.syncAccountLuck();
         gateway.syncCharacterCraftingAndRecipes();
-        markRefreshed("full account");
     }
 
     public void refreshMaterialsAndRecipes() throws Exception {
         gateway.syncAccountMaterials();
         gateway.syncAccountRecipes();
-        markRefreshed("materials and recipes");
     }
 
     /** Refreshes the account datasets consumed by Crafting Profit without the unrelated Luck API call. */
@@ -68,7 +56,6 @@ public class AccountRefreshService {
         gateway.syncAccountMaterials();
         gateway.syncAccountRecipes();
         gateway.syncCharacterCraftingAndRecipes();
-        markRefreshed("Crafting Profit inputs");
     }
 
     /** Refreshes just the stale sources required by the requesting use case. */
@@ -81,12 +68,12 @@ public class AccountRefreshService {
     }
 
     /**
-     * Refreshes the requested sources for one account (STORY-APP-015).
+     * Refreshes the requested sources for one account.
      *
      * <p>Unlike the unscoped {@link #refreshSources(Set)} above, a failing source does not
      * short-circuit the rest: each source is fetched and published independently, so one that
      * succeeds commits its own data, generation and completion even when another fails
-     * (TARGET_ARCHITECTURE.md §7.2 "Successful sources may commit even when another source fails").
+     * (successful sources may commit even when another source fails).
      * The first failure is then thrown with the remaining ones attached, so nothing is swallowed and
      * no whole-account completion is fabricated from a partial run.
      *
@@ -140,10 +127,9 @@ public class AccountRefreshService {
             }
         }
         if (firstFailure != null) throw firstFailure;
-        markRefreshed("account sources " + sources);
     }
 
-    /** Refreshes every account source this service knows, for one account (STORY-APP-015). */
+    /** Refreshes every account source this service knows, for one account. */
     public void refreshAll(AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
         refreshSources(scope, Set.of(
                 AccountSyncStateRepository.BANK,
@@ -159,12 +145,4 @@ public class AccountRefreshService {
     private interface Step {
         void run() throws Exception;
     }
-
-    private void markRefreshed(String scope) {
-        lastRefreshScope = scope;
-        lastRefreshedAt = Instant.now();
-    }
-
-    public Instant lastRefreshedAt() { return lastRefreshedAt; }
-    public String lastRefreshScope() { return lastRefreshScope; }
 }

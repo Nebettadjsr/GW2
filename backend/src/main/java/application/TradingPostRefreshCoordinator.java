@@ -5,10 +5,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Coordination for the shared Trading Post quote refresh a calculation needs
- * (TARGET_ARCHITECTURE.md §9.1), kept deliberately separate from
- * {@link AccountRefreshCoordinator}: the two mechanisms have different scopes, different caching
- * policies and different operation keys, and §9.1 requires them to stay distinguishable.
+ * Coordination for the shared Trading Post quote refresh a calculation needs, kept deliberately
+ * separate from {@link AccountRefreshCoordinator}: the two mechanisms have different scopes,
+ * different caching policies and different operation keys, and must stay distinguishable.
  *
  * <p>No feature-specific cache or fetch path is introduced. The required item set, the ten-minute
  * reuse policy and the batched upstream fetch all remain where they already are, behind

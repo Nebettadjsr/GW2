@@ -6,7 +6,7 @@ import java.util.Set;
 
 /**
  * Single-writer coordination for the account sources a calculation needs refreshed
- * (TARGET_ARCHITECTURE.md §9.1).
+ * (docs/ARCHITECTURE.md).
  *
  * <p>It exists because the previous admission — {@code submitOrExisting("ACCOUNT_SYNC", …)} — hands
  * a caller the identifier of whatever account task happens to be unfinished, no matter how narrow
@@ -28,7 +28,7 @@ import java.util.Set;
  *       its omitted sources stale in the envelope. {@link Admission#reuse()} records which case
  *       applied, for diagnosis rather than for a freshness decision.</li>
  *   <li><b>Foreign tasks are waited out, not adopted.</b> When another entry point (the account-sync
- *       route, or the JavaFX app) holds the operation key, this coordinator keeps the demand and
+ *       route) holds the operation key, this coordinator keeps the demand and
  *       reports that task as outstanding without starting a concurrent writer. The next request
  *       rechecks and admits whatever is still required once that task is terminal.</li>
  * </ul>
