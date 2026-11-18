@@ -10,7 +10,7 @@ import type { BankContents, MaterialStorage } from '@/api/types'
  * fail these tests rather than pass them by accident.
  *
  * The supplied URLs are application-relative, exactly as the backend emits them
- * (`TARGET_ARCHITECTURE.md` 12.1): no fixture carries an upstream URL or a filesystem path, because
+ * (`docs/ARCHITECTURE.md` section 3): no fixture carries an upstream URL or a filesystem path, because
  * the contract no longer has a field either could arrive in.
  */
 
