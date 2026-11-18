@@ -3,7 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { connectKey, connection, installAccountSession, resetAccountSession, STORAGE_KEY } from '@/api/accountSession'
 import { installAccountTransport } from '@/api/http'
 import { bankWithEmptySlots, deferred, materialStorage } from '@/account/__tests__/accountFixtures'
-import { profitResponse, resolutionResponse, selectorOptions } from '@/crafting/__tests__/fixtures'
+import { echoedDiscoveryResponse, profitResponse, resolutionResponse, selectorOptions } from '@/crafting/__tests__/fixtures'
 import { accountLuck, itemMetadata, itemPrices } from '@/ecto/__tests__/currentEctoFixtures'
 
 // Real App, routes, session, KeepAlive and clients. Only viewport and HTTP answers are controlled.
@@ -11,6 +11,12 @@ beforeAll(async () => { await import('../App.vue') }, 30_000)
 const KEY = 'synthetic-desktop-unit-key'
 const ACCOUNT = '00000000-0000-4000-8000-000000000243'
 const tools = ['crafting', 'discovery', 'ecto', 'synchronization', 'bank', 'materials', 'characters']
+const WARNING = 'This page is not optimized for mobile use. You can scroll horizontally to use the whole page.'
+const toolContent: Record<string, string> = {
+  crafting: '[data-test="calculation-controls"]', discovery: '[data-test="discovery-calculation-controls"]',
+  ecto: '#ecto-count', synchronization: '[data-test="api-key-input"]', bank: '[data-test="bank-slots"]',
+  materials: '[data-test="material-category"]', characters: '[data-test="roster-empty"]'
+}
 let wrapper: VueWrapper | null = null
 let width = 1440
 const media = new Set<{ query: string; list: MediaQueryList; listeners: Set<(event: MediaQueryListEvent) => void> }>()
@@ -67,9 +73,12 @@ beforeEach(() => {
       expiresAt: '2099-01-01T00:00:00Z', grants: ['account', 'inventories', 'characters', 'unlocks'] })
     if (path === '/api/crafting/selector-options') return json(selectorOptions)
     if (path === '/api/crafting/profit') return heldProfit ?? json(profitResponse())
+    if (path === '/api/crafting/discovery') return json(echoedDiscoveryResponse(JSON.parse(String(init?.body))))
     if (path === '/api/crafting/profit/resolution') return json(resolutionResponse(JSON.parse(String(init?.body))))
     if (path === '/api/account/bank') return json(bankWithEmptySlots)
     if (path === '/api/account/materials') return json(materialStorage)
+    if (path === '/api/account/characters') return json({ state: 'AVAILABLE', characterCount: 0, characters: [],
+      freshness: { status: 'CURRENT', completedAt: '2099-01-01T00:00:00Z', refresh: 'CURRENT' } })
     if (path.startsWith('/api/items/metadata?')) return json(itemMetadata)
     if (path.startsWith('/api/items/prices?')) return json(itemPrices)
     if (path === '/api/account/luck') return json(accountLuck)
@@ -99,23 +108,21 @@ async function open(path: string): Promise<VueWrapper> {
 
 function notice(app: VueWrapper): void {
   const region = app.get('[data-test="desktop-width-notice"]')
-  expect(region.text()).toContain('Please use a PC or a wider browser window')
-  expect(region.text()).toContain('1024')
-  expect(region.find('h1, h2').exists()).toBe(true)
-  expect(region.find('a[href="/welcome"]').exists()).toBe(true)
-  expect(app.find('[data-test="api-key-input"]').exists()).toBe(false)
+  expect(region.text()).toBe(WARNING)
+  expect(region.isVisible()).toBe(true)
 }
 
-describe('desktop tool boundary through the real App', () => {
-  it.each(tools)('does not prove or mount hidden %s on a direct1023px bookmark', async destination => {
+// Owner18Nov revision:1024px is a layout baseline, never an access/session gate.
+describe('desktop-layout warning through the real App', () => {
+  it.each(tools)('restores the retained key and keeps %s available on a direct1023px bookmark', async destination => {
     await resize(1023)
     window.sessionStorage.setItem(STORAGE_KEY, KEY)
     const app = await open(`/#/${destination}`)
     notice(app)
-    expect(app.find(`[data-test="${destination}-screen"]`).exists()).toBe(false)
-    expect(app.find('[data-test="calculation-controls"]').exists()).toBe(false)
-    expect(requests).toEqual([])
-    expect(connection.phase).toBe('disconnected')
+    expect(app.get(toolContent[destination]!).isVisible()).toBe(true)
+    expect(requests[0]).toBe('/api/session')
+    expect(requests.filter(path => path === '/api/session')).toHaveLength(1)
+    expect(connection.phase).toBe('connected')
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe(KEY)
     expect(window.location.hash).toBe(`#/${destination}`)
   })
@@ -134,11 +141,13 @@ describe('desktop tool boundary through the real App', () => {
     expect(requests).toEqual([])
   })
 
-  it('permits exactly1024px and widening a blocked bookmark proves the retained key once', async () => {
-    await resize(1023)
+  it('loads Bank at390px and removes only the warning at1024px without another proof/read', async () => {
+    await resize(390)
     window.sessionStorage.setItem(STORAGE_KEY, KEY)
     const app = await open('/#/bank')
     notice(app)
+    expect(app.get('[data-test="bank-slots"]').isVisible()).toBe(true)
+    expect(requests).toEqual(['/api/session', '/api/account/bank'])
     await resize(1024)
     expect(app.find('[data-test="desktop-width-notice"]').exists()).toBe(false)
     expect(app.find('[data-test="bank-slots"]').exists()).toBe(true)
@@ -158,9 +167,9 @@ describe('desktop tool boundary through the real App', () => {
     window.localStorage.setItem('desktop-qa-sentinel', 'saved-reservation-sentinel')
     const before = [...requests]
     await resize(1023)
-    expect(app.get('[data-test="desktop-width-notice"]').text()).toContain('1024')
-    const controls = app.find('[data-test="calculation-controls"]')
-    expect(controls.exists() && controls.isVisible()).toBe(false)
+    notice(app)
+    expect(app.get('[data-test="calculation-controls"]').isVisible()).toBe(true)
+    expect(app.get('[data-test="detail-name"]').text()).toBe(selected)
     expect(requests).toEqual(before)
     expect(connection.generation).toBe(generation)
     expect(connection.phase).toBe('connected')
@@ -174,20 +183,25 @@ describe('desktop tool boundary through the real App', () => {
     expect(window.localStorage.getItem('desktop-qa-sentinel')).toBe('saved-reservation-sentinel')
   })
 
-  it('can navigate from a blocked tool to public Home and back without proving until widened', async () => {
+  it('navigates from a narrow tool to quiet public Home and back with ordinary connected reads', async () => {
     await resize(1023)
     window.sessionStorage.setItem(STORAGE_KEY, KEY)
     const app = await open('/#/bank')
+    notice(app)
+    expect(app.get('[data-test="bank-slots"]').isVisible()).toBe(true)
+    const beforeHome = [...requests]
     await app.get('[data-test="nav-home"]').trigger('click')
     await flushPromises()
     expect(app.get('[data-test="home-screen"]').isVisible()).toBe(true)
+    expect(requests).toEqual(beforeHome)
     await app.get('[data-test="nav-materials"]').trigger('click')
     await flushPromises()
     notice(app)
-    expect(requests).toEqual([])
+    expect(app.get('[data-test="material-category"]').isVisible()).toBe(true)
+    expect(requests).toEqual([...beforeHome, '/api/account/materials'])
   })
 
-  it('does not mount a previously unopened tool while narrow after another tool was admitted', async () => {
+  it('opens a previously unvisited tool while narrow using ordinary reads and the same connection', async () => {
     await connectKey(KEY)
     const app = await open('/#/crafting')
     await resize(1023)
@@ -196,12 +210,15 @@ describe('desktop tool boundary through the real App', () => {
     await app.get('[data-test="nav-ecto"]').trigger('click')
     await flushPromises()
     notice(app)
-    expect(requests).toEqual(before)
-    expect(app.find('[data-test="ecto-screen"]').exists()).toBe(false)
+    expect(app.get('[data-test="ecto-screen"]').isVisible()).toBe(true)
+    expect(requests.slice(before.length).filter(path => path.startsWith('/api/items/metadata?'))).toHaveLength(1)
+    expect(requests.slice(before.length).filter(path => path.startsWith('/api/items/prices?'))).toHaveLength(1)
+    expect(requests.slice(before.length).filter(path => path === '/api/account/luck')).toHaveLength(1)
+    expect(requests.filter(path => path === '/api/session')).toHaveLength(1)
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe(KEY)
   })
 
-  it('accepts the pending Profit answer while blocked and does not calculate again merely on widening', async () => {
+  it('shows the pending Profit answer while narrow and does not calculate again merely on widening', async () => {
     await connectKey(KEY)
     const answer = deferred<Response>()
     heldProfit = answer.promise
@@ -213,6 +230,7 @@ describe('desktop tool boundary through the real App', () => {
     answer.resolve(json(profitResponse()))
     await flushPromises()
     expect(requests.filter(path => path === '/api/crafting/profit')).toHaveLength(1)
+    expect(app.get('[data-test="profit-table"]').isVisible()).toBe(true)
     await resize(1024)
     expect(app.find('[data-test="desktop-width-notice"]').exists()).toBe(false)
     expect(requests.filter(path => path === '/api/crafting/profit')).toHaveLength(1)
@@ -233,8 +251,8 @@ describe('desktop tool boundary through the real App', () => {
     const before = [...requests]
     await resize(1023)
     notice(app)
-    const ecto = app.find('[data-test="ecto-screen"]')
-    expect(ecto.exists() && ecto.isVisible()).toBe(false)
+    expect(app.get('[data-test="ecto-screen"]').isVisible()).toBe(true)
+    expect(app.get('#ecto-count').element).toHaveProperty('value', '42')
     await resize(1024)
     expect(requests).toEqual(before)
     expect(app.get('#ecto-count').element).toHaveProperty('value', '42')

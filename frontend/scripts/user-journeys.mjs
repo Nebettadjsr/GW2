@@ -14,6 +14,7 @@ selectors.setTestIdAttribute('data-test')
 const OUTPUT = resolve(process.env.GW2_SMOKE_OUTPUT ?? 'quality-reports/desktop-journeys')
 const TIMEOUT = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 15_000)
 const WIDE = { width: 1440, height: 900 }
+const WARNING = 'This page is not optimized for mobile use. You can scroll horizontally to use the whole page.'
 const results = []
 let browser
 process.on('message', async message => {
@@ -45,15 +46,7 @@ async function focusIs(locator) { assert.equal(await locator.evaluate(node => do
 async function notice(page) {
   const region = get(page, 'desktop-width-notice')
   await region.waitFor()
-  assert.match(await region.innerText(), /Please use a PC or a wider browser window/)
-  assert.match(await region.innerText(), /1024/)
-  assert.ok(await region.locator('h1, h2').count(), 'Notice has no heading')
-  assert.ok(await region.getByRole('link', { name: /Home/i }).count(), 'Notice has no public Home link')
-  const role = await region.getAttribute('role')
-  assert.ok(['region', 'status', 'note'].includes(role) || await region.getAttribute('aria-labelledby'), 'Notice is not an accessible named region')
-  for (const id of ['api-key-input', 'calculation-controls', 'bank-slots', 'material-grid']) {
-    assert.equal(await get(page, id).isVisible(), false, `Unsupported ${id} is usable`)
-  }
+  assert.equal((await region.innerText()).replace(/\s+/g, ' ').trim(), WARNING)
 }
 
 async function journey(name, run, viewport = WIDE) {
@@ -260,19 +253,22 @@ async function isolationJourney({ page, api, origin, step }) {
 async function boundaryJourney({ page, api, origin, step }) {
   await page.addInitScript(key => sessionStorage.setItem('gw2.apiKey', key), KEY_A)
   await page.setViewportSize({ width: 1023, height: 900 })
+  const ready = { crafting: 'profit-table', discovery: 'discovery-no-character', ecto: 'ecto-result',
+    synchronization: 'disconnect', bank: 'bank-slots', materials: 'material-category', characters: 'roster-empty' }
   for (const destination of ['crafting', 'discovery', 'ecto', 'synchronization', 'bank', 'materials', 'characters']) {
-    await page.goto(`${origin}/#/${destination}`)
+    // A distinct document URL makes every entry an actual initial narrow load, not a hash-only change.
+    const proofs = api.proofs.length
+    await page.goto(`${origin}/?entry=${destination}#/${destination}`)
     await notice(page)
+    await get(page, ready[destination]).waitFor()
     assert.equal(new URL(page.url()).hash, `#/${destination}`)
-    assert.deepEqual(api.calls, [], 'Blocked initial tool issued API work')
+    assert.equal(api.proofs.length, proofs + 1, 'Initial narrow tools must prove their retained key normally')
   }
-  step('all seven direct1023px tool URLs show accessible notice and never prove retained key')
-  // Last destination was Characters; choose Bank while still narrow to avoid inventing roster inputs.
+  step('all seven initial1023px tools show only an advisory warning and restore/load through normal proof')
   await go(page, 'bank')
   await notice(page)
-  await page.setViewportSize({ width: 1024, height: 900 })
   await get(page, 'bank-slots').waitFor()
-  assert.equal(api.proofs.length, 1)
+  assert.equal(api.proofs.length, 7)
   await page.locator('.inventory-tile').first().click({ button: 'right' })
   await get(page, 'menu-reserve').click()
   await get(page, 'reserve-input').fill('100')
@@ -290,21 +286,46 @@ async function boundaryJourney({ page, api, origin, step }) {
   const storage = await page.evaluate(() => ({ key: sessionStorage.getItem('gw2.apiKey'), preferences: { ...localStorage } }))
   await page.setViewportSize({ width: 1023, height: 900 })
   await notice(page)
+  assert.equal(await get(page, 'calculation-controls').isVisible(), true)
   assert.equal(api.calls.length, before)
   assert.equal(new URL(page.url()).hash, '#/crafting')
+  for (const width of [390, 1023]) {
+    await page.setViewportSize({ width, height: 900 })
+    await notice(page)
+    const geometry = await page.evaluate(() => {
+      const root = document.documentElement
+      window.scrollTo({ left: root.scrollWidth, top: 0 })
+      return { viewport: window.innerWidth, scrollWidth: root.scrollWidth, clientWidth: root.clientWidth }
+    })
+    await quietFrame(page)
+    assert.ok(geometry.scrollWidth > geometry.clientWidth, `${width}px does not expose horizontal desktop-layout scrolling: ${JSON.stringify(geometry)}`)
+    assert.ok(await page.evaluate(() => window.scrollX) > 0, `Horizontal scrolling did not move at${width}px`)
+    const action = get(page, 'refresh-data-and-results')
+    const box = await action.boundingBox()
+    assert.ok(box && box.x >= -1 && box.x + box.width <= width + 1, `The rightmost tool action cannot be reached at${width}px: ${JSON.stringify(box)}`)
+    await action.hover()
+    await action.focus()
+    await focusIs(action)
+    assert.equal(await get(page, 'detail-name').innerText(), selected)
+  }
   await page.setViewportSize({ width: 1024, height: 900 })
+  await page.evaluate(() => window.scrollTo({ left: 0, top: 0 }))
   await get(page, 'calculation-controls').waitFor()
+  assert.equal(await get(page, 'desktop-width-notice').count(), 0)
   assert.equal(await get(page, 'detail-name').innerText(), selected)
   assert.equal(await get(page, 'max-displayed').inputValue(), '7')
   assert.equal(api.calls.length, before, 'Widening repeated a completed calculation/proof/detail')
   assert.deepEqual(await page.evaluate(() => ({ key: sessionStorage.getItem('gw2.apiKey'), preferences: { ...localStorage } })), storage)
-  step('exact1024 is supported; live1023→1024 preserves route, key, preferences, selection and controls without duplicate work')
+  step('390/1023 retain real tool content with usable horizontal scrolling;1024 removes only the warning without duplicate work')
   await page.setViewportSize({ width: 1023, height: 900 })
   await notice(page)
+  const beforeEcto = ['/api/items/metadata', '/api/items/prices', '/api/account/luck'].map(path => count(api, path))
   await go(page, 'ecto')
   await notice(page)
-  assert.equal(api.calls.length, before, 'A previously admitted Profit screen enabled hidden first Ecto reads')
-  step('visiting previously unopened Ecto while narrow starts no hidden initial requests')
+  await get(page, 'ecto-result').waitFor()
+  for (const [index, path] of ['/api/items/metadata', '/api/items/prices', '/api/account/luck'].entries()) assert.equal(count(api, path), beforeEcto[index] + 1)
+  assert.equal(api.proofs.length, 7)
+  step('narrow navigation opens Ecto normally with its own reads and the same connection')
 }
 
 async function pendingProfitResize({ page, api, origin, step }) {
@@ -320,12 +341,14 @@ async function pendingProfitResize({ page, api, origin, step }) {
   api.releaseProfit()
   await answer
   await quietFrame(page)
-  assert.equal(count(api, '/api/crafting/profit'), 1, 'A blocked pending answer caused another calculation')
+  await get(page, 'profit-table').waitFor()
+  assert.match(await get(page, 'profit-table').innerText(), /Held Profit Answer/)
+  assert.equal(count(api, '/api/crafting/profit'), 1, 'A narrow pending answer caused another calculation')
   await page.setViewportSize({ width: 1024, height: 900 })
   await get(page, 'profit-table').waitFor()
   assert.equal(count(api, '/api/crafting/profit'), 1, 'Widening duplicated the pending calculation')
   assert.match(await get(page, 'profit-table').innerText(), /Held Profit Answer/)
-  step('pending Profit answer released while blocked renders on widening with exactly one calculation')
+  step('pending Profit answer renders while narrow and remains after widening with exactly one calculation')
 }
 
 async function ectoResizeState({ page, api, origin, step }) {
@@ -342,7 +365,8 @@ async function ectoResizeState({ page, api, origin, step }) {
   const before = api.calls.length
   await page.setViewportSize({ width: 1023, height: 900 })
   await notice(page)
-  assert.equal(await get(page, 'ecto-screen').isVisible(), false)
+  assert.equal(await get(page, 'ecto-screen').isVisible(), true)
+  assert.equal(await page.locator('#ecto-count').inputValue(), '42')
   await page.setViewportSize({ width: 1024, height: 900 })
   await get(page, 'ecto-result').waitFor()
   assert.equal(api.calls.length, before, 'Width-only Ecto change fetched inputs again')
@@ -375,49 +399,32 @@ async function modalResize({ page, api, origin, step }, kind) {
     assert.equal(await get(page, dialog).evaluate(node => node.open && node.matches(':modal')), true,
       `${kind} did not enter the native modal top layer`)
   }
-  await open()
-  const beforeResize = api.calls.length
-  await page.setViewportSize({ width: 1023, height: 900 })
-  await notice(page)
-  await quietFrame(page)
-  const modalCount = await page.locator('dialog:modal').count()
-  let homeError = null
-  try {
-    // No Escape, force-click or widening: the real pointer must reach the public destination now.
-    const home = kind === 'help' ? get(page, 'desktop-width-notice').getByRole('link', { name: 'Back to Home', exact: true }) : get(page, 'nav-home')
-    await home.click({ timeout: 1500 })
-    await get(page, 'home-screen').waitFor()
-  } catch (error) { homeError = error.message }
-  assert.equal(modalCount, 0, `${kind} remained in the native top layer below1024px; Home click: ${homeError ?? 'succeeded'}`)
-  assert.equal(homeError, null, `${kind} still prevented ordinary public Home navigation`)
-  assert.equal(api.calls.length, beforeResize, 'Closing a width-blocked popup or reading Home started account work')
-  assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), KEY_A)
-  assert.equal(api.calls.some(call => call.method === 'DELETE' || /delete/i.test(call.path)), false, 'Opening a confirmation submitted deletion')
-  step(`${kind} closes its native modal on narrowing; actual Home pointer navigation works without Escape or widening`)
-
-  // Real Home navigation can recreate System Status. The next pass isolates width-only state retention.
-  await go(page, 'synchronization')
-  await notice(page)
-  const returnedStatus = page.waitForResponse(response => new URL(response.url()).pathname === '/api/system/status/details')
-  await page.setViewportSize(WIDE)
-  await get(page, 'disconnect').waitFor()
-  await returnedStatus
   await get(page, 'api-key-input').fill('synthetic-unsent-modal-draft')
   await open()
-  const beforeWidthOnly = api.calls.length
-  await page.setViewportSize({ width: 1023, height: 900 })
-  await notice(page)
-  await quietFrame(page)
-  assert.equal(await page.locator('dialog:modal').count(), 0, `${kind} did not close on a second width-only change`)
-  await page.setViewportSize(WIDE)
-  await get(page, 'api-key-input').waitFor()
+  const beforeResize = api.calls.length
+  // The18Nov warning-only policy keeps native dialogs usable; resizing is not a close action.
+  for (const width of kind === 'help' ? [1023, 390] : [390, 1023]) {
+    await page.setViewportSize({ width, height: 900 })
+    await notice(page)
+    await quietFrame(page)
+    assert.equal(await get(page, dialog).evaluate(node => node.open && node.matches(':modal')), true,
+      `${kind} was dismissed merely because the viewport became${width}px`)
+    assert.equal(await get(page, 'api-key-input').inputValue(), 'synthetic-unsent-modal-draft')
+    assert.equal(api.calls.length, beforeResize)
+  }
+  // Close help normally or cancel confirmation. The destructive Confirm action is never invoked.
+  await get(page, kind === 'help' ? 'help-close' : 'delete-cancel').click()
+  await get(page, dialog).waitFor({ state: 'hidden' })
+  assert.equal(await page.locator('dialog:modal').count(), 0)
   assert.equal(await get(page, 'api-key-input').inputValue(), 'synthetic-unsent-modal-draft')
   assert.equal(await get(page, 'disconnect').isVisible(), true)
-  assert.equal(await page.locator('dialog:modal').count(), 0, `${kind} reopened automatically on widening`)
-  assert.equal(api.calls.length, beforeWidthOnly, 'Popup resize reset/reproved/refetched the admitted System Status screen')
+  assert.equal(api.calls.length, beforeResize, 'Popup resize reset/reproved/refetched the System Status screen')
   assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), KEY_A)
   assert.equal(api.calls.some(call => call.method === 'DELETE' || /delete/i.test(call.path)), false)
-  step(`${kind} width-only closure keeps the admitted form draft/key/connection without reopening or extra requests`)
+  await go(page, 'home')
+  await get(page, 'home-screen').waitFor()
+  assert.equal(api.calls.length, beforeResize)
+  step(`${kind} stays modal/usable at390/1023; normal close then Home works, with draft/key retained and no deletion or extra requests`)
 }
 
 /** Compatibility inventory entry reuses the current recovery story rather than removed buttons. */

@@ -116,6 +116,8 @@ export function createJourneyBackend() {
         return sendJson(200, value)
       }
       if (path === '/api/account/materials') return sendJson(200, materials)
+      if (path === '/api/account/characters') return sendJson(200, { state: 'AVAILABLE', characterCount: 0, characters: [],
+        freshness: { status: 'CURRENT', completedAt: '2099-01-01T00:00:00Z', refresh: 'CURRENT' } })
       if (path === '/api/items/metadata') {
         assert.equal(url.searchParams.get('ids'), '19721,24277,44602,23041,89409,67027,19986')
         return sendJson(200, { items: [19721, 24277, 44602, 23041, 89409, 67027, 19986].map(itemId => ({
