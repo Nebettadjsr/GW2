@@ -2,9 +2,7 @@ package web.access;
 
 import application.access.AccountAccessService;
 import application.access.AccountContext;
-import application.access.AccountGrant;
 import application.access.AccountLifecycleGate;
-import java.util.UUID;
 import application.access.AccountOperation;
 import application.access.AccountSessions;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,12 +20,12 @@ import web.dto.SessionAccessResponse;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * The reusable account-authorization boundary: a live session and a matching access context before
- * any account work (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+ * any account work (STORY-API-010).
  *
  * <p>Runs ahead of every other account interceptor, which is what "authorization precedes account
  * lookup, cache access, calculation and task admission" means in practice - a rejected request is
@@ -37,10 +35,10 @@ import java.util.Locale;
  * <p>Two configuration switches, both default-off:
  *
  * <ul>
- *   <li>{@code gw2.account-access.enforce} turns the guard on. It is off by default because this
- *       story delivers the facility, not the migration of the existing single-user routes: enabling
- *       it for them is the integration story's deliverable, and flipping it here would break the
- *       running browser UI before it has a credential gate.</li>
+ *   <li>{@code gw2.account-access.enforce} turns the guard on for every {@code /api/account/**}
+ *       route. It stays off by default and is retained as configuration; the scoped account reads,
+ *       account syncs, deletion and crafting routes listed below are guarded regardless, because
+ *       they have no unscoped implementation to fall back to.</li>
  *   <li>{@code gw2.account-access.test-fixtures} additionally makes an authorized account request
  *       answer from this boundary instead of reaching its controller. That is how the HTTP contract
  *       suite exercises the guard's accept path offline: the real routes would need ArenaNet and a
@@ -83,7 +81,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
                 || isScopedAccountSync(path) || deletionRoute;
         if (!path.startsWith(ACCOUNT_PATH_PREFIX) && !craftingRoute) return true;
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-        // The crafting routes have no unscoped implementation left to fall back to (the versioned
+        // Scoped routes have no unscoped implementation left to fall back to (the versioned
         // schema refuses it), so the guard is not optional for them.
         if (!enforce && !craftingRoute) return true;
 
@@ -300,11 +298,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
                 ? new ApiErrorResponse("SESSION_REQUIRED", "Prove a GW2 API key to continue")
                 : new ApiErrorResponse("ACCOUNT_ACCESS_DENIED",
                         "This session is not authorized for this account operation");
-        response.setStatus(status.value());
-        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write(mapper.writeValueAsString(body));
-        return false;
+        return writeError(response, status, body);
     }
 
     /**
@@ -315,8 +309,6 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             throws IOException {
         response.setStatus(HttpStatus.OK.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        List<String> grants = context.grants().stream().map(AccountGrant::apiName).sorted().toList();
-        response.getWriter().write(mapper.writeValueAsString(
-                new SessionAccessResponse(context.accountId(), context.accessContext(), context.expiresAt(), grants)));
+        response.getWriter().write(mapper.writeValueAsString(SessionAccessResponse.of(context)));
     }
 }
