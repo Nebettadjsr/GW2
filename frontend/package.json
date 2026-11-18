@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser client for the GW2 tool backend HTTP API (TARGET_ARCHITECTURE.md 4.1).",
+  "description": "Browser client for the GW2 tool backend HTTP API (see docs/ARCHITECTURE.md).",
   "scripts": {
     "dev": "vite",
     "build": "npm run type-check && vite build",
