@@ -29,23 +29,14 @@ import java.time.Instant;
  * <p>The transaction is never written to and is rolled back on {@link #close()}, so holding it open
  * for the calculation publishes nothing and blocks no refresh write.
  *
- * <p>{@link #detached()} is the seam application-layer tests use: it carries no connection, so the
- * collaborators fall back to their own connection-less reads and can be replaced by in-memory
- * fakes without a database (docs/TEST_STRATEGY.md §8).
+ * <p>{@link #detached(AccountScope)} is the seam application-layer tests use: it carries one explicit
+ * scope but no connection, so scoped collaborator reads can be replaced by in-memory fakes
+ * without a database (docs/TEST_STRATEGY.md §8).
  */
 public final class ProfitInputSession implements AutoCloseable {
 
     private final Connection connection;
     private final AccountScope scope;
-
-    /**
-     * An unscoped session over an already-prepared connection. Kept with exactly this signature
-     * because {@code CraftingProfitServiceSessionTest.sessionOn} reaches it by reflection to build a
-     * session over a connection it supplies, without reaching a database.
-     */
-    private ProfitInputSession(Connection connection) {
-        this(connection, null);
-    }
 
     private ProfitInputSession(Connection connection, AccountScope scope) {
         this.connection = connection;
@@ -85,22 +76,22 @@ public final class ProfitInputSession implements AutoCloseable {
         }
     }
 
-    /** A session with no connection: collaborators read through their own, as they did before. */
-    public static ProfitInputSession detached() {
-        return new ProfitInputSession(null);
+    /**
+     * In-memory test seam: one explicit account scope but no connection. Scoped repository reads
+     * receive a null connection, so only substituted fakes can serve them; production never uses it.
+     */
+    public static ProfitInputSession detached(AccountScope scope) {
+        return new ProfitInputSession(null, java.util.Objects.requireNonNull(scope, "scope"));
     }
 
-    /** The pinned connection, or null for a {@link #detached()} session. */
+    /** The pinned connection, or null for a {@link #detached(AccountScope)} session. */
     public Connection connection() {
         return connection;
     }
 
     /**
-     * The account this snapshot belongs to, or null when it has none.
-     *
-     * <p>A null scope is not "the default account": production {@code open()} always binds one.
-     * Null belongs only to detached or reflection-created in-memory test seams. Collaborators
-     * branch on it to choose the scoped repository read, never to pick an account.
+     * The account this snapshot belongs to; every session, including the detached test seam,
+     * is bound to one explicit scope and none stands for a default account.
      */
     public AccountScope scope() {
         return scope;

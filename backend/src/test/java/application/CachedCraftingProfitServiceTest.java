@@ -404,7 +404,7 @@ class CachedCraftingProfitServiceTest {
         return new CachedCraftingProfitService(
                 new ProfitInputSession.Factory() {
                     @Override public ProfitInputSession open(AccountScope scope) {
-                        return ProfitInputSession.detached();
+                        return ProfitInputSession.detached(scope);
                     }
                 },
                 profitServices,
@@ -417,7 +417,7 @@ class CachedCraftingProfitServiceTest {
                     });
                     return states;
                 },
-                con -> coverage,
+                (con, scope) -> coverage,
                 priceRefresh,
                 tasks,
                 Clock.fixed(NOW, ZoneOffset.UTC),

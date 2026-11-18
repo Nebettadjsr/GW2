@@ -495,13 +495,18 @@ class CraftingDiscoveryApiControllerTest {
         boolean deriveResultFromRequest;
 
         StubDiscoveryService() {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null);
         }
 
         @Override
         public CraftingDiscoveryService forScope(model.AccountScope scope) {
             return this;
         }
+
+        // The real service reads the bound account's database state here; these stubs have no account store.
+        @Override public InputState inputState() { return new InputState(java.util.Set.of(), java.util.Set.of()); }
+        @Override public void verifySelectedCharacter(DiscChoice choice) { }
+        @Override public void recordAuthorizedUse() { }
 
         @Override
         public DiscoveryData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {

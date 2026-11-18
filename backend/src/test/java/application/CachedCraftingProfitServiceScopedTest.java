@@ -187,7 +187,7 @@ class CachedCraftingProfitServiceScopedTest {
                 new ProfitInputSession.Factory() {
                     @Override public ProfitInputSession open(AccountScope scope) throws SQLException {
                         opened.add(scope);
-                        return ProfitInputSession.detached();
+                        return ProfitInputSession.detached(scope);
                     }
                 },
                 session -> new CraftingProfitService(null, null, null, null, null, null, null, session) {
@@ -210,7 +210,7 @@ class CachedCraftingProfitServiceScopedTest {
                     for (String s : sources) states.put(s, new AccountSourceStateRepository.SourceState(s, sourceGeneration, completedAt));
                     return states;
                 },
-                con -> new CalculationFreshness.PriceCoverage(
+                (con, scope) -> new CalculationFreshness.PriceCoverage(
                         10, covered ? 10 : 0, covered ? 0 : 10, 0, FRESH_AT, FRESH_AT, covered, "q"),
                 new TradingPostRefreshCoordinator(new TradingPostPriceRefreshService(countingPriceGateway), tasks),
                 tasks,

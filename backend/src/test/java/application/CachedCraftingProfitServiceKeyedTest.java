@@ -92,7 +92,7 @@ class CachedCraftingProfitServiceKeyedTest {
                 AccountGrant.CHARACTERS, AccountGrant.UNLOCKS), Set.of(), "test", NOW.plus(Duration.ofHours(1)));
     }
 
-    private ProfitInputSession recordingSession() {
+    private ProfitInputSession recordingSession(AccountScope scope) {
         Connection con = (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
                 new Class<?>[]{Connection.class}, (proxy, method, args) -> {
                     if (method.getName().equals("close")) events.add("close");
@@ -101,9 +101,9 @@ class CachedCraftingProfitServiceKeyedTest {
                     return null;
                 });
         try {
-            Constructor<ProfitInputSession> ctor = ProfitInputSession.class.getDeclaredConstructor(Connection.class);
+            Constructor<ProfitInputSession> ctor = ProfitInputSession.class.getDeclaredConstructor(Connection.class, AccountScope.class);
             ctor.setAccessible(true);
-            return ctor.newInstance(con);
+            return ctor.newInstance(con, scope);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
@@ -113,7 +113,7 @@ class CachedCraftingProfitServiceKeyedTest {
         return new CachedCraftingProfitService(
                 scope -> {
                     events.add("open");
-                    return recordingSession();
+                    return recordingSession(scope);
                 },
                 session -> new CraftingProfitService(null, null, null, null, null, null, null, session) {
                     @Override public ProfitData reload(DiscChoice choice, CraftingSettings settings) {
@@ -140,7 +140,7 @@ class CachedCraftingProfitServiceKeyedTest {
                     }
                     return states;
                 },
-                con -> new CalculationFreshness.PriceCoverage(
+                (con, scope) -> new CalculationFreshness.PriceCoverage(
                         10, covered ? 10 : 0, covered ? 0 : 10, 0, FRESH_AT, FRESH_AT, covered, "q"),
                 new TradingPostRefreshCoordinator(new TradingPostPriceRefreshService(noQuotes), tasks),
                 tasks,

@@ -38,14 +38,15 @@ import java.util.stream.Collectors;
  */
 public class CraftingDiscoveryService {
 
-    private final RecipeRepository recipeRepo;
-    private final InventoryRepository invRepo;
     private final TpPriceRepository tpRepo;
     private final ItemRepository itemRepo;
     private final CraftingGraphCache graphCache;
     private final CraftingPlanner planner;
-    /** The authorized account of this request-local instance, or null for the retained unscoped path. */
+    private final ScopedInputsBinding binding;
+    /** The authorized account of this request-local instance; null only on the unbound builder. */
     private final model.AccountScope scope;
+    /** Account-scoped reads of this instance; null only on the unbound builder. */
+    private ScopedInputs inputs;
     private java.time.Clock clock = java.time.Clock.systemUTC();
     /** Account max age; null means published inputs are never reported stale. */
     private java.time.Duration accountMaxAge;
@@ -62,47 +63,57 @@ public class CraftingDiscoveryService {
     private Map<Integer, ItemRepository.ItemInfo> lastItems = Map.of();
     private Map<Integer, CraftResult> lastResultsByRecipeId = Map.of();
 
-    public CraftingDiscoveryService() {
-        this(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(), new ItemRepository());
+    /** The account-scoped reads one Discovery operation needs besides catalog, quotes and items. */
+    public interface ScopedInputs {
+        /** Missing discoverable recipe ids for the character/discipline plus the account's known ids. */
+        MissingRecipes missingRecipes(String charName, String discipline) throws SQLException;
+
+        /** The character's binding-aware owned inventory. */
+        Map<Integer, InventoryRepository.OwnedQuantity> ownedInventory(String charName) throws SQLException;
     }
 
-    /** Request-local calculation state backed by the application's shared immutable graph snapshot. */
+    /** Missing ids; {@code knownIds} is empty whenever nothing is missing. */
+    public record MissingRecipes(List<Integer> missingIds, Set<Integer> knownIds) {
+    }
+
+    /** Creates the scoped reads of one request-local instance. */
+    @FunctionalInterface
+    public interface ScopedInputsBinding {
+        ScopedInputs bind(model.AccountScope scope, java.time.Clock clock);
+    }
+
+    /**
+     * Unbound builder backed by the shared immutable graph snapshot. It only serves
+     * {@link #forScope}; every calculation runs on the bound request-local instance.
+     */
     public CraftingDiscoveryService(CraftingGraphCache graphCache) {
-        this(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(),
-                new ItemRepository(), graphCache, new CraftingPlanner());
+        this(new TpPriceRepository(), new ItemRepository(), graphCache, new CraftingPlanner(),
+                databaseInputs(new RecipeRepository(), new InventoryRepository()));
     }
 
-    public CraftingDiscoveryService(RecipeRepository recipeRepo,
-                                    InventoryRepository invRepo,
-                                    TpPriceRepository tpRepo,
-                                    ItemRepository itemRepo) {
-        this(recipeRepo, invRepo, tpRepo, itemRepo, new CraftingGraphCache(recipeRepo), new CraftingPlanner());
-    }
-
-    /** Full seam used by application-layer tests to substitute fake/in-memory adapters. */
-    public CraftingDiscoveryService(RecipeRepository recipeRepo,
-                                    InventoryRepository invRepo,
-                                    TpPriceRepository tpRepo,
+    /** Full seam: tests substitute the quote/item adapters, graph cache, planner and scoped reads. */
+    public CraftingDiscoveryService(TpPriceRepository tpRepo,
                                     ItemRepository itemRepo,
                                     CraftingGraphCache graphCache,
-                                    CraftingPlanner planner) {
-        this(recipeRepo, invRepo, tpRepo, itemRepo, graphCache, planner, null);
+                                    CraftingPlanner planner,
+                                    ScopedInputsBinding binding) {
+        this(tpRepo, itemRepo, graphCache, planner, binding, null, null);
     }
 
-    private CraftingDiscoveryService(RecipeRepository recipeRepo,
-                                     InventoryRepository invRepo,
-                                     TpPriceRepository tpRepo,
+    private CraftingDiscoveryService(TpPriceRepository tpRepo,
                                      ItemRepository itemRepo,
                                      CraftingGraphCache graphCache,
                                      CraftingPlanner planner,
-                                     model.AccountScope scope) {
-        this.scope = scope;
-        this.recipeRepo = recipeRepo;
-        this.invRepo = invRepo;
+                                     ScopedInputsBinding binding,
+                                     model.AccountScope scope,
+                                     ScopedInputs inputs) {
         this.tpRepo = tpRepo;
         this.itemRepo = itemRepo;
         this.graphCache = graphCache;
         this.planner = planner;
+        this.binding = binding;
+        this.scope = scope;
+        this.inputs = inputs;
     }
 
     /**
@@ -111,16 +122,85 @@ public class CraftingDiscoveryService {
      * calculation is unchanged and receives the already-scoped ordinary inputs.
      */
     public CraftingDiscoveryService forScope(model.AccountScope scope) {
-        CraftingDiscoveryService bound = new CraftingDiscoveryService(recipeRepo, invRepo, tpRepo, itemRepo,
-                graphCache, planner, java.util.Objects.requireNonNull(scope));
+        java.util.Objects.requireNonNull(scope);
+        CraftingDiscoveryService bound = new CraftingDiscoveryService(tpRepo, itemRepo, graphCache, planner,
+                binding, scope, binding.bind(scope, clock));
         bound.clock = clock;
         bound.accountMaxAge = accountMaxAge;
         return bound;
     }
 
+    private model.AccountScope requireScope() {
+        if (scope == null) throw new IllegalStateException("Discovery requires forScope(account) before use");
+        return scope;
+    }
+
+    private static ScopedInputsBinding databaseInputs(RecipeRepository recipes, InventoryRepository inventory) {
+        return (scope, clock) -> new DatabaseScopedInputs(recipes, inventory, scope, clock);
+    }
+
+    /** Production reads: managed-schema validation, published-source and roster checks, then scoped SQL. */
+    private static final class DatabaseScopedInputs implements ScopedInputs {
+        private final RecipeRepository recipeRepo;
+        private final InventoryRepository invRepo;
+        private final model.AccountScope scope;
+        private final java.time.Clock clock;
+
+        DatabaseScopedInputs(RecipeRepository recipeRepo, InventoryRepository invRepo,
+                             model.AccountScope scope, java.time.Clock clock) {
+            this.recipeRepo = recipeRepo;
+            this.invRepo = invRepo;
+            this.scope = scope;
+            this.clock = clock;
+        }
+
+        @Override
+        public MissingRecipes missingRecipes(String charName, String discipline) throws SQLException {
+            try (java.sql.Connection con = openScoped(charName)) {
+                List<Integer> missingIds =
+                        recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(con, scope, charName, discipline);
+                return new MissingRecipes(missingIds,
+                        missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds(con, scope));
+            }
+        }
+
+        @Override
+        public Map<Integer, InventoryRepository.OwnedQuantity> ownedInventory(String charName) throws SQLException {
+            return invRepo.loadOwnedInventoryForCharacter(scope, charName);
+        }
+
+        /**
+         * Opens the scoped connection, records authorized use (activity only, never freshness) and
+         * refuses unless every source Discovery consumes has been published for this account.
+         */
+        private java.sql.Connection openScoped(String charName) throws SQLException {
+            java.sql.Connection con = repo.Db.open();
+            try {
+                repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
+                var states = new repo.AccountSourceStateRepository();
+                for (String source : List.of(repo.AccountSyncStateRepository.BANK,
+                        repo.AccountSyncStateRepository.MATERIALS, repo.AccountSyncStateRepository.RECIPES,
+                        repo.AccountSyncStateRepository.CHARACTERS)) {
+                    if (states.read(con, scope, source).isEmpty()) throw new AccountInputsUnavailableException();
+                }
+                if (!new repo.CharacterRepository().loadAllCharacterNames(con, scope).contains(charName)) {
+                    throw new CharacterNotOwnedException();
+                }
+                new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, clock.instant());
+                return con;
+            } catch (SQLException | RuntimeException failure) {
+                try { con.close(); } catch (SQLException ignored) { /* original failure wins */ }
+                throw failure;
+            }
+        }
+    }
+
     /** Sets the account freshness policy used to classify published inputs as stale. */
     public CraftingDiscoveryService withFreshness(java.time.Clock clock, java.time.Duration accountMaxAge) {
         this.clock = clock;
+        // The scoped reads stamp activity with the bound clock: rebind so a policy set after
+        // forScope still governs both marker classification and activity recording.
+        if (scope != null) this.inputs = binding.bind(scope, clock);
         this.accountMaxAge = accountMaxAge;
         return this;
     }
@@ -142,9 +222,9 @@ public class CraftingDiscoveryService {
         }
     }
 
-    /** Reads the markers only (no rows, no activity). The retained unscoped service reports nothing needed. */
+    /** Reads the markers only (no rows, no activity). */
     public InputState inputState() throws SQLException {
-        if (scope == null) return new InputState(java.util.Set.of(), java.util.Set.of());
+        model.AccountScope scope = requireScope();
         java.util.Set<String> missing = new java.util.TreeSet<>();
         java.util.Set<String> stale = new java.util.TreeSet<>();
         try (java.sql.Connection con = repo.Db.open()) {
@@ -164,7 +244,7 @@ public class CraftingDiscoveryService {
 
     /** Records ordinary authorized use (activity only, never freshness) for a request that calculated nothing. */
     public void recordAuthorizedUse() throws SQLException {
-        if (scope == null) return;
+        model.AccountScope scope = requireScope();
         try (java.sql.Connection con = repo.Db.open()) {
             new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, clock.instant());
         }
@@ -186,11 +266,11 @@ public class CraftingDiscoveryService {
 
     /**
      * Validates, before any quote, source or calculation work and without recording activity, that
-     * the selected character belongs to this account. A no-op for the retained unscoped service.
+     * the selected character belongs to this account.
      */
     public void verifySelectedCharacter(DiscChoice choice) throws SQLException {
         requireCharacterScope(choice);
-        if (scope == null) return;
+        model.AccountScope scope = requireScope();
         try (java.sql.Connection con = repo.Db.open()) {
             repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
             // A never-published roster has nothing to compare with: that is the pending case.
@@ -199,33 +279,6 @@ public class CraftingDiscoveryService {
             if (!new repo.CharacterRepository().loadAllCharacterNames(con, scope).contains(choice.charName)) {
                 throw new CharacterNotOwnedException();
             }
-        }
-    }
-
-    /**
-     * Opens the scoped connection, records authorized use (activity only, never freshness) and
-     * refuses unless every source Discovery consumes has been published for this account.
-     */
-    private java.sql.Connection openScoped(String charName, boolean recordUse) throws SQLException {
-        java.sql.Connection con = repo.Db.open();
-        try {
-            repo.ManagedSchema.requireManagedAccountSchema(con, "account-scoped Discovery");
-            var states = new repo.AccountSourceStateRepository();
-            for (String source : List.of(repo.AccountSyncStateRepository.BANK,
-                    repo.AccountSyncStateRepository.MATERIALS, repo.AccountSyncStateRepository.RECIPES,
-                    repo.AccountSyncStateRepository.CHARACTERS)) {
-                if (states.read(con, scope, source).isEmpty()) throw new AccountInputsUnavailableException();
-            }
-            if (!new repo.CharacterRepository().loadAllCharacterNames(con, scope).contains(charName)) {
-                throw new CharacterNotOwnedException();
-            }
-            if (recordUse) {
-                new repo.AccountRegistryRepository().recordAuthorizedUse(con, scope, clock.instant());
-            }
-            return con;
-        } catch (SQLException | RuntimeException failure) {
-            try { con.close(); } catch (SQLException ignored) { /* original failure wins */ }
-            throw failure;
         }
     }
 
@@ -389,15 +442,10 @@ public class CraftingDiscoveryService {
 
         List<Integer> missingIds;
         Set<Integer> knownIds;
-        if (scope == null) {
-            missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(charName, discipline);
-            knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds();
-        } else {
-            try (java.sql.Connection con = openScoped(charName, true)) {
-                missingIds = recipeRepo.loadMissingDiscoverableRecipeIdsForCharacter(con, scope, charName, discipline);
-                knownIds = missingIds.isEmpty() ? Set.of() : recipeRepo.loadKnownRecipeIds(con, scope);
-            }
-        }
+        requireScope();
+        MissingRecipes missing = inputs.missingRecipes(charName, discipline);
+        missingIds = missing.missingIds();
+        knownIds = missing.knownIds();
 
         if (missingIds.isEmpty()) {
             return Candidates.noMissingRecipes();
@@ -443,8 +491,7 @@ public class CraftingDiscoveryService {
 
         if (settings.useOwnMats) {
             Map<Integer, InventoryRepository.OwnedQuantity> owned =
-                    scope == null ? invRepo.loadOwnedInventoryForCharacter(selectedCharacterName)
-                            : invRepo.loadOwnedInventoryForCharacter(scope, selectedCharacterName);
+                    inputs.ownedInventory(selectedCharacterName);
 
             Map<Integer, Integer> sellable = new HashMap<>();
             Map<Integer, Integer> bound = new HashMap<>();

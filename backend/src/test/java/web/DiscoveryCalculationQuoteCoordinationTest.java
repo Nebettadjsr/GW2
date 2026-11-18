@@ -54,7 +54,7 @@ class DiscoveryCalculationQuoteCoordinationTest {
     private final List<Set<Integer>> coveredWhenCalculationStarted = Collections.synchronizedList(new ArrayList<>());
 
     /** Character validation passes; the calculation itself records the covered quotes and stops. */
-    private final CraftingDiscoveryService reaching = new CraftingDiscoveryService() {
+    private final CraftingDiscoveryService reaching = new CraftingDiscoveryService(null, null, null, null, null) {
         @Override
         public CraftingDiscoveryService forScope(model.AccountScope scope) {
             return this;
@@ -62,6 +62,15 @@ class DiscoveryCalculationQuoteCoordinationTest {
 
         @Override
         public void verifySelectedCharacter(repo.DiscChoice choice) {
+        }
+
+        @Override
+        public InputState inputState() {
+            return new InputState(Set.of(), Set.of());
+        }
+
+        @Override
+        public void recordAuthorizedUse() {
         }
 
         @Override

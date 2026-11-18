@@ -48,6 +48,8 @@ class CraftingProfitServiceSessionTest {
 
     private static final Recipe RECIPE = new Recipe(7, 100, 2, 275, "Artificer", List.of());
 
+    private static final model.AccountScope SCOPE = model.AccountScope.of(java.util.UUID.randomUUID());
+
     private final Connection pinned = RecordingConnection.create();
 
     @Test
@@ -82,23 +84,10 @@ class CraftingProfitServiceSessionTest {
         assertEquals(List.of(), reads.onOwnConnection);
     }
 
-    @Test
-    void aDetachedSessionKeepsThePreviousBehaviorOfEachRepositoryOpeningItsOwnConnection() throws Exception {
-        Reads reads = new Reads();
-        service(reads, null).reload(DiscChoice.all(), settings(true));
-
-        assertEquals(List.of(), reads.onPinnedConnection);
-        assertEquals(List.of("recipes:All", "quotes", "items", "characterCrafting", "inventory"),
-                reads.onOwnConnection,
-                "a detached session must not change how the existing callers read");
-    }
-
     // ---------- fixtures ----------
 
     private CraftingProfitService service(Reads reads, Connection connection) {
-        ProfitInputSession captured = connection == null
-                ? ProfitInputSession.detached()
-                : sessionOn(connection);
+        ProfitInputSession captured = sessionOn(connection);
         return new CraftingProfitService(
                 new RecordingRecipeRepository(reads),
                 new RecordingInventoryRepository(reads),
@@ -125,14 +114,15 @@ class CraftingProfitServiceSessionTest {
 
     /**
      * A session over a connection the test supplies. {@link ProfitInputSession#open()} would reach
-     * the real database, so the one package-visible way in is reflection on the private constructor
+     * the real database, so the one package-visible way in is reflection on the private scoped constructor
      * - deliberate, because widening the production seam for a test would be the worse trade.
      */
     private static ProfitInputSession sessionOn(Connection connection) {
         try {
-            var constructor = ProfitInputSession.class.getDeclaredConstructor(Connection.class);
+            var constructor = ProfitInputSession.class.getDeclaredConstructor(Connection.class,
+                    model.AccountScope.class);
             constructor.setAccessible(true);
-            return constructor.newInstance(connection);
+            return constructor.newInstance(connection, SCOPE);
         } catch (ReflectiveOperationException e) {
             return fail("could not build a session over the recording connection", e);
         }
@@ -168,7 +158,7 @@ class CraftingProfitServiceSessionTest {
             return List.of(RECIPE);
         }
 
-        @Override public List<Recipe> loadRecipes(Connection con, String discipline) {
+        @Override public List<Recipe> loadRecipes(Connection con, model.AccountScope scope, String discipline) {
             reads.pinned("recipes:" + discipline);
             return List.of(RECIPE);
         }
@@ -178,7 +168,7 @@ class CraftingProfitServiceSessionTest {
             return List.of(RECIPE);
         }
 
-        @Override public List<Recipe> loadRecipesForCharacter(Connection con, String charName, String discipline) {
+        @Override public List<Recipe> loadRecipesForCharacter(Connection con, model.AccountScope scope, String charName, String discipline) {
             reads.pinned("recipesForCharacter:" + charName + "/" + discipline);
             return List.of(RECIPE);
         }
@@ -232,7 +222,7 @@ class CraftingProfitServiceSessionTest {
             return List.of(new DiscRow("Aria", "Artificer", 400, true));
         }
 
-        @Override public List<DiscRow> loadAllCharacterCrafting(Connection con) {
+        @Override public List<DiscRow> loadAllCharacterCrafting(Connection con, model.AccountScope scope) {
             reads.pinned("characterCrafting");
             return List.of(new DiscRow("Aria", "Artificer", 400, true));
         }
@@ -250,7 +240,7 @@ class CraftingProfitServiceSessionTest {
             return new CoordinatedInventory(Map.of(), Map.of(), Map.of());
         }
 
-        @Override public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, Set<String> names) {
+        @Override public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope, Set<String> names) {
             reads.pinned("inventory");
             return new CoordinatedInventory(Map.of(), Map.of(), Map.of());
         }

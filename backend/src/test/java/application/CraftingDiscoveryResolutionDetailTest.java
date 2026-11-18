@@ -329,7 +329,6 @@ class CraftingDiscoveryResolutionDetailTest {
         var fakes = new Fakes();
         fakes.missingIds = List.of(1);
         fakes.perCharacter = Map.of(200, owned(1, 4));
-        fakes.unfiltered = Map.of();
         var service = fakes.service();
 
         CraftingResolutionDetail detail = service.resolveDetail(
@@ -338,7 +337,6 @@ class CraftingDiscoveryResolutionDetailTest {
         assertEquals("Aria", fakes.capturedMissingCharName, "the scope's crafting character");
         assertEquals("Aria", fakes.capturedInventoryCharacterName, "Discovery derives inventory scope from the selected character");
         assertTrue(fakes.calledForCharacter);
-        assertFalse(fakes.calledUnfiltered, "a named inventory character must not use the unfiltered pool");
         // The character-scoped sellable/bound split reached the domain: neither pool alone covers
         // the two-unit requirement.
         assertEquals(2, onlyChild(detail.explanation().root()).inventoryQuantity());
@@ -370,7 +368,6 @@ class CraftingDiscoveryResolutionDetailTest {
         var fakes = new Fakes();
         fakes.missingIds = List.of(1, 2);
         fakes.perCharacter = Map.of(200, owned(5, 0));
-        fakes.unfiltered = Map.of(200, 1);
         var service = fakes.service();
 
         SingleCraftExplanation expectedA =
@@ -477,7 +474,6 @@ class CraftingDiscoveryResolutionDetailTest {
         Map<Integer, PriceQuote> quotes = QUOTES;
         Map<Integer, PriceQuote> laterQuotes;
         Map<Integer, ItemRepository.ItemInfo> items = Map.of();
-        Map<Integer, Integer> unfiltered = Map.of();
         Map<Integer, InventoryRepository.OwnedQuantity> perCharacter = Map.of();
         Map<Integer, InventoryRepository.OwnedQuantity> laterPerCharacter;
         SQLException inventoryFailure;
@@ -488,18 +484,41 @@ class CraftingDiscoveryResolutionDetailTest {
         final AtomicInteger quoteLoads = new AtomicInteger();
         final AtomicInteger itemLoads = new AtomicInteger();
 
-        volatile boolean calledUnfiltered;
         volatile boolean calledForCharacter;
         volatile String capturedMissingCharName;
         volatile String capturedInventoryCharacterName;
 
         CraftingDiscoveryService service() {
             return new CraftingDiscoveryService(
-                    new FakeRecipeRepository(this), new FakeInventoryRepository(this),
                     new FakeTpPriceRepository(this), new FakeItemRepository(this),
-                    new FakeCraftingGraphCache(this), new CraftingPlanner());
+                    new FakeCraftingGraphCache(this), new CraftingPlanner(),
+                    (scope, clock) -> new CraftingDiscoveryService.ScopedInputs() {
+                        @Override
+                        public CraftingDiscoveryService.MissingRecipes missingRecipes(String charName,
+                                String discipline) {
+                            assertEquals(ACCOUNT, scope);
+                            missingIdLoads.incrementAndGet();
+                            capturedMissingCharName = charName;
+                            return new CraftingDiscoveryService.MissingRecipes(missingIds,
+                                    missingIds.isEmpty() ? Set.of() : knownRecipeIds);
+                        }
+
+                        @Override
+                        public Map<Integer, InventoryRepository.OwnedQuantity> ownedInventory(String charName)
+                                throws SQLException {
+                            assertEquals(ACCOUNT, scope);
+                            if (inventoryFailure != null) throw inventoryFailure;
+                            int call = inventoryLoads.incrementAndGet();
+                            calledForCharacter = true;
+                            capturedInventoryCharacterName = charName;
+                            return (call > 1 && laterPerCharacter != null) ? laterPerCharacter : perCharacter;
+                        }
+                    }).forScope(ACCOUNT);
         }
     }
+
+    private static final model.AccountScope ACCOUNT =
+            model.AccountScope.of(java.util.UUID.fromString("00000000-0000-0000-0000-0000000000a1"));
 
     private static class FakeCraftingGraphCache extends CraftingGraphCache {
         private final Fakes fakes;
@@ -513,54 +532,6 @@ class CraftingDiscoveryResolutionDetailTest {
         public CraftingGraph load() {
             fakes.graphLoads.incrementAndGet();
             return new CraftingGraph(GRAPH);
-        }
-    }
-
-    private static class FakeRecipeRepository extends RecipeRepository {
-        private final Fakes fakes;
-
-        FakeRecipeRepository(Fakes fakes) {
-            this.fakes = fakes;
-        }
-
-        @Override
-        public List<Integer> loadMissingDiscoverableRecipeIdsForCharacter(String charName, String discipline) {
-            fakes.missingIdLoads.incrementAndGet();
-            fakes.capturedMissingCharName = charName;
-            return fakes.missingIds;
-        }
-
-        @Override
-        public Set<Integer> loadKnownRecipeIds() {
-            return fakes.knownRecipeIds;
-        }
-    }
-
-    private static class FakeInventoryRepository extends InventoryRepository {
-        private final Fakes fakes;
-
-        FakeInventoryRepository(Fakes fakes) {
-            this.fakes = fakes;
-        }
-
-        @Override
-        public Map<Integer, Integer> loadOwnedInventory() throws SQLException {
-            if (fakes.inventoryFailure != null) throw fakes.inventoryFailure;
-            fakes.inventoryLoads.incrementAndGet();
-            fakes.calledUnfiltered = true;
-            return fakes.unfiltered;
-        }
-
-        @Override
-        public Map<Integer, OwnedQuantity> loadOwnedInventoryForCharacter(String selectedCharacterName)
-                throws SQLException {
-            if (fakes.inventoryFailure != null) throw fakes.inventoryFailure;
-            int call = fakes.inventoryLoads.incrementAndGet();
-            fakes.calledForCharacter = true;
-            fakes.capturedInventoryCharacterName = selectedCharacterName;
-            return (call > 1 && fakes.laterPerCharacter != null)
-                    ? fakes.laterPerCharacter
-                    : fakes.perCharacter;
         }
     }
 

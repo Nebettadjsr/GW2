@@ -40,24 +40,15 @@ public final class CalculationInputVersions {
 
     /** Reads how much of the feature-relevant tradeable item set the shared quote cache answers. */
     public interface PriceCoverageReader {
-        CalculationFreshness.PriceCoverage read(Connection con) throws SQLException;
-
         /**
-         * The same report for one account's required item set (STORY-APP-015).
+         * The report for one account's required item set (STORY-APP-015).
          *
          * <p>Only the <em>required set</em> is account-derived - it comes from this account's recipe
          * knowledge. The quotes themselves stay global and shared, so two accounts requiring the same
-         * item read the same quote and the same version.
-         *
-         * <p>The default delegates to the connection-only read, which is right for the in-memory
-         * fakes application-layer tests supply: they answer from their own state and ignore the
-         * connection entirely. The one implementation that reaches the database,
-         * {@link DatabasePriceCoverageReader}, overrides it - because there the unscoped query is
-         * refused on the versioned account schema rather than quietly answering for every account.
+         * item read the same quote and the same version. In-memory test ports may ignore both
+         * arguments.
          */
-        default CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {
-            return read(con);
-        }
+        CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException;
     }
 
     /**
@@ -262,12 +253,6 @@ public final class CalculationInputVersions {
     public static final class DatabasePriceCoverageReader implements PriceCoverageReader {
 
         private final CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-
-        @Override
-        public CalculationFreshness.PriceCoverage read(Connection con) throws SQLException {
-            if (con == null) return CalculationFreshness.PriceCoverage.none();
-            return map(collector.coverage(con));
-        }
 
         @Override
         public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {

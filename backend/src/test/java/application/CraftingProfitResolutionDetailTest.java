@@ -551,7 +551,8 @@ class CraftingProfitResolutionDetailTest {
                     new FakeRecipeRepository(this), new FakeInventoryRepository(this),
                     new FakeTpPriceRepository(this), new FakeItemRepository(this),
                     new FakeCharacterRepository(this), new FakeCraftingGraphCache(this),
-                    new CraftingPlanner());
+                    new CraftingPlanner(),
+                    ProfitInputSession.detached(model.AccountScope.of(java.util.UUID.randomUUID())));
         }
     }
 
@@ -578,14 +579,14 @@ class CraftingProfitResolutionDetailTest {
         }
 
         @Override
-        public List<Recipe> loadRecipes(String discipline) {
+        public List<Recipe> loadRecipes(java.sql.Connection con, model.AccountScope scope, String discipline) {
             fakes.recipeLoads.incrementAndGet();
             fakes.disciplineQueries.add(discipline);
             return fakes.visible;
         }
 
         @Override
-        public List<Recipe> loadRecipesForCharacter(String charName, String discipline) {
+        public List<Recipe> loadRecipesForCharacter(java.sql.Connection con, model.AccountScope scope, String charName, String discipline) {
             fakes.recipeLoads.incrementAndGet();
             fakes.characterQueries.add(new String[]{charName, discipline});
             return fakes.visible;
@@ -600,7 +601,7 @@ class CraftingProfitResolutionDetailTest {
         }
 
         @Override
-        public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> characterNames)
+        public CoordinatedInventory loadOwnedInventoryForCharacters(java.sql.Connection con, model.AccountScope scope, Set<String> characterNames)
                 throws SQLException {
             if (fakes.inventoryFailure != null) throw fakes.inventoryFailure;
             int call = fakes.inventoryLoads.incrementAndGet();
@@ -619,7 +620,7 @@ class CraftingProfitResolutionDetailTest {
         }
 
         @Override
-        public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> itemIds) {
+        public Map<Integer, PriceQuote> loadTpQuotes(java.sql.Connection con, Set<Integer> itemIds) {
             int call = fakes.quoteLoads.incrementAndGet();
             return (call > 1 && fakes.laterQuotes != null) ? fakes.laterQuotes : fakes.quotes;
         }
@@ -633,7 +634,7 @@ class CraftingProfitResolutionDetailTest {
         }
 
         @Override
-        public Map<Integer, ItemInfo> loadItems(Set<Integer> itemIds) {
+        public Map<Integer, ItemInfo> loadItems(java.sql.Connection con, Set<Integer> itemIds) {
             fakes.itemLoads.incrementAndGet();
             return fakes.items;
         }
@@ -647,7 +648,7 @@ class CraftingProfitResolutionDetailTest {
         }
 
         @Override
-        public List<DiscRow> loadAllCharacterCrafting() {
+        public List<DiscRow> loadAllCharacterCrafting(java.sql.Connection con, model.AccountScope scope) {
             fakes.characterLoads.incrementAndGet();
             return fakes.characters;
         }

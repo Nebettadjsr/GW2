@@ -12,7 +12,6 @@ import repo.CraftingGraphCache;
 import repo.DiscChoice;
 import repo.InventoryRepository;
 import repo.ItemRepository;
-import repo.RecipeRepository;
 import repo.tp.TpPriceRepository;
 
 import java.sql.SQLException;
@@ -43,6 +42,30 @@ class CraftingDiscoveryServiceTest {
     private static final Recipe OTHER_RECIPE = new Recipe(
             2, 999, 1, 0, "Chef", List.of());
 
+    private static final model.AccountScope SCOPE =
+            model.AccountScope.of(java.util.UUID.fromString("00000000-0000-0000-0000-0000000000a1"));
+
+    @Test
+    void freshnessClockSetBeforeOrAfterBindingIsTheClockTheScopedReadsAreBoundWith() {
+        java.time.Clock before = java.time.Clock.fixed(java.time.Instant.parse("2026-01-01T00:00:00Z"), java.time.ZoneOffset.UTC);
+        java.time.Clock after = java.time.Clock.fixed(java.time.Instant.parse("2026-06-01T00:00:00Z"), java.time.ZoneOffset.UTC);
+        java.util.List<java.time.Clock> bound = new ArrayList<>();
+        var unbound = new CraftingDiscoveryService(new FakeTpPriceRepository(), new FakeItemRepository(),
+                new FakeCraftingGraphCache(List.of(RECIPE)), new RecordingCraftingPlanner(),
+                (scope, clock) -> {
+                    bound.add(clock);
+                    return null;
+                });
+
+        unbound.withFreshness(before, java.time.Duration.ofHours(1)).forScope(SCOPE);
+        assertSame(before, bound.get(bound.size() - 1), "clock set before binding is used");
+
+        var service = unbound.forScope(SCOPE);
+        service.withFreshness(after, java.time.Duration.ofHours(1));
+        assertSame(after, bound.get(bound.size() - 1),
+                "withFreshness after forScope must rebind the scoped reads with the new clock");
+    }
+
     private static CraftingSettings settings(boolean useOwnMats, boolean allowBuying) {
         return new CraftingSettings(useOwnMats, allowBuying, 0, false, false, false);
     }
@@ -53,8 +76,31 @@ class CraftingDiscoveryServiceTest {
                                                          FakeItemRepository itemRepo,
                                                          List<Recipe> graphRecipes,
                                                          RecordingCraftingPlanner planner) {
-        return new CraftingDiscoveryService(recipeRepo, invRepo, tpRepo, itemRepo,
-                new FakeCraftingGraphCache(graphRecipes), planner);
+        return serviceWith(recipeRepo, invRepo, tpRepo, itemRepo, new FakeCraftingGraphCache(graphRecipes), planner);
+    }
+
+    /** The unbound service is bound to {@link #SCOPE}; the in-memory reads fail if given any other account. */
+    private static CraftingDiscoveryService serviceWith(FakeRecipeRepository recipeRepo,
+                                                         FakeInventoryRepository invRepo,
+                                                         FakeTpPriceRepository tpRepo,
+                                                         FakeItemRepository itemRepo,
+                                                         CraftingGraphCache graphCache,
+                                                         CraftingPlanner planner) {
+        return new CraftingDiscoveryService(tpRepo, itemRepo, graphCache, planner,
+                (scope, clock) -> new CraftingDiscoveryService.ScopedInputs() {
+                    @Override
+                    public CraftingDiscoveryService.MissingRecipes missingRecipes(String charName, String discipline)
+                            throws SQLException {
+                        assertEquals(SCOPE, scope);
+                        return recipeRepo.missing(charName, discipline);
+                    }
+
+                    @Override
+                    public Map<Integer, InventoryRepository.OwnedQuantity> ownedInventory(String charName) {
+                        assertEquals(SCOPE, scope);
+                        return invRepo.owned(charName);
+                    }
+                }).forScope(SCOPE);
     }
 
     @Test
@@ -67,6 +113,17 @@ class CraftingDiscoveryServiceTest {
                 () -> service.reload(DiscChoice.all(), settings(true, true)));
         assertThrows(IllegalArgumentException.class,
                 () -> service.reload(DiscChoice.disciplineOnly("Chef"), settings(true, true)));
+    }
+
+    @Test
+    void theUnboundBuilderRefusesAnyReadUntilBoundToAnAccount() {
+        var unbound = new CraftingDiscoveryService(new FakeTpPriceRepository(), new FakeItemRepository(),
+                new FakeCraftingGraphCache(List.of(RECIPE)), new RecordingCraftingPlanner(),
+                (scope, clock) -> { throw new AssertionError("must not bind without forScope"); });
+
+        assertThrows(IllegalStateException.class,
+                () -> unbound.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true)));
+        assertThrows(IllegalStateException.class, unbound::inputState);
     }
 
     @Test
@@ -139,7 +196,6 @@ class CraftingDiscoveryServiceTest {
 
         service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
 
-        assertFalse(invRepo.calledUnfiltered);
         assertTrue(invRepo.calledForCharacter);
         assertEquals("Aria", invRepo.capturedCharacterName);
         assertEquals(Map.of(200, 9), planner.capturedSellable);
@@ -158,7 +214,6 @@ class CraftingDiscoveryServiceTest {
         service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(false, true));
 
         assertFalse(invRepo.calledForCharacter);
-        assertFalse(invRepo.calledUnfiltered);
         assertTrue(planner.capturedSellable.isEmpty());
         assertTrue(planner.capturedBound.isEmpty());
     }
@@ -188,8 +243,8 @@ class CraftingDiscoveryServiceTest {
         Recipe batchRecipe = new Recipe(1, 100, 3, 0, "Chef", List.of(new Ingredient(200, 2)));
         var tpRepo = new FakeTpPriceRepository();
         tpRepo.canned = Map.of(100, new PriceQuote(20, 25), 200, new PriceQuote(2, 3));
-        var service = new CraftingDiscoveryService(recipeRepo, new FakeInventoryRepository(), tpRepo,
-                new FakeItemRepository(), new FakeCraftingGraphCache(List.of(batchRecipe)), new CraftingPlanner());
+        var service = serviceWith(recipeRepo, new FakeInventoryRepository(), tpRepo,
+                new FakeItemRepository(), List.of(batchRecipe), new RecordingCraftingPlanner());
 
         CraftResult result = service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"),
                         new CraftingSettings(false, true, 1, false, false, true))
@@ -258,7 +313,7 @@ class CraftingDiscoveryServiceTest {
         tpRepo.canned = Map.of(100, new PriceQuote(100, 110), 200, new PriceQuote(10, 10));
         var planner = new RecordingCraftingPlanner();
         var graphCache = new FakeCraftingGraphCache(List.of(RECIPE));
-        var service = new CraftingDiscoveryService(recipeRepo, new FakeInventoryRepository(), tpRepo,
+        var service = serviceWith(recipeRepo, new FakeInventoryRepository(), tpRepo,
                 new FakeItemRepository(), graphCache, planner);
 
         service.reload(DiscChoice.charDiscipline("Chef", 400, "Aria"), settings(true, true));
@@ -334,40 +389,27 @@ class CraftingDiscoveryServiceTest {
         }
     }
 
-    private static class FakeRecipeRepository extends RecipeRepository {
+    private static class FakeRecipeRepository {
         List<Integer> missingIds = List.of();
         Set<Integer> knownIds = Set.of();
         SQLException failure;
         String capturedCharName;
         String capturedDiscipline;
 
-        @Override
-        public List<Integer> loadMissingDiscoverableRecipeIdsForCharacter(String charName, String discipline) throws SQLException {
+        CraftingDiscoveryService.MissingRecipes missing(String charName, String discipline) throws SQLException {
             if (failure != null) throw failure;
             capturedCharName = charName;
             capturedDiscipline = discipline;
-            return missingIds;
+            return new CraftingDiscoveryService.MissingRecipes(missingIds, missingIds.isEmpty() ? Set.of() : knownIds);
         }
-
-        @Override
-        public Set<Integer> loadKnownRecipeIds() { return knownIds; }
     }
 
-    private static class FakeInventoryRepository extends InventoryRepository {
-        Map<Integer, Integer> unfiltered = Map.of();
-        Map<Integer, OwnedQuantity> perCharacter = Map.of();
-        boolean calledUnfiltered = false;
+    private static class FakeInventoryRepository {
+        Map<Integer, InventoryRepository.OwnedQuantity> perCharacter = Map.of();
         boolean calledForCharacter = false;
         String capturedCharacterName;
 
-        @Override
-        public Map<Integer, Integer> loadOwnedInventory() {
-            calledUnfiltered = true;
-            return unfiltered;
-        }
-
-        @Override
-        public Map<Integer, OwnedQuantity> loadOwnedInventoryForCharacter(String selectedCharacterName) {
+        Map<Integer, InventoryRepository.OwnedQuantity> owned(String selectedCharacterName) {
             calledForCharacter = true;
             capturedCharacterName = selectedCharacterName;
             return perCharacter;
