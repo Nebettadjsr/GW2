@@ -85,13 +85,11 @@ public final class RequestAggregator {
         List<RouteGroupAggregate> groups = new ArrayList<>();
         open.forEach((g, c) -> groups.add(new RouteGroupAggregate(g, c.requests, c.success, c.client,
                 c.server, c.failed, c.sum, c.max, LatencyHistogram.toBins(c.bins))));
-        // Sparse (STORY-OPS-003): a minute without an included request is never queued, so idle time creates nothing.
-        if (!groups.isEmpty()) {
-            pending.add(new MinuteBucket(openMinute, covered,
-                    covered >= 60 ? MinuteBucket.Completeness.COMPLETE : MinuteBucket.Completeness.PARTIAL,
-                    state, List.copyOf(groups)));
-            while (pending.size() > MAX_PENDING) pending.remove(0);
-        }
+        // Sparse (STORY-OPS-003): an empty minute returned above, so idle time never queues a bucket.
+        pending.add(new MinuteBucket(openMinute, covered,
+                covered >= 60 ? MinuteBucket.Completeness.COMPLETE : MinuteBucket.Completeness.PARTIAL,
+                state, List.copyOf(groups)));
+        while (pending.size() > MAX_PENDING) pending.remove(0);
         open.clear();
         openMinute = minute;
     }
