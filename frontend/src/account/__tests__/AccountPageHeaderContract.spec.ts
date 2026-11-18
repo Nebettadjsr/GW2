@@ -10,7 +10,7 @@ describe.each([
   ['Materials', MaterialsScreen, 'materials-reload']
 ] as const)('%s shared page header contract', (heading, Screen, reloadHook) => {
   it('uses the shared header, keeps navigation focus semantics, and has no manual reload action', async () => {
-    const wrapper = mount(Screen, { props: { api: new FakeAccountApi() }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+    const wrapper = mount(Screen, { props: { api: new FakeAccountApi() }, global: { provide: shellProvide() } })
     await flushPromises()
     const pageHeader = wrapper.find('.page-head')
     const pageHeading = pageHeader.find('[data-test="page-heading"]')

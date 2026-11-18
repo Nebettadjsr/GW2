@@ -11,7 +11,7 @@ import { FakeAccountApi, deferred, materialStorage } from './accountFixtures'
 
 const A = 'aaaaaaaa-0000-0000-0000-000000000001'
 const B = 'bbbbbbbb-0000-0000-0000-000000000002'
-const stubs = () => ({ global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+const stubs = () => ({ global: { provide: shellProvide() } })
 
 async function open(screen: typeof BankScreen | typeof MaterialsScreen, api: FakeAccountApi) {
   const w = mount(screen, { props: { api }, ...stubs() })
