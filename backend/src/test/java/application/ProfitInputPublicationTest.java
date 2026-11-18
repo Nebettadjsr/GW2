@@ -37,8 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * a disposable schema. The source is {@code BANK}; its rows are {@code account_bank} item ids.
  *
  * <p>Characterised policy: {@code open(scope)} records the authorized use <em>before</em> it pins the
- * snapshot, so it may wait for a registry write. Every session here is therefore opened before a
- * writer begins, and its first snapshot read happens while the writer is held in its callback.
+ * snapshot, so it may wait for a registry write. The in-flight case opens its sessions before the
+ * writer begins; their snapshots are established by their first reads, during or after publication.
  *
  * <p>Mapping of the earlier probe-table assertions: pinned generation across a later commit
  * ({@code aPinnedSessionKeepsOneWholeGeneration...}), in-flight refresh invisible
