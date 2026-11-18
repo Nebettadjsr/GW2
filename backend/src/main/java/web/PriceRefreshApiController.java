@@ -14,8 +14,8 @@ import java.net.URI;
 import java.util.Map;
 
 /**
- * HTTP trigger for Trading Post price refresh (STORY-API-005, TARGET_ARCHITECTURE.md §9's
- * {@code POST /api/prices/refresh} example, §22/§23).
+ * HTTP trigger for Trading Post price refresh (STORY-API-005,
+ * {@code POST /api/prices/refresh}).
  *
  * <p>Asynchronous by decision rather than by measurement, for the same reason as the two sync
  * triggers: UD-007 requires operations that call the GW2 API for synchronization to run as backend
@@ -43,9 +43,7 @@ import java.util.Map;
  *       service exposes.</li>
  * </ul>
  *
- * <p>Both JavaFX "Refresh Trade Post Prices" buttons keep calling the same two methods in process,
- * unchanged; this is a second entry point over them, not a replacement, and the admission rule below
- * applies only to tasks this route accepts.
+ * <p>The admission rule below applies only to tasks this route accepts.
  *
  * <p>Status reporting is not duplicated: {@link SyncTaskApiController} already serves every
  * operation, so this trigger adds a route but no status route.

@@ -16,8 +16,8 @@ import java.net.URI;
 import java.util.Map;
 
 /**
- * HTTP trigger for global-data synchronization (STORY-API-004, TARGET_ARCHITECTURE.md §9's
- * {@code POST /api/sync/global} example, §22/§23).
+ * HTTP trigger for global-data synchronization (STORY-API-004,
+ * {@code POST /api/sync/global}).
  *
  * <p>Asynchronous by decision rather than by measurement, for the same reason as the account trigger:
  * UD-007 requires operations that call the GW2 API for synchronization to run as backend tasks with
@@ -29,10 +29,6 @@ import java.util.Map;
  * persistence, the rebuild itself and the short-circuit on the first failing step all stay inside
  * that application service — no individual sync step and no graph rebuild is reachable from this
  * route, and none of the sequence is restated here.
- *
- * <p>The JavaFX "Sync ALL tradeable Items, Recipes and (re)build Crafting Graph" button keeps
- * calling the same use case in process, unchanged; this is a second entry point over it, not a
- * replacement.
  *
  * <p>Status reporting is not duplicated either: {@link SyncTaskApiController} already serves every
  * operation, so this trigger adds a route but no status route.

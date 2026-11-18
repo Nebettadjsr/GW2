@@ -51,10 +51,8 @@ enum PriceRefreshVariant {
      * it already is to {@code ACCOUNT_SYNC}/{@code GLOBAL_SYNC}: a second submission of the
      * <em>same</em> variant while one is unfinished is refused, and the two variants are independent
      * of each other and of the two sync operations. The shared-write consequences of that
-     * independence are recorded in {@code CURRENT_ARCHITECTURE.md} §5.9; in short, both variants
-     * upsert {@code tp_prices} keyed on {@code item_id} and neither deletes rows, so overlapping runs
-     * cannot lose or mix a row, and the overlap they do have is already reachable from the two
-     * JavaFX buttons today.
+     * independence is safe because both variants upsert {@code tp_prices} keyed on {@code item_id}
+     * and neither deletes rows, so overlapping runs cannot lose or mix a row.
      */
     String operation() {
         return operation;

@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * HTTP trigger for account synchronization (STORY-API-003, TARGET_ARCHITECTURE.md §9/§22/§23).
+ * HTTP trigger for account synchronization (STORY-API-003).
  *
  * <p>Asynchronous by decision rather than by measurement: UD-007 requires operations that call the
  * GW2 API for synchronization to run as backend tasks with status reporting, because ArenaNet's rate
@@ -36,9 +36,6 @@ import java.util.Set;
  * recipes), the persistence and the short-circuit on the first failing step all stay inside that
  * application service — no individual sync step is reachable from this route, and none of the
  * sequence is restated here.
- *
- * <p>The JavaFX "Sync Account" button keeps calling the same use case in process, unchanged; this is
- * a second entry point over it, not a replacement.
  */
 @RestController
 @RequestMapping("/api/sync")
