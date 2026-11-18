@@ -113,7 +113,7 @@ class CraftingProfitServiceSessionTest {
     }
 
     /**
-     * A session over a connection the test supplies. {@link ProfitInputSession#open()} would reach
+     * A session over a connection the test supplies. {@link ProfitInputSession#open(model.AccountScope)} would reach
      * the real database, so the one package-visible way in is reflection on the private scoped constructor
      * - deliberate, because widening the production seam for a test would be the worse trade.
      */

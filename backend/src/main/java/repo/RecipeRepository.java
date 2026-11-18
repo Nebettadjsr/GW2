@@ -163,17 +163,16 @@ public class RecipeRepository {
     }
 
     /**
-     * Missing DISCOVERABLE recipes for a given account's character + discipline.
-     *
-     * Rules:
-     * - discoverable = flags is NULL OR empty array
-     * - missing = recipe not known account-wide, per {@link RecipeKnowledgePolicy#isKnownAccountWide}
-     *   (a recipe already known via ANY of the account's characters is not a Discovery candidate)
-     * - discipline filter: if discipline == "All" (or null) => no filter, else must be in recipes.disciplines
-     */
-    /**
      * The discoverable-candidate read the scoped entry points share; see
      * {@link #readKnownRecipes} for why the unlock facts are a parameter.
+     *
+     * <p>Missing DISCOVERABLE recipes for one account's character + discipline:
+     * <ul>
+     *   <li>discoverable = flags is NULL or an empty array;</li>
+     *   <li>missing = not known account-wide, per {@link RecipeKnowledgePolicy#isKnownAccountWide}
+     *       (known via ANY of the account's characters is not a Discovery candidate);</li>
+     *   <li>discipline filter: "All" (or null) means none, else it must be in recipes.disciplines.</li>
+     * </ul>
      */
     private List<Integer> readMissingDiscoverable(Connection con,
                                                   String discipline,
