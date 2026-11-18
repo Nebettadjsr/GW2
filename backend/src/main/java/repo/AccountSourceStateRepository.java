@@ -14,9 +14,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The per-account, per-source completion markers in {@code account_source_state} (STORY-APP-015,
- * docs/ARCHITECTURE.md §4, archived TARGET_ARCHITECTURE.md §7.2 "Use one durable source-state relation keyed by
- * {@code (account_id, source)}").
+ * Per-account, per-source completion markers in {@code account_source_state}, keyed by
+ * {@code (account_id, source)}.
  *
  * <p>Replaces the singleton authorities it supersedes on a migrated database: the unscoped
  * {@code account_sync_state} row per source ({@link AccountSyncStateRepository}) and the

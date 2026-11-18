@@ -19,7 +19,7 @@ import java.sql.SQLException;
  * so the pre-cutover installation keeps working until the gate upgrades it.
  *
  * <p>Fails closed by design. The scoped account repositories that replace these paths require an
- * explicit {@code model.AccountScope}, which the HTTP access boundary resolves from a verified key;
+ * explicit {@code model.AccountScope}, which the HTTP access boundary resolves from an authenticated session;
  * a retained unscoped entry point has no such scope, so it reports account access as unavailable
  * rather than guessing an account.
  *
