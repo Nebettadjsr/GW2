@@ -1,6 +1,6 @@
 # GW2 roadmap
 
-Updated 17 November 2026. Product intent belongs to the Product Owner. GitHub issues and pull requests own execution status; [the supervisor backlog](../agent/BACKLOG.md) records authorization and the next handoff. See [Development workflow](DEVELOPMENT_WORKFLOW.md) for the implemented process.
+Updated 18 November 2026. Product intent belongs to the Product Owner. GitHub issues and pull requests own execution status; [the supervisor backlog](../agent/BACKLOG.md) records authorization and the next handoff. See [Development workflow](DEVELOPMENT_WORKFLOW.md) for the implemented process.
 
 ## Delivered baseline
 
@@ -17,18 +17,20 @@ and meaningful coverage work on 17 November 2026. The cleanup is merged in #241 
 HTTP/session coverage #111 is delivered through #242. These completions do not imply another
 production deployment.
 
-The next authorized slice is [#243, STORY-COV-006](https://github.com/Nebettadjsr/GW2/issues/243):
-curated real-browser desktop journeys, the owner-confirmed
-[viewport policy](DOMAIN_SPEC.md#supported-browser-viewport), removal of unsupported phone-tool
-test repetitions and maintained process/testing documentation. Reuse the production build and
-existing Playwright-core/controlled-origin helpers. The implementation branch provides
-`npm run smoke:ci` (`node scripts/run-desktop-journeys.mjs`) after build in the required
-frontend CI job. The owner revised the local proposal on 18 November to a nonblocking notice
-and horizontal desktop canvas: initial narrow tools load normally, and width does not hide
-content or close modals. Source `1d017fc` and independent QA implement this revision; QA
-replaced superseded assertions while preserving the user stories.
-Consult the PR for current verification; local owner acceptance and final-head CI/review are
-required before merging. It is not deployed.
+[#243, STORY-COV-006](https://github.com/Nebettadjsr/GW2/issues/243) delivered curated real-browser
+desktop journeys and the owner-confirmed [viewport policy](DOMAIN_SPEC.md#supported-browser-viewport)
+through #244. The owner accepted the concrete local UI on 18 November. The nonblocking notice
+keeps narrow tool content available on a horizontal desktop canvas; width never gates loading
+or closes modals. `npm run smoke:ci` runs the ten controlled journeys in ordinary frontend CI.
+Browser outcomes remain separate from line/branch coverage. This is not another Oracle deployment.
+
+The owner then directed continued coverage work. The next released slice is
+[#245, STORY-COV-007](https://github.com/Nebettadjsr/GW2/issues/245): active shared material-catalog
+publication through production SQL, ordered replacement, rollback and explicit retry, plus
+early global-refresh failure reporting. Use a minimal existing-boundary fetch seam and
+isolated production-migration PostgreSQL fixtures. Preserve account rows/markers and all
+existing assertions. Do not broaden payload policy, introduce schema changes or reactivate
+legacy unscoped paths to raise a percentage. #21 remains open for subsequent meaningful gaps.
 
 Independent QA owns tests, fixtures/helpers and explained mobile-test removals for this session;
 Claude implements the released source/package/CI scope. Preserve desktop feature assertions,
@@ -37,8 +39,7 @@ separately from line/branch coverage; keep the 90% code-coverage target informat
 user keys, capacity workloads or hosted test service are required.
 
 Default CI, current-head native review and issue-specific local evidence remain required.
-The new notice must be available in an isolated local app for concrete owner visual approval;
-#243 remains held with `pairing` until that acceptance. Oracle deployment is separate.
+The current backend-only slice requires no further visual approval. Oracle deployment is separate.
 Continue reconciling [known problems](KNOWN_PROBLEMS.md) against current code/merged evidence;
 remove resolved findings and retain concrete future performance work.
 
@@ -46,7 +47,7 @@ remove resolved findings and retain concrete future performance work.
 
 | Issue | Remaining scope |
 | --- | --- |
-| [#243](https://github.com/Nebettadjsr/GW2/issues/243) | Authorized desktop-browser journeys and viewport support notice; held for scoped QA and local UI acceptance. |
+| [#245](https://github.com/Nebettadjsr/GW2/issues/245) | Authorized shared material-catalog publication and failure/retry coverage. |
 | [#21](https://github.com/Nebettadjsr/GW2/issues/21) | Broader coverage improvements, selected from current package and branch gaps. |
 | [#60](https://github.com/Nebettadjsr/GW2/issues/60) | Optional real-database fixture migration and account-task lookup semantics. |
 | [#228](https://github.com/Nebettadjsr/GW2/issues/228) | Portable production configuration for the restricted database role and HTTPS origin. |
