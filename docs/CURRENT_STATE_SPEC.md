@@ -123,14 +123,24 @@ a global-refresh case checks early failure/status/recovery. Full CI `44260769452
 in [Quality metrics](QUALITY_METRICS.md). This changes no SQL, payload policy, UI or deployed
 Oracle revision. [PR #246](https://github.com/Nebettadjsr/GW2/pull/246) owns final-head acceptance.
 
+STORY-COV-008 adds six independent-QA cases through existing metadata injection points,
+without production changes. Real PostgreSQL checks establish late metadata rollback in
+both connection modes, failed-batch continuation, cancellation and explicit recovery;
+gateway checks preserve the last Bank generation on interruption while allowing ordinary
+best-effort metadata failure. Independent focused QA passes 47 cases. Full
+[CI 44263087384](https://github.com/Nebettadjsr/GW2/actions/runs/44263087384) at `910cfc8`
+passes; downloaded raw counters and ten browser passes are recorded in
+[Quality metrics](QUALITY_METRICS.md). [PR #248](https://github.com/Nebettadjsr/GW2/pull/248)
+owns final acceptance. No new domain/architecture policy or Oracle deployment is implied.
+
 The owner revised #243 on 18 November: narrow tools keep their content and normal loading,
 with an informational notice and horizontally scrollable desktop canvas. This replaces the
 earlier blocking guard and forced modal closure; [DOMAIN_SPEC](DOMAIN_SPEC.md#supported-browser-viewport)
 owns current behavior. Source revision `1d017fc` implements this with ordinary route/KeepAlive
 rendering, a notice-only viewport helper and a tool-only 1024px minimum canvas. Width no longer
 gates account restoration/bootstrap or closes dialogs. The live Oracle revision is unchanged.
-[PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns current
-implementation, verification, visual acceptance and merge status.
+The owner accepted the local result and
+[PR #244](https://github.com/Nebettadjsr/GW2/pull/244) merged; it owns the detailed evidence.
 
 The existing `npm run smoke:ci` gate runs controlled-browser journeys after the frontend build,
 using locked Chromium and seven-day `desktop-browser-journeys` artifacts. Independent QA
@@ -140,7 +150,7 @@ revision passed; its downloaded browser artifact confirms all ten journeys and z
 timeouts/nonzero exits. This verifies the revised notice, visible narrow tools, actual
 horizontal scrolling, retained state and normal modal behavior. QA subsequently corrected
 an immediate resize assertion to wait for notice removal, preserving the exact 1024px
-absence requirement. Consult the PR for final-head evidence and owner visual acceptance.
+absence requirement. The PR retains final-head evidence and the owner's visual acceptance.
 Independent QA repeated the focused/build/ten-journey checks successfully on corrected test
 revision `0c24106337aecdb2f0480977aaf42be1f230b184`; production source is unchanged.
 

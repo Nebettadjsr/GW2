@@ -17,12 +17,16 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -103,6 +107,92 @@ class ScopedFetchOwnershipTest {
                 "complete metadata includes explicit Forge eligibility, so the next refresh can reuse it");
         gateway.syncAccountBank(AccountScope.of(A), credentialOf(A, "[]"));
         assertEquals(java.util.List.of(99), requested, "repeat sync must reuse existing canonical metadata");
+    }
+
+    @Test
+    void gatewayAllowsOrdinaryMetadataOutageButAbortsInterruptedBankAndRecoversExplicitly() throws Exception {
+        var scopeA = AccountScope.of(A);
+        var scopeB = AccountScope.of(B);
+        Instant seeded = Instant.parse("2026-11-17T00:00:00Z");
+        try (Connection con = Db.open()) {
+            AccountSync.publishBank(con, scopeA, List.of(new BankSlot(0, 31, 7, null, null, null, null, null)), Clock.fixed(seeded, ZoneOffset.UTC));
+            AccountSync.publishBank(con, scopeB, List.of(new BankSlot(0, 32, 70, null, null, null, null, null)), Clock.fixed(seeded, ZoneOffset.UTC));
+        }
+        try (Statement s = admin.createStatement()) {
+            s.execute("INSERT INTO recipe_catalog_publication (complete) VALUES (true)");
+        }
+        var states = new repo.AccountSourceStateRepository();
+        var registry = new repo.AccountRegistryRepository();
+        var bank = new repo.BankRepository();
+        var bankB = bank.loadBankSlots(admin, scopeB);
+        var stateB = states.read(admin, scopeB, repo.AccountSyncStateRepository.BANK).orElseThrow();
+        var activityB = registry.find(admin, scopeB).orElseThrow();
+        assertEquals(1, stateB.generation());
+        assertEquals(seeded, stateB.completedAt());
+        List<List<Integer>> metadataCalls = new ArrayList<>();
+        var interrupted = new InterruptedException("controlled metadata interruption");
+        var gateway = new AccountRefreshGateway() {
+            @Override protected JsonNode fetchItemMetadata(List<Integer> ids) throws Exception {
+                metadataCalls.add(List.copyOf(ids));
+                if (metadataCalls.size() == 1) throw new java.io.IOException("controlled metadata outage");
+                if (metadataCalls.size() == 2) throw interrupted;
+                return JSON.readTree("""
+                        [{"id":100,"name":"Recovered Bank item","type":"Trophy","rarity":"Fine","vendor_value":12,
+                          "flags":["NoMysticForge"],"icon":"https://render.guildwars2.com/file/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/63133.png"}]
+                        """);
+            }
+        };
+        var payload = new java.util.concurrent.atomic.AtomicReference<>("[{\"id\":99,\"count\":5}]");
+        List<String> authenticatedCalls = new ArrayList<>();
+        AccountSync.AuthFetcher verifiedA = url -> {
+            authenticatedCalls.add(url);
+            if (url.endsWith("/v2/account/bank")) return JSON.readTree(payload.get());
+            if (url.endsWith("/v2/account")) return JSON.readTree("{\"id\":\"" + A + "\"}");
+            throw new AssertionError("unexpected account endpoint " + url);
+        };
+
+        gateway.syncAccountBank(scopeA, verifiedA);
+
+        var lastGoodBank = bank.loadBankSlots(admin, scopeA);
+        assertEquals(List.of(99), lastGoodBank.stream().map(repo.BankRepository.BankSlotRow::itemId).toList());
+        assertEquals(5, lastGoodBank.getFirst().count());
+        assertTrue(lastGoodBank.getFirst().protectionSelectable(), "unknown Forge fact remains conservatively selectable even with a complete recipe catalog");
+        assertEquals(0, count("SELECT count(*) FROM items WHERE item_id=99"));
+        var lastGoodState = states.read(admin, scopeA, repo.AccountSyncStateRepository.BANK).orElseThrow();
+        var lastGoodActivity = registry.find(admin, scopeA).orElseThrow();
+        assertEquals(2, lastGoodState.generation(), "ordinary metadata outage does not suppress valid Bank publication");
+        assertEquals(bankB, bank.loadBankSlots(admin, scopeB));
+        assertEquals(stateB, states.read(admin, scopeB, repo.AccountSyncStateRepository.BANK).orElseThrow());
+        assertEquals(activityB, registry.find(admin, scopeB).orElseThrow());
+
+        payload.set("[{\"id\":100,\"count\":9}]");
+        try {
+            assertSame(interrupted, assertThrows(InterruptedException.class, () -> gateway.syncAccountBank(scopeA, verifiedA)));
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally { Thread.interrupted(); }
+        assertEquals(lastGoodBank, bank.loadBankSlots(admin, scopeA));
+        assertEquals(lastGoodState, states.read(admin, scopeA, repo.AccountSyncStateRepository.BANK).orElseThrow());
+        assertEquals(lastGoodActivity, registry.find(admin, scopeA).orElseThrow());
+        assertEquals(0, count("SELECT count(*) FROM items WHERE item_id=100"));
+        assertEquals(bankB, bank.loadBankSlots(admin, scopeB));
+        assertEquals(stateB, states.read(admin, scopeB, repo.AccountSyncStateRepository.BANK).orElseThrow());
+        assertEquals(activityB, registry.find(admin, scopeB).orElseThrow());
+
+        gateway.syncAccountBank(scopeA, verifiedA);
+
+        var recovered = bank.loadBankSlots(admin, scopeA);
+        assertEquals(List.of(100), recovered.stream().map(repo.BankRepository.BankSlotRow::itemId).toList());
+        assertEquals(9, recovered.getFirst().count());
+        assertEquals("Recovered Bank item", recovered.getFirst().itemName());
+        assertFalse(recovered.getFirst().protectionSelectable(), "explicit NoMysticForge completes the shared eligibility fact");
+        assertEquals(3, states.read(admin, scopeA, repo.AccountSyncStateRepository.BANK).orElseThrow().generation());
+        assertEquals(List.of(List.of(99), List.of(100), List.of(100)), metadataCalls);
+        assertEquals(java.util.Collections.nCopies(3, List.of("https://api.guildwars2.com/v2/account", "https://api.guildwars2.com/v2/account/bank"))
+                .stream().flatMap(List::stream).toList(), authenticatedCalls);
+        assertEquals(bankB, bank.loadBankSlots(admin, scopeB));
+        assertEquals(stateB, states.read(admin, scopeB, repo.AccountSyncStateRepository.BANK).orElseThrow());
+        assertEquals(activityB, registry.find(admin, scopeB).orElseThrow());
+        assertEquals(2, count("SELECT count(*) FROM account_registry"));
     }
 
     private long count(String sql) throws Exception {
