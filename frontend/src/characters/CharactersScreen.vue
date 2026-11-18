@@ -21,7 +21,7 @@ import { useAutomaticAccountRefresh } from '@/account/useAutomaticAccountRefresh
  * Roster and equipment coverage are independent: unavailable equipment never hides the roster.
  */
 const props = withDefaults(defineProps<{ api?: CharactersApi }>(), { api: () => charactersApi })
-const c = useCharacters(props.api, syncApi, undefined, true)
+const c = useCharacters(props.api, syncApi)
 const needsRefresh = (state?: string) => state === 'STALE' || state === 'PENDING'
 const parentNeedsRefresh = () => needsRefresh(c.rosterResponse.value?.state)
   || (c.section.value === 'inventory' && needsRefresh(c.inventoryResponse.value?.state))
