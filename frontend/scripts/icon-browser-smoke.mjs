@@ -541,8 +541,9 @@ async function run() {
     )
     // The tree is fixed by treeFor(): exact names, states and URLs in document order, including the
     // 503 node, which must settle to the failed fallback with no <img> — independent of the row's.
-    // Child nodes sit in a collapsed <details>, and tree images are natively lazy, so nothing below the
-    // root is fetched until the group is opened and the node is in view. Open it as a user would
+    // ResolutionTreeNode renders every supplied descendant inside native <details>; opening it changes
+    // visibility and native lazy-image fetching, not Vue mounting. Nothing below the root is fetched
+    // until the group is opened and the node is in view. Open it as a user would
     // (summary click), bring the 503 node into view, then wait for it to settle.
     const rootToggle = page.locator('[data-test="tree-node"] > [data-test="node-children"] > summary').first()
     await rootToggle.click()
@@ -616,7 +617,7 @@ async function run() {
     // that stay mounted. The 404 and undecodable URLs appear only in table rows (and, later, the
     // materials list), so their request counts must not move, and every row icon must keep its
     // settled state. The 503 URL is not counted here because the second row's tree legitimately
-    // mounts it again. This is evidence for this view only; it does not bound other components.
+    // exposes it again. This is evidence for this view only; it does not bound other components.
     const rowStates = async () =>
       JSON.stringify(
         await page.$$eval('[data-test="profit-row"] [data-test="item-icon"]', (icons) =>
@@ -655,9 +656,10 @@ async function run() {
     record('failed row images stay failed and unfetched across a rerender', `404 ×${goneAsked}, undecodable ×${garbageAsked}`)
 
     const askedAfterRerender = imageRequests.get(ITEMS.unavailable.url) ?? 0
-    // Selecting row 2 mounts its own tree, whose root is the 503 item, and returning to row 1
-    // remounts its tree; up to two further requests are legitimate fresh mounts. A retry loop
-    // would keep growing, which the bank stability check below also watches.
+    // Selecting another row changes the tree shown (and retained components may get new props), and
+    // native lazy fetching, caching and coalescing add legitimate exposures of the 503 URL. The bound
+    // of two is a loose guard against a retry loop, not an exact HTTP-per-component count; the bank
+    // stability check below also watches for growth.
     check(
       askedAfterRerender - askedAfterTree <= 2,
       `The 503 URL was requested ${askedAfterRerender - askedAfterTree} more times across the row rerender.`
@@ -707,12 +709,12 @@ async function run() {
     const bankIcons = await iconReport(page)
     // Exact independent identity and count for the 503 slot and its neighbours, in slot order. The
     // tile's title is the only visible identity today (no rarity in the current UI/DTO).
-    const bankIdentity = slots.map((slot) => ({ empty: slot.empty, count: slot.count, idPrefix: slot.identity?.split(' ')[0] + ' ' + slot.identity?.split(' ')[1] }))
+    const bankIdentity = slots.map((slot) => ({ empty: slot.empty, count: slot.count, idPrefix: slot.identity === null ? null : slot.identity.split(' ').slice(0, 2).join(' ') }))
     const expectedBank = [
       { empty: false, count: '42', idPrefix: `Item #${ITEMS.ok.id}` },
-      { empty: true, count: null, idPrefix: 'undefined undefined' },
+      { empty: true, count: null, idPrefix: null },
       { empty: false, count: '7', idPrefix: `Item #${ITEMS.unavailable.id}` },
-      { empty: true, count: null, idPrefix: 'undefined undefined' },
+      { empty: true, count: null, idPrefix: null },
       { empty: false, count: '250', idPrefix: `Item #${ITEMS.none.id}` }
     ]
     check(
@@ -766,9 +768,15 @@ async function run() {
       stacks.some((stack) => stack.state === 'image') && stacks.some((stack) => stack.state === 'failed'),
       `Materials did not show both a delivered and a failed image: ${JSON.stringify(stacks)}`
     )
+    // The two fixed fixture stacks, in order, with their exact identity (no item name is supplied)
+    // and exact count.
+    const expectedStacks = [
+      { identity: `Item #${ITEMS.okJpeg.id}`, count: '3' },
+      { identity: `Item #${ITEMS.undecodable.id}`, count: '11' }
+    ]
     check(
-      stacks.every((stack) => stack.identity.startsWith('Item #') && /^\d+$/.test(stack.count)),
-      `A material stack lost its id or count: ${JSON.stringify(stacks)}`
+      JSON.stringify(stacks.map(({ identity, count }) => ({ identity, count }))) === JSON.stringify(expectedStacks),
+      `The material stacks are not the supplied ones:\n  rendered ${JSON.stringify(stacks)}\n  expected ${JSON.stringify(expectedStacks)}`
     )
     record('materials keep id and count whatever the image did', JSON.stringify(stacks))
 
