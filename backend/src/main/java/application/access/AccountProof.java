@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.Set;
 
 /**
- * What one successful proof of a transient GW2 key established (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1): the account's persistent GUID plus the effective limits of the key
+ * What one successful proof of a transient GW2 key established: the account's persistent GUID plus
+ * the effective limits of the key
  * that proved it. Deliberately carries no key, no key identifier and no account display name - only
  * the GUID is identity, and nothing here may become a credential.
  *

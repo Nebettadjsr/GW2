@@ -4,8 +4,7 @@ import java.util.Arrays;
 import java.util.Optional;
 
 /**
- * One Guild Wars 2 API-key permission, as reported by {@code /v2/tokeninfo} (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1).
+ * One Guild Wars 2 API-key permission, as reported by {@code /v2/tokeninfo}.
  *
  * <p>Grants are captured from the proved key and never widened: an operation is admitted only when
  * every grant it consumes is present. A permission this application does not model is ignored

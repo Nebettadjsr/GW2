@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * The account-access use case: establish, renew, resolve and revoke validated account sessions, and
- * admit keyed account operations (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+ * admit keyed account operations.
  *
  * <p>Everything the access contract decides is decided here, once, so no route can re-decide it:
  * which responses count as identity, what a session may do, and which failures revoke it. The HTTP
@@ -154,8 +154,8 @@ public final class AccountAccessService {
     }
 
     /**
-     * Admits an account operation that will call GW2 with a caller-supplied transient key
-     * (TARGET_ARCHITECTURE.md §8.1: "a session is not an upstream credential").
+     * Admits an account operation that will call GW2 with a caller-supplied transient key;
+     * a session is not an upstream credential.
      *
      * <p>Revalidates the key before any upstream work: it must resolve to the session's account and
      * cover the operation's grants, and the live session must cover them too, so a narrow session

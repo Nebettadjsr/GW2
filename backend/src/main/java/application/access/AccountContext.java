@@ -4,11 +4,11 @@ import java.time.Instant;
 import java.util.Set;
 
 /**
- * The trusted immutable account scope a live session resolves to (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1 "Request and application scope").
+ * The trusted immutable account scope a live session resolves to.
  *
- * <p>Only the HTTP boundary creates one, and only from a session it authenticated: no caller-supplied
- * account field, header or query parameter can produce or widen it. Application use cases receive it
+ * <p>Session issuance creates it from verified proof; the HTTP boundary resolves it through an
+ * authenticated session. No caller-supplied account field, header or query parameter can produce or
+ * widen it. Application use cases receive it
  * explicitly rather than reading process-wide or thread-inherited state, so an admitted operation
  * keeps the scope it was admitted with even after its session ends.
  *

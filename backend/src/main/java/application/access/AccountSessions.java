@@ -12,8 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The bounded, process-local store of validated account sessions (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1, ADR-008).
+ * The bounded, process-local store of validated account sessions.
  *
  * <p>Four properties this class exists to keep:
  *
@@ -34,7 +33,7 @@ import java.util.Map;
  */
 public final class AccountSessions {
 
-    /** TARGET_ARCHITECTURE.md §8.1: 15 minutes after successful upstream validation. */
+    /** Absolute lease after successful upstream validation. */
     public static final Duration LEASE = Duration.ofMinutes(15);
 
     /** 256 bits, well above the 128-bit minimum the contract sets. */
