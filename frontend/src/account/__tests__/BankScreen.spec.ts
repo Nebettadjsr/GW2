@@ -19,7 +19,7 @@ const mounted: Array<ReturnType<typeof mount>> = []
 afterEach(() => { mounted.splice(0).forEach((wrapper) => wrapper.unmount()) })
 
 async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
-  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+  const wrapper = mount(BankScreen, { props: { api }, global: { provide: shellProvide() } })
   mounted.push(wrapper)
   await flushPromises()
   return wrapper
@@ -99,7 +99,7 @@ describe('BankScreen', () => {
     const pending = deferred<BankContents>()
     api.bankHandler = () => pending.promise
 
-  const wrapper = mount(BankScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+  const wrapper = mount(BankScreen, { props: { api }, global: { provide: shellProvide() } })
   mounted.push(wrapper)
     await flushPromises()
 

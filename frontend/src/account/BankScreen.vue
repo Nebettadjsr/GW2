@@ -146,7 +146,6 @@ const tabs = computed(() => {
 
 <style scoped>
 .screen { width: min(100%, 900px); margin-inline: auto; }
-.detail { display: block; margin-top: var(--space-2); }
 .bank-tab { margin-block: var(--space-4); }
 .bank-tab__header {
   display: flex;

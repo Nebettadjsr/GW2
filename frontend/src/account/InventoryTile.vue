@@ -8,7 +8,7 @@ const props = withDefaults(defineProps<{
   iconUrl: string | null
   title: string
   showOne?: boolean
-  /** Undefined: the tile is not selectable. Otherwise the pending protection state of this item ID. */
+  /** Undefined: the tile is not selectable. Otherwise whether this item ID is currently selected (autosaved reservation). */
   selected?: boolean
   /** Finite keep-target for this item, when one is saved (0/undefined: none). */
   reserved?: number

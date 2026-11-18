@@ -19,7 +19,7 @@ const mounted: Array<ReturnType<typeof mount>> = []
 afterEach(() => { mounted.splice(0).forEach((wrapper) => wrapper.unmount()) })
 
 async function openScreen(api: FakeAccountApi): Promise<VueWrapper> {
-  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+  const wrapper = mount(MaterialsScreen, { props: { api }, global: { provide: shellProvide() } })
   mounted.push(wrapper)
   await flushPromises()
   return wrapper
@@ -80,7 +80,7 @@ describe('MaterialsScreen', () => {
     const pending = deferred<MaterialStorage>()
     api.materialsHandler = () => pending.promise
 
-  const wrapper = mount(MaterialsScreen, { props: { api }, global: { stubs: { InventoryRefresh: true }, provide: shellProvide() } })
+  const wrapper = mount(MaterialsScreen, { props: { api }, global: { provide: shellProvide() } })
   mounted.push(wrapper)
     await flushPromises()
 

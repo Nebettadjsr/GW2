@@ -41,8 +41,6 @@ function items(n: number): string { return `${n} ${n === 1 ? 'item' : 'items'}` 
 <style scoped>
 .selection-bar { margin-block: var(--space-3); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
 .selection-bar p { margin: 0; }
-.selection-bar__state { min-block-size: 2lh; }
-.selection-bar__state[data-state='pending'] { font-weight: 700; }
 .selection-bar__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; max-width: 100%; }
 .selection-bar__actions [data-test='selection-toggle'] { min-inline-size: 8.5em; }
 </style>
