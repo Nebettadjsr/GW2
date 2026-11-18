@@ -1,6 +1,6 @@
 /**
  * Trigger and task-tracking state for the backend synchronization operations
- * (`CURRENT_ARCHITECTURE.md` 5.7–5.9).
+ * (`ARCHITECTURE.md` 6, `DOMAIN_SPEC.md`).
  *
  * It orchestrates nothing: a trigger is one POST, and everything afterwards is read from the task
  * status the backend reports. No sequence, ordering, item selection or outcome is decided here, and
