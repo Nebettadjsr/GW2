@@ -1,10 +1,10 @@
 /**
  * TypeScript shapes of the backend HTTP transport records the browser client uses
- * (`CURRENT_ARCHITECTURE.md` 5.5, 5.7–5.9 and 5.10).
+ * (`docs/ARCHITECTURE.md` sections 6 and 7).
  *
  * These describe transport data only. They are not a second implementation of a domain rule, and
- * they do not validate what the backend actually sent — static types never do (TARGET_ARCHITECTURE
- * 4.1). Every value here is produced by the backend and only displayed here.
+ * they do not validate what the backend actually sent — static types never do.
+ * Every value here is produced by the backend and only displayed here.
  */
 
 /** Raw trading-post quote pass-through; either side is null when the item is unquoted. */
@@ -174,7 +174,7 @@ export interface RefreshFailure {
 
 /**
  * What a Crafting Profit response says about the inputs its calculation used
- * (`TARGET_ARCHITECTURE.md` 9.1, `web.dto.CalculationFreshnessDto`).
+ * (`web.dto.CalculationFreshnessDto`).
  *
  * Nothing here is a result. `provisional` describes the *inputs*, not the correctness of the
  * numbers: a provisional result is the ordinary authoritative calculation over the last
@@ -196,9 +196,6 @@ export interface CalculationFreshness {
   outstandingWork: OutstandingRefresh[]
   failures: RefreshFailure[]
 }
-
-/** A completed Crafting Profit calculation over usable cached inputs (HTTP 200). */
-export const PROFIT_STATUS_CALCULATED = 'CALCULATED'
 
 /** No usable synchronized inputs existed, so the response carries no rows (HTTP 202). */
 export const PROFIT_STATUS_PENDING = 'PENDING'
@@ -236,7 +233,7 @@ export interface CraftingProfitRequest {
 }
 
 /**
- * One requirement in a resolution tree (`TARGET_ARCHITECTURE.md` 13.3, `web.dto.ResolutionNodeDto`).
+ * One requirement in a resolution tree (`web.dto.ResolutionNodeDto`).
  *
  * Resolver fields are authoritative backend facts. The Discovery-only recipeKnowledge field comes
  * from explicit account-known and eligible-discovery sets. The browser displays these fields and
@@ -298,8 +295,7 @@ export interface ResolutionCalculation {
 }
 
 /**
- * Everything a completed fresh-detail response carries *apart from* its echoed calculation
- * (`TARGET_ARCHITECTURE.md` 13.3).
+ * Everything a completed fresh-detail response carries *apart from* its echoed calculation.
  *
  * The Profit and Discovery routes share this envelope field for field — identical names, literals and
  * meanings — and differ only in the shape of `calculation`, which is each route's own table request
@@ -330,7 +326,7 @@ export interface ResolutionDetailView {
 }
 
 /**
- * Response body of `POST /api/crafting/profit/resolution` (`TARGET_ARCHITECTURE.md` 13.3).
+ * Response body of `POST /api/crafting/profit/resolution`.
  *
  * `recipeId` and `calculation` echo the *requested* identity and inputs, which is what the browser
  * associates the response with; they assert nothing about how the root requirement was sourced.
@@ -344,9 +340,6 @@ export interface CraftingProfitResolutionResponse extends ResolutionDetailView {
   freshness?: CalculationFreshness
 }
 
-/** The detail still explains the input generation the caller's row came from. */
-export const CONSISTENCY_FRESH_CALCULATION = 'FRESH_CALCULATION'
-
 /**
  * The inputs changed since the caller's row, so this response is a complete recalculation and its
  * own `row` — not the caller's older one — is what its `tree` explains.
@@ -354,7 +347,7 @@ export const CONSISTENCY_FRESH_CALCULATION = 'FRESH_CALCULATION'
 export const CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS = 'RECALCULATED_FOR_CHANGED_INPUTS'
 
 /**
- * Request body of `POST /api/crafting/profit/resolution` (`TARGET_ARCHITECTURE.md` 13.1).
+ * Request body of `POST /api/crafting/profit/resolution`.
  *
  * `calculation` is the existing table request contract, so the browser copies the effective scope
  * and settings the table response echoed rather than relying on defaults a second time. Row numbers,
@@ -373,7 +366,7 @@ export interface CraftingProfitResolutionRequest {
 /* ------------------------------------------------------------------ Crafting Discovery ----------- */
 
 /**
- * Requested Discovery scope (`CURRENT_ARCHITECTURE.md` 5.6, `web.dto.CraftingDiscoveryRequest`).
+ * Requested Discovery scope (`web.dto.CraftingDiscoveryRequest`).
  *
  * All three members are required and none of them is optional here: Discovery has no All reading and
  * no default scope, and `rating` drives the `recipe.minRating <= rating` filter, so the backend
@@ -408,7 +401,7 @@ export interface EffectiveDiscoveryScope {
 
 /**
  * The Discovery settings the backend actually calculated with, after it applied its own defaults —
- * which are not Profit's (`CURRENT_ARCHITECTURE.md` 5.6).
+ * which are not Profit's.
  *
  * `allowDailyCrafts` is reported for completeness even though it is not a request field; it is
  * the value Discovery fixed, not one this client chose or may change.
@@ -455,7 +448,7 @@ export interface DiscoveryResolutionCalculation {
 }
 
 /**
- * Response body of `POST /api/crafting/discovery/resolution` (`TARGET_ARCHITECTURE.md` 13.3).
+ * Response body of `POST /api/crafting/discovery/resolution`.
  *
  * The same envelope as the Profit route's, differing only in the echoed `calculation` — Discovery's
  * own one-character scope.
@@ -465,7 +458,7 @@ export interface CraftingDiscoveryResolutionResponse extends ResolutionDetailVie
 }
 
 /**
- * Request body of `POST /api/crafting/discovery/resolution` (`TARGET_ARCHITECTURE.md` 13.1).
+ * Request body of `POST /api/crafting/discovery/resolution`.
  *
  * `calculation` is the Discovery table request contract, so the browser sends back the effective
  * inputs that table response echoed rather than relying on defaults a second time.
@@ -500,12 +493,12 @@ export interface SelectorOptions {
 }
 
 /**
- * One account bank slot of `GET /api/account/bank` (`CURRENT_ARCHITECTURE.md` 5.12).
+ * One account bank slot of `GET /api/account/bank` (`docs/ARCHITECTURE.md` section 7).
  *
  * An empty slot is kept in place with `itemId` and `count` both null; that is the backend's
  * empty-slot representation and neither null may be read as item id `0` or an owned count of `0`.
  * `iconUrl` is this application's own image URL for the slot's item
- * (`TARGET_ARCHITECTURE.md` 12.1), or null when there is no item, no retained metadata, or metadata
+ * (`docs/ARCHITECTURE.md` section 3), or null when there is no item, no retained metadata, or metadata
  * the backend's canonical-source policy rejects. It is served by the backend from its persistent
  * cache; it is never an upstream URL and never a backend filesystem path.
  */
@@ -586,7 +579,7 @@ export interface ApiErrorBody {
 }
 
 /**
- * Acceptance body of the three synchronization triggers (`CURRENT_ARCHITECTURE.md` 5.7–5.9).
+ * Acceptance body of the three synchronization triggers (`docs/ARCHITECTURE.md` section 6).
  *
  * Returned with HTTP 202 and carrying no outcome of any kind: it says the work was accepted, not
  * that it ran. The outcome is only ever readable from the status resource `statusUrl` names.
@@ -603,7 +596,7 @@ export interface SyncTaskAccepted {
   retryAfterSeconds?: number
 }
 
-/** Response body of `GET /api/sync/tasks/{taskId}` (`CURRENT_ARCHITECTURE.md` 5.7). */
+/** Response body of `GET /api/sync/tasks/{taskId}` (`docs/ARCHITECTURE.md` section 6). */
 export interface SyncTaskStatus {
   taskId: string
   operation: string
@@ -625,7 +618,7 @@ export interface SyncTaskStatus {
 /** Request value of `POST /api/prices/refresh`. The backend supports exactly these two variants. */
 export type PriceRefreshVariant = 'PROFIT' | 'DISCOVERY'
 
-/** Characters reads (`GET /api/account/characters`, STORY-CHAR-001 / STORY-CHAR-005). */
+/** Characters reads (`GET /api/account/characters`). */
 export type CharacterReadState =
   | 'AVAILABLE' | 'STALE' | 'PENDING' | 'GRANT_REQUIRED' | 'ENDPOINT_RESTRICTED' | 'NOT_FOUND' | 'UNAVAILABLE'
 

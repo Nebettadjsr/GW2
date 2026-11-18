@@ -35,7 +35,7 @@ export interface AccountOverview {
 export type SharedHealth = 'OK' | 'RUNNING' | 'PROBLEM' | 'NOT_RUN'
 
 /**
- * Generic shared-system status (STORY-STATUS-001): coarse health plus the requesting account's own
+ * Generic shared-system status: coarse health plus the requesting account's own
  * freshness. Detailed diagnostics are owner-only and arrive from a separate request, so every
  * detailed member is optional and may be absent.
  */
