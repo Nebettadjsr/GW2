@@ -74,10 +74,13 @@ const tasks = { readTaskStatus: async () => ({ taskId: 't', operation: 'X', stat
 const noSleep = async () => {}
 /**
  * Starts what the managed screen's automatic refresh does for a PENDING Builds source and captures its
- * outcome: null when it resolved, otherwise the rejection. Every caller asserts the outcome it expects.
+ * outcome as a PromiseSettledResult, so a fulfilled attempt can never be confused with any rejection
+ * value. Every caller asserts the outcome it expects.
  */
-const recoverBuilds = (c: ReturnType<typeof useCharacters>, name: string): Promise<unknown> =>
-  c.recoverBuilds(name).then(() => null, (error: unknown) => error)
+const recoverBuilds = (c: ReturnType<typeof useCharacters>, name: string): Promise<PromiseSettledResult<void>> =>
+  Promise.allSettled([c.recoverBuilds(name)]).then(([result]) => result!)
+const fulfilled = { status: 'fulfilled', value: undefined }
+const rejected = (message: string) => ({ status: 'rejected', reason: new Error(message) })
 
 afterEach(() => {
   mounted.splice(0).forEach(wrapper => wrapper.unmount())
@@ -620,7 +623,7 @@ describe('Character inventory section', () => {
     const api = fakeApi({ loadBuildTabs: async (n) => { api.calls.push(`builds:${n}`); return { state: 'PENDING', reason: 'COVERAGE_NOT_PUBLISHED' } } })
     const c = useCharacters(api, tasks, noSleep)
     c.select('Ana B'); const outcome = recoverBuilds(c, 'Ana B'); await flushPromises()
-    expect(await outcome).toBeNull()
+    expect(await outcome).toEqual(fulfilled)
     expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(1)
     expect(api.calls.filter((x) => x.startsWith('builds:'))).toEqual(['builds:Ana B', 'builds:Ana B'])
     expect(c.activeElite.value).toBeNull()
@@ -827,7 +830,7 @@ describe('Character inventory section', () => {
       expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(0) // waits for the equipment attempt
       expect(c.activeElite.value).toBeNull()
       gate.resolve(); await flushPromises()
-      expect(await outcome).toBeNull()
+      expect(await outcome).toEqual(fulfilled)
       expect(published).toEqual({ equipment: true, builds: true })
       expect(api.calls.filter((x) => x === 'refresh' || x === 'build-refresh')).toEqual(['refresh', 'build-refresh'])
       expect(c.activeElite.value).toBe('Willbender')
@@ -886,7 +889,7 @@ describe('Character inventory section', () => {
       })
       const c = useCharacters(api, tasks, noSleep)
       c.select('Ana B'); const outcome = recoverBuilds(c, 'Ana B'); await flushPromises()
-      expect(await outcome).toBeNull()
+      expect(await outcome).toEqual(fulfilled)
       expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(3)
       expect(c.activeElite.value).toBe('Willbender')
     })
@@ -898,7 +901,7 @@ describe('Character inventory section', () => {
       })
       const c = useCharacters(api, tasks, noSleep)
       c.select('Ana B'); const outcome = recoverBuilds(c, 'Ana B'); await flushPromises()
-      expect(await outcome).toEqual(new Error('Build refresh is still waiting for another update'))
+      expect(await outcome).toEqual(rejected('Build refresh is still waiting for another update'))
       expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(3)
       expect(c.activeElite.value).toBeNull()
     })
@@ -913,8 +916,8 @@ describe('Character inventory section', () => {
       c.select('Ana B'); const replaced = recoverBuilds(c, 'Ana B'); await flushPromises()
       c.back(); c.select('Bo'); c.back(); c.select('Ana B'); const currentAttempt = recoverBuilds(c, 'Ana B'); await flushPromises()
       gate.resolve(); await flushPromises()
-      expect(await replaced).toBeNull() // the replaced attempt ends quietly
-      expect(await currentAttempt).toEqual(new Error('Build refresh is still waiting for another update')) // the current one is bounded and fails
+      expect(await replaced).toEqual(fulfilled) // the replaced attempt ends quietly
+      expect(await currentAttempt).toEqual(rejected('Build refresh is still waiting for another update')) // the current one is bounded and fails
       // The replaced first attempt had one request in flight and starts no retry; the current
       // selection makes its own bounded three. Without the guard the stale loop would add two more.
       expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(4)
@@ -930,7 +933,7 @@ describe('Character inventory section', () => {
       c.select('Ana B'); const outcome = recoverBuilds(c, 'Ana B'); await flushPromises()
       connection.generation += 1
       gate.resolve(); await flushPromises()
-      expect(await outcome).toBeNull() // the replaced account's attempt ends without error or continuation
+      expect(await outcome).toEqual(fulfilled) // the replaced account's attempt ends without error or continuation
       expect(api.calls.filter((x) => x === 'build-refresh')).toHaveLength(1)
     })
   })
@@ -1106,7 +1109,7 @@ describe('Builds account replacement races (deferred, same character names)', ()
       connection.generation += 1
       const before = api.calls.length
       startGate.resolve(); taskGate.resolve(); await flushPromises(); await flushPromises()
-      expect(await outcome).toBeNull() // the replaced account's attempt ends without error or continuation
+      expect(await outcome).toEqual(fulfilled) // the replaced account's attempt ends without error or continuation
       expect(api.calls.slice(before)).toEqual([]) // no refresh start, no reread under the new identity
       expect(c.buildSource.value).toBeNull()
       connection.generation = 0

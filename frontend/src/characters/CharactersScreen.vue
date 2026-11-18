@@ -17,8 +17,9 @@ import { useAutomaticAccountRefresh } from '@/account/useAutomaticAccountRefresh
 
 /**
  * Characters: a compact roster of the fields the backend supplies, and the selected character's
- * equipment (STORY-CHAR-002). Read-only. Detail and equipment load only for the selected character.
- * Roster and equipment coverage are independent: unavailable equipment never hides the roster.
+ * equipment, inventory and builds. Read-only. Detail and the visible section load only for the
+ * selected character. Roster, detail, equipment, inventory and build coverage are independent:
+ * an unavailable section never hides the roster or the other sections.
  */
 const props = withDefaults(defineProps<{ api?: CharactersApi }>(), { api: () => charactersApi })
 const c = useCharacters(props.api, syncApi)
