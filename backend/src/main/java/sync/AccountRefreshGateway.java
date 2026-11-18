@@ -9,27 +9,7 @@ package sync;
  */
 public class AccountRefreshGateway {
 
-    public void syncAccountBank() throws Exception {
-        AccountSync.syncAccountBank();
-    }
-
-    public void syncAccountMaterials() throws Exception {
-        AccountSync.syncAccountMaterials();
-    }
-
-    public void syncAccountRecipes() throws Exception {
-        AccountSync.syncAccountRecipes();
-    }
-
-    public void syncAccountLuck() throws Exception {
-        AccountSync.syncAccountLuck();
-    }
-
-    public void syncCharacterCraftingAndRecipes() throws Exception {
-        CharacterSync.syncCharactersCraftingAndRecipes();
-    }
-
-    // The account-scoped sequences. Each fetches outside the
+    // Each source fetches outside the
     // database transaction with the supplied operation credential - never the deployment key - and
     // then publishes that one source atomically, so a failure in one leaves the others' already
     // committed publications intact.

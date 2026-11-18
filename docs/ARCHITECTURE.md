@@ -134,8 +134,9 @@ entry point. Flyway alone owns versioned SQL in `backend/src/main/resources/db/m
 
 Applied migrations are immutable; corrections use new versions. A managed checksum/migration
 failure does not silently trigger reset. PostgreSQL transactional migrations roll back the
-failing version. Retained unscoped account paths refuse the managed schema; current scoped
-HTTP routes remain available.
+failing version. The unscoped account refresh, coordinator, gateway and sync entry points are
+removed; account refresh runs only through `ScopedAccountRefreshCoordinator`. Remaining unscoped
+repository reads still refuse the managed schema (pending a later pruning slice).
 
 `repo.Db` lazily owns one HikariCP pool per process. Defaults are eight connections and a
 15-second acquisition bound, configurable through `DATABASE_POOL_SIZE` and

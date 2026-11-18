@@ -127,11 +127,6 @@ class PopulatedFixtureHttpTest {
                     UNEXPECTED.add("account:" + what);
                     throw new IllegalStateException("external account edge reached: " + what);
                 }
-                @Override public void syncAccountBank() throws Exception { no("bank"); }
-                @Override public void syncAccountMaterials() throws Exception { no("materials"); }
-                @Override public void syncAccountRecipes() throws Exception { no("recipes"); }
-                @Override public void syncAccountLuck() throws Exception { no("luck"); }
-                @Override public void syncCharacterCraftingAndRecipes() throws Exception { no("characters"); }
                 @Override public void syncAccountBank(model.AccountScope s, AccountSync.AuthFetcher f) throws Exception { no("scoped-bank"); }
                 @Override public void syncAccountMaterials(model.AccountScope s, AccountSync.AuthFetcher f) throws Exception { no("scoped-materials"); }
                 @Override public void syncAccountRecipes(model.AccountScope s, AccountSync.AuthFetcher f) throws Exception { no("scoped-recipes"); }

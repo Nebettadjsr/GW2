@@ -1,178 +1,105 @@
 package application;
 
+import model.AccountScope;
 import org.junit.jupiter.api.Test;
 import sync.AccountRefreshGateway;
+import sync.AccountSync;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Application-layer orchestration tests (TARGET_ARCHITECTURE.md §25, STORY-APP-004) for
- * {@link AccountRefreshService}: a fake {@link AccountRefreshGateway} replaces the live
- * GW2 API/database calls, so these run without HTTP or PostgreSQL. Proves the exact
- * pre-extraction call order (bank, materials, recipes, then character crafting/recipes) and that a
- * failure from any step propagates immediately and short-circuits the remaining steps - the same
- * behavior the removed {@code Gw2App} inline sequence had.
- *
- * <p>STORY-APP-008 added the narrower {@code refreshMaterialsAndRecipes()} sequence taken verbatim
- * from {@code CraftingProfitView}'s auto-refresh timer; its tests prove it keeps that view's own
- * materials-then-recipes order and, in particular, still does <em>not</em> sync the bank or
- * characters.
+ * Application-layer orchestration tests for {@link AccountRefreshService}'s account-scoped
+ * sequence: a fake {@link AccountRefreshGateway} replaces the live GW2 API and database, so these run
+ * without HTTP or PostgreSQL. They prove source selection, the fixed order, that the supplied
+ * scope and credential reach every step, and that one failing source neither stops the others nor
+ * is swallowed.
  */
 class AccountRefreshServiceTest {
 
+    private static final AccountScope SCOPE = AccountScope.of("10000000-0000-0000-0000-000000000001");
+    private static final AccountSync.AuthFetcher FETCHER = url -> null;
+
     @Test
-    void refreshAllInvokesEachStepInTheExistingOrder() throws Exception {
-        var gateway = new RecordingGateway();
-        var service = new AccountRefreshService(gateway);
+    void refreshAllRunsTheFiveStandardSourcesInOrderWithoutOptionalTabs() throws Exception {
+        RecordingGateway gateway = new RecordingGateway();
 
-        service.refreshAll();
+        new AccountRefreshService(gateway).refreshAll(SCOPE, FETCHER);
 
-        assertEquals(
-                List.of("bank", "materials", "recipes", "luck", "characters"),
-                gateway.calls);
+        assertEquals(List.of("bank", "materials", "recipes", "luck", "characters"), gateway.calls);
+        assertEquals(Set.of(SCOPE), gateway.scopes);
+        assertEquals(Set.of(FETCHER), gateway.fetchers);
     }
 
     @Test
-    void bankFailureShortCircuitsMaterialsRecipesAndCharacters() {
-        var gateway = new RecordingGateway();
-        gateway.bankFailure = new IOException("simulated bank fetch failure");
-        var service = new AccountRefreshService(gateway);
+    void onlyRequestedSourcesRunAndOptionalTabsOnlyWhenDemanded() throws Exception {
+        RecordingGateway gateway = new RecordingGateway();
 
-        Exception thrown = assertThrows(IOException.class, service::refreshAll);
+        new AccountRefreshService(gateway).refreshSources(SCOPE,
+                Set.of("LUCK", "MATERIALS", "CHARACTER_BUILD_TABS", "CHARACTER_EQUIPMENT_TABS"), FETCHER);
 
-        assertSame(gateway.bankFailure, thrown);
-        assertEquals(List.of(), gateway.calls);
+        assertEquals(List.of("materials", "luck", "equipmentTabs", "buildTabs"), gateway.calls);
     }
 
     @Test
-    void materialsFailureShortCircuitsRecipesAndCharactersButBankAlreadyRan() {
-        var gateway = new RecordingGateway();
-        gateway.materialsFailure = new RuntimeException("simulated materials fetch failure");
-        var service = new AccountRefreshService(gateway);
+    void failingSourceDoesNotStopLaterSourcesAndTheFirstFailureCarriesTheRest() {
+        RecordingGateway gateway = new RecordingGateway();
+        gateway.failures.put("materials", new IOException("materials down"));
+        gateway.failures.put("luck", new IllegalStateException("luck down"));
+        Map<String, String> outcomes = new LinkedHashMap<>();
 
-        Exception thrown = assertThrows(RuntimeException.class, service::refreshAll);
+        Exception thrown = assertThrows(IOException.class, () -> new AccountRefreshService(gateway)
+                .refreshSources(SCOPE, Set.of("BANK", "MATERIALS", "ACCOUNT_RECIPES", "LUCK", "CHARACTERS"), FETCHER,
+                        new AccountRefreshService.SourceOutcomes() {
+                            public void succeeded(String source) { outcomes.put(source, "ok"); }
+                            public void failed(String source) { outcomes.put(source, "failed"); }
+                        }));
 
-        assertSame(gateway.materialsFailure, thrown);
-        assertEquals(List.of("bank"), gateway.calls);
+        assertSame(gateway.failures.get("materials"), thrown);
+        assertEquals(List.of(gateway.failures.get("luck")), List.of(thrown.getSuppressed()));
+        assertEquals(List.of("bank", "recipes", "characters"), gateway.calls);
+        assertEquals(Map.of("BANK", "ok", "MATERIALS", "failed", "ACCOUNT_RECIPES", "ok", "LUCK", "failed",
+                "CHARACTERS", "ok"), outcomes);
     }
 
     @Test
-    void characterFailurePropagatesAfterEveryAccountStepRan() {
-        var gateway = new RecordingGateway();
-        gateway.charactersFailure = new RuntimeException("simulated character sync failure");
-        var service = new AccountRefreshService(gateway);
+    void emptyDemandCallsNothing() throws Exception {
+        RecordingGateway gateway = new RecordingGateway();
 
-        Exception thrown = assertThrows(RuntimeException.class, service::refreshAll);
+        new AccountRefreshService(gateway).refreshSources(SCOPE, Set.of(), FETCHER);
 
-        assertSame(gateway.charactersFailure, thrown);
-        assertEquals(List.of("bank", "materials", "recipes", "luck"), gateway.calls);
-    }
-
-    @Test
-    void luckFailureStopsBeforeCharacterSync() {
-        var gateway = new RecordingGateway();
-        gateway.luckFailure = new IOException("missing progression permission");
-
-        Exception thrown = assertThrows(IOException.class,
-                () -> new AccountRefreshService(gateway).refreshAll());
-
-        assertSame(gateway.luckFailure, thrown);
-        assertEquals(List.of("bank", "materials", "recipes"), gateway.calls);
-    }
-
-    @Test
-    void refreshMaterialsAndRecipesSyncsOnlyThoseTwoStepsInOrder() throws Exception {
-        var gateway = new RecordingGateway();
-        var service = new AccountRefreshService(gateway);
-
-        service.refreshMaterialsAndRecipes();
-
-        assertEquals(List.of("materials", "recipes"), gateway.calls);
-    }
-
-    @Test
-    void refreshCraftingProfitDataSyncsInputsWithoutUnrelatedLuckRequest() throws Exception {
-        var gateway = new RecordingGateway();
-
-        new AccountRefreshService(gateway).refreshCraftingProfitData();
-
-        assertEquals(List.of("bank", "materials", "recipes", "characters"), gateway.calls);
-    }
-
-    @Test
-    void refreshSourcesOnlyCallsRequiredSources() throws Exception {
-        var gateway = new RecordingGateway();
-        new AccountRefreshService(gateway).refreshSources(Set.of("LUCK", "MATERIALS"));
-        assertEquals(List.of("materials", "luck"), gateway.calls);
-    }
-
-    @Test
-    void refreshMaterialsAndRecipesShortCircuitsRecipesWhenMaterialsFail() {
-        var gateway = new RecordingGateway();
-        gateway.materialsFailure = new RuntimeException("simulated materials fetch failure");
-        var service = new AccountRefreshService(gateway);
-
-        Exception thrown = assertThrows(RuntimeException.class, service::refreshMaterialsAndRecipes);
-
-        assertSame(gateway.materialsFailure, thrown);
-        assertEquals(List.of(), gateway.calls);
-    }
-
-    @Test
-    void refreshMaterialsAndRecipesPropagatesRecipesFailureAfterMaterialsRan() {
-        var gateway = new RecordingGateway();
-        gateway.recipesFailure = new IOException("simulated recipes fetch failure");
-        var service = new AccountRefreshService(gateway);
-
-        Exception thrown = assertThrows(IOException.class, service::refreshMaterialsAndRecipes);
-
-        assertSame(gateway.recipesFailure, thrown);
-        assertEquals(List.of("materials"), gateway.calls);
+        assertTrue(gateway.calls.isEmpty());
     }
 
     private static class RecordingGateway extends AccountRefreshGateway {
         final List<String> calls = new ArrayList<>();
-        Exception bankFailure;
-        Exception materialsFailure;
-        Exception recipesFailure;
-        Exception luckFailure;
-        Exception charactersFailure;
+        final Set<AccountScope> scopes = new java.util.HashSet<>();
+        final Set<AccountSync.AuthFetcher> fetchers = new java.util.HashSet<>();
+        final Map<String, Exception> failures = new LinkedHashMap<>();
 
-        @Override
-        public void syncAccountBank() throws Exception {
-            if (bankFailure != null) throw bankFailure;
-            calls.add("bank");
+        private void step(String name, AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
+            scopes.add(scope);
+            fetchers.add(fetcher);
+            Exception failure = failures.get(name);
+            if (failure != null) throw failure;
+            calls.add(name);
         }
 
-        @Override
-        public void syncAccountMaterials() throws Exception {
-            if (materialsFailure != null) throw materialsFailure;
-            calls.add("materials");
-        }
-
-        @Override
-        public void syncAccountRecipes() throws Exception {
-            if (recipesFailure != null) throw recipesFailure;
-            calls.add("recipes");
-        }
-
-        @Override
-        public void syncAccountLuck() throws Exception {
-            if (luckFailure != null) throw luckFailure;
-            calls.add("luck");
-        }
-
-        @Override
-        public void syncCharacterCraftingAndRecipes() throws Exception {
-            if (charactersFailure != null) throw charactersFailure;
-            calls.add("characters");
-        }
+        @Override public void syncAccountBank(AccountScope s, AccountSync.AuthFetcher f) throws Exception { step("bank", s, f); }
+        @Override public void syncAccountMaterials(AccountScope s, AccountSync.AuthFetcher f) throws Exception { step("materials", s, f); }
+        @Override public void syncAccountRecipes(AccountScope s, AccountSync.AuthFetcher f) throws Exception { step("recipes", s, f); }
+        @Override public void syncAccountLuck(AccountScope s, AccountSync.AuthFetcher f) throws Exception { step("luck", s, f); }
+        @Override public void syncCharacterCraftingAndRecipes(AccountScope s, AccountSync.AuthFetcher f) throws Exception { step("characters", s, f); }
+        @Override public void syncCharacterEquipmentTabs(AccountScope s, AccountSync.AuthFetcher f) throws Exception { step("equipmentTabs", s, f); }
+        @Override public void syncCharacterBuildTabs(AccountScope s, AccountSync.AuthFetcher f) throws Exception { step("buildTabs", s, f); }
     }
 }

@@ -266,7 +266,7 @@ class TradingPostCoverageCoordinationTest {
         assertTrue(fin.freshness().tradingPost().covered());
         assertNotEquals(provisional.freshness().calculationId(), fin.freshness().calculationId(),
                 "the second calculation read refreshed quotes, so it is a different generation");
-        assertTrue(tasks.admittedFor(AccountRefreshCoordinator.OPERATION) == 0, "fresh account markers admit no account work");
+        assertTrue(tasks.admittedFor(ScopedAccountRefreshCoordinator.OPERATION) == 0, "fresh account markers admit no account work");
     }
 
     @Test

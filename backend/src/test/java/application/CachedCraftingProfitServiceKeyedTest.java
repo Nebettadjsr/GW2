@@ -158,7 +158,7 @@ class CachedCraftingProfitServiceKeyedTest {
         // Only bank and recipes are expired; every other required source is current.
         completed.put(AccountSyncStateRepository.BANK, EXPIRED_AT);
         completed.put(AccountSyncStateRepository.RECIPES, EXPIRED_AT);
-        heldTaskId = tasks.admitForeign(AccountRefreshCoordinator.OPERATION); // a refresh that never finishes
+        heldTaskId = tasks.admitForeign(ScopedAccountRefreshCoordinator.OPERATION); // a refresh that never finishes
 
         CachedCraftingProfitService.ProfitOutcome outcome =
                 service().profit(scope, DiscChoice.all(), settings(), keyed(scope));
@@ -187,7 +187,7 @@ class CachedCraftingProfitServiceKeyedTest {
     void missingSourceMarkerIsDemandedAndTheResultIsPending() throws Exception {
         AccountScope scope = AccountScope.of(UUID.randomUUID());
         missing.add(AccountSyncStateRepository.MATERIALS);
-        heldTaskId = tasks.admitForeign(AccountRefreshCoordinator.OPERATION);
+        heldTaskId = tasks.admitForeign(ScopedAccountRefreshCoordinator.OPERATION);
 
         CachedCraftingProfitService.ProfitOutcome outcome =
                 service().profit(scope, DiscChoice.all(), settings(), keyed(scope));
@@ -218,7 +218,7 @@ class CachedCraftingProfitServiceKeyedTest {
     void proofIsVerifiedBeforeTheSnapshotAndAdmissionOccursOnlyAfterItClosed() throws Exception {
         AccountScope scope = AccountScope.of(UUID.randomUUID());
         completed.put(AccountSyncStateRepository.BANK, EXPIRED_AT);
-        heldTaskId = tasks.admitForeign(AccountRefreshCoordinator.OPERATION);
+        heldTaskId = tasks.admitForeign(ScopedAccountRefreshCoordinator.OPERATION);
 
         service().profit(scope, DiscChoice.all(), settings(), keyed(scope));
 
@@ -230,7 +230,7 @@ class CachedCraftingProfitServiceKeyedTest {
     void resolutionAdmitsThroughTheSameKeyedPathAfterItsSnapshotCloses() throws Exception {
         AccountScope scope = AccountScope.of(UUID.randomUUID());
         completed.put(AccountSyncStateRepository.RECIPES, EXPIRED_AT);
-        heldTaskId = tasks.admitForeign(AccountRefreshCoordinator.OPERATION);
+        heldTaskId = tasks.admitForeign(ScopedAccountRefreshCoordinator.OPERATION);
 
         var outcome = service().resolution(scope, RECIPE.recipeId, DiscChoice.all(), settings(), null, keyed(scope));
 
