@@ -19,7 +19,7 @@ const aquatic = ['HelmAquatic', 'WeaponAquaticA', 'WeaponAquaticB']
 const tools = ['Sickle', 'Axe', 'Pick']
 const fishing = ['FishingRod', 'FishingBait', 'FishingLure']
 const jadeBot = ['PowerCore', 'SensoryArray', 'ServiceChip']
-const placed = new Set([...armor, ...weapons, ...trinkets, ...aquatic, ...tools, ...fishing, ...jadeBot, 'Backpack'])
+const placed = new Set([...armor, ...weapons, ...trinkets, ...aquatic, ...tools, ...fishing, ...jadeBot])
 const additional = computed(() => props.shown?.equipment.filter(e => !e.slot || !placed.has(e.slot)) ?? [])
 function itemAt(slot: string): EquipmentEntry | undefined {
   // Prefer a template's own relic when supplied; otherwise show the character-wide equipped relic.
