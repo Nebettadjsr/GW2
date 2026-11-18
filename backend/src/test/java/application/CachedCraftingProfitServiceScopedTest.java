@@ -9,7 +9,6 @@ import model.AccountScope;
 import org.junit.jupiter.api.Test;
 import repo.AccountSourceStateRepository;
 import repo.DiscChoice;
-import sync.AccountRefreshGateway;
 import sync.TradingPostPriceRefreshGateway;
 
 import java.sql.SQLException;
@@ -41,13 +40,6 @@ class CachedCraftingProfitServiceScopedTest {
 
     private final AtomicInteger legacyCalls = new AtomicInteger();
     private final FakeBackgroundTasks tasks = new FakeBackgroundTasks();
-    private final AccountRefreshGateway countingAccountGateway = new AccountRefreshGateway() {
-        @Override public void syncAccountBank() { legacyCalls.incrementAndGet(); }
-        @Override public void syncAccountMaterials() { legacyCalls.incrementAndGet(); }
-        @Override public void syncAccountRecipes() { legacyCalls.incrementAndGet(); }
-        @Override public void syncAccountLuck() { legacyCalls.incrementAndGet(); }
-        @Override public void syncCharacterCraftingAndRecipes() { legacyCalls.incrementAndGet(); }
-    };
     private final TradingPostPriceRefreshGateway countingPriceGateway = new TradingPostPriceRefreshGateway() {
         @Override public void syncTpPricesForProfit() { legacyCalls.incrementAndGet(); }
         @Override public void syncTpPricesForProfit(AccountScope scope) { requiredScopes.add(scope); }
@@ -193,7 +185,6 @@ class CachedCraftingProfitServiceScopedTest {
     private CachedCraftingProfitService service() {
         return new CachedCraftingProfitService(
                 new ProfitInputSession.Factory() {
-                    @Override public ProfitInputSession open() { return ProfitInputSession.detached(); }
                     @Override public ProfitInputSession open(AccountScope scope) throws SQLException {
                         opened.add(scope);
                         return ProfitInputSession.detached();
@@ -214,7 +205,6 @@ class CachedCraftingProfitServiceScopedTest {
                                         RECIPE.outputCount), Map.of(), Map.of());
                     }
                 },
-                (con, sources) -> Map.of(),
                 (con, scope, sources) -> {
                     Map<String, AccountSourceStateRepository.SourceState> states = new java.util.LinkedHashMap<>();
                     for (String s : sources) states.put(s, new AccountSourceStateRepository.SourceState(s, sourceGeneration, completedAt));
@@ -222,7 +212,6 @@ class CachedCraftingProfitServiceScopedTest {
                 },
                 con -> new CalculationFreshness.PriceCoverage(
                         10, covered ? 10 : 0, covered ? 0 : 10, 0, FRESH_AT, FRESH_AT, covered, "q"),
-                new AccountRefreshCoordinator(new AccountRefreshService(countingAccountGateway), tasks),
                 new TradingPostRefreshCoordinator(new TradingPostPriceRefreshService(countingPriceGateway), tasks),
                 tasks,
                 Clock.fixed(NOW, ZoneOffset.UTC),

@@ -152,27 +152,15 @@ public class Gw2ApiApplication {
     @Bean
     public CachedCraftingProfitService cachedCraftingProfitService(
             CraftingGraphCache graphCache,
-            AccountRefreshCoordinator accountRefreshCoordinator,
             TradingPostRefreshCoordinator tradingPostRefreshCoordinator,
             ScopedAccountRefreshCoordinator scopedAccountRefreshCoordinator,
             BackgroundTasks tasks,
             @Value("${gw2.account-data.max-age-ms:900000}") long accountMaxAgeMs) {
         return new CachedCraftingProfitService(
-                new ProfitInputSession.Factory() {
-                    @Override
-                    public ProfitInputSession open() throws java.sql.SQLException {
-                        return ProfitInputSession.open();
-                    }
-
-                    @Override
-                    public ProfitInputSession open(model.AccountScope scope) throws java.sql.SQLException {
-                        return ProfitInputSession.open(scope);
-                    }
-                },
+                ProfitInputSession::open,
                 session -> new CraftingProfitService(graphCache, session),
-                new CalculationInputVersions.DatabaseAccountSourceVersionReader(),
+                new CalculationInputVersions.DatabaseAccountSourceStateReader(),
                 new CalculationInputVersions.DatabasePriceCoverageReader(),
-                accountRefreshCoordinator,
                 tradingPostRefreshCoordinator,
                 tasks,
                 Clock.systemUTC(),

@@ -1015,7 +1015,7 @@ class CraftingProfitResolutionApiControllerTest {
         boolean deriveResultFromRequest;
 
         RecordingServiceFactory() {
-            super(null, null, null, null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null, null);
         }
 
         // The routes call the scoped entry points (STORY-API-011); the recorded behaviour is the
@@ -1044,7 +1044,6 @@ class CraftingProfitResolutionApiControllerTest {
             return created.get(0);
         }
 
-        @Override
         public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) {
             StubProfitService call = newCall();
             call.reloadCalls++;
@@ -1053,9 +1052,8 @@ class CraftingProfitResolutionApiControllerTest {
                     freshnessOf(call, true));
         }
 
-        @Override
         public ResolutionOutcome resolution(int recipeId, DiscChoice choice, CraftingSettings settings,
-                                            String basedOnCalculationId) throws Exception {
+                    String basedOnCalculationId) throws Exception {
             StubProfitService call = newCall();
             call.detailCalls++;
             call.capturedRecipeId = recipeId;

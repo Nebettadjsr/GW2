@@ -38,15 +38,6 @@ public final class CalculationInputVersions {
             AccountSyncStateRepository.RECIPES,
             AccountSyncStateRepository.CHARACTERS);
 
-    /** Reads the required sources' last successful completion instants. */
-    public interface AccountSourceVersionReader {
-        /**
-         * @param con the calculation's pinned connection, or null for a detached session
-         * @return completion instant per source; a source with no successful run is absent
-         */
-        Map<String, Instant> read(Connection con, Set<String> sources) throws SQLException;
-    }
-
     /** Reads how much of the feature-relevant tradeable item set the shared quote cache answers. */
     public interface PriceCoverageReader {
         CalculationFreshness.PriceCoverage read(Connection con) throws SQLException;
@@ -73,7 +64,7 @@ public final class CalculationInputVersions {
      * Reads one account's source markers, completion instant <em>and</em> generation.
      * Freshness identifies the captured account and source generations, never later live markers.
      *
-     * <p>Separate from {@link AccountSourceVersionReader} because a generation is what a completion
+     * <p>A generation is what a completion
      * instant cannot be: two publications of an unchanged payload may record the same instant, and a
      * timestamp is explicitly not a generation identifier - so the captured identity has to carry
      * the number the publication advanced.
@@ -261,22 +252,6 @@ public final class CalculationInputVersions {
                 throws SQLException {
             if (con == null) return Map.of();
             return markers.readAll(con, scope, sources);
-        }
-    }
-
-    /** Reads the markers through {@code repo.AccountSyncStateRepository}. */
-    public static final class DatabaseAccountSourceVersionReader implements AccountSourceVersionReader {
-
-        private final AccountSyncStateRepository markers = new AccountSyncStateRepository();
-
-        @Override
-        public Map<String, Instant> read(Connection con, Set<String> sources) throws SQLException {
-            Map<String, Instant> versions = new LinkedHashMap<>();
-            if (con == null) return versions;
-            for (String source : sources) {
-                markers.lookup(con, source).ifPresent(instant -> versions.put(source, instant));
-            }
-            return versions;
         }
     }
 

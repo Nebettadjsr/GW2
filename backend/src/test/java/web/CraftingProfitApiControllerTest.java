@@ -847,7 +847,7 @@ class CraftingProfitApiControllerTest {
         boolean deriveResultFromRequest;
 
         RecordingServiceFactory() {
-            super(null, null, null, null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null, null);
         }
 
         // The routes call the scoped entry points (STORY-API-011); the recorded behaviour is the
@@ -864,7 +864,7 @@ class CraftingProfitApiControllerTest {
                                             CraftingSettings settings, String basedOnCalculationId)
                 throws Exception {
             assertEquals(ACCOUNT_CONTEXT.accountId(), scope.id().toString());
-            return resolution(recipeId, choice, settings, basedOnCalculationId);
+            throw new AssertionError("the table controller test never requests resolution detail");
         }
 
         void next(java.util.function.Consumer<StubProfitService> configure) {
@@ -882,7 +882,6 @@ class CraftingProfitApiControllerTest {
             return created.get(created.size() - 1);
         }
 
-        @Override
         public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) throws Exception {
             StubProfitService call = newCall();
             call.capturedChoice = choice;

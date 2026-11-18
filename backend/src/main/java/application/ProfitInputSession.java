@@ -2,14 +2,12 @@ package application;
 
 import model.AccountScope;
 import repo.AccountRegistryRepository;
-import repo.AccountSyncStateRepository;
 import repo.Db;
 import repo.ManagedSchema;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * One calculation's captured read view of the persisted inputs.
@@ -37,13 +35,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class ProfitInputSession implements AutoCloseable {
 
-    /**
-     * The completion-marker table is created on demand rather than at startup, because the HTTP
-     * context must start without a reachable database (see {@code Gw2ApiApplicationBootTest}). It is
-     * ensured once per process and outside the snapshot transaction, so no calculation issues DDL.
-     */
-    private static final AtomicBoolean MARKER_SCHEMA_ENSURED = new AtomicBoolean(false);
-
     private final Connection connection;
     private final AccountScope scope;
 
@@ -61,33 +52,16 @@ public final class ProfitInputSession implements AutoCloseable {
         this.scope = scope;
     }
 
-    public static ProfitInputSession open() throws SQLException {
-        Connection con = Db.open();
-        try {
-            if (!MARKER_SCHEMA_ENSURED.get()) {
-                AccountSyncStateRepository.ensure(con);
-                MARKER_SCHEMA_ENSURED.set(true);
-            }
-            con.setAutoCommit(false);
-            con.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-            return new ProfitInputSession(con);
-        } catch (SQLException | RuntimeException failure) {
-            closeQuietly(con);
-            throw failure;
-        }
-    }
-
     /**
      * One account's {@code REPEATABLE READ} snapshot across scoped rows, source markers and
      * shared inputs.
      *
-     * <p>The same single transaction as {@link #open()}, with the account it belongs to carried
-     * alongside: the account's rows, the account's source markers and the shared global inputs are
+     * <p>A single transaction with the account it belongs to carried alongside: the account's rows, the account's source markers and the shared global inputs are
      * all read from it, so the two invariants above hold per account and the snapshot metadata can
      * say which account and which generations it saw.
      *
-     * <p>No marker-table bootstrap: {@code account_source_state} is Flyway-owned, so a scoped
-     * session issues no DDL at all and the transaction stays read-only from its first statement.
+     * <p>No marker-table bootstrap: {@code account_source_state} is Flyway-owned, so a session
+     * issues no DDL at all and the transaction stays read-only from its first statement.
      *
      * <p>The authorized use is recorded <em>before</em> the transaction begins, while the connection
      * is still in autocommit, for two reasons. Activity is not part of this snapshot's consistency
@@ -124,8 +98,8 @@ public final class ProfitInputSession implements AutoCloseable {
     /**
      * The account this snapshot belongs to, or null when it has none.
      *
-     * <p>A null scope is not "the default account": it means the session was opened through a
-     * retained unscoped path, which the versioned account schema refuses outright. Collaborators
+     * <p>A null scope is not "the default account": production {@code open()} always binds one.
+     * Null belongs only to detached or reflection-created in-memory test seams. Collaborators
      * branch on it to choose the scoped repository read, never to pick an account.
      */
     public AccountScope scope() {
@@ -153,18 +127,10 @@ public final class ProfitInputSession implements AutoCloseable {
 
     /** How {@link CachedCraftingProfitService} obtains a session; substitutable in tests. */
     public interface Factory {
-        ProfitInputSession open() throws SQLException;
-
         /**
          * One account's session (STORY-APP-015).
          *
-         * <p>Default-refusing rather than abstract so a factory that has no account-scoped
-         * database - an in-memory application-layer fake, or the retained unscoped path - states
-         * that plainly instead of silently returning an unscoped snapshot an account-scoped caller
-         * would then read another account's rows through.
          */
-        default ProfitInputSession open(AccountScope scope) throws SQLException {
-            throw new SQLException("This calculation-input session factory is not account-scoped");
-        }
+        ProfitInputSession open(AccountScope scope) throws SQLException;
     }
 }

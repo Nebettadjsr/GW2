@@ -309,7 +309,7 @@ class MaterialReservationApiContractTest {
 
     private static final class RecordingService extends CachedCraftingProfitService {
         private final List<CraftingSettings> calls = new ArrayList<>();
-        private RecordingService() { super(null, null, null, null, null, null, null, null, null); }
+        private RecordingService() { super(null, null, null, null, null, null, null, null); }
 
         @Override
         public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings) {
