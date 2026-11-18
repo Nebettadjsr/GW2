@@ -1,7 +1,7 @@
 package web;
 
-import application.AccountRefreshCoordinator;
 import application.AccountRefreshService;
+import application.ScopedAccountRefreshCoordinator;
 import application.BankContentsService;
 import application.CachedCraftingProfitService;
 import application.CharacterSelectionService;
@@ -64,9 +64,6 @@ class Gw2ApiApplicationBootTest {
 
     @Autowired
     private CachedCraftingProfitService cachedProfitService;
-
-    @Autowired
-    private AccountRefreshCoordinator accountRefreshCoordinator;
 
     @Autowired
     private TradingPostRefreshCoordinator tradingPostRefreshCoordinator;
@@ -212,11 +209,9 @@ class Gw2ApiApplicationBootTest {
     void theProfitRoutesAreWiredToTheCachedUseCaseAndTheSharedRefreshCoordinators() {
         assertNotNull(cachedProfitService,
                 "the Profit routes delegate to the cached-result use case, so it must be a bean");
-        assertNotNull(accountRefreshCoordinator,
-                "one shared coordinator is what keeps a single account writer across entry points");
         assertNotNull(tradingPostRefreshCoordinator,
                 "price coordination is separate from the account one and equally shared");
-        assertEquals(1, context.getBeanNamesForType(AccountRefreshCoordinator.class).length,
+        assertEquals(1, context.getBeanNamesForType(ScopedAccountRefreshCoordinator.class).length,
                 "a second account coordinator would reintroduce overlapping account writes");
         assertEquals(1, context.getBeanNamesForType(TradingPostRefreshCoordinator.class).length,
                 "a second price coordinator would reintroduce competing fetches of one item set");

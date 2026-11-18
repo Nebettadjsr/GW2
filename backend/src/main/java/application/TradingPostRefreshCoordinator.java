@@ -6,7 +6,7 @@ import java.util.Optional;
 
 /**
  * Coordination for the shared Trading Post quote refresh a calculation needs, kept deliberately
- * separate from {@link AccountRefreshCoordinator}: the two mechanisms have different scopes,
+ * separate from {@link ScopedAccountRefreshCoordinator}: the two mechanisms have different scopes,
  * different caching policies and different operation keys, and must stay distinguishable.
  *
  * <p>No feature-specific cache or fetch path is introduced. The required item set, the ten-minute
@@ -91,11 +91,6 @@ public class TradingPostRefreshCoordinator {
 
     /** @param taskId the task to poll, null when none could be admitted or identified */
     public record Admission(String taskId, String reuse) {
-    }
-
-    /** Records that the Profit item set is not fully covered and makes sure a run is working on it. */
-    public Admission requireProfitCoverage() {
-        return require(Variant.PROFIT);
     }
 
     /**

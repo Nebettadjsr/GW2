@@ -8,21 +8,11 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Application-layer use case for account synchronization, owning the distinctly scoped
- * account-refresh sequences:
- *
- * <ul>
- *   <li>{@link #refreshAll()} - account bank, account materials, account recipes, consumed account
- *       Luck, then every character's crafting ratings and recipes.</li>
- *   <li>{@link #refreshMaterialsAndRecipes()} - the narrower sequence of account materials then
- *       account recipes only, deliberately without the bank and character steps.</li>
- *   <li>{@link #refreshCraftingProfitData()} - the Crafting Profit inputs without Luck.</li>
- * </ul>
+ * Application-layer use case for account synchronization: refreshes the requested sources for one
+ * verified account with that operation's own credential.
  *
  * <p>Performs no calculation; it only coordinates the {@link AccountRefreshGateway} collaborator.
- * In the unscoped sequences a failure from any step propagates immediately and short-circuits the
- * remaining steps. The account-scoped {@code refreshSources} variants instead attempt every
- * requested source independently.
+ * Every requested source is attempted independently.
  */
 public class AccountRefreshService {
 
@@ -37,48 +27,17 @@ public class AccountRefreshService {
         this.gateway = gateway;
     }
 
-    public void refreshAll() throws Exception {
-        gateway.syncAccountBank();
-        gateway.syncAccountMaterials();
-        gateway.syncAccountRecipes();
-        gateway.syncAccountLuck();
-        gateway.syncCharacterCraftingAndRecipes();
-    }
-
-    public void refreshMaterialsAndRecipes() throws Exception {
-        gateway.syncAccountMaterials();
-        gateway.syncAccountRecipes();
-    }
-
-    /** Refreshes the account datasets consumed by Crafting Profit without the unrelated Luck API call. */
-    public void refreshCraftingProfitData() throws Exception {
-        gateway.syncAccountBank();
-        gateway.syncAccountMaterials();
-        gateway.syncAccountRecipes();
-        gateway.syncCharacterCraftingAndRecipes();
-    }
-
-    /** Refreshes just the stale sources required by the requesting use case. */
-    public void refreshSources(Set<String> sources) throws Exception {
-        if (sources.contains(AccountSyncStateRepository.BANK)) gateway.syncAccountBank();
-        if (sources.contains(AccountSyncStateRepository.MATERIALS)) gateway.syncAccountMaterials();
-        if (sources.contains(AccountSyncStateRepository.RECIPES)) gateway.syncAccountRecipes();
-        if (sources.contains(AccountSyncStateRepository.LUCK)) gateway.syncAccountLuck();
-        if (sources.contains(AccountSyncStateRepository.CHARACTERS)) gateway.syncCharacterCraftingAndRecipes();
-    }
-
     /**
      * Refreshes the requested sources for one account.
      *
-     * <p>Unlike the unscoped {@link #refreshSources(Set)} above, a failing source does not
-     * short-circuit the rest: each source is fetched and published independently, so one that
+     * <p>A failing source does not short-circuit the rest: each source is fetched and published independently, so one that
      * succeeds commits its own data, generation and completion even when another fails
      * (successful sources may commit even when another source fails).
      * The first failure is then thrown with the remaining ones attached, so nothing is swallowed and
      * no whole-account completion is fabricated from a partial run.
      *
-     * <p>The fixed order is the one the unscoped sequences already used; it carries no dependency
-     * between sources, since every publication is its own transaction.
+     * <p>The fixed order (bank, materials, recipes, Luck, characters, optional tabs) carries no
+     * dependency between sources, since every publication is its own transaction.
      */
     public void refreshSources(AccountScope scope, Set<String> sources, AccountSync.AuthFetcher fetcher)
             throws Exception {

@@ -33,7 +33,7 @@ class TradingPostRefreshCoordinatorTest {
 
     @Test
     void oneDemandRunsOnePassAndLeavesNoFurtherWork() {
-        TradingPostRefreshCoordinator.Admission admission = coordinator.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission admission = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
 
         assertEquals(TradingPostRefreshCoordinator.REUSE_ADMITTED, admission.reuse());
         tasks.run(admission.taskId());
@@ -46,7 +46,7 @@ class TradingPostRefreshCoordinatorTest {
 
     @Test
     void concurrentDemandsCoalesceIntoOneRunAndEarnExactlyOneRecheckPass() throws Exception {
-        TradingPostRefreshCoordinator.Admission first = coordinator.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission first = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
         gateway.blockNextRefresh();
 
         Thread run = new Thread(() -> tasks.run(first.taskId()));
@@ -65,7 +65,7 @@ class TradingPostRefreshCoordinatorTest {
                     Thread.currentThread().interrupt();
                     return;
                 }
-                overlapping.add(coordinator.requireProfitCoverage());
+                overlapping.add(coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT));
             });
             caller.start();
             callers.add(caller);
@@ -94,14 +94,14 @@ class TradingPostRefreshCoordinatorTest {
     void anUnrelatedPriceRefreshTaskIsWaitedOutRatherThanAdopted() {
         String foreign = tasks.admitForeign(TradingPostRefreshCoordinator.PROFIT_OPERATION);
 
-        TradingPostRefreshCoordinator.Admission admission = coordinator.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission admission = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
 
         assertEquals(TradingPostRefreshCoordinator.REUSE_WAITING_FOR_UNRELATED_TASK, admission.reuse());
         assertEquals(foreign, admission.taskId());
         assertEquals(0, gateway.profitRefreshes.get(), "no second fetch runs beside the existing one");
 
         tasks.finish(foreign);
-        TradingPostRefreshCoordinator.Admission second = coordinator.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission second = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
         assertEquals(TradingPostRefreshCoordinator.REUSE_ADMITTED, second.reuse());
         tasks.run(second.taskId());
         assertEquals(1, gateway.profitRefreshes.get());
@@ -111,7 +111,7 @@ class TradingPostRefreshCoordinatorTest {
     void aFailedFetchReportsBoundedRecoveryInformationAndCanBeDemandedAgain() {
         gateway.failNextRefresh();
 
-        TradingPostRefreshCoordinator.Admission first = coordinator.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission first = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
         tasks.runExpectingFailure(first.taskId());
 
         CalculationFreshness.RefreshFailure failure = coordinator.lastFailure().orElseThrow();
@@ -123,7 +123,7 @@ class TradingPostRefreshCoordinatorTest {
         assertEquals("FAILED", tasks.stateOf(first.taskId()));
         assertFalse(coordinator.refreshing());
 
-        TradingPostRefreshCoordinator.Admission second = coordinator.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission second = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
         assertEquals(TradingPostRefreshCoordinator.REUSE_ADMITTED, second.reuse());
         tasks.run(second.taskId());
         assertEquals(1, coordinator.completedPasses());
@@ -132,7 +132,7 @@ class TradingPostRefreshCoordinatorTest {
 
     @Test
     void theDiscoveryVariantIsNotTouchedByProfitCoordination() {
-        TradingPostRefreshCoordinator.Admission admission = coordinator.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission admission = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
         tasks.run(admission.taskId());
 
         assertEquals(1, gateway.profitRefreshes.get());

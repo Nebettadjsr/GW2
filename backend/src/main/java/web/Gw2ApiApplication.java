@@ -1,6 +1,5 @@
 package web;
 
-import application.AccountRefreshCoordinator;
 import application.AccountRefreshService;
 import application.BackgroundTasks;
 import application.BankContentsService;
@@ -75,17 +74,6 @@ public class Gw2ApiApplication {
     @Bean
     public BackgroundTasks backgroundTasks(BackgroundTaskService tasks) {
         return new BackgroundTaskServiceTasks(tasks);
-    }
-
-    /**
-     * Single-writer coordination for account sources, shared across every entry point that can
-     * demand them (STORY-APP-014): one instance is what keeps the accumulated demand, the one
-     * account writer and the "never claim an unrefreshed source" rule in force at the same time.
-     */
-    @Bean
-    public AccountRefreshCoordinator accountRefreshCoordinator(AccountRefreshService refresh,
-                                                               BackgroundTasks tasks) {
-        return new AccountRefreshCoordinator(refresh, tasks);
     }
 
     /**
@@ -204,8 +192,7 @@ public class Gw2ApiApplication {
      *
      * <p>The reason the calculation services need a factory does not apply here: {@link
      * AccountRefreshService} keeps no per-call state, holding only its {@code sync.AccountRefreshGateway}
-     * collaborator, so there is no reload result for two callers to observe. Overlapping account syncs
-     * are excluded by the task facility's admission rule instead.
+     * collaborator. Overlapping account syncs are excluded by the scoped coordinator's admission rule.
      */
     @Bean
     public AccountRefreshService accountRefreshService() {

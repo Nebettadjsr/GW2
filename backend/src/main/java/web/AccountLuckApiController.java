@@ -1,7 +1,6 @@
 package web;
 
 import application.AccountLuckService;
-import application.CurrentAccountLuckService.AccountLuckNotSyncedException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;

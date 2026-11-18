@@ -25,8 +25,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
- * Account-keyed, credential-aware admission and execution of account refreshes (STORY-SYNC-006). It supersedes the process-wide
- * {@link AccountRefreshCoordinator} for callers that hold a trusted {@link AccountContext}.
+ * Account-keyed, credential-aware admission and execution of account refreshes (STORY-SYNC-006). It is the only account refresh
+ * coordinator, for callers that hold a trusted {@link AccountContext}.
  *
  * <ul>
  *   <li><b>Admission.</b> Every demand supplies a trusted context, the presented session id and a
@@ -54,11 +54,11 @@ import java.util.function.Predicate;
 public class ScopedAccountRefreshCoordinator implements CharacterRosterService.RefreshStatus {
 
     /** The reported operation; per-account exclusion uses {@code OPERATION + ":" + guid}. */
-    public static final String OPERATION = AccountRefreshCoordinator.OPERATION;
+    public static final String OPERATION = "ACCOUNT_SYNC";
 
-    public static final String REUSE_ADMITTED = AccountRefreshCoordinator.REUSE_ADMITTED;
-    public static final String REUSE_SUFFICIENT_SCOPE = AccountRefreshCoordinator.REUSE_SUFFICIENT_SCOPE;
-    public static final String REUSE_QUEUED_BEHIND_ACTIVE_RUN = AccountRefreshCoordinator.REUSE_QUEUED_BEHIND_ACTIVE_RUN;
+    public static final String REUSE_ADMITTED = "ADMITTED";
+    public static final String REUSE_SUFFICIENT_SCOPE = "REUSED_SUFFICIENT_SCOPE";
+    public static final String REUSE_QUEUED_BEHIND_ACTIVE_RUN = "QUEUED_BEHIND_ACTIVE_RUN";
 
     /** The account's active run holds a credential that does not cover these sources; recheck later. */
     public static final String REUSE_WAITING_FOR_ACTIVE_TASK = "WAITING_FOR_ACTIVE_TASK";

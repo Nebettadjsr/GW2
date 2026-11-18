@@ -1,8 +1,5 @@
 package web;
 
-import application.CurrentAccountLuckService.AccountIdentityUnavailableException;
-import application.CurrentAccountLuckService.AccountLuckNotSyncedException;
-import application.CurrentAccountLuckService.AccountLuckSyncUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -32,19 +29,5 @@ public class AccountLuckApiExceptionHandler {
         LOG.error("Account Luck database read failed", error);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ApiErrorResponse(
                 "DATA_STORE_UNAVAILABLE", "The account data store is currently unavailable"));
-    }
-
-    @ExceptionHandler(AccountIdentityUnavailableException.class)
-    public ResponseEntity<ApiErrorResponse> identityUnavailable(AccountIdentityUnavailableException error) {
-        LOG.error("Configured GW2 account identity lookup failed", error);
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ApiErrorResponse(
-                "ACCOUNT_IDENTITY_UNAVAILABLE", "The configured GW2 account could not be identified"));
-    }
-
-    @ExceptionHandler(AccountLuckSyncUnavailableException.class)
-    public ResponseEntity<ApiErrorResponse> syncUnavailable(AccountLuckSyncUnavailableException error) {
-        LOG.error("Configured account Luck synchronization failed", error);
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ApiErrorResponse(
-                "ACCOUNT_LUCK_SYNC_UNAVAILABLE", "Consumed Luck could not be synchronized from GW2"));
     }
 }
