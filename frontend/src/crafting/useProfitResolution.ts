@@ -12,7 +12,7 @@ import { useResolutionDetail, type ResolutionDetailState } from './useResolution
 
 /**
  * Crafting Profit's selected-recipe detail: the Profit route's request body and identity check, over
- * the shared association rules of `TARGET_ARCHITECTURE.md` 13.4 (`useResolutionDetail`).
+ * the shared lazy association rules (`useResolutionDetail`).
  *
  * The request carries the effective scope and settings the *table response echoed*, so the detail is
  * calculated with the inputs the list on screen was calculated with, rather than asking the backend
@@ -72,7 +72,7 @@ export function scopeRequestOf(scope: EffectiveScope): ScopeRequest {
 /**
  * A stable key for the *calculation* a detail belongs to. Deliberately built from the backend's
  * echoed scope and settings only: sorting, searching, the display filters and the display maximum
- * are not part of it, so re-ordering the table does not invalidate a detail (13.4).
+ * are not part of it, so re-ordering the table does not invalidate a detail.
  */
 export function calculationKey(
   inputs: { scope: EffectiveScope; settings: EffectiveSettings } | null

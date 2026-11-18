@@ -4,7 +4,8 @@ import { RECIPE_NOT_IN_CALCULATION, type ResolutionDetailView } from '@/api/type
 
 /**
  * The association rules a selected recipe's freshly calculated detail obeys
- * (`TARGET_ARCHITECTURE.md` 13.1, 13.2 and 13.4), independent of which feature asked.
+ * (`ARCHITECTURE.md`: the frontend displays backend resolution and never recalculates it), independent of which
+ * feature asked.
  *
  * Detail is **lazy**: one request per selected recipe, never one per table row. A detail is associated
  * with the feature, the recipe ID, the effective calculation inputs the *table response echoed* and a
@@ -14,7 +15,7 @@ import { RECIPE_NOT_IN_CALCULATION, type ResolutionDetailView } from '@/api/type
  * started table reload, and leaving the view while the page is kept alive. An accepted answer must
  * additionally echo back the recipe ID and the inputs that were asked for.
  *
- * Profit and Discovery share this because 13.4 is one contract, not two: the routes differ only in
+ * Profit and Discovery share this because lazy association is one contract, not two: the routes differ only in
  * what a request body looks like and in which echoed inputs make an answer this selection's answer,
  * which is exactly what the two callbacks supply. Nothing here calculates, and nothing here knows a
  * route, a scope shape or a setting.
@@ -45,14 +46,15 @@ export const MISMATCHED_ECHO =
 
 export interface ResolutionDetailState<Detail extends ResolutionDetailView, Inputs> {
   phase: Ref<ResolutionPhase>
-  /** The accepted response, or null in every other phase — an error never leaves an old tree up. */
+  /**
+   * The accepted response in `ready` and `unavailable` (the latter has no tree but keeps the supported
+   * response), null in every other phase — an error never leaves an old tree up.
+   */
   detail: Ref<Detail | null>
   /** The backend's own code and message for `failed`/`absent`; null otherwise. */
   failure: Ref<string | null>
   /** The recipe the current phase is about, so the region can never look attached to another row. */
   requestedRecipeId: Ref<number | null>
-  /** How many requests this state has issued; lets a test prove selection stays lazy. */
-  requestCount: Ref<number>
 
   request(recipeId: number, inputs: Inputs): Promise<void>
   /** Drops the active detail and invalidates every answer still in flight. */
@@ -74,7 +76,6 @@ export function useResolutionDetail<Detail extends ResolutionDetailView, Inputs>
 
   const failure = ref<string | null>(null)
   const requestedRecipeId = ref<number | null>(null)
-  const requestCount = ref(0)
 
   /**
    * The only generation an answer may be displayed for. Every invalidating event increments it, so
@@ -94,7 +95,6 @@ export function useResolutionDetail<Detail extends ResolutionDetailView, Inputs>
     // Invalidating first is what makes A → B → A safe: the earlier A is already a dead generation.
     invalidate()
     const generation = activeGeneration
-    requestCount.value += 1
     requestedRecipeId.value = recipeId
     phase.value = 'loading'
 
@@ -139,7 +139,7 @@ export function useResolutionDetail<Detail extends ResolutionDetailView, Inputs>
     phase.value = 'failed'
   }
 
-  return { phase, detail, failure, requestedRecipeId, requestCount, request, invalidate }
+  return { phase, detail, failure, requestedRecipeId, request, invalidate }
 }
 
 const TREE_STATUS_AVAILABLE = 'AVAILABLE'
