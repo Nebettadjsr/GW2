@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{
+defineProps<{
   hideZeroCraftable: boolean
   hideNotAllowed: boolean
   hideNonPositiveProfit: boolean

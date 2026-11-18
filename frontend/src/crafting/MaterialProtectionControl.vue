@@ -40,13 +40,9 @@ function onFocusOut(event: FocusEvent): void {
   if (next instanceof Node && (event.currentTarget as Node).contains(next)) return
   focused.value = false
 }
-function closeInfo(): void {
-  infoDismissed.value = true
-}
-
 function dismiss(): void {
   warning.value = false
-  closeInfo()
+  infoDismissed.value = true
 }
 
 function onToggle(event: Event): void {
