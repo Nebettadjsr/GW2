@@ -445,15 +445,6 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     autosave(view)
   }
 
-  function discardPending(view?: SelectionView): void {
-    if (ready() === null) return
-    editVersion += 1
-    if (view === undefined) state.pendingByView = copySelections(state.committedByView)
-    else state.pendingByView[view] = [...state.committedByView[view]]
-    syncSelectionTotals()
-    state.pendingViews = view === undefined ? [] : state.pendingViews.filter(value => value !== view)
-  }
-
   /** Explicit confirmation: the canonical pending selection becomes the committed one and is stored. */
   function commit(view?: SelectionView): void {
     const accountId = ready()
@@ -661,7 +652,6 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     dirty,
     pendingFor: (view: SelectionView) => state.pendingByView[view],
     committedFor: (view: SelectionView) => state.committedByView[view],
-    dirtyFor: (view: SelectionView) => !sameIds(state.pendingByView[view], state.committedByView[view]),
     setPending,
     reserveQuantity,
     quantityFor,
@@ -672,7 +662,6 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     quantitiesFor: (view: SelectionView) => ({ ...state.quantitiesByView[view] }),
     togglePending,
     togglePendingGroup,
-    discardPending,
     commit,
     setActivation,
     beginRequest,

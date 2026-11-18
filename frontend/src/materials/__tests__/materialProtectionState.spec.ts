@@ -71,20 +71,16 @@ describe('partitioning, commit and restart', () => {
     expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([7, 9])
   })
 
-  it('keeps the same item independently selected, saved and discarded in each view', () => {
+  it('keeps the same item independently selected and autosaved in each view', () => {
     const m = make()
     source.id = A
-    m.setPending([19718], 'bank')
-    m.setPending([19718, 19719], 'materials')
-    m.commit('bank')
+    m.togglePending(19718, 'bank')
     expect(m.committedFor('bank')).toEqual([19718])
     expect(m.committedFor('materials')).toEqual([])
-    expect(m.pendingFor('materials')).toEqual([19718, 19719])
-    m.discardPending('bank')
-    expect(m.pendingFor('materials')).toEqual([19718, 19719])
-    m.commit('materials')
-    m.setPending([], 'bank')
-    m.commit('bank')
+    m.togglePendingGroup([19718, 19719], 'materials')
+    expect(m.committedFor('bank')).toEqual([19718])
+    expect(m.committedFor('materials')).toEqual([19718, 19719])
+    m.togglePending(19718, 'bank')
     expect(m.pendingFor('materials')).toEqual([19718, 19719])
     const restored = make()
     expect(restored.pendingFor('bank')).toEqual([])
