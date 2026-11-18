@@ -106,10 +106,10 @@ public final class CharacterBuildTabsParser {
     }
 
     /**
- * {@code eliteMayBeOmitted}: the live API was observed (2026-11-07) omitting the land elite slot instead of
- * sending null; only that member maps to null. Present values stay strictly validated and every other
- * slot (including aquatic elite) remains mandatory.
- */
+     * {@code eliteMayBeOmitted}: the live API was observed (2026-11-07) omitting the land elite slot instead of
+     * sending null; only that member maps to null. Present values stay strictly validated and every other
+     * slot (including aquatic elite) remains mandatory.
+     */
     private static Skills skills(JsonNode s, String what, boolean eliteMayBeOmitted) {
         if (s == null || !s.isObject()) throw invalid(what);
         JsonNode utilities = s.get("utilities");

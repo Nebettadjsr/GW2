@@ -12,7 +12,7 @@ public final class TpPriceParser {
      * - single endpoint: object contains { id, buys, sells }
      *
      * Rules:
-     * - If buys/sells are null => return TpPriceQuote.noData(id)
+     * - If buys/sells are null => return TpPrice.noData(id)
      * - Otherwise read quantity/unit_price normally
      */
     public static TpPrice parse(JsonNode node) {
