@@ -30,9 +30,7 @@ public final class IconSync {
     private static final String DRY_RUN = "--dry-run";
 
     /**
-     * Standalone entry point for the icon-<em>metadata</em> refresh (TARGET_ARCHITECTURE.md §12.1:
-     * "keep metadata acquisition usable without binary downloads or desktop setup; no new browser sync
-     * control is required").
+     * Standalone entry point for the icon-<em>metadata</em> refresh.
      *
      * <p>It runs {@link #syncItemIconUrls()} only - no image is downloaded and no local icon directory
      * is needed - so a backend-only machine can repair missing metadata without a browser control.
@@ -43,9 +41,7 @@ public final class IconSync {
      * <p>Invocation is documented in {@code docs/CURRENT_ARCHITECTURE.md} §5.14.
      */
     public static void main(String[] args) throws Exception {
-        // A retained entry point, so it passes the same startup schema gate as the backend before it
-        // opens a connection (STORY-INFRA-004, §7.3: every retained entry point uses this gate or is
-        // disabled against the upgraded database).
+        // A retained entry point passes the same startup schema gate as the backend before it opens a connection.
         infra.db.SchemaInitializer.initializeRuntimeDatabase();
 
         if (args.length > 0 && DRY_RUN.equals(args[0])) {
@@ -74,7 +70,7 @@ public final class IconSync {
     }
 
     /**
-     * Upsert, because a referenced item may have no {@code items} row at all (STORY-SYNC-004): account
+     * Upsert, because a referenced item may have no {@code items} row at all: account
      * synchronization stores the id, and nothing ever creates the metadata row an icon needs.
      *
      * <p>A row that is created carries the canonical metadata upstream reports. A row that already
@@ -117,7 +113,7 @@ public final class IconSync {
 
     /**
      * What one repair run covered and what it could not resolve, so the remaining fallbacks can be
-     * classified instead of merely counted (STORY-SYNC-004 acceptance criterion 6).
+     * classified instead of merely counted.
      *
      * @param selected            ids the selection asked for
      * @param rowsWritten         rows created or updated
@@ -139,18 +135,18 @@ public final class IconSync {
             int idsLeftUnrequested) {}
 
     /**
-     * Explicit icon-metadata refresh (TARGET_ARCHITECTURE.md §12.1): brings item icon metadata up to
+     * Explicit icon-metadata refresh: brings item icon metadata up to
      * date for every item the application actually shows, and updates a URL that changed rather than
      * only filling a null one.
      *
      * <p>Covered by the selection below: account bank slots, material storage, character inventories,
      * recipe outputs and recipe ingredients - nontradeable items included, since nothing here filters
-     * by tradeability - plus any item that still has no metadata at all. Since STORY-SYNC-004 the
+     * by tradeability - plus any item that still has no metadata at all. The
      * selection no longer starts from the {@code items} table, so a referenced id whose metadata row
      * was never created is discovered and the row is created from the canonical response.
      *
      * <p>On the versioned database the three account-owned families are left out, because this entry
-     * point carries no account scope (STORY-SYNC-007); see {@link #metadataRefreshSelection}.
+     * point carries no account scope; see {@link #metadataRefreshSelection}.
      *
      * <p>This is metadata only. No image is downloaded and no local directory is needed; the web image
      * endpoint repairs its own binaries on demand and never triggers this call.
@@ -168,14 +164,7 @@ public final class IconSync {
     /** Fill metadata for explicitly requested item IDs using the same parser and upsert as the bulk refresh. */
     public static void syncItemMetadataByIds(Set<Integer> itemIds) throws Exception {
         for (List<Integer> batch : BatchUtils.chunk(new ArrayList<>(itemIds), SyncConstants.HTTP_IDS_BATCH)) {
-            JsonNode root = fetchItemMetadata(batch);
-            List<ItemParser.ItemRow> rows = new ArrayList<>();
-            Set<Integer> requested = new HashSet<>(batch);
-            Set<Integer> returned = new HashSet<>();
-            for (JsonNode item : root) {
-                ItemParser.ItemRow row = ItemParser.parse(item);
-                if (row != null && requested.contains(row.itemId()) && returned.add(row.itemId())) rows.add(row);
-            }
+            List<ItemParser.ItemRow> rows = parseRequested(fetchItemMetadata(batch), batch);
             try (Connection con = Db.open()) {
                 applyItemMetadata(con, rows);
             }
@@ -265,7 +254,7 @@ public final class IconSync {
     }
 
     /**
-     * Completes metadata for item ids an account publication just stored (STORY-FIX-002): ids with no
+     * Completes metadata for item ids an account publication just stored: ids with no
      * {@code items} row or no {@code icon_url} are fetched from the canonical items endpoint and written
      * through the ordinary metadata upsert, so a first or later account sync needs no separate global
      * refresh. Ids that already carry an icon source and non-blank name, type and rarity cost no upstream call.
@@ -303,14 +292,7 @@ public final class IconSync {
             try {
                 JsonNode root = source.fetchByIds(batch);
                 if (root == null || !root.isArray()) throw new IllegalArgumentException("Item metadata must be an array");
-                Set<Integer> requested = new HashSet<>(batch);
-                Set<Integer> returned = new HashSet<>();
-                List<ItemParser.ItemRow> rows = new ArrayList<>();
-                for (JsonNode item : root) {
-                    ItemParser.ItemRow row = ItemParser.parse(item);
-                    if (row != null && requested.contains(row.itemId()) && returned.add(row.itemId())) rows.add(row);
-                }
-                applyItemMetadata(con, rows);
+                applyItemMetadata(con, parseRequested(root, batch));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 throw interrupted;
@@ -326,6 +308,18 @@ public final class IconSync {
     /** Live-endpoint form of {@link #repairMissingMetadata(Connection, Collection, ItemMetadataSource)}. */
     public static void repairMissingMetadata(Connection con, Collection<Integer> itemIds) throws Exception {
         repairMissingMetadata(con, itemIds, IconSync::fetchItemMetadata);
+    }
+
+    /** Parses one upstream batch, keeping each requested id once and dropping unrequested or unparsable entries. */
+    private static List<ItemParser.ItemRow> parseRequested(JsonNode root, Collection<Integer> batch) {
+        Set<Integer> requested = new HashSet<>(batch);
+        Set<Integer> returned = new HashSet<>();
+        List<ItemParser.ItemRow> rows = new ArrayList<>();
+        for (JsonNode item : root) {
+            ItemParser.ItemRow row = ItemParser.parse(item);
+            if (row != null && requested.contains(row.itemId()) && returned.add(row.itemId())) rows.add(row);
+        }
+        return rows;
     }
 
     /** The live metadata adapter: the same public GW2 items endpoint every other sync uses. */
@@ -443,7 +437,7 @@ public final class IconSync {
      * What one unscoped icon-metadata refresh covers on the database in front of it.
      *
      * <p>On the versioned database the mixed selection is reduced to its global half
-     * (STORY-SYNC-007): the shared item, recipe and material-catalog references need no account, so
+     *: the shared item, recipe and material-catalog references need no account, so
      * global icon metadata stays available with no verified credential, while the three
      * account-owned families stay behind {@link #accountReferencedItemIds} rather than being read
      * across accounts. No account is inferred - an unscoped caller simply contributes no account
@@ -483,7 +477,7 @@ public final class IconSync {
     }
 
     /**
-     * The account half of the selection for one verified account (STORY-SYNC-007): the item ids this
+     * The account half of the selection for one verified account: the item ids this
      * account's bank slots, material storage and character inventories refer to.
      *
      * <p>Every family is keyed by the account GUID, so another account's rows can neither widen nor
@@ -532,13 +526,13 @@ public final class IconSync {
      *
      * <p>The referenced families are read directly, <em>not</em> through the {@code items} table, so an
      * id an account or recipe row refers to is discovered even when no metadata row was ever created
-     * for it (STORY-SYNC-004). Nothing here filters by tradeability, so a referenced nontradeable item
+     * for it. Nothing here filters by tradeability, so a referenced nontradeable item
      * is covered like any other.
      */
     static List<Integer> referencedOrUnknownItemIds(Connection con) throws SQLException {
 
         // Three of the seven referenced families are account-owned on a migrated database, so this
-        // selection would read across accounts there (STORY-INFRA-004). Refused with an actionable
+        // selection would read across accounts there. Refused with an actionable
         // diagnostic rather than silently widened or narrowed.
         repo.ManagedSchema.rejectUnscopedAccountAccess(con, "icon-metadata item selection without an account scope");
 
