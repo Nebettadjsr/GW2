@@ -201,8 +201,6 @@ FROM relevant_tradeable
      * {@link #collectGlobal(Connection)} for the shared crafting graph.
      */
     public Set<Integer> collect(Connection con) throws Exception {
-        // Relevance is derived from account and character recipe knowledge, which is account-owned
-        // on a migrated database, so this selection needs a scope it does not have yet.
         repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Profit price relevance without an account scope");
         Set<Integer> itemIds = new HashSet<>();
 
