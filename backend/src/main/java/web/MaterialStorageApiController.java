@@ -15,12 +15,11 @@ import java.sql.SQLException;
 import java.util.List;
 
 /**
- * HTTP boundary for the account material-storage read (STORY-API-007, TARGET_ARCHITECTURE.md §9):
+ * HTTP boundary for the account material-storage read:
  * ordered official material positions joined with the most recently synchronized account quantities.
  *
- * <p>Thin by construction: it calls the existing {@link MaterialStorageService} read
- * {@code MaterialsView} uses (§5.12/§6 of CURRENT_ARCHITECTURE.md) and copies the grouped result
- * into transport records. The category order and official item positions come from persisted
+ * <p>Thin by construction: it calls the {@link MaterialStorageService} read and copies the grouped
+ * result into transport records. The category order and official item positions come from persisted
  * catalog data and are not reproduced here; the
  * controller queries no repository, aggregates nothing and synchronizes nothing.
  *
@@ -84,7 +83,7 @@ public class MaterialStorageApiController {
     /**
      * The one derived value is {@code iconUrl}: this application's image URL for the stack's item,
      * computed from the retained source the same batch read already carried
-     * (TARGET_ARCHITECTURE.md §12.1). No lookup, no request and no calculation happens per stack, and
+     * (see {@code docs/ARCHITECTURE.md}). No lookup, no request and no calculation happens per stack, and
      * the backend's local {@code iconPath} stays out of the response.
      */
     private static List<MaterialStorageResponse.MaterialStackDto> toStacks(List<MaterialStorageRow> rows) {

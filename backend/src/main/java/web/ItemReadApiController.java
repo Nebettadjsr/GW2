@@ -19,7 +19,6 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /** Generic batch reads; neither route performs salvage economics. */
 @RestController
@@ -44,7 +43,8 @@ public class ItemReadApiController {
     @GetMapping(path = "/metadata", produces = MediaType.APPLICATION_JSON_VALUE)
     public ItemMetadataResponse metadata(@RequestParam("ids") String ids) throws SQLException, MetadataSourceUnavailableException {
         int[] itemIds = parseIds(ids);
-        Set<Integer> requested = Arrays.stream(itemIds).boxed().collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Integer> requested = new LinkedHashSet<>();
+        for (int id : itemIds) requested.add(id);
         Map<Integer, ItemRepository.ItemInfo> rows = itemReadService.metadata(requested);
         var items = Arrays.stream(itemIds).mapToObj(id -> {
             ItemRepository.ItemInfo row = rows.get(id);

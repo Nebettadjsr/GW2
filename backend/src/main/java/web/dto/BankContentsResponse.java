@@ -3,8 +3,7 @@ package web.dto;
 import java.util.List;
 
 /**
- * Transport response body for {@code GET /api/account/bank} (STORY-API-007,
- * TARGET_ARCHITECTURE.md §9).
+ * Transport response body for {@code GET /api/account/bank}.
  *
  * <p>Carries the account bank exactly as {@code application.BankContentsService.getBankContents()}
  * reports it: every slot, in slot order, including the empty ones. Empty slots are kept rather than
@@ -32,7 +31,7 @@ public record BankContentsResponse(Integer slotCount, List<BankSlotDto> slots,
      *                substitute id is invented
      * @param count   stack size; null for an empty slot
      * @param iconUrl this application's own image URL for the slot's item
-     *                (TARGET_ARCHITECTURE.md §12.1), or null when the slot is empty, the item has no
+     *                (see {@code docs/ARCHITECTURE.md}), or null when the slot is empty, the item has no
      *                matching item row, or its retained metadata is absent or not an accepted source.
      *                Never a filesystem path and never an upstream URL: the backend's filesystem
      *                {@code iconPath} deliberately left this contract with STORY-API-009
