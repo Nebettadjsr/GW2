@@ -3,7 +3,7 @@ import type { PriceRefreshVariant, SyncTaskAccepted, SyncTaskStatus } from './ty
 
 /**
  * The three synchronization triggers and the one shared task-status route
- * (`CURRENT_ARCHITECTURE.md` 5.7–5.9).
+ * (`docs/ARCHITECTURE.md` section 6).
  *
  * An interface rather than bare functions so a test can supply controlled responses without
  * stubbing the global `fetch`. Nothing here orchestrates synchronization: each trigger posts one

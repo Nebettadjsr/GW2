@@ -14,8 +14,8 @@ import type {
 
 /**
  * The backend crafting routes the browser uses: the shared selector options
- * (`CURRENT_ARCHITECTURE.md` 5.10), Crafting Profit's table and fresh detail (5.5, 5.13) and Crafting
- * Discovery's own table and fresh detail (5.6, 5.13).
+ * (`docs/ARCHITECTURE.md` section 7), Crafting Profit's table and fresh detail and Crafting
+ * Discovery's own table and fresh detail.
  *
  * The two features' calculation routes stay separate members because they are separate contracts:
  * Discovery requires an individual scope, has its own settings defaults, accepts neither the
@@ -58,7 +58,7 @@ export const craftingApi: CraftingApi = {
 
   /**
    * Detail for one selected recipe. A fresh calculation the backend completes synchronously with
-   * HTTP 200 — the execution policy `STORY-API-008` measured and fixed — so there is no task, no
+   * HTTP 200 (see `docs/ARCHITECTURE.md` section 7), so there is no task, no
    * status resource and nothing to poll here.
    */
   resolveProfitDetail(

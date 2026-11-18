@@ -3,7 +3,7 @@ import type { BankContents, MaterialStorage } from './types'
 
 /**
  * The two account-read routes the Bank and Materials screens use
- * (`CURRENT_ARCHITECTURE.md` 5.12).
+ * (`docs/ARCHITECTURE.md` section 7).
  *
  * Both are plain GETs with no request input. Neither starts a synchronization, and nothing here
  * contacts the GW2 API — the backend owns that path entirely.
