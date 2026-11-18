@@ -10,8 +10,7 @@ import java.util.Iterator;
 import java.util.Locale;
 
 /**
- * Decides whether a byte array really is the complete image its extension claims
- *.
+ * Decides whether a byte array really is the complete image its extension claims.
  * An HTML error body, a truncated download and a PNG delivered under a {@code .jpg} key all fail here,
  * which is what keeps them out of the cache.
  *

@@ -11,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The one place the canonical icon-source rules of live: what counts as
+ * The one place the canonical icon-source rules live: what counts as
  * an acceptable upstream image URL, how it is canonicalized, and which cache key and file extension
  * it derives. Both the emitted browser URL and the image endpoint's route check go through here, so a
  * key can never mean two different things on the two sides.
@@ -22,8 +22,8 @@ import java.util.regex.Pattern;
  * hosts/schemes/paths, userinfo, a nondefault port, a query, a fragment, percent-encoding (which is
  * how an encoded separator would arrive) and dot segments.
  *
- * <p>Rejection is not an error: metadata this policy does not accept simply yields no icon URL
- *, which the caller reports as null. Stateless and thread-safe.
+ * <p>Rejection is not an error: metadata this policy does not accept simply yields no icon URL,
+ * which the caller reports as null. Stateless and thread-safe.
  */
 public final class IconSourcePolicy {
 
