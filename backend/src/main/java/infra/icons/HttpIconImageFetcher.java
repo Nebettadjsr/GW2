@@ -19,8 +19,8 @@ import java.net.http.HttpResponse;
  * through a hard byte ceiling instead of into an unbounded array. This is an asset fetcher, not a
  * proxy.
  *
- * <p>Separate from {@code api.Gw2ApiClient}, which talks to the GW2 JSON API with the account's key;
- * an image fetch must share none of that.
+ * <p>This has its own HTTP client and header/redirect policy, separate from the GW2 JSON API
+ * client: an image fetch shares none of that client's headers or credentials.
  *
  * <p>Thread-safe: {@link HttpClient} is, and the fetcher holds nothing else.
  */
@@ -75,13 +75,19 @@ public final class HttpIconImageFetcher implements IconImageFetcher {
             throws IOException {
 
         int status = response.statusCode();
-        if (status == 404) return new IconFetchResult.UpstreamMissing();
         if (status != 200) {
+            // The body is never read for these statuses, but with BodyHandlers.ofInputStream it must
+            // still be closed or the connection stays tied up. A failure to close an unwanted body
+            // must not change the status outcome, so it is swallowed here.
+            closeQuietly(response.body());
+            if (status == 404) return new IconFetchResult.UpstreamMissing();
             // Includes 3xx: redirects are not followed, so a moved image is an upstream problem here
             // rather than something this endpoint chases or hands to the browser.
             return new IconFetchResult.TemporaryFailure("upstream status " + status);
         }
 
+        // On the 200 path a close failure is reported like any other transport IOException (a
+        // temporary failure), since the bytes were then not delivered cleanly.
         byte[] bytes;
         try (InputStream body = response.body()) {
             bytes = readBounded(body);
@@ -96,6 +102,15 @@ public final class HttpIconImageFetcher implements IconImageFetcher {
         if (!validation.valid()) return new IconFetchResult.RejectedImage(validation.reason());
 
         return new IconFetchResult.Fetched(bytes);
+    }
+
+    private static void closeQuietly(InputStream body) {
+        if (body == null) return;
+        try {
+            body.close();
+        } catch (IOException ignored) {
+            // see readValidated: the status already decided the result
+        }
     }
 
     /** The bytes, or null when the body is larger than the accepted maximum. */

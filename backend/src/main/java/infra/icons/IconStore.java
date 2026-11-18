@@ -8,10 +8,12 @@ import java.util.Optional;
  * <p>Contract for callers (the image endpoint delivers hits and acquires misses through it):
  *
  * <ul>
- *   <li>Only a fully committed, validated image is an entry. A partial, empty or corrupt file is a
- *       miss, never a half-served hit.</li>
- *   <li>{@link #publish} publishes atomically (callers validate the bytes first, see {@link IconImageBytes}), so a reader never observes a partial
- *       file, and it never overwrites an entry that is already committed.</li>
+ *   <li>Only a fully committed entry is served. Callers validate the image before publication (see
+ *       {@link IconImageBytes}; {@link #publish} does not decode arbitrary bytes), and a read checks
+ *       only size and format signature, so an empty, oversized or wrongly signed file is a miss; not
+ *       every possible corruption is detected on every hit.</li>
+ *   <li>{@link #publish} publishes atomically within one directory, so a reader never observes a
+ *       partial file, and it never overwrites an entry that is already committed.</li>
  *   <li>A hit needs no upstream request and no live metadata.</li>
  * </ul>
  *
