@@ -5,7 +5,6 @@ import java.util.*;
 public class CraftingGraph {
 
     private final List<Recipe> recipes;
-    private final Map<Integer, List<Recipe>> recipesByOutput;
     private final Map<Integer, List<Recipe>> recipesByIngredient;
     private final Map<Integer, String> itemNames;
 
@@ -16,29 +15,18 @@ public class CraftingGraph {
     public CraftingGraph(List<Recipe> recipes, Map<Integer, String> itemNames) {
         this.recipes = List.copyOf(recipes);
         this.itemNames = Map.copyOf(itemNames);
-        Map<Integer, List<Recipe>> byOutput = new HashMap<>();
         Map<Integer, List<Recipe>> byIngredient = new HashMap<>();
 
         for (Recipe recipe : this.recipes) {
-            byOutput.computeIfAbsent(recipe.outputItemId, k -> new ArrayList<>()).add(recipe);
             for (Ingredient ingredient : recipe.ingredients) {
                 byIngredient.computeIfAbsent(ingredient.itemId, k -> new ArrayList<>()).add(recipe);
             }
         }
-        this.recipesByOutput = freeze(byOutput);
         this.recipesByIngredient = freeze(byIngredient);
     }
 
     public List<Recipe> getRecipes() {
         return recipes;
-    }
-
-    public Map<Integer, List<Recipe>> getRecipesByOutput() {
-        return recipesByOutput;
-    }
-
-    public Map<Integer, List<Recipe>> getRecipesByIngredient() {
-        return recipesByIngredient;
     }
 
     public Map<Integer, String> getItemNames() {
