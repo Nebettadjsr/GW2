@@ -96,7 +96,7 @@ public final class AccountSessions {
         AccountContext context = new AccountContext(proof.accountId(), proof.grants(),
                 proof.endpointRestrictions(), accessContext, expiresAt);
         purgeExpired(now);
-        byVerifier.put(verifierOf(sessionId), new SessionEntry(context, now, false));
+        byVerifier.put(verifierOf(sessionId), new SessionEntry(context, false));
         return new Issued(sessionId, context);
     }
 
@@ -136,7 +136,7 @@ public final class AccountSessions {
         for (var e : byVerifier.entrySet()) {
             SessionEntry entry = e.getValue();
             if (entry.context().accountId().equalsIgnoreCase(accountId)) {
-                e.setValue(new SessionEntry(entry.context(), entry.provedAt(), true));
+                e.setValue(new SessionEntry(entry.context(), true));
                 count++;
             }
         }
@@ -202,6 +202,5 @@ public final class AccountSessions {
                 presented.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** @param provedAt validation time, kept for diagnostics; the authority on lifetime is the expiry. */
-    private record SessionEntry(AccountContext context, Instant provedAt, boolean invalidated) {}
+    private record SessionEntry(AccountContext context, boolean invalidated) {}
 }

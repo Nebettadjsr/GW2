@@ -24,13 +24,9 @@ public record AccountContext(String accountId,
                              String accessContext,
                              Instant expiresAt) {
 
-    public AccountContext(String accountId, Set<AccountGrant> grants, Set<String> endpointRestrictions,
-                          String accessContext, Instant expiresAt) {
-        this.accountId = accountId;
-        this.grants = Set.copyOf(grants);
-        this.endpointRestrictions = Set.copyOf(endpointRestrictions);
-        this.accessContext = accessContext;
-        this.expiresAt = expiresAt;
+    public AccountContext {
+        grants = Set.copyOf(grants);
+        endpointRestrictions = Set.copyOf(endpointRestrictions);
     }
 
     /** True only when every grant and endpoint the operation consumes is covered by this scope. */

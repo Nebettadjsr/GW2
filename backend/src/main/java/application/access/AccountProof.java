@@ -19,11 +19,8 @@ public record AccountProof(String accountId,
                            Set<String> endpointRestrictions,
                            Instant credentialExpiresAt) {
 
-    public AccountProof(String accountId, Set<AccountGrant> grants, Set<String> endpointRestrictions,
-                        Instant credentialExpiresAt) {
-        this.accountId = accountId;
-        this.grants = Set.copyOf(grants);
-        this.endpointRestrictions = Set.copyOf(endpointRestrictions);
-        this.credentialExpiresAt = credentialExpiresAt;
+    public AccountProof {
+        grants = Set.copyOf(grants);
+        endpointRestrictions = Set.copyOf(endpointRestrictions);
     }
 }
