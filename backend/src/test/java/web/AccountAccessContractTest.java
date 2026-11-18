@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * The application context must provide an offline GW2 proof adapter in test configuration.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-        properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.test-fixtures=true"})
+        properties = {"gw2.account-access.test-fixtures=true"})
 @AutoConfigureMockMvc
 class AccountAccessContractTest {
     private static final String ORIGIN = "http://localhost";

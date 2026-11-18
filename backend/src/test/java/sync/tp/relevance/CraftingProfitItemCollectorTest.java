@@ -1,8 +1,10 @@
 package sync.tp.relevance;
 
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import model.AccountScope;
 import repo.EnvConfig;
 
 import java.sql.Connection;
@@ -34,6 +36,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CraftingProfitItemCollectorTest {
 
     private final String schema = "test_profit_relevance_" + UUID.randomUUID().toString().replace("-", "");
+    private static final String ACCOUNT = "10000000-0000-0000-0000-00000000000a";
+    private static final String OTHER = "10000000-0000-0000-0000-00000000000b";
+    private static final AccountScope SCOPE = AccountScope.of(ACCOUNT);
     private Connection con;
 
     @BeforeEach
@@ -46,32 +51,29 @@ class CraftingProfitItemCollectorTest {
             statement.execute("CREATE SCHEMA " + schema);
         }
         con.setSchema(schema);
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema)
+                .locations("classpath:db/migration").load().migrate();
         try (Statement statement = con.createStatement()) {
-            statement.execute("CREATE TABLE account_recipes (recipe_id int PRIMARY KEY)");
-            statement.execute("CREATE TABLE character_recipes (character_id int, recipe_id int)");
-            statement.execute("CREATE TABLE recipes (recipe_id int PRIMARY KEY, output_item_id int)");
-            statement.execute("CREATE TABLE recipe_ingredients (recipe_id int, item_id int)");
-            statement.execute("CREATE TABLE tp_tradeable_items (item_id int PRIMARY KEY)");
-            statement.execute("""
-                CREATE TABLE tp_prices (
-                    item_id         int PRIMARY KEY,
-                    buy_quantity    bigint,
-                    buy_unit_price  int,
-                    sell_quantity   bigint,
-                    sell_unit_price int,
-                    fetched_at      timestamptz
-                )
-                """);
+            statement.execute("INSERT INTO account_registry (account_id) VALUES ('" + ACCOUNT + "'), ('" + OTHER + "')");
+            statement.execute("INSERT INTO items (item_id, name) SELECT g, 'Item ' || g FROM generate_series(1, 60) g");
+            statement.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('"
+                    + ACCOUNT + "', 7, 'Crafter'), ('" + OTHER + "', 8, 'Other')");
 
             // Recipe 1 is unlocked on the account, recipe 2 is learned by a character, recipe 3 is
-            // neither - so item 40 must stay out of both answers.
-            statement.execute("INSERT INTO account_recipes VALUES (1)");
-            statement.execute("INSERT INTO character_recipes VALUES (7, 2)");
-            statement.execute("INSERT INTO recipes VALUES (1, 10), (2, 20), (3, 40)");
-            statement.execute("INSERT INTO recipe_ingredients VALUES (1, 11), (2, 21), (3, 41)");
+            // neither - so item 40 must stay out of the account's answers. Recipe 4 belongs to another
+            // account only: its item 50 must never enter this account's required set.
+            statement.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + ACCOUNT + "', 1)");
+            statement.execute("INSERT INTO character_recipes (account_id, character_id, recipe_id) VALUES ('"
+                    + ACCOUNT + "', 7, 2)");
+            statement.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + OTHER + "', 4)");
+            statement.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (1, 10), (2, 20), (3, 40), (4, 50)");
+            statement.execute("INSERT INTO recipe_ingredients (recipe_id, item_id) VALUES (1, 11), (2, 21), (3, 41)");
             // Item 12 is relevant but not tradeable, so it is outside the required set entirely.
-            statement.execute("INSERT INTO recipe_ingredients VALUES (1, 12)");
-            statement.execute("INSERT INTO tp_tradeable_items VALUES (10), (11), (20), (21), (40), (41)");
+            statement.execute("INSERT INTO recipe_ingredients (recipe_id, item_id) VALUES (1, 12)");
+            statement.execute("INSERT INTO tp_tradeable_items (item_id) VALUES (10), (11), (20), (21), (40), (41), (50)");
 
             // 10 fresh; 11 stale; 20 has a row with no fetch instant at all; 21 has no row.
             statement.execute("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, "
@@ -96,7 +98,7 @@ class CraftingProfitItemCollectorTest {
 
     @Test
     void refreshSelectsEveryRelevantTradeableItemWhoseQuoteIsStaleOrAbsent() throws Exception {
-        Set<Integer> selected = new CraftingProfitItemCollector().collect(con);
+        Set<Integer> selected = new CraftingProfitItemCollector().collect(con, SCOPE);
 
         assertEquals(Set.of(11, 20, 21), selected,
                 "stale, undated and never-fetched relevant tradeable items, and nothing else");
@@ -109,7 +111,7 @@ class CraftingProfitItemCollectorTest {
     @Test
     void coverageDescribesTheSameRequiredSetAndCountsAbsentQuotesAsUncovered() throws Exception {
         CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-        CraftingProfitItemCollector.Coverage coverage = collector.coverage(con);
+        CraftingProfitItemCollector.Coverage coverage = collector.coverage(con, SCOPE);
 
         assertEquals(4, coverage.requiredItems(),
                 "items 10, 11, 20 and 21: the relevant tradeable set, the same one refresh reads");
@@ -119,7 +121,7 @@ class CraftingProfitItemCollectorTest {
                 "item 20 has no fetch instant and item 21 has no row: neither is an answered price");
         assertEquals(coverage.staleItems() + coverage.missingItems(), coverage.uncoveredItems());
         assertFalse(coverage.covered());
-        assertEquals(collector.collect(con).size(), coverage.uncoveredItems(),
+        assertEquals(collector.collect(con, SCOPE).size(), coverage.uncoveredItems(),
                 "a reported gap must be exactly what the admitted refresh would fetch");
     }
 
@@ -131,34 +133,34 @@ class CraftingProfitItemCollectorTest {
         }
 
         CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-        CraftingProfitItemCollector.Coverage coverage = collector.coverage(con);
+        CraftingProfitItemCollector.Coverage coverage = collector.coverage(con, SCOPE);
 
         assertTrue(coverage.covered());
         assertEquals(4, coverage.requiredItems());
         assertEquals(4, coverage.freshItems());
         assertEquals(0, coverage.uncoveredItems());
-        assertEquals(Set.of(), collector.collect(con), "nothing left to fetch");
+        assertEquals(Set.of(), collector.collect(con, SCOPE), "nothing left to fetch");
     }
 
     @Test
     void newlyRelevantItemsEnterTheRequiredSetAsSoonAsAccountKnowledgeChanges() throws Exception {
         CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-        assertEquals(4, collector.coverage(con).requiredItems());
+        assertEquals(4, collector.coverage(con, SCOPE).requiredItems());
 
         // The account learns recipe 3: its output and ingredient become required, and neither has a
         // quote, so the set cannot be reported as covered until they are fetched.
         try (Statement statement = con.createStatement()) {
             statement.execute("UPDATE tp_prices SET fetched_at = now() WHERE item_id IN (10, 11, 20)");
             statement.execute("INSERT INTO tp_prices (item_id, fetched_at) VALUES (21, now())");
-            statement.execute("INSERT INTO account_recipes VALUES (3)");
+            statement.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + ACCOUNT + "', 3)");
         }
 
-        CraftingProfitItemCollector.Coverage coverage = collector.coverage(con);
+        CraftingProfitItemCollector.Coverage coverage = collector.coverage(con, SCOPE);
         assertEquals(6, coverage.requiredItems());
         assertEquals(2, coverage.missingItems());
         assertFalse(coverage.covered(),
                 "changed account inputs that add relevant ids must prevent a final result");
-        assertEquals(Set.of(40, 41), collector.collect(con),
+        assertEquals(Set.of(40, 41), collector.collect(con, SCOPE),
                 "and the refresh must select exactly those new ids");
     }
 
@@ -166,15 +168,15 @@ class CraftingProfitItemCollectorTest {
     void twoReadsOfUnchangedQuotesReportTheSameQuoteVersion() throws Exception {
         CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
 
-        assertEquals(collector.coverage(con).quoteVersion(), collector.coverage(con).quoteVersion(),
+        assertEquals(collector.coverage(con, SCOPE).quoteVersion(), collector.coverage(con, SCOPE).quoteVersion(),
                 "an unchanged generation must keep its identity, or every request would look new");
-        assertNotNull(collector.coverage(con).quoteVersion());
+        assertNotNull(collector.coverage(con, SCOPE).quoteVersion());
     }
 
     @Test
     void rewritingOneQuotesNumbersChangesTheQuoteVersionAndNoAggregate() throws Exception {
         CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-        CraftingProfitItemCollector.Coverage before = collector.coverage(con);
+        CraftingProfitItemCollector.Coverage before = collector.coverage(con, SCOPE);
 
         // Item 10's market moved and was refetched under the same instant: nothing the counts or the
         // oldest/newest boundaries report can change, but the calculation now reads a different
@@ -183,7 +185,7 @@ class CraftingProfitItemCollectorTest {
             statement.execute("UPDATE tp_prices SET sell_unit_price = 151 WHERE item_id = 10");
         }
 
-        CraftingProfitItemCollector.Coverage after = collector.coverage(con);
+        CraftingProfitItemCollector.Coverage after = collector.coverage(con, SCOPE);
 
         assertEquals(before.requiredItems(), after.requiredItems());
         assertEquals(before.freshItems(), after.freshItems());
@@ -204,14 +206,14 @@ class CraftingProfitItemCollectorTest {
                     + "WHERE item_id = 20");
         }
         CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-        CraftingProfitItemCollector.Coverage before = collector.coverage(con);
+        CraftingProfitItemCollector.Coverage before = collector.coverage(con, SCOPE);
 
         try (Statement statement = con.createStatement()) {
             statement.execute("UPDATE tp_prices SET fetched_at = now() - interval '30 minutes' "
                     + "WHERE item_id = 20");
         }
 
-        CraftingProfitItemCollector.Coverage after = collector.coverage(con);
+        CraftingProfitItemCollector.Coverage after = collector.coverage(con, SCOPE);
 
         assertEquals(before.requiredItems(), after.requiredItems());
         assertEquals(before.freshItems(), after.freshItems());
@@ -226,16 +228,32 @@ class CraftingProfitItemCollectorTest {
     @Test
     void anEmptyRelevantSetIsReportedAsCoveredWithNoQuoteInstants() throws Exception {
         try (Statement statement = con.createStatement()) {
-            statement.execute("DELETE FROM account_recipes");
-            statement.execute("DELETE FROM character_recipes");
+            statement.execute("DELETE FROM account_recipes WHERE account_id = '" + ACCOUNT + "'");
+            statement.execute("DELETE FROM character_recipes WHERE account_id = '" + ACCOUNT + "'");
         }
 
-        CraftingProfitItemCollector.Coverage coverage = new CraftingProfitItemCollector().coverage(con);
+        CraftingProfitItemCollector.Coverage coverage = new CraftingProfitItemCollector().coverage(con, SCOPE);
 
         assertEquals(0, coverage.requiredItems());
         assertTrue(coverage.covered(), "nothing is required, so nothing is uncovered");
         assertNull(coverage.oldestFetchedAt());
         assertNull(coverage.newestFetchedAt());
         assertNull(coverage.quoteVersion(), "no relevant quote was read, so there is none to version");
+    }
+
+    @Test
+    void anotherAccountsKnowledgeNeverEntersTheRequiredSetAndGlobalSelectionNeedsNoAccount() throws Exception {
+        CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
+
+        assertFalse(collector.collect(con, SCOPE).contains(50), "another account's recipe knowledge is not ours");
+        assertEquals(Set.of(50), collector.collect(con, AccountScope.of(OTHER)));
+        assertEquals(Set.of(11, 20, 21, 40, 41, 50), collector.collectGlobal(con),
+                "the global selection is the whole shared graph's stale and absent tradeable quotes");
+
+        try (Statement statement = con.createStatement()) {
+            statement.execute("DELETE FROM account_registry");
+        }
+        assertEquals(Set.of(11, 20, 21, 40, 41, 50), collector.collectGlobal(con),
+                "an empty account registry neither empties nor changes the global selection");
     }
 }

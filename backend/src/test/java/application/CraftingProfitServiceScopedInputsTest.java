@@ -116,9 +116,6 @@ class CraftingProfitServiceScopedInputsTest {
         @Override public List<Recipe> loadRecipes(Connection con, AccountScope scope, String discipline) {
             return scope.equals(A) ? List.of(RECIPE) : List.of();
         }
-        @Override public List<Recipe> loadRecipes(Connection con, String discipline) {
-            throw new AssertionError("unscoped recipe read");
-        }
     }
 
     private static final class ScopedInventory extends InventoryRepository {
@@ -126,17 +123,11 @@ class CraftingProfitServiceScopedInputsTest {
                                                                               Set<String> names) {
             return new CoordinatedInventory(Map.of(200, scope.equals(A) ? 5 : 1), Map.of(), Map.of());
         }
-        @Override public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, Set<String> names) {
-            throw new AssertionError("unscoped inventory read");
-        }
     }
 
     private static final class ScopedCharacters extends CharacterRepository {
         @Override public List<DiscRow> loadAllCharacterCrafting(Connection con, AccountScope scope) {
             return List.of(new DiscRow(scope.equals(A) ? "Aria" : "Bran", "Artificer", 400, true));
-        }
-        @Override public List<DiscRow> loadAllCharacterCrafting(Connection con) {
-            throw new AssertionError("unscoped roster read");
         }
     }
 

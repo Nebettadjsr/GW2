@@ -39,12 +39,6 @@ public final class DiscoveryItemCollector {
         WHERE
         """ + TpPriceFreshness.STALE_SQL_PREDICATE;
 
-    /** Unlocks across every account, the exclusion set the unscoped definition reads. */
-    private static final String ALL_ACCOUNTS_UNLOCKS = """
-            SELECT recipe_id FROM account_recipes
-            UNION
-            SELECT DISTINCT recipe_id FROM character_recipes""";
-
     /** One account's unlocks; two bind parameters, both that account's GUID. */
     private static final String SCOPED_UNLOCKS = """
             SELECT recipe_id FROM account_recipes WHERE account_id = ?
@@ -59,8 +53,6 @@ public final class DiscoveryItemCollector {
      */
     private static final String NO_UNLOCKS = "    SELECT NULL::integer AS recipe_id WHERE false";
 
-    private static final String SQL = SQL_TEMPLATE.formatted(ALL_ACCOUNTS_UNLOCKS);
-
     /**
      * The same definition for one account. "Not yet unlocked" is an account-owned
      * fact, so the exclusion set must be this account's unlocks: another account's knowledge may
@@ -72,17 +64,6 @@ public final class DiscoveryItemCollector {
 
     /** @see #NO_UNLOCKS */
     private static final String GLOBAL_SQL = SQL_TEMPLATE.formatted(NO_UNLOCKS);
-
-    public Set<Integer> collect(Connection con) throws Exception {
-        // "Not yet unlocked" is an account-owned fact on a migrated database.
-        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Discovery price relevance without an account scope");
-        Set<Integer> itemIds = new HashSet<>();
-        try (PreparedStatement ps = con.prepareStatement(SQL);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) itemIds.add(rs.getInt(1));
-        }
-        return itemIds;
-    }
 
     /**
      * The Discovery-relevant item ids whose stored quote is stale or absent, over shared data only:

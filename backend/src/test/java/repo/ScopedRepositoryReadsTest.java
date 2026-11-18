@@ -226,14 +226,9 @@ class ScopedRepositoryReadsTest {
     }
 
     @Test
-    void scopedAndUnscopedInventoryPathsAreMutuallyRefusedOnTheWrongSchema() throws Exception {
+    void scopedReadsRefuseALegacySchemaWithoutAccountId() throws Exception {
         InventoryRepository repo = new InventoryRepository();
-        // retired unscoped compatibility reads are refused on the managed schema, not re-enabled
-        assertThrows(SQLException.class, () -> repo.loadOwnedInventory(con));
-        assertThrows(SQLException.class, () -> repo.loadOwnedInventoryForCharacter(con, "Alice"));
-        assertThrows(SQLException.class, () -> repo.loadOwnedInventoryForCharacters(con, Set.of("Alice")));
-
-        // and the scoped reads refuse a legacy schema that has no account_id to scope by
+        // the scoped reads refuse a legacy schema that has no account_id to scope by
         String legacy = schema + "_legacy";
         exec("CREATE SCHEMA " + legacy);
         try {
@@ -272,12 +267,6 @@ class ScopedRepositoryReadsTest {
         assertEquals(1, repo.loadAllCharacterCrafting(con, B).size());
         assertEquals("Shared", repo.loadAllCharacterCrafting(con, B).get(0).charName);
         assertTrue(repo.loadAllCharacterCrafting(con, EMPTY).isEmpty());
-    }
-
-    @Test
-    void unscopedCharacterReadsAreRefusedOnTheManagedSchema() {
-        CharacterRepository repo = new CharacterRepository();
-        assertThrows(SQLException.class, () -> repo.loadAllCharacterCrafting(con));
     }
 
     // ---- RecipeRepository ---------------------------------------------------------------------
@@ -361,14 +350,6 @@ class ScopedRepositoryReadsTest {
         assertEquals(List.of(1, 4), repo.loadMissingDiscoverableRecipeIdsForCharacter(con, B, "Shared", "All"));
         // an account with nothing published is missing every discoverable recipe
         assertEquals(List.of(1, 2, 4), repo.loadMissingDiscoverableRecipeIdsForCharacter(con, EMPTY, "X", "All"));
-    }
-
-    @Test
-    void unscopedRecipeReadsAreRefusedOnTheManagedSchema() {
-        RecipeRepository repo = new RecipeRepository();
-        assertThrows(SQLException.class, () -> repo.loadRecipes(con, "All"));
-        assertThrows(SQLException.class, () -> repo.loadRecipesForCharacter(con, "Alice", "Cook"));
-        assertThrows(SQLException.class, () -> repo.loadMissingDiscoverableRecipeIdsForCharacter(con, "Alice", "Cook"));
     }
 
     @Test

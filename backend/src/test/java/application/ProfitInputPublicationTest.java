@@ -1,9 +1,14 @@
 package application;
 
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import repo.AccountSyncStateRepository;
+import repo.AccountSourcePublication;
+import repo.AccountSourceStateRepository;
+import repo.AccountSourceStateRepository.SourceState;
+import repo.Db;
 import repo.EnvConfig;
 
 import java.sql.Connection;
@@ -11,44 +16,46 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * STORY-APP-014 acceptance criterion 4, database half: the publication protocol the captured read
- * view relies on, verified against a real PostgreSQL in a disposable schema.
+ * STORY-APP-014 acceptance criterion 4, database half, through the production boundaries: a real
+ * {@link ProfitInputSession#open(AccountScope)} snapshot, the real {@link AccountSourcePublication}
+ * writer and the real {@link AccountSourceStateRepository} marker, on the production Flyway chain in
+ * a disposable schema. The source is {@code BANK}; its rows are {@code account_bank} item ids.
  *
- * <p>Two things are proved here, because the mechanism is only as good as the database's part of it:
+ * <p>Characterised policy: {@code open(scope)} records the authorized use <em>before</em> it pins the
+ * snapshot, so it may wait for a registry write. The in-flight case opens its sessions before the
+ * writer begins; their snapshots are established by their first reads, during or after publication.
  *
- * <ul>
- *   <li>A reader that captures its inputs the way {@link ProfitInputSession} does — one
- *       {@code REPEATABLE READ} transaction for the markers <em>and</em> the data — cannot observe a
- *       refresh's part-written rows next to the previous run's completion marker, and cannot mix
- *       generations between its own reads, no matter what commits while it reads.</li>
- *   <li>A refresh that fails part-way leaves the whole previous generation and its marker readable,
- *       because a source's data and its marker are written in one transaction. This is the
- *       behaviour {@code sync.CharacterSync} was changed to have: it used to commit per character
- *       and mark afterwards, so a concurrent reader could see some characters replaced while the
- *       marker still named the older run.</li>
- * </ul>
+ * <p>Mapping of the earlier probe-table assertions: pinned generation across a later commit
+ * ({@code aPinnedSessionKeepsOneWholeGeneration...}), in-flight refresh invisible
+ * ({@code aFirstReadDuringAnInFlightPublication...}), failed refresh keeps the prior generation
+ * ({@code aFailedPublication...}), successful empty is a version ({@code aSuccessfulEmpty...}).
  *
- * <p>The {@code probe_rows} table stands in for any one source's rows; the invariant is about the
- * transaction boundary, not about which columns a source has. Nothing here touches the developer's
- * own schema: every statement runs inside a schema created and dropped by this test.
+ * <p>{@link Db#TEST_SCHEMA_PROPERTY} points only at this test's own schema and is cleared afterwards.
  */
 class ProfitInputPublicationTest {
 
-    private static final String SOURCE = AccountSyncStateRepository.CHARACTERS;
-    private static final Instant GENERATION_ONE = Instant.parse("2026-10-12T09:00:00Z");
-    private static final Instant GENERATION_TWO = Instant.parse("2026-10-12T10:00:00Z");
+    private static final AccountScope SCOPE = AccountScope.of("10000000-0000-0000-0000-000000000001");
+    private static final String SOURCE = "BANK";
+    private static final Instant T1 = Instant.parse("2026-10-12T09:00:00Z");
+    private static final Instant T2 = Instant.parse("2026-10-12T10:00:00Z");
 
     private final String schema = "test_profit_publication_" + UUID.randomUUID().toString().replace("-", "");
+    private final AccountSourceStateRepository states = new AccountSourceStateRepository();
     private Connection admin;
 
     @BeforeEach
@@ -57,16 +64,17 @@ class ProfitInputPublicationTest {
         try (Statement statement = admin.createStatement()) {
             statement.execute("CREATE SCHEMA " + schema);
         }
+        Flyway.configure().dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema).locations("classpath:db/migration").load().migrate();
         admin.setSchema(schema);
-        AccountSyncStateRepository.ensure(admin);
-        try (Statement statement = admin.createStatement()) {
-            statement.execute("CREATE TABLE probe_rows (name text PRIMARY KEY)");
-        }
-        publishGeneration(GENERATION_ONE, List.of("first-a", "first-b"), true);
+        System.setProperty(Db.TEST_SCHEMA_PROPERTY, schema);
+        publish(T1, List.of(1, 2), null);
     }
 
     @AfterEach
     void tearDown() throws Exception {
+        System.clearProperty(Db.TEST_SCHEMA_PROPERTY);
         if (admin == null) return;
         try (Statement statement = admin.createStatement()) {
             statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
@@ -76,133 +84,136 @@ class ProfitInputPublicationTest {
     }
 
     @Test
-    void aCapturedReadViewNeverPairsPartlyWrittenRowsWithAnOlderSuccessfulMarker() throws Exception {
-        try (Connection reader = captureSession()) {
-            // First read establishes the snapshot, exactly as a calculation's first input read does.
-            assertEquals(GENERATION_ONE, markerOn(reader).orElseThrow());
-            assertEquals(List.of("first-a", "first-b"), rowsOn(reader));
+    void aPinnedSessionKeepsOneWholeGenerationWhileAnotherPublicationCommits() throws Exception {
+        try (ProfitInputSession pinned = ProfitInputSession.open(SCOPE)) {
+            assertEquals(1L, marker(pinned).generation());
+            assertEquals(List.of(1, 2), rows(pinned));
 
-            // A whole new generation is published while the reader is still reading.
-            publishGeneration(GENERATION_TWO, List.of("second-a", "second-b", "second-c"), true);
+            publish(T2, List.of(7, 8, 9), null);
 
-            assertEquals(GENERATION_ONE, markerOn(reader).orElseThrow(),
-                    "the captured view must not jump to a version published after it started");
-            assertEquals(List.of("first-a", "first-b"), rowsOn(reader),
-                    "and must not read the newer rows under the older marker either");
+            SourceState after = marker(pinned);
+            assertEquals(1L, after.generation(), "the pinned view must not jump to a later generation");
+            assertEquals(T1, after.completedAt());
+            assertEquals(List.of(1, 2), rows(pinned), "nor read newer rows under the older marker");
         }
 
-        try (Connection next = captureSession()) {
-            assertEquals(GENERATION_TWO, markerOn(next).orElseThrow(),
-                    "a request that starts afterwards captures the new generation whole");
-            assertEquals(List.of("second-a", "second-b", "second-c"), rowsOn(next));
+        try (ProfitInputSession next = ProfitInputSession.open(SCOPE)) {
+            assertEquals(2L, marker(next).generation(), "a later session captures the new generation whole");
+            assertEquals(T2, marker(next).completedAt());
+            assertEquals(List.of(7, 8, 9), rows(next));
         }
     }
 
     @Test
-    void aReaderThatStartsMidRefreshSeesTheWholeOldGenerationOrTheWholeNewOne() throws Exception {
-        // The refresh has written its rows and its marker but has not committed: nothing is
-        // published yet, so a reader starting now must see the previous generation complete.
-        try (Connection refresher = connect()) {
-            refresher.setSchema(schema);
-            refresher.setAutoCommit(false);
-            replaceRows(refresher, List.of("uncommitted-a"));
-            AccountSyncStateRepository.mark(refresher, SOURCE, GENERATION_TWO);
+    void aFirstReadDuringAnInFlightPublicationSeesTheWholeOldGenerationThenTheWholeNewOne() throws Exception {
+        CountDownLatch written = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (ProfitInputSession early = ProfitInputSession.open(SCOPE);
+             ProfitInputSession late = ProfitInputSession.open(SCOPE)) {
+            CompletableFuture<Void> writer = CompletableFuture.runAsync(() -> {
+                try {
+                    publish(T2, List.of(7, 8, 9), () -> {
+                        written.countDown();
+                        if (!release.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("not released");
+                    });
+                } catch (Exception failure) {
+                    throw new IllegalStateException(failure);
+                }
+            });
+            try {
+                assertTrue(written.await(30, TimeUnit.SECONDS), "the writer reached its held callback");
 
-            try (Connection reader = captureSession()) {
-                assertEquals(GENERATION_ONE, markerOn(reader).orElseThrow());
-                assertEquals(List.of("first-a", "first-b"), rowsOn(reader),
-                        "an in-flight refresh must be invisible until it publishes");
+                // Neither session has read yet, so their snapshots start here, mid-publication.
+                assertEquals(1L, marker(early).generation(), "the in-flight generation has no marker yet");
+                assertEquals(List.of(1, 2), rows(early), "and none of its rows are visible");
+            } finally {
+                release.countDown();
             }
+            writer.get(30, TimeUnit.SECONDS);
 
-            refresher.commit();
-        }
-
-        try (Connection reader = captureSession()) {
-            assertEquals(GENERATION_TWO, markerOn(reader).orElseThrow());
-            assertEquals(List.of("uncommitted-a"), rowsOn(reader),
-                    "once published, the data and its version appear together");
+            assertEquals(1L, marker(early).generation(), "the snapshot taken mid-publication stays old");
+            assertEquals(List.of(1, 2), rows(early));
+            assertEquals(2L, marker(late).generation(), "a snapshot first read after commit sees the new one");
+            assertEquals(List.of(7, 8, 9), rows(late));
         }
     }
 
     @Test
-    void aFailedRefreshLeavesTheCompletePriorGenerationAndItsMarkerIntact() throws Exception {
-        publishGeneration(GENERATION_TWO, List.of("doomed-a", "doomed-b"), false);
+    void aFailedPublicationKeepsTheCompletePriorGenerationAndItsMarker() throws Exception {
+        assertThrows(IllegalStateException.class, () -> publish(T2, List.of(7, 8), () -> {
+            throw new IllegalStateException("upstream failed after rows were written");
+        }));
 
-        try (Connection reader = captureSession()) {
-            assertEquals(GENERATION_ONE, markerOn(reader).orElseThrow(),
-                    "a failed refresh must not advance the completion marker");
-            assertEquals(List.of("first-a", "first-b"), rowsOn(reader),
-                    "and must not leave any of its rows behind");
+        try (ProfitInputSession session = ProfitInputSession.open(SCOPE)) {
+            SourceState state = marker(session);
+            assertEquals(1L, state.generation(), "a failed publication must not advance the generation");
+            assertEquals(T1, state.completedAt());
+            assertEquals(List.of(1, 2), rows(session), "and must leave none of its rows behind");
         }
     }
 
     @Test
-    void aSourceThatSynchronizedSuccessfullyWithNoRowsIsStillAPublishedVersion() throws Exception {
-        publishGeneration(GENERATION_TWO, List.of(), true);
+    void aSuccessfulEmptyPublicationIsAPublishedGeneration() throws Exception {
+        publish(T2, List.of(), null);
 
-        try (Connection reader = captureSession()) {
-            assertEquals(GENERATION_TWO, markerOn(reader).orElseThrow(),
-                    "synchronized emptiness is a version, not an absent source");
-            assertEquals(List.of(), rowsOn(reader));
-            assertTrue(markerOn(reader).isPresent());
+        try (ProfitInputSession session = ProfitInputSession.open(SCOPE)) {
+            SourceState state = marker(session);
+            assertEquals(2L, state.generation(), "synchronized emptiness is a version, not an absent source");
+            assertEquals(T2, state.completedAt());
+            assertEquals(List.of(), rows(session));
         }
     }
 
     // ---------- fixtures ----------
 
-    /**
-     * Writes one source's rows and its completion marker in a single transaction, as every account
-     * source's refresh does, and either publishes it or rolls the whole generation back.
-     */
-    private void publishGeneration(Instant version, List<String> rows, boolean commit) throws Exception {
+    @FunctionalInterface
+    private interface Hold {
+        void run() throws Exception;
+    }
+
+    /** Publishes BANK through the production publication; {@code hold} runs after the rows are written. */
+    private void publish(Instant completion, List<Integer> itemIds, Hold hold) throws Exception {
         try (Connection writer = connect()) {
             writer.setSchema(schema);
-            writer.setAutoCommit(false);
-            try {
-                replaceRows(writer, rows);
-                AccountSyncStateRepository.mark(writer, SOURCE, version);
-                if (commit) writer.commit();
-                else writer.rollback();
-            } catch (Exception failure) {
-                writer.rollback();
-                throw failure;
+            new AccountSourcePublication(Clock.fixed(completion, ZoneOffset.UTC))
+                    .publish(writer, SCOPE, SOURCE, (con, scope, runTs) -> {
+                        try (PreparedStatement delete = con.prepareStatement(
+                                "DELETE FROM account_bank WHERE account_id = ?::uuid")) {
+                            delete.setString(1, scope.accountId().toString());
+                            delete.executeUpdate();
+                        }
+                        try (PreparedStatement insert = con.prepareStatement(
+                                "INSERT INTO account_bank (account_id, slot, item_id, count, fetched_at)"
+                                        + " VALUES (?::uuid, ?, ?, 1, ?)")) {
+                            int slot = 0;
+                            for (int itemId : itemIds) {
+                                insert.setString(1, scope.accountId().toString());
+                                insert.setInt(2, slot++);
+                                insert.setInt(3, itemId);
+                                insert.setTimestamp(4, runTs);
+                                insert.addBatch();
+                            }
+                            insert.executeBatch();
+                        }
+                        if (hold != null) hold.run();
+                    });
+        }
+    }
+
+    private SourceState marker(ProfitInputSession session) throws Exception {
+        return states.read(session.connection(), session.scope(), SOURCE).orElseThrow();
+    }
+
+    private static List<Integer> rows(ProfitInputSession session) throws Exception {
+        List<Integer> ids = new ArrayList<>();
+        try (PreparedStatement ps = session.connection().prepareStatement(
+                "SELECT item_id FROM account_bank WHERE account_id = ?::uuid ORDER BY slot")) {
+            ps.setString(1, session.scope().accountId().toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
             }
         }
-    }
-
-    private static void replaceRows(Connection con, List<String> rows) throws Exception {
-        try (Statement statement = con.createStatement()) {
-            statement.executeUpdate("DELETE FROM probe_rows");
-        }
-        try (PreparedStatement ps = con.prepareStatement("INSERT INTO probe_rows(name) VALUES (?)")) {
-            for (String row : rows) {
-                ps.setString(1, row);
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        }
-    }
-
-    /** A connection configured the way {@link ProfitInputSession#open()} configures its own. */
-    private Connection captureSession() throws Exception {
-        Connection con = connect();
-        con.setSchema(schema);
-        con.setAutoCommit(false);
-        con.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-        return con;
-    }
-
-    private static Optional<Instant> markerOn(Connection con) throws Exception {
-        return new AccountSyncStateRepository().lookup(con, SOURCE);
-    }
-
-    private static List<String> rowsOn(Connection con) throws Exception {
-        List<String> names = new ArrayList<>();
-        try (Statement statement = con.createStatement();
-             ResultSet rs = statement.executeQuery("SELECT name FROM probe_rows ORDER BY name")) {
-            while (rs.next()) names.add(rs.getString(1));
-        }
-        return names;
+        return ids;
     }
 
     private static Connection connect() throws Exception {

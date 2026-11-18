@@ -40,7 +40,7 @@ class ItemReadApiControllerTest {
     void returnsApplicationIconUrlAndNullForUnknownItem() throws Exception {
         var service = new ItemReadService(null, null, null) {
             @Override public Map<Integer, ItemRepository.ItemInfo> metadata(Set<Integer> ids) {
-                return Map.of(19721, new ItemRepository.ItemInfo(19721, "Glob of Ectoplasm", null, ICON_SOURCE));
+                return Map.of(19721, new ItemRepository.ItemInfo(19721, "Glob of Ectoplasm", ICON_SOURCE));
             }
         };
         var mvc = MockMvcBuilders.standaloneSetup(new ItemReadApiController(service))

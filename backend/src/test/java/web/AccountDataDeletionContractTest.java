@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** STORY-DELETE-001 HTTP mapping; the deletion service is faked so no database or upstream is used. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-        properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.test-fixtures=true"})
+        properties = {"gw2.account-access.test-fixtures=true"})
 @AutoConfigureMockMvc
 class AccountDataDeletionContractTest {
     private static final String ORIGIN = "http://localhost";

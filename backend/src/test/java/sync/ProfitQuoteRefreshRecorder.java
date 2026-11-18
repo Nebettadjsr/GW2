@@ -81,7 +81,7 @@ public class ProfitQuoteRefreshRecorder extends TradingPostPriceRefreshGateway {
         Set<Integer> ids;
         try (Connection con = Db.open()) {
             CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-            ids = new TreeSet<>(scope == null ? collector.collect(con) : collector.collect(con, scope));
+            ids = new TreeSet<>(scope == null ? collector.collectGlobal(con) : collector.collect(con, scope));
         }
         passes.add(Set.copyOf(ids));
 

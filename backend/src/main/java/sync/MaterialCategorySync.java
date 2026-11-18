@@ -3,7 +3,6 @@ package sync;
 import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import repo.Db;
-import repo.MaterialStorageSchema;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -27,7 +26,6 @@ public final class MaterialCategorySync {
         JsonNode root = fetcher.get("https://api.guildwars2.com/v2/materials?ids=all");
         List<Category> categories = parse(root);
         try (Connection con = Db.open()) {
-            MaterialStorageSchema.ensure(con);
             con.setAutoCommit(false);
             try {
                 persist(con, categories);

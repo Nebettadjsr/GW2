@@ -6,6 +6,8 @@ import craft.CraftingSettings;
 import craft.Ingredient;
 import craft.PriceQuote;
 import craft.Recipe;
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +47,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class CharacterSelectionCraftingPlanIntegrationTest {
 
+    private static final AccountScope A = AccountScope.of("10000000-0000-0000-0000-00000000000a");
+
     private final String schema = "test_charsel_" + UUID.randomUUID().toString().replace("-", "");
     private Connection con;
 
@@ -63,51 +67,14 @@ class CharacterSelectionCraftingPlanIntegrationTest {
         try (Statement st = con.createStatement()) {
             st.execute("CREATE SCHEMA " + schema);
         }
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema)
+                .locations("classpath:db/migration").load().migrate();
         con.setSchema(schema);
-
         try (Statement st = con.createStatement()) {
-            st.execute("""
-                CREATE TABLE account_materials (
-                    item_id     INTEGER PRIMARY KEY,
-                    category    INTEGER,
-                    count       INTEGER,
-                    binding     TEXT,
-                    fetched_at  TIMESTAMPTZ
-                )
-                """);
-            st.execute("""
-                CREATE TABLE account_bank (
-                    slot        INTEGER PRIMARY KEY,
-                    item_id     INTEGER,
-                    count       INTEGER,
-                    binding     TEXT,
-                    bound_to    TEXT,
-                    charges     INTEGER,
-                    stats_id    INTEGER,
-                    stats_attrs JSONB,
-                    fetched_at  TIMESTAMPTZ
-                )
-                """);
-            st.execute("""
-                CREATE TABLE characters (
-                    character_id BIGSERIAL PRIMARY KEY,
-                    name         TEXT NOT NULL UNIQUE
-                )
-                """);
-            st.execute("""
-                CREATE TABLE character_items (
-                    character_id    BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    location        TEXT NOT NULL,
-                    bag_index       INTEGER,
-                    slot_index      INTEGER,
-                    equipment_slot  TEXT,
-                    item_id         INTEGER NOT NULL,
-                    count           INTEGER NOT NULL DEFAULT 1,
-                    binding         TEXT,
-                    bound_to        TEXT,
-                    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """);
+            st.execute("INSERT INTO account_registry (account_id) VALUES ('10000000-0000-0000-0000-00000000000a')");
         }
     }
 
@@ -140,13 +107,13 @@ class CharacterSelectionCraftingPlanIntegrationTest {
         String otherHero = "Other Hero";
 
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO characters (character_id, name) VALUES (1, '" + selectedHero + "')");
-            st.execute("INSERT INTO characters (character_id, name) VALUES (2, '" + otherHero + "')");
+            st.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('10000000-0000-0000-0000-00000000000a', 1, '" + selectedHero + "')");
+            st.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('10000000-0000-0000-0000-00000000000a', 2, '" + otherHero + "')");
 
             // Soulbound ingredient: only "Selected Hero" owns the 5 units this recipe needs.
             // Per DOMAIN_SPEC.md section 11.1, "Other Hero" must not see this as usable inventory.
-            st.execute("INSERT INTO character_items (character_id, location, bag_index, slot_index, item_id, count, binding, bound_to) " +
-                    "VALUES (1, 'BAG', 0, 0, " + SOULBOUND_ITEM_ID + ", 5, 'Character', '" + selectedHero + "')");
+            st.execute("INSERT INTO character_items (account_id, character_id, location, bag_index, slot_index, item_id, count, binding, bound_to) " +
+                    "VALUES ('10000000-0000-0000-0000-00000000000a', 1, 'BAG', 0, 0, " + SOULBOUND_ITEM_ID + ", 5, 'Character', '" + selectedHero + "')");
         }
 
         Recipe soulboundRecipe = new Recipe(
@@ -172,13 +139,13 @@ class CharacterSelectionCraftingPlanIntegrationTest {
         CraftingPlanner planner = new CraftingPlanner();
 
         Map<Integer, InventoryRepository.OwnedQuantity> ownedBySelected =
-                new InventoryRepository().loadOwnedInventoryForCharacter(con, selectedHero);
+                new InventoryRepository().loadOwnedInventoryForCharacter(con, A, selectedHero);
         Map<Integer, Integer>[] splitSelected = splitLikeController(ownedBySelected);
         Map<Integer, CraftResult> resultsForSelected =
                 planner.evaluateAll(recipes, splitSelected[0], splitSelected[1], tp, settings, allowedRecipeIds);
 
         Map<Integer, InventoryRepository.OwnedQuantity> ownedByOther =
-                new InventoryRepository().loadOwnedInventoryForCharacter(con, otherHero);
+                new InventoryRepository().loadOwnedInventoryForCharacter(con, A, otherHero);
         Map<Integer, Integer>[] splitOther = splitLikeController(ownedByOther);
         Map<Integer, CraftResult> resultsForOther =
                 planner.evaluateAll(recipes, splitOther[0], splitOther[1], tp, settings, allowedRecipeIds);

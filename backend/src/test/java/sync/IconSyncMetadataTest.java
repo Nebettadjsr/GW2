@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,9 +39,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>What §12.1 requires and the original null-only backfill did not establish:
  * <ul>
- *   <li><b>Coverage</b> - every item an item-bearing view can reference is selected: bank slots,
- *       material storage, character inventories, recipe outputs and recipe ingredients, nontradeable
- *       items included, plus anything still missing metadata entirely.</li>
+ *   <li><b>Coverage</b> - every item an item-bearing view can reference is selected: the shared
+ *       material catalog, recipe outputs and recipe ingredients, nontradeable
+ *       items included (account-owned ids are repaired from the account refresh's own ids), plus anything still missing metadata entirely.</li>
  *   <li><b>Reachability</b> (STORY-SYNC-004) - a referenced id with <em>no</em> {@code items} row is
  *       discovered too, and the row is created from the canonical response.</li>
  *   <li><b>Refresh</b> - a URL that <em>changed</em> is written, not only a null one, while valid
@@ -79,27 +80,15 @@ class IconSyncMetadataTest {
         }
         con.setSchema(schema);
 
-        try (Statement st = con.createStatement()) {
-            st.execute("""
-                CREATE TABLE items (
-                    item_id      INTEGER PRIMARY KEY,
-                    name         TEXT,
-                    type         TEXT,
-                    rarity       TEXT,
-                    vendor_value INTEGER,
-                    icon_path    TEXT,
-                    icon_url     TEXT,
-                    fetched_at   TIMESTAMPTZ
-                )
-                """);
-            st.execute("CREATE TABLE account_bank (slot INTEGER PRIMARY KEY, item_id INTEGER, count INTEGER)");
-            st.execute("CREATE TABLE account_materials (item_id INTEGER PRIMARY KEY, category INTEGER, count INTEGER)");
-            st.execute("CREATE TABLE material_category_items (category_id INTEGER, position INTEGER, item_id INTEGER)");
-            st.execute("CREATE TABLE character_items (character_name TEXT, item_id INTEGER, count INTEGER)");
-            st.execute("CREATE TABLE recipes (recipe_id INTEGER PRIMARY KEY, output_item_id INTEGER)");
-            st.execute("CREATE TABLE recipe_ingredients (recipe_id INTEGER, item_id INTEGER, count INTEGER)");
-            st.execute("CREATE TABLE tp_prices (item_id INTEGER PRIMARY KEY, buy_unit_price INTEGER, sell_unit_price INTEGER)");
-        }
+        con.close();
+        Flyway.configure().dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema).locations("classpath:db/migration").load().migrate();
+        con = DriverManager.getConnection(
+                EnvConfig.require("DATABASE_URL"),
+                EnvConfig.require("DATABASE_USER"),
+                EnvConfig.require("DATABASE_PASSWORD"));
+        con.setSchema(schema);
     }
 
     @AfterEach
@@ -116,7 +105,10 @@ class IconSyncMetadataTest {
 
     /**
      * Every item id below already has metadata, so nothing here is selected by the old null-only rule:
-     * whatever the selection returns, it returns because the item is <em>referenced</em>.
+     * whatever the selection returns, it returns because the item is <em>referenced</em>. The
+     * account-owned families (bank, materials, character inventory) are deliberately NOT part of the
+     * global selection: their ids are repaired through {@code repairMissingMetadata}, which an
+     * account refresh calls with the ids it publishes.
      */
     private void seedReferencedItemsThatAllHaveMetadata() throws Exception {
         try (Statement st = con.createStatement()) {
@@ -125,58 +117,61 @@ class IconSyncMetadataTest {
                                    + itemId + ", 'Item " + itemId + "', '" + ECTO_URL + "')");
             }
 
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (1, NULL, NULL)");
-            st.execute("INSERT INTO account_materials (item_id, category, count) VALUES (20, 5, 250)");
-            st.execute("INSERT INTO character_items (character_name, item_id, count) VALUES ('Hero', 30, 1)");
+            st.execute("INSERT INTO material_categories (category_id, name, display_order) VALUES (5, 'Cat', 0)");
+            st.execute("INSERT INTO material_category_items (category_id, position, item_id) VALUES (5, 0, 20)");
             st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (900, 40)");
             st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (901, NULL)");
             st.execute("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (900, 50, 3)");
 
+            // Account-owned references are not global: 10 (bank) and 30 (character) stay out of it.
+            st.execute("INSERT INTO account_registry (account_id) VALUES ('20000000-0000-0000-0000-00000000000a')");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('20000000-0000-0000-0000-00000000000a', 0, 10, 5)");
+            st.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('20000000-0000-0000-0000-00000000000a', 1, 'Hero')");
+            st.execute("INSERT INTO character_items (account_id, character_id, location, item_id, count) VALUES ('20000000-0000-0000-0000-00000000000a', 1, 'INVENTORY', 30, 1)");
             // 60 is referenced by nothing and already has metadata: the one item that must stay out.
         }
     }
 
     @Test
-    void coversEveryItemAnItemBearingViewCanReferenceEvenWhenItAlreadyHasMetadata() throws Exception {
+    void globalSelectionCoversSharedReferencesEvenWhenTheyAlreadyHaveMetadata() throws Exception {
         seedReferencedItemsThatAllHaveMetadata();
 
-        List<Integer> selected = IconSync.referencedOrUnknownItemIds(con);
-
-        assertEquals(List.of(10, 20, 30, 40, 50), selected,
-                     "bank slot, material stack, character inventory, recipe output and recipe "
-                             + "ingredient are all covered; an unreferenced item with metadata is not");
+        assertEquals(List.of(20, 40, 50), IconSync.globalReferencedOrUnknownItemIds(con),
+                     "material catalog entry, recipe output and recipe ingredient are covered; account-owned "
+                             + "references and an unreferenced item with metadata are not");
     }
 
     /**
-     * STORY-SYNC-004's reason for existing: account synchronization stores the id, nothing creates the
+     * STORY-SYNC-004's reason for existing: synchronization stores the id, nothing creates the
      * metadata row, and the old selection read {@code FROM items} - so the id could never be reached.
      */
     @Test
     void aReferencedIdWithNoItemsRowAtAllIsDiscovered() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5)");
-            st.execute("INSERT INTO account_materials (item_id, category, count) VALUES (20, 5, 250)");
-            st.execute("INSERT INTO character_items (character_name, item_id, count) VALUES ('Hero', 30, 1)");
+            st.execute("INSERT INTO material_categories (category_id, name, display_order) VALUES (5, 'Cat', 0)");
+            st.execute("INSERT INTO material_category_items (category_id, position, item_id) VALUES (5, 0, 20)");
             st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (900, 40)");
+            // The managed schema's foreign key requires an items row for an ingredient; it is a bare
+            // row with no metadata at all, which is "unknown" too. Materials and outputs have no row.
+            st.execute("INSERT INTO items (item_id) VALUES (50)");
             st.execute("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (900, 50, 3)");
         }
 
-        assertEquals(List.of(10, 20, 30, 40, 50), IconSync.referencedOrUnknownItemIds(con),
-                     "every reference family is reachable without an items row");
+        assertEquals(List.of(20, 40, 50), IconSync.globalReferencedOrUnknownItemIds(con),
+                     "material and recipe-output ids are reachable without an items row; a bare ingredient row too");
     }
 
     @Test
     void aReferencedNontradeableItemIsCoveredLikeAnyOther() throws Exception {
         seedReferencedItemsThatAllHaveMetadata();
 
-        // Only item 10 is on the Trading Post. Item 20 - a referenced material stack - is not, which is
+        // Only item 40 is on the Trading Post. Item 20 - a catalog material - is not, which is
         // what "nontradeable" means here: the selection joins no tradeability source, so it stays in.
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price) VALUES (10, 100, 120)");
+            st.execute("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price) VALUES (40, 100, 120)");
         }
 
-        assertTrue(IconSync.referencedOrUnknownItemIds(con).contains(20),
+        assertTrue(IconSync.globalReferencedOrUnknownItemIds(con).contains(20),
                    "a referenced item with no Trading Post price must still be refreshed");
     }
 
@@ -187,25 +182,25 @@ class IconSyncMetadataTest {
             st.execute("INSERT INTO items (item_id, name, icon_url) VALUES (71, 'Known', '" + ECTO_URL + "')");
         }
 
-        assertEquals(List.of(70), IconSync.referencedOrUnknownItemIds(con),
+        assertEquals(List.of(70), IconSync.globalReferencedOrUnknownItemIds(con),
                      "the original backfill behaviour is retained on top of the referenced set");
     }
 
     @Test
     void anEmptyItemTableSelectsNothing() throws Exception {
-        assertEquals(List.of(), IconSync.referencedOrUnknownItemIds(con));
+        assertEquals(List.of(), IconSync.globalReferencedOrUnknownItemIds(con));
     }
 
     // ---------------------------------------------------------------- repair
 
     /**
-     * The whole product intent of Request-009 in one case: an occupied bank slot whose item has no
+     * The whole product intent of Request-009 in one case: a referenced item that has no
      * metadata row obtains real icon metadata, and the established application-relative URL with it.
      */
     @Test
-    void aBankSlotWhoseItemHasNoMetadataRowObtainsRealIconMetadata() throws Exception {
+    void aReferencedItemWithNoMetadataRowObtainsRealIconMetadata() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10)");
         }
 
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -234,7 +229,7 @@ class IconSyncMetadataTest {
             st.execute("INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_path, icon_url)"
                                + " VALUES (10, 'Stored Name', 'StoredType', 'Exotic', 42,"
                                + " 'C:\\icons\\items\\10.png', NULL)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10)");
         }
 
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -261,7 +256,7 @@ class IconSyncMetadataTest {
             st.execute("INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url) VALUES"
                                + " (10, '', '  ', NULL, 1, '" + ECTO_URL + "'),"
                                + " (20, 'Keep', 'Armor', 'Rare', 1, '" + LOG_URL + "')");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5), (1, 20, 5)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10), (20, 20)");
         }
         FixtureMetadataSource upstream = new FixtureMetadataSource();
         upstream.knows(itemJson(10, "Glob of Ectoplasm", "CraftingMaterial", "Rare", 16, ECTO_URL));
@@ -292,8 +287,8 @@ class IconSyncMetadataTest {
                                + " 'C:\\icons\\items\\10.png', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url)"
                                + " VALUES (20, 'Stored Log', NULL, NULL, NULL, '" + LOG_URL + "')");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5)");
-            st.execute("INSERT INTO account_materials (item_id, category, count) VALUES (20, 5, 250)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (20, 20)");
         }
 
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -330,8 +325,8 @@ class IconSyncMetadataTest {
                                + " VALUES (10, 'Ecto', 'CraftingMaterial', 'Rare', 16, '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url)"
                                + " VALUES (20, 'Log', 'CraftingMaterial', 'Basic', 1, '" + LOG_URL + "')");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (1, 20, 7)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (20, 20)");
         }
 
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -357,11 +352,11 @@ class IconSyncMetadataTest {
     @Test
     void missingAndRejectedUpstreamResponsesAreClassifiedAndNothingIsFabricated() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 1)");  // unknown upstream
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (1, 20, 1)");  // no icon upstream
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (2, 30, 1)");  // rejected source
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10)");  // unknown upstream
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (20, 20)");  // no icon upstream
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (30, 30)");  // rejected source
             st.execute("INSERT INTO items (item_id, name, icon_url) VALUES (40, 'Kept', '" + LOG_URL + "')");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (3, 40, 1)");  // stored, none upstream
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (40, 40)");  // stored, none upstream
         }
 
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -383,7 +378,7 @@ class IconSyncMetadataTest {
         assertEquals(LOG_URL, iconUrlOf(40),
                      "a stored valid source is never blanked because upstream reported none");
 
-        assertTrue(IconSync.referencedOrUnknownItemIds(con).contains(10),
+        assertTrue(IconSync.globalReferencedOrUnknownItemIds(con).contains(10),
                    "the unresolved id remains eligible for a later explicit repair");
     }
 
@@ -397,8 +392,8 @@ class IconSyncMetadataTest {
 
         try (Statement st = con.createStatement()) {
             for (int itemId = 1000; itemId <= 1249; itemId++) {
-                st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES ("
-                                   + (itemId - 1000) + ", " + itemId + ", 3)");
+                st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES ("
+                                   + itemId + ", " + itemId + ")");
                 upstream.knows(itemJson(itemId, "Item " + itemId, "Trophy", "Basic", 0, ECTO_URL));
             }
         }
@@ -428,9 +423,11 @@ class IconSyncMetadataTest {
     @Test
     void theRepairPreservesAccountQuantitiesAndUnrelatedMetadata() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 250)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (1, NULL, NULL)");
-            st.execute("INSERT INTO account_materials (item_id, category, count) VALUES (20, 5, 1337)");
+            st.execute("INSERT INTO account_registry (account_id) VALUES ('20000000-0000-0000-0000-00000000000a')");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('20000000-0000-0000-0000-00000000000a', 0, 10, 250)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('20000000-0000-0000-0000-00000000000a', 1, NULL, NULL)");
+            st.execute("INSERT INTO account_materials (account_id, item_id, category, count) VALUES ('20000000-0000-0000-0000-00000000000a', 20, 5, 1337)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10), (20, 20)");
             st.execute("INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url)"
                                + " VALUES (60, 'Unreferenced', 'Trophy', 'Exotic', 99, '" + LOG_URL + "')");
         }
@@ -459,7 +456,7 @@ class IconSyncMetadataTest {
         Path iconCacheDir = Files.createTempDirectory("icon-metadata-repair-");
 
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 10, 5)");
+            st.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (10, 10)");
         }
 
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -504,7 +501,7 @@ class IconSyncMetadataTest {
     @Test
     void repairMissingMetadataFillsOnlyAccountIdsWithoutIconSource() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO items (item_id, name, type, rarity, icon_url) VALUES (20, 'Has icon', 'Armor', 'Rare', '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, type, rarity, no_mystic_forge, icon_url) VALUES (20, 'Has icon', 'Armor', 'Rare', FALSE, '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name) VALUES (30, 'Null icon')");
         }
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -524,7 +521,7 @@ class IconSyncMetadataTest {
     @Test
     void repairMissingMetadataRepairsIconPresentRowsMissingNameTypeOrRarity() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO items (item_id, name, type, rarity, icon_url) VALUES (20, 'Whole', 'Armor', 'Rare', '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, type, rarity, no_mystic_forge, icon_url) VALUES (20, 'Whole', 'Armor', 'Rare', TRUE, '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, type, icon_url) VALUES (21, 'No rarity', 'Armor', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, rarity, icon_url) VALUES (22, 'No type', 'Rare', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, type, rarity, icon_url) VALUES (23, ' ', 'Armor', 'Rare', '" + ECTO_URL + "')");

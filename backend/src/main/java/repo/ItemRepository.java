@@ -10,7 +10,6 @@ public class ItemRepository {
     public static class ItemInfo {
         public final int itemId;
         public final String name;
-        public final String iconPath;
 
         /**
          * Retained upstream icon metadata ({@code items.icon_url}), null when none is stored. Carried
@@ -23,15 +22,14 @@ public class ItemRepository {
         /** Vendor sell value in copper; 0 when unknown or none (DOMAIN_SPEC.md 11.2 step 2). */
         public final int vendorValue;
 
-        public ItemInfo(int itemId, String name, String iconPath, String iconUrl) {
-            this(itemId, name, iconPath, iconUrl, 0);
+        public ItemInfo(int itemId, String name, String iconUrl) {
+            this(itemId, name, iconUrl, 0);
         }
 
-        public ItemInfo(int itemId, String name, String iconPath, String iconUrl, int vendorValue) {
+        public ItemInfo(int itemId, String name, String iconUrl, int vendorValue) {
             this.vendorValue = vendorValue;
             this.itemId = itemId;
             this.name = name;
-            this.iconPath = iconPath;
             this.iconUrl = iconUrl;
         }
     }
@@ -62,7 +60,7 @@ public class ItemRepository {
         if (itemIds.isEmpty()) return out;
 
         String sql = """
-            SELECT item_id, name, icon_path, icon_url, vendor_value
+            SELECT item_id, name, icon_url, vendor_value
             FROM items
             WHERE item_id = ANY(?)
         """;
@@ -76,9 +74,8 @@ public class ItemRepository {
                 while (rs.next()) {
                     int id = rs.getInt("item_id");
                     String name = rs.getString("name");
-                    String iconPath = rs.getString("icon_path");
                     String iconUrl = rs.getString("icon_url");
-                    out.put(id, new ItemInfo(id, name, iconPath, iconUrl, rs.getInt("vendor_value")));
+                    out.put(id, new ItemInfo(id, name, iconUrl, rs.getInt("vendor_value")));
                 }
             }
         }

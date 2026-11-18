@@ -296,7 +296,7 @@ class CraftingDiscoveryResolutionDetailTest {
                 TARGET,
                 null,
                 SingleCraftExplanation.unavailable(1, 100, 1),
-                Map.of(100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null, null)),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null)),
                 Map.of());
 
         assertEquals(CraftingResolutionDetail.Status.RESULT_UNAVAILABLE, detail.status());
@@ -312,8 +312,8 @@ class CraftingDiscoveryResolutionDetailTest {
         fakes.missingIds = List.of(1);
         fakes.perCharacter = Map.of(200, owned(5, 0));
         fakes.items = Map.of(
-                100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null, null),
-                200, new ItemRepository.ItemInfo(200, "  ", null, null));
+                100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null),
+                200, new ItemRepository.ItemInfo(200, "  ", null));
         var service = fakes.service();
 
         CraftingResolutionDetail detail =
@@ -425,7 +425,7 @@ class CraftingDiscoveryResolutionDetailTest {
         var fakes = new Fakes();
         fakes.missingIds = List.of(1);
         fakes.perCharacter = Map.of(200, owned(5, 0));
-        fakes.items = Map.of(100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null, null));
+        fakes.items = Map.of(100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null));
         var service = fakes.service();
 
         CraftingResolutionDetail detail =

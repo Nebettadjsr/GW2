@@ -5,11 +5,6 @@ import java.nio.file.Path;
 public final class AppConfig {
     private AppConfig() {}
 
-    // GW2 API
-    // Retained local entry points may use a configured key. Browser account operations supply
-    // their own transient key; loading database/global configuration must not require one.
-    public static final String API_KEY = EnvConfig.optional("GW2_API_KEY", "");
-
     // Postgres
     public static final String DB_URL  = EnvConfig.require("DATABASE_URL");
     public static final String DB_USER = EnvConfig.require("DATABASE_USER");

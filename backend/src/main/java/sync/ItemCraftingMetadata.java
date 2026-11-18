@@ -1,7 +1,6 @@
 package sync;
 
 import parser.ItemParser;
-import repo.ManagedSchema;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -12,7 +11,7 @@ final class ItemCraftingMetadata {
     private ItemCraftingMetadata() {}
 
     static void store(Connection con, List<ItemParser.ItemRow> rows) throws SQLException {
-        if (rows.stream().noneMatch(row -> row.noMysticForge() != null) || !ManagedSchema.isManaged(con)) return;
+        if (rows.stream().noneMatch(row -> row.noMysticForge() != null)) return;
         try (var ps = con.prepareStatement("""
                 UPDATE items SET no_mystic_forge = ?
                 WHERE item_id = ? AND no_mystic_forge IS DISTINCT FROM ?

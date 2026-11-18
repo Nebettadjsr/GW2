@@ -57,7 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * with {@code DATABASE_URL}, {@code DATABASE_USER} and {@code DATABASE_PASSWORD} set.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true",
+        properties = {"gw2.account-access.enforce=true",
                 "gw2.global-refresh.initial-delay-ms=3600000"})
 @Import(AccountIsolationHttpPostgresIT.Fixtures.class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)

@@ -282,8 +282,8 @@ class CraftingProfitApiControllerTest {
         factory.next(service -> service.canned = profitData(
                 List.of(RECIPE),
                 Map.of(RECIPE.recipeId, result),
-                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null, null),
-                        200, new ItemRepository.ItemInfo(200, "Ingot", null, null)),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null),
+                        200, new ItemRepository.ItemInfo(200, "Ingot", null)),
                 Map.of(100, new PriceQuote(900, 1_000), 200, new PriceQuote(10, 12))));
 
         mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
@@ -337,7 +337,7 @@ class CraftingProfitApiControllerTest {
                 Map.of(200, new craft.MaterialPurchaseCost(10, 50)),
                 Map.of(200, new craft.MaterialPurchaseCost(10, 20)));
         factory.next(service -> service.canned = profitData(List.of(RECIPE),
-                Map.of(RECIPE.recipeId, result), Map.of(200, new ItemRepository.ItemInfo(200, "Ingot", null, null)),
+                Map.of(RECIPE.recipeId, result), Map.of(200, new ItemRepository.ItemInfo(200, "Ingot", null)),
                 Map.of(200, new PriceQuote(10, 12))));
 
         mockMvc.perform(post("/api/crafting/profit")
@@ -361,9 +361,9 @@ class CraftingProfitApiControllerTest {
         factory.next(service -> service.canned = profitData(
                 List.of(RECIPE),
                 Map.of(RECIPE.recipeId, result),
-                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", "C:\\icons\\items\\100.png", OUTPUT_SOURCE),
-                        200, new ItemRepository.ItemInfo(200, "Ingot", null, INGOT_SOURCE),
-                        300, new ItemRepository.ItemInfo(300, "Scrap", null, "https://cdn.example.com/x.png")),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", OUTPUT_SOURCE),
+                        200, new ItemRepository.ItemInfo(200, "Ingot", INGOT_SOURCE),
+                        300, new ItemRepository.ItemInfo(300, "Scrap", "https://cdn.example.com/x.png")),
                 Map.of()));
 
         String body = mockMvc.perform(post("/api/crafting/profit")
@@ -390,7 +390,7 @@ class CraftingProfitApiControllerTest {
         factory.next(service -> service.canned = profitData(
                 List.of(RECIPE),
                 Map.of(),
-                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", null, OUTPUT_SOURCE)),
+                Map.of(100, new ItemRepository.ItemInfo(100, "Widget", OUTPUT_SOURCE)),
                 Map.of()));
 
         mockMvc.perform(post("/api/crafting/profit")
@@ -909,7 +909,7 @@ class CraftingProfitApiControllerTest {
             }
             CraftingProfitService.ProfitData derived = new CraftingProfitService.ProfitData(
                     List.of(recipe), List.of(recipe), Map.of(),
-                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, choice.discipline, null, null)),
+                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, choice.discipline, null)),
                     Map.of());
             return new ProfitOutcome(derived, freshness(
                     "request-" + choice.discipline, "generation-" + choice.discipline, true, true,

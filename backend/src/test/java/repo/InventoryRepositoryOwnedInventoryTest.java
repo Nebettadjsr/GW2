@@ -1,5 +1,7 @@
 package repo;
 
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class InventoryRepositoryOwnedInventoryTest {
 
+    private static final AccountScope A = AccountScope.of("10000000-0000-0000-0000-00000000000a");
+
     private final String schema = "test_inv_" + UUID.randomUUID().toString().replace("-", "");
     private Connection con;
 
@@ -40,51 +44,14 @@ class InventoryRepositoryOwnedInventoryTest {
         try (Statement st = con.createStatement()) {
             st.execute("CREATE SCHEMA " + schema);
         }
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema)
+                .locations("classpath:db/migration").load().migrate();
         con.setSchema(schema);
-
         try (Statement st = con.createStatement()) {
-            st.execute("""
-                CREATE TABLE account_materials (
-                    item_id     INTEGER PRIMARY KEY,
-                    category    INTEGER,
-                    count       INTEGER,
-                    binding     TEXT,
-                    fetched_at  TIMESTAMPTZ
-                )
-                """);
-            st.execute("""
-                CREATE TABLE account_bank (
-                    slot        INTEGER PRIMARY KEY,
-                    item_id     INTEGER,
-                    count       INTEGER,
-                    binding     TEXT,
-                    bound_to    TEXT,
-                    charges     INTEGER,
-                    stats_id    INTEGER,
-                    stats_attrs JSONB,
-                    fetched_at  TIMESTAMPTZ
-                )
-                """);
-            st.execute("""
-                CREATE TABLE characters (
-                    character_id BIGSERIAL PRIMARY KEY,
-                    name         TEXT NOT NULL UNIQUE
-                )
-                """);
-            st.execute("""
-                CREATE TABLE character_items (
-                    character_id    BIGINT NOT NULL REFERENCES characters(character_id) ON DELETE CASCADE,
-                    location        TEXT NOT NULL,
-                    bag_index       INTEGER,
-                    slot_index      INTEGER,
-                    equipment_slot  TEXT,
-                    item_id         INTEGER NOT NULL,
-                    count           INTEGER NOT NULL DEFAULT 1,
-                    binding         TEXT,
-                    bound_to        TEXT,
-                    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-                )
-                """);
+            st.execute("INSERT INTO account_registry (account_id) VALUES ('10000000-0000-0000-0000-00000000000a')");
         }
     }
 
@@ -101,10 +68,10 @@ class InventoryRepositoryOwnedInventoryTest {
     @Test
     void sourceProtectionKeepsOtherStoresUsableAndChangesCraftableQuantityWithoutChangingCachedStock() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_materials (item_id, count) VALUES (19718, 250)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (1, 19718, 70)");
-            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Crafter')");
-            st.execute("INSERT INTO character_items (character_id, location, item_id, count) VALUES (1, 'BAG', 19718, 12)");
+            st.execute("INSERT INTO account_materials (account_id, item_id, count) VALUES ('10000000-0000-0000-0000-00000000000a', 19718, 250)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('10000000-0000-0000-0000-00000000000a', 1, 19718, 70)");
+            st.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('10000000-0000-0000-0000-00000000000a', 1, 'Crafter')");
+            st.execute("INSERT INTO character_items (account_id, character_id, location, item_id, count) VALUES ('10000000-0000-0000-0000-00000000000a', 1, 'BAG', 19718, 12)");
         }
         var repository = new InventoryRepository();
         var recipe = new craft.Recipe(1, 500, 1, 0, "Artificer", List.of(new craft.Ingredient(19718, 4)));
@@ -114,7 +81,7 @@ class InventoryRepositoryOwnedInventoryTest {
         for (int combination = 0; combination < 4; combination++) {
             Set<Integer> bankIds = (combination & 1) == 0 ? Set.of() : Set.of(19718);
             Set<Integer> materialIds = (combination & 2) == 0 ? Set.of() : Set.of(19718);
-            var inventory = repository.loadOwnedInventoryForCharacters(con, null, Set.of("Crafter"), bankIds, materialIds);
+            var inventory = repository.loadOwnedInventoryForCharacters(con, A, Set.of("Crafter"), bankIds, materialIds);
             assertEquals(expectedStock[combination], inventory.sellable().get(19718));
             var settings = new craft.CraftingSettings(true, false, 0, false, false, false,
                     true, Set.of(), bankIds, materialIds);
@@ -122,7 +89,7 @@ class InventoryRepositoryOwnedInventoryTest {
                     inventory.accountBound(), inventory.characterBound(), roster, Map.of(), settings, Set.of(1)).get(1);
             assertEquals(expectedCrafts[combination], result.craftableCount);
         }
-        assertEquals(332, repository.loadOwnedInventory(con).get(19718), "stored quantities are unchanged");
+        assertEquals(332, repository.loadOwnedInventory(con, A).get(19718), "stored quantities are unchanged");
     }
 
     @Test
@@ -130,14 +97,14 @@ class InventoryRepositoryOwnedInventoryTest {
         int itemId = 19721;
 
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_materials (item_id, count) VALUES (" + itemId + ", 5)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (1, " + itemId + ", 3)");
-            st.execute("INSERT INTO characters (character_id, name) VALUES (1, 'Test Character')");
-            st.execute("INSERT INTO character_items (character_id, location, bag_index, slot_index, item_id, count) " +
-                    "VALUES (1, 'BAG', 0, 0, " + itemId + ", 7)");
+            st.execute("INSERT INTO account_materials (account_id, item_id, count) VALUES ('10000000-0000-0000-0000-00000000000a', " + itemId + ", 5)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('10000000-0000-0000-0000-00000000000a', 1, " + itemId + ", 3)");
+            st.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('10000000-0000-0000-0000-00000000000a', 1, 'Test Character')");
+            st.execute("INSERT INTO character_items (account_id, character_id, location, bag_index, slot_index, item_id, count) " +
+                    "VALUES ('10000000-0000-0000-0000-00000000000a', 1, 'BAG', 0, 0, " + itemId + ", 7)");
         }
 
-        Map<Integer, Integer> owned = new InventoryRepository().loadOwnedInventory(con);
+        Map<Integer, Integer> owned = new InventoryRepository().loadOwnedInventory(con, A);
 
         assertEquals(15, owned.get(itemId));
     }

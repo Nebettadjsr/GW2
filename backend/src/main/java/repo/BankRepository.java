@@ -21,43 +21,40 @@ public class BankRepository {
 
     /**
      * One {@code account_bank} slot exactly as the query returns it. {@code itemId}/{@code count}
-     * are null for an empty slot; {@code iconPath}/{@code iconUrl}/{@code rarity} are null when the
+     * are null for an empty slot; {@code iconUrl}/{@code rarity} are null when the
      * slot's item has no matching {@code items} row (LEFT JOIN).
      *
-     * <p>{@code iconPath} is retained legacy metadata (a local icon file path); {@code iconUrl} is
-     * the retained upstream icon source ({@code items.icon_url}) a browser-facing read derives its
-     * image URL from. Both come from this one batch read, so neither costs a per-row
-     * lookup. {@code itemName} is the shared cached {@code items.name}, null for an empty slot or
+     * <p>{@code iconUrl} is the retained upstream icon source ({@code items.icon_url}) a
+     * browser-facing read derives its image URL from; it comes from this one batch read, so it
+     * costs no per-row lookup. {@code itemName} is the shared cached {@code items.name}, null for an empty slot or
      * an item without a cached row (never invented).
      */
     public record BankSlotRow(int slot,
                               Integer itemId,
                               Integer count,
-                              String iconPath,
                               String iconUrl,
                               String rarity,
                               boolean protectionSelectable,
                               String itemName,
                               String binding,
                               String boundTo) {
-        public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity,
+        public BankSlotRow(int slot, Integer itemId, Integer count, String iconUrl, String rarity,
                            boolean protectionSelectable, String itemName) {
-            this(slot, itemId, count, iconPath, iconUrl, rarity, protectionSelectable, itemName, null, null);
+            this(slot, itemId, count, iconUrl, rarity, protectionSelectable, itemName, null, null);
         }
-        public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity,
+        public BankSlotRow(int slot, Integer itemId, Integer count, String iconUrl, String rarity,
                            boolean protectionSelectable) {
-            this(slot, itemId, count, iconPath, iconUrl, rarity, protectionSelectable, null, null, null);
+            this(slot, itemId, count, iconUrl, rarity, protectionSelectable, null, null, null);
         }
-        public BankSlotRow(int slot, Integer itemId, Integer count, String iconPath, String iconUrl, String rarity) {
-            this(slot, itemId, count, iconPath, iconUrl, rarity, true, null, null, null);
+        public BankSlotRow(int slot, Integer itemId, Integer count, String iconUrl, String rarity) {
+            this(slot, itemId, count, iconUrl, rarity, true, null, null, null);
         }
     }
 
     /**
      * One account's bank slots, ordered by slot.
      *
-     * <p>The same query as the unscoped {@link #loadBankSlots(Connection)} with the owning account
-     * added to the {@code WHERE} clause: slots are keyed {@code (account_id, slot)}, so two accounts
+     * <p>Slots are keyed {@code (account_id, slot)}, so two accounts
      * both holding slot 3 are two rows and only this account's is read. The {@code items} join stays
      * global - item metadata and icons are shared data, not account data.
      */
@@ -71,7 +68,7 @@ public class BankRepository {
     public List<BankSlotRow> loadBankSlots(Connection con, model.AccountScope scope) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "account_bank");
         String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name, b.binding, b.bound_to, i.no_mystic_forge,
+            SELECT b.slot, b.item_id, b.count, i.icon_url, i.rarity, i.name AS item_name, b.binding, b.bound_to, i.no_mystic_forge,
                    EXISTS (SELECT 1 FROM material_category_items m WHERE m.item_id = b.item_id) AS material,
                    EXISTS (SELECT 1 FROM recipe_ingredients r WHERE r.item_id = b.item_id) AS recipe_ingredient,
                    EXISTS (SELECT 1 FROM recipe_catalog_publication WHERE complete) AS catalog_complete
@@ -93,66 +90,11 @@ public class BankRepository {
         return out;
     }
 
-    /**
-     * Reads every bank slot using the shared {@link Db#open()} connection configuration.
-     *
-     * <p>The entry point for a caller that holds no {@link model.AccountScope}, which on the
-     * versioned database means it has no account to read: it returns no rows rather than reading
-     * across accounts. Nothing is inferred - not a configured, last-used or only
-     * registered account - and no row of any account is exposed, so a global workflow that merely
-     * passes an account input along (the item-icon read path) stays usable.
-     *
-     * <p>An empty result here is the absence of a scope, <em>not</em> a claim that this account's
-     * bank is empty or that its synchronization succeeded: completion stays recorded per source in
-     * {@code account_source_state}, where no row means the source is missing. The scoped
-     * {@link #loadBankSlots(model.AccountScope)} is the only path that reports an account's actual
-     * slots.
-     *
-     * <p>On a pre-versioned database the unscoped query below is the only bank read and keeps
-     * returning its rows.
-     */
-    public List<BankSlotRow> loadBankSlots() throws SQLException {
-        try (Connection con = Db.open()) {
-            if (ManagedSchema.isManaged(con)) return List.of();
-            return loadBankSlots(con);
-        }
-    }
-
-    /**
-     * Same query as {@link #loadBankSlots()}, but runs against a caller-supplied connection so a
-     * repository integration test can point it at a disposable test schema
-     * (docs/TEST_STRATEGY.md §31.2), mirroring {@link InventoryRepository}'s existing pattern.
-     */
-    public List<BankSlotRow> loadBankSlots(Connection con) throws SQLException {
-        // Reads every account's bank slots, which account isolation forbids on a managed database;
-        // callers there use the scoped overload, so this is refused rather than cross-account.
-        ManagedSchema.rejectUnscopedAccountAccess(con, "account_bank without an account scope");
-        String sql = """
-            SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name, b.binding, b.bound_to
-            FROM account_bank b
-            LEFT JOIN items i ON i.item_id = b.item_id
-            ORDER BY b.slot
-        """;
-
-        List<BankSlotRow> out = new ArrayList<>();
-        try (PreparedStatement ps = con.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
-            while (rs.next()) out.add(rowOf(rs));
-        }
-        return out;
-    }
-
-    private static BankSlotRow rowOf(ResultSet rs) throws SQLException {
-        return rowOf(rs, true);
-    }
-
     private static BankSlotRow rowOf(ResultSet rs, boolean protectionSelectable) throws SQLException {
         return new BankSlotRow(
                 rs.getInt("slot"),
                 (Integer) rs.getObject("item_id"),
                 (Integer) rs.getObject("count"),
-                rs.getString("icon_path"),
                 rs.getString("icon_url"),
                 rs.getString("rarity"), protectionSelectable, rs.getString("item_name"),
                 rs.getString("binding"), rs.getString("bound_to"));

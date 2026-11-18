@@ -1,6 +1,7 @@
 package repo;
 
-import model.AccountLuck;
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,8 +14,12 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Real PostgreSQL check of account isolation and upsert semantics in a disposable schema. */
+/** Real PostgreSQL check of account isolation and upsert semantics on the Flyway-managed schema in a disposable schema. */
 class AccountLuckRepositoryTest {
+    private static final AccountScope A = AccountScope.of("10000000-0000-0000-0000-00000000000a");
+    private static final AccountScope B = AccountScope.of("20000000-0000-0000-0000-00000000000b");
+    private static final AccountScope C = AccountScope.of("30000000-0000-0000-0000-00000000000c");
+
     private final String schema = "test_luck_" + UUID.randomUUID().toString().replace("-", "");
     private Connection con;
 
@@ -25,8 +30,16 @@ class AccountLuckRepositoryTest {
         try (Statement st = con.createStatement()) {
             st.execute("CREATE SCHEMA " + schema);
         }
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema)
+                .locations("classpath:db/migration").load().migrate();
         con.setSchema(schema);
-        AccountLuckSchema.ensure(con);
+        try (Statement st = con.createStatement()) {
+            st.execute("INSERT INTO account_registry (account_id) VALUES ('" + A.accountId() + "'), ('"
+                    + B.accountId() + "'), ('" + C.accountId() + "')");
+        }
     }
 
     @AfterEach
@@ -44,27 +57,16 @@ class AccountLuckRepositoryTest {
         var repo = new AccountLuckRepository();
         var oldTime = Instant.parse("2026-01-01T00:00:00Z");
         var newTime = Instant.parse("2026-09-29T00:00:00Z");
-        repo.save(con, new AccountLuck("account-a", 100, oldTime));
-        repo.save(con, new AccountLuck("account-b", 200, oldTime));
-        repo.save(con, new AccountLuck("account-a", 300, newTime));
+        repo.save(con, A, 100, oldTime);
+        repo.save(con, B, 200, oldTime);
+        repo.save(con, A, 300, newTime);
 
-        assertEquals(new AccountLuck("account-a", 300, newTime), repo.find(con, "account-a").orElseThrow());
-        assertEquals(new AccountLuck("account-b", 200, oldTime), repo.find(con, "account-b").orElseThrow());
-        assertTrue(repo.find(con, "account-c").isEmpty());
-    }
-
-    @Test
-    void createsMissingTableAndRejectsIncompatibleExistingTable() throws Exception {
-        try (Statement st = con.createStatement()) {
-            st.execute("DROP TABLE account_luck");
-        }
-        AccountLuckSchema.ensure(con);
-        assertTrue(new AccountLuckRepository().find(con, "account-a").isEmpty());
-
-        try (Statement st = con.createStatement()) {
-            st.execute("DROP TABLE account_luck");
-            st.execute("CREATE TABLE account_luck (account_id TEXT PRIMARY KEY, consumed_luck INTEGER NOT NULL, fetched_at TIMESTAMPTZ NOT NULL)");
-        }
-        assertThrows(java.sql.SQLException.class, () -> AccountLuckSchema.ensure(con));
+        var a = repo.find(con, A).orElseThrow();
+        assertEquals(300, a.consumedLuck());
+        assertEquals(newTime, a.fetchedAt());
+        var b = repo.find(con, B).orElseThrow();
+        assertEquals(200, b.consumedLuck());
+        assertEquals(oldTime, b.fetchedAt());
+        assertTrue(repo.find(con, C).isEmpty(), "a never-published account is missing, not zero");
     }
 }

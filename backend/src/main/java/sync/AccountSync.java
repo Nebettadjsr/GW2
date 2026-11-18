@@ -1,25 +1,19 @@
 package sync;
 
-import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import model.BankSlot;
 import model.MaterialStack;
-import model.AccountLuck;
 import parser.BankParser;
 import parser.MaterialParser;
 import parser.RecipeIdParser;
 import repo.Db;
-import repo.MaterialStorageSchema;
 import repo.AccountLuckRepository;
-import repo.AccountLuckSchema;
 import repo.AccountSyncStateRepository;
 import util.DbBind;
 
-import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.time.Instant;
 
 public final class AccountSync {
     private AccountSync() {}
