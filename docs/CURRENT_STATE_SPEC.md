@@ -115,6 +115,14 @@ universal time-based deletion guarantee. See [OPERATIONS_RUNBOOK](OPERATIONS_RUN
 
 ### Verification evidence and limits
 
+STORY-COV-007 adds a package-private public-array fetch seam to `MaterialCategorySync`;
+the unchanged public entry delegates to it with `Gw2ApiClient`. Five publication cases
+run real Flyway/PostgreSQL replacement, rollback and retry with scoped account readback;
+a global-refresh case checks early failure/status/recovery. Full CI `44260769452` at
+`14a3054` passes and its downloaded JaCoCo/KPI counters establish the measured improvement
+in [Quality metrics](QUALITY_METRICS.md). This changes no SQL, payload policy, UI or deployed
+Oracle revision. [PR #246](https://github.com/Nebettadjsr/GW2/pull/246) owns final-head acceptance.
+
 The owner revised #243 on 18 November: narrow tools keep their content and normal loading,
 with an informational notice and horizontally scrollable desktop canvas. This replaces the
 earlier blocking guard and forced modal closure; [DOMAIN_SPEC](DOMAIN_SPEC.md#supported-browser-viewport)

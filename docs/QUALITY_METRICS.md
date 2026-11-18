@@ -8,19 +8,19 @@ The GitHub Actions `Coverage KPI report` job publishes per-module/package rates 
 
 ## Verified CI baseline
 
-Source: STORY-COV-006 source/test revision `1d017fce91a827413f5933f2090122124e29091a`,
-successful [CI run 44252493662](https://github.com/Nebettadjsr/GW2/actions/runs/44252493662),
-generated 18 November 2026. The explicitly dispatched run measured the warning-only
-revision, as recorded in `coverage-kpi.json`. Downloaded and inspected that day:
-`coverage-reports` artifact `14404313486`, with its raw JaCoCo counters
+Source: STORY-COV-007 source/test revision `14a3054e31588499e197f8d110facffeb69538f2`,
+successful [CI run 44260769452](https://github.com/Nebettadjsr/GW2/actions/runs/44260769452),
+generated 18 November 2026. The explicitly dispatched run measured the material-catalog
+publication tests and minimal fetch seam, as recorded in `coverage-kpi.json`. Downloaded
+and inspected that day: `coverage-reports` artifact `14408340797`, with raw JaCoCo counters
 cross-checked. These numbers describe that identified run. Later documentation-only commits
 do not constitute another measured result; final-head CI and owner acceptance remain separate.
 
 | Area | Line coverage | Branch coverage |
 | --- | --- | --- |
-| Java backend | 91.40% (10,522 / 11,512) | 81.42% (5,376 / 6,603) |
+| Java backend | 91.69% (10,557 / 11,514) | 81.58% (5,387 / 6,603) |
 | Frontend TypeScript | 96.51% (4,043 / 4,189) | 86.50% (4,216 / 4,874) |
-| Combined weighted | 92.76% (14,565 / 15,701) | 83.58% (9,592 / 11,477) |
+| Combined weighted | 92.98% (14,600 / 15,703) | 83.67% (9,603 / 11,477) |
 
 Both application modules exceed the line target; both still have branch gaps. A combined percentage does not establish adequate coverage of any individual critical path.
 
@@ -73,7 +73,7 @@ Selected package figures from the same artifact:
 | Area | Lines | Branches | Reason to inspect |
 | --- | --- | --- | --- |
 | Backend `web.access` | 95.27% | 92.14% | Account route mapping and session/recovery coverage added in #111; named remaining defensive gaps below. |
-| Backend `sync` | 81.40% | 75.67% | Many remaining lines and upstream/publication failure branches. |
+| Backend `sync` | 83.22% | 76.44% | Material catalog publication covered in #245; active metadata/failure paths remain. |
 | Backend `application.access` | 95.59% | 80.82% | Account proof, expiry and access-policy branches. |
 | Backend `parser` | 98.12% | 73.81% | Malformed and optional payload branches; prioritize meaningful input cases. |
 | Backend `infra.db` | 79.17% | 65.38% | Connection/pool lifecycle and failure handling. |
@@ -112,6 +112,32 @@ Remaining boundary gaps include defensive null HTTP inputs, the post-proof renew
 context-mismatch catch, interceptor error/lifecycle cleanup and query-parser edges.
 Owner-access and deletion-controller coverage also remain candidates where a meaningful
 behavioral case is missing; do not reactivate retired unscoped paths to chase percentages.
+
+## Material-catalog publication improvement (#245)
+
+Independent QA added five real-PostgreSQL publication cases and one global-refresh
+failure/status/retry case. They execute ordered replacement and scoped repository reads,
+stale cleanup, unchanged account quantities/markers, upstream failure, empty refusal,
+real item-insert and late-delete failures, rollback and explicit recovery. SQL faults
+are injected only into generated disposable schemas. No existing assertion was weakened.
+Claude added only the package-private `PublicArrayFetcher` overload/public delegation;
+the endpoint, SQL and transaction remain unchanged.
+
+Before: merged `aa66d20`, full CI `44256050562`. After: `14a3054`, full CI `44260769452`.
+Downloaded raw counters establish:
+
+| Scope | Lines before / after | Branches before / after |
+| --- | --- | --- |
+| `MaterialCategorySync` | 8 / 45 → 45 / 47 | 4 / 12 → 12 / 12 |
+| `sync` package | 1,580 / 1,941 → 1,617 / 1,943 | 787 / 1,040 → 795 / 1,040 |
+| Backend overall | 10,520 / 11,512 → 10,557 / 11,514 | 5,376 / 6,603 → 5,387 / 6,603 |
+
+The material class is now 95.74% lines / 100% branches. Its remaining two lines are the
+public no-argument delegation to the real HTTP client; deliberately calling live ArenaNet
+would not improve this offline transaction evidence. `GlobalDataRefreshService` remains
+29/29 lines and 3/6 branches: its additional failure story improves behavior evidence
+without claiming another measured branch. The other `refreshAll` decisions remain candidates.
+The broader backend branch target is not met; #21 remains open. Browser coverage is unchanged.
 
 ## Reading and refreshing reports
 
