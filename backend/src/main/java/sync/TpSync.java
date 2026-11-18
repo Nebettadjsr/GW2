@@ -57,7 +57,7 @@ public final class TpSync {
     }
 
     /**
-     * Owner full Trading Post synchronization (STORY-STATUS-004): snapshots every ID in
+     * Owner full Trading Post synchronization: snapshots every ID in
      * {@code tp_tradeable_items}, bypassing the ordinary ten-minute freshness selection, through the
      * same shared {@code tp_prices} write path. Fails (never silently succeeds) on an empty catalog.
      */
@@ -91,15 +91,11 @@ public final class TpSync {
 
     private static void syncTpPrices(Set<Integer> itemIds, TaskDeadline deadline, boolean strict) throws Exception {
 
-        // NOTE (TP refresh scope):
-        // This method intentionally refreshes TP prices only for items relevant to the current view
-        // (profit or discovery). Prices are not refreshed continuously and may be several minutes old.
-        // This is acceptable because GW2 TP prices change relatively slowly and manual refresh is used.
-        //
-        // time limit optimization:
-        // We exclude items whose tp_prices.fetched_at is newer than 10 minutes to avoid refetching
-        // recently synced prices. This significantly reduces API calls when refresh is triggered
-        // multiple times in a short period.
+        // Fetches exactly the IDs it is given, in ascending order, one committed batch at a time.
+        // Relevance and the ten-minute freshness filter are applied by the callers' collectors
+        // (TpPriceFreshness.STALE_SQL_PREDICATE) before this point; only the full-catalog operation
+        // bypasses them. Each batch is fetched and validated outside its transaction, so a later
+        // failure leaves earlier committed batches in place.
 
         List<Integer> ids = new ArrayList<>(itemIds);
         Collections.sort(ids);
@@ -328,7 +324,7 @@ public final class TpSync {
      * The Profit price refresh: fetch the stale or missing quotes the Profit selection requires.
      *
      * <p>Carries no account scope, so on the versioned database it asks for the global selection
-     * (STORY-SYNC-007): the shared crafting graph and the shared quote cache, with no account row
+     * the shared crafting graph and the shared quote cache, with no account row
      * entering the demand and no account inferred. On a pre-cutover database the selection derived
      * from the stored recipe knowledge is unchanged.
      *
@@ -346,7 +342,7 @@ public final class TpSync {
     }
 
     /**
-     * The Profit price refresh for one authorized account's calculation (STORY-API-011): the stale or
+     * The Profit price refresh for one authorized account's calculation: the stale or
      * missing quotes that account's required item set needs, into the same shared quote cache and
      * under the same ten-minute policy as the global selection.
      */

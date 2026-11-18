@@ -23,12 +23,12 @@ import sync.tp.TpPriceFreshness;
  * <p>The relevance definition itself lives in {@link #RELEVANT_TRADEABLE_ITEMS} and is shared by the
  * refresh selection ({@link #collect(Connection)}) and the coverage report
  * ({@link #coverage(Connection)}) so a calculation's reported price coverage can never describe a
- * different item set than the refresh would fetch (TARGET_ARCHITECTURE.md §9.1). Because relevance
+ * different item set than the refresh would fetch. Because relevance
  * is derived from account and character recipe knowledge, changed account inputs change the required
  * set, which is what keeps a result provisional until the newly required ids are covered.
  *
- * <p>Since STORY-SYNC-007 the definition exists in three variants that differ only in which recipes
- * count as craftable: every account's knowledge (the legacy unscoped one), one account's knowledge,
+ * <p>The definition exists in three variants that differ only in which recipes
+ * count as craftable: every account's knowledge (the unscoped one), one account's knowledge,
  * and the shared crafting graph itself for the global selection that needs no account at all. The
  * item derivation, the tradeability join, the shared quote cache and the ten-minute freshness policy
  * are the same in all three.
@@ -84,7 +84,7 @@ relevant_tradeable AS (
   SELECT DISTINCT recipe_id FROM character_recipes WHERE account_id = ?""";
 
     /**
-     * The shared crafting graph itself (STORY-SYNC-007), which is what "craftable" means with no
+     * The shared crafting graph itself, which is what "craftable" means with no
      * account in play: {@code recipes}/{@code recipe_ingredients} are global reference data and
      * account recipe knowledge never partitions them (V2 migration comment on
      * {@code account_recipes}), so this reads no account table and needs no scope.
@@ -96,7 +96,7 @@ relevant_tradeable AS (
             RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(ALL_ACCOUNTS_RECIPE_KNOWLEDGE);
 
     /**
-     * The same definition for one account (STORY-APP-015): only this account's recipe knowledge
+     * The same definition for one account: only this account's recipe knowledge
      * decides which items are relevant, so one account's unlocks can neither widen nor narrow
      * another's required item set - while the shared quote cache the set is measured against stays
      * global and is reused by every account.
@@ -107,7 +107,7 @@ relevant_tradeable AS (
             RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(SCOPED_RECIPE_KNOWLEDGE);
 
     /**
-     * The same definition over shared data only (STORY-SYNC-007): no account row enters it, so the
+     * The same definition over shared data only: no account row enters it, so the
      * selection is identical for every caller and for no caller at all, and an empty account
      * registry neither empties it nor makes it infer an account.
      */
@@ -169,8 +169,7 @@ FROM relevant_tradeable
      *                     The counts and the two instants are aggregates and therefore blind to an
      *                     interior change — one item refetched between the oldest and the newest
      *                     instant, or a quote rewritten with new numbers under the same instant —
-     *                     so this is what makes a changed input a changed calculation identity
-     *                     (TARGET_ARCHITECTURE.md §9.1).
+     *                     so this is what makes a changed input a changed calculation identity.
      */
     public record Coverage(int requiredItems,
                            int freshItems,
@@ -197,8 +196,7 @@ FROM relevant_tradeable
 
     public Set<Integer> collect(Connection con) throws Exception {
         // Relevance is derived from account and character recipe knowledge, which is account-owned
-        // on a migrated database, so this selection needs a scope it does not have yet
-        // (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.2).
+        // on a migrated database, so this selection needs a scope it does not have yet.
         repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Profit price relevance without an account scope");
         Set<Integer> itemIds = new HashSet<>();
 
@@ -214,8 +212,7 @@ FROM relevant_tradeable
     }
 
     /**
-     * The Profit-relevant item ids whose stored quote is stale or absent, over shared data only
-     * (STORY-SYNC-007).
+     * The Profit-relevant item ids whose stored quote is stale or absent, over shared data only.
      *
      * <p>The global half of the split: it reads the shared crafting graph and the shared quote
      * cache, so the Trading Post price refresh runs on a migrated, empty-account database with no
@@ -241,7 +238,7 @@ FROM relevant_tradeable
     }
 
     /**
-     * One account's Profit-relevant item ids whose stored quote is stale or absent (STORY-APP-015).
+     * One account's Profit-relevant item ids whose stored quote is stale or absent.
      *
      * <p>The scoped twin of {@link #collect(Connection)}: the relevance definition is the same
      * template, so the set a refresh fetches for this account and the set
@@ -260,8 +257,7 @@ FROM relevant_tradeable
     }
 
     /**
-     * How much of <em>this account's</em> Profit-relevant item set the shared quote cache answers
-     * (STORY-APP-015).
+     * How much of <em>this account's</em> Profit-relevant item set the shared quote cache answers.
      *
      * <p>Only the required set is account-derived. The quotes themselves, their freshness policy and
      * the {@code quote_version} digest are global, so two accounts requiring the same item read the

@@ -52,7 +52,7 @@ public final class DiscoveryItemCollector {
             SELECT DISTINCT recipe_id FROM character_recipes WHERE account_id = ?""";
 
     /**
-     * Nothing excluded (STORY-SYNC-007): with no account in play there is no unlock to subtract, so
+     * Nothing excluded: with no account in play there is no unlock to subtract, so
      * every recipe in the shared graph is a Discovery candidate. Reads no account table, so this
      * variant needs no scope - and an empty account registry does not make it look like an account
      * that happens to know nothing.
@@ -62,7 +62,7 @@ public final class DiscoveryItemCollector {
     private static final String SQL = SQL_TEMPLATE.formatted(ALL_ACCOUNTS_UNLOCKS);
 
     /**
-     * The same definition for one account (STORY-APP-015). "Not yet unlocked" is an account-owned
+     * The same definition for one account. "Not yet unlocked" is an account-owned
      * fact, so the exclusion set must be this account's unlocks: another account's knowledge may
      * neither hide a Discovery candidate from this one nor reveal one.
      *
@@ -74,7 +74,7 @@ public final class DiscoveryItemCollector {
     private static final String GLOBAL_SQL = SQL_TEMPLATE.formatted(NO_UNLOCKS);
 
     public Set<Integer> collect(Connection con) throws Exception {
-        // "Not yet unlocked" is an account-owned fact on a migrated database (STORY-INFRA-004).
+        // "Not yet unlocked" is an account-owned fact on a migrated database.
         repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Discovery price relevance without an account scope");
         Set<Integer> itemIds = new HashSet<>();
         try (PreparedStatement ps = con.prepareStatement(SQL);
@@ -85,8 +85,8 @@ public final class DiscoveryItemCollector {
     }
 
     /**
-     * The Discovery-relevant item ids whose stored quote is stale or absent, over shared data only
-     * (STORY-SYNC-007): the global half of the split, so the Discovery price refresh runs on a
+     * The Discovery-relevant item ids whose stored quote is stale or absent, over shared data only:
+     * the global half of the split, so the Discovery price refresh runs on a
      * migrated, empty-account database without a verified credential.
      *
      * <p>The ten-minute freshness policy and the required-ID-only filter are the shared ones, so
