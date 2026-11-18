@@ -20,6 +20,8 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
   ])
   const failures = []
   let documents = 0
+  let publicDocuments = 0
+  let onPublicDocument = false
   let proofs = 0
   let lookups = 0
   let needsProof = true
@@ -35,7 +37,9 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
           // A public document (Home at /welcome) restores no key, so it owes no proof and any
           // API read it made would still be rejected below as preceding one.
           const target = new URL(request.url())
-          if (!publicDocumentPaths.includes(target.pathname)) documents += 1
+          onPublicDocument = publicDocumentPaths.includes(target.pathname)
+          if (onPublicDocument) publicDocuments += 1
+          else documents += 1
           needsProof = true
         }
       })
@@ -57,6 +61,8 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
         sendJson(status, { error: 'INVALID_SMOKE_REQUEST', message })
         return true
       }
+      // A public document reads nothing at all: not even an allow-listed public read is acceptable.
+      if (onPublicDocument) return reject(403, `Public document made an API call: ${request.method} ${url.pathname}`)
       const method = methods.get(url.pathname)
       if (method === undefined) return reject(404, `Unexpected route: ${url.pathname}`)
       if (request.method !== method) return reject(405, `Unexpected method on ${url.pathname}`)
@@ -103,7 +109,7 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
       assert.deepEqual(failures, [], 'Controlled session boundary violations')
       assert.ok(proofs > 0, 'No synthetic key was proved')
       assert.equal(proofs, documents, 'Each document load must prove its retained key once')
-      return `${proofs} proofs before protected reads over ${documents} document loads; ${lookups} cached search lookups`
+      return `${proofs} proofs before protected reads over ${documents} document loads; ${publicDocuments} public document loads with zero API calls; ${lookups} cached search lookups`
     }
   }
 }

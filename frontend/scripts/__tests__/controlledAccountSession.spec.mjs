@@ -87,7 +87,7 @@ describe('controlled account boundary', () => {
       mainFrame: () => frame,
       route: async (_, handler) => { routeRequest = handler }
     }, 'http://127.0.0.1:5176')
-    const document = () => onRequest({ isNavigationRequest: () => true, frame: () => frame })
+    const document = () => onRequest({ isNavigationRequest: () => true, frame: () => frame, url: () => 'http://127.0.0.1:5176/' })
     document()
     request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
     expect(session.verify()).toContain('1 proofs')
@@ -96,6 +96,27 @@ describe('controlled account boundary', () => {
     let aborted = false
     await routeRequest({ request: () => ({ url: () => 'https://api.guildwars2.com/v2/account' }), abort: () => { aborted = true } })
     expect(aborted).toBe(true)
+    expect(() => session.verify()).toThrow('Controlled session boundary violations')
+  })
+
+  it('counts a public document without a proof and fails any API call it makes, then resumes normal proof for the next document', async () => {
+    const { session, request } = fixture({ publicDocumentPaths: ['/welcome'], publicReadRoutes: ['/api/items/metadata'] })
+    let onRequest
+    const frame = {}
+    await session.install({
+      addInitScript: async () => undefined,
+      on: (_, handler) => { onRequest = handler },
+      mainFrame: () => frame,
+      route: async () => undefined
+    }, 'http://127.0.0.1:5176')
+    const document = path => onRequest({ isNavigationRequest: () => true, frame: () => frame, url: () => `http://127.0.0.1:5176${path}` })
+    document('/welcome')
+    document('/')
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    expect(session.verify()).toBe('1 proofs before protected reads over 1 document loads; 1 public document loads with zero API calls; 0 cached search lookups')
+    // Even an allow-listed public read is a failure while a public document is current.
+    document('/welcome')
+    expect(request('/api/items/metadata?ids=1', 'GET').reply.status).toBe(403)
     expect(() => session.verify()).toThrow('Controlled session boundary violations')
   })
 })
