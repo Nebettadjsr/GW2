@@ -1351,7 +1351,7 @@ Keep account-derived comparisons private. A live-user check requires its own exp
 The methodology below applies unchanged to every route added afterwards — `STORY-API-002` reused it for Crafting Discovery without extending it. Two points it already implies are worth stating explicitly, because that second route is what made them visible:
 
 - **A route's own defaults are part of its contract.** Where two routes over comparable use cases open with *different* defaults, assert each route's own values rather than assuming the earlier route's, and say in the test why they differ.
-- **When a boundary change is shared, re-run the existing routes' real-database equivalence checks (§35.2), not only their contract tests.** A contract test proves the JSON field names survived; only the real-database comparison proves the values did.
+- **When a boundary change is shared, re-run the existing routes' controlled real-database HTTP parity checks (§35.2), not only their contract tests.** A contract test proves the JSON field names survived; only the comparison with the real scoped calculation over database rows proves the values did.
 
 ## 35.1 Contract tests (default `./mvnw test` run)
 
@@ -1371,9 +1371,26 @@ handlers observe guard behavior; existing controller tests still own actual payl
 Keep fixture configuration excluded from unrelated Boot component scans. Focused coverage from
 these tests describes only that selection; complete CI owns package and overall measurements.
 
-## 35.2 Real-database API checks (explicit runs only)
+## 35.2 Real-database API checks
 
-Name these `*IT` so Surefire's default patterns exclude them (§36.2), and run them explicitly. They boot the real application on a random port with the real application service and no schema override, so they read the developer's real database exactly as the running application does.
+**Default controlled parity (`*Test`, runs in CI).** `support.fixture.ScopedCalculationHttpParityTest` is the
+default-suite owner of Profit/Discovery table and resolution-detail parity. It boots the real application on a
+random port over a disposable Flyway `kpi_` schema loaded with the synthetic fixtures (plus a three-level recipe
+chain), reuses `PopulatedFixtureHttpTest`'s offline proof/refresh/upstream ports and real account/session guard, and
+exercises the real controllers, mappers and REAL scoped `CraftingProfitService`/`CraftingDiscoveryService` SQL inputs
+for two accounts with overlapping ids. Each HTTP payload is compared with the in-process scoped calculation of the
+same verified account (the application service, never a production DTO mapper as the oracle), together with
+hand-written fixture outcomes so that a wrong-on-both-sides result is caught. It covers Profit default and buying
+settings, Discovery selected character/discipline defaults and listing prices, row count/order and every
+authoritative value, both missing-material maps, JSON null versus zero on nullable tree fields, the complete
+recursive resolution tree (fields, child order and count) for Profit and Discovery, and the
+`RECIPE_NOT_IN_CALCULATION` 404 including a recipe only the other account has. It asserts positive results and a
+tree depth of at least three, so the comparisons are not vacuous. Isolated controller contract tests (§35.1) remain
+stubbed-service transport checks and do not replace these guarantees.
+
+**Owner-data checks (explicit runs only).** Any check against the developer's real database (§34) is separately
+scoped, named `*IT` so Surefire's default patterns exclude them (§36.2), and not automatic acceptance. Such a run
+boots the real application on a random port with no schema override, so it reads that database exactly as the running application does. The retired owner-database equivalence suites' assertions now live in the default parity test above; the bullets below describe what an explicit owner-data run must still do.
 
 - **Timing, when the issue requires it** (§34): measure from issuing the HTTP request to holding the complete response body. Report startup versus repeat scope, row count, response size, settings, data scale and environment. A backend-only observation does not prove a browser navigation-to-complete-page requirement.
 - **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
@@ -1414,7 +1431,7 @@ is, what it runs, what it cannot run, and what "verified" therefore means.
 |---|---|---|
 | Local (implementing agent, during implementation) | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
 | GitHub Actions (`.github/workflows/ci.yml`) | complete default suites with coverage, type/build, workflow checks, and the STORY-COV-006 controlled browser selection after build | that required deterministic checks and named synthetic journeys pass on the PR head |
-| Local, explicitly invoked during pairing | live GW2 API smoke (§31.4), real-backend/full-stack browser checks, focused additional controlled journeys, populated-database `*IT` checks (§34, §35.2) | the explicitly observed integration/state/measurement scope that default CI does not establish |
+| Local, explicitly invoked during pairing | live GW2 API smoke (§31.4), real-backend/full-stack browser checks, focused additional controlled journeys, owner-data `*IT` checks (§34, §35.2) | the explicitly observed integration/state/measurement scope that default CI does not establish |
 
 Neither side's scope is reduced by this split: the gate runs the same commands the
 developer runs, with the same test selection. What changed is *who pays for the
@@ -1460,8 +1477,9 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
 
 - **Layer 4 live GW2 API smoke (§31.4)** must never run automatically anywhere,
   by definition.
-- **Real-database `*IT` equivalence and performance checks (§34, §35.2)** read a
-  populated real database; CI has an empty one. They stay local and explicit.
+- **Owner-data `*IT` checks and performance measurements (§34, §35.2)** read a
+  populated real database; CI has an empty one. They stay local and explicit. Controlled
+  PostgreSQL HTTP parity (§35.2) is not in this category: it runs in the default suite.
 - **Real-backend/full-stack browser checks (§12.2)** still require explicitly prepared
   application/data environments and remain separately invoked. Installing Chromium does not
   make a controlled fixture equivalent to a live backend, database or production deployment.
