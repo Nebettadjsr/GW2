@@ -3,8 +3,7 @@ package web.dto;
 import java.util.List;
 
 /**
- * Transport form of the Crafting Profit freshness envelope (STORY-APP-014,
- * TARGET_ARCHITECTURE.md §9.1), carried beside the unchanged economic result.
+ * Transport form of the Crafting Profit freshness envelope (STORY-APP-014), carried beside the unchanged economic result.
  *
  * <p>Bounded on purpose. It reports per-source states, aggregate price coverage, the outstanding
  * work and at most one recovery item per refresh mechanism — never a per-item price list, a task

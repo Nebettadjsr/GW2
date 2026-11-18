@@ -3,15 +3,14 @@ package web.dto;
 import java.util.List;
 
 /**
- * Transport response body for {@code POST /api/crafting/profit} (STORY-API-001,
- * TARGET_ARCHITECTURE.md §9 and §9.1).
+ * Transport response body for {@code POST /api/crafting/profit} (cached-result contract).
  *
  * <p>Carries the effective scope/settings actually used (so a caller that relied on defaults can
  * see what was applied) and one row per recipe visible in that scope. Row content, including what
  * is deliberately left out of it, is documented on {@link CraftingRowDto}, which this route shares
  * with Crafting Discovery (STORY-API-002).
  *
- * <p>One envelope serves both outcomes of §9.1's cached-result contract, so a client parses one
+ * <p>One envelope serves both outcomes of the cached-result contract, so a client parses one
  * shape:
  *
  * <ul>
@@ -61,38 +60,5 @@ public record CraftingProfitResponse(String status,
                                        java.util.Map<Integer, Integer> protectedBankQuantities,
                                        java.util.Map<Integer, Integer> protectedMaterialQuantities,
                                        List<craft.BankAllocation> protectedBankAllocations) {
-
-        public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
-                                    boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
-                                    boolean materialProtectionEnabled, List<Integer> protectedItemIds,
-                                    List<Integer> protectedBankItemIds, List<Integer> protectedMaterialItemIds,
-                                    java.util.Map<Integer, Integer> protectedBankQuantities,
-                                    java.util.Map<Integer, Integer> protectedMaterialQuantities) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
-                    protectedBankQuantities, protectedMaterialQuantities, List.of());
-        }
-
-        public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
-                                    boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
-                                    boolean materialProtectionEnabled, List<Integer> protectedItemIds,
-                                    List<Integer> protectedBankItemIds, List<Integer> protectedMaterialItemIds) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
-                    java.util.Map.of(), java.util.Map.of());
-        }
-
-        public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
-                                    boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
-                                    boolean materialProtectionEnabled, List<Integer> protectedItemIds) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    materialProtectionEnabled, protectedItemIds, List.of(), List.of(), java.util.Map.of(), java.util.Map.of());
-        }
-
-        public EffectiveSettingsDto(boolean useOwnMats, boolean allowBuying, int maxBuyCopper,
-                                    boolean listingSell, boolean listingBuy, boolean allowDailyCrafts) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    false, List.of());
-        }
     }
 }

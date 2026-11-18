@@ -13,8 +13,7 @@ import java.util.Map;
 
 /**
  * Translation between the HTTP transport DTOs and the existing application/domain inputs and
- * results (STORY-API-001, TARGET_ARCHITECTURE.md §9: "Business rules must not be implemented in
- * controllers").
+ * results; business rules do not belong in the HTTP layer.
  *
  * <p>This class only defaults, validates and copies. It performs no crafting calculation, derives
  * no total, and applies no display rule - every number it emits is the one the domain produced.
@@ -23,14 +22,13 @@ import java.util.Map;
 final class CraftingProfitApiMapper {
 
     /**
-     * Defaults for omitted request fields: the values the JavaFX Crafting Profit view opens with
-     * (its initial control state), so an empty request body reproduces the default page load and
-     * the two entry points stay comparable.
+     * Defaults for omitted request fields: the values an empty request body calculates with
+     * (All scope, own materials on, buying off, 1g budget, instant sell/buy, daily crafts off).
      */
     static final String DEFAULT_SCOPE_KIND = "ALL";
     static final boolean DEFAULT_USE_OWN_MATS = true;
     static final boolean DEFAULT_ALLOW_BUYING = false;
-    static final int DEFAULT_MAX_BUY_COPPER = 10_000; // the view's "1g" budget field default
+    static final int DEFAULT_MAX_BUY_COPPER = 10_000; // 1g budget
     static final boolean DEFAULT_LISTING_SELL = false; // instant sell
     static final boolean DEFAULT_LISTING_BUY = false;  // instant buy
     // Preserve the former Profit default: daily outputs were not crafted automatically.

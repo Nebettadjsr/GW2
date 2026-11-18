@@ -19,8 +19,8 @@ import web.dto.CraftingProfitResolutionResponse;
 import web.dto.CraftingProfitResponse;
 
 /**
- * HTTP boundary for the Crafting Profit calculation (STORY-API-001, TARGET_ARCHITECTURE.md §9/§9.1)
- * and for one selected recipe's resolution detail (STORY-API-008, §10.2).
+ * HTTP boundary for the Crafting Profit calculation and for one
+ * selected recipe's resolution detail.
  *
  * <p>Thin by construction: it validates and defaults the request, hands the resulting
  * {@link DiscChoice}/{@link CraftingSettings} to the existing
@@ -99,7 +99,7 @@ public class CraftingProfitApiController {
 
     /**
      * Explains how one selected recipe's output requirement is resolved in a Profit calculation
-     * (STORY-API-008, TARGET_ARCHITECTURE.md §10.2).
+     * 
      *
      * <p>The body is required and carries {@code recipeId} and the {@code calculation} it is
      * resolved in, the latter being this route's own table request contract, so scope kinds,
