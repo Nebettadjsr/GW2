@@ -48,10 +48,12 @@ import java.time.Duration;
 import java.util.function.Supplier;
 
 /**
- * Spring Boot entry point for the backend HTTP API (STORY-API-001, UD-006).
+ * Spring Boot entry point and composition root of the backend HTTP API (STORY-API-001, UD-006).
  *
- * <p>Additive: the JavaFX application keeps its own {@code Gw2App} entry point and keeps calling
- * the application services in process. Starting this class starts only the HTTP boundary.
+ * <p>{@link #main} validates or applies the versioned database schema before the Spring context
+ * exists; the bean methods then wire the shared application services, coordinators, task facility,
+ * access/session stores and icon delivery that the HTTP controllers use. Services that keep per-call
+ * state are supplied per request instead of as shared beans.
  *
  * <p>Run with {@code ./mvnw spring-boot:run}. The port comes from configuration
  * ({@code GW2_API_PORT}, see {@code application.properties}), never from a hard-coded value.
@@ -63,7 +65,7 @@ public class Gw2ApiApplication {
     public static void main(String[] args) {
         // The startup schema gate runs before the Spring context exists, so no repository, task or
         // scheduler can reach the database before the versioned chain is validated or applied, and
-        // the process stops here when it cannot be (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.3).
+        // the process stops here when it cannot be (STORY-INFRA-004; docs/ARCHITECTURE.md, Schema lifecycle).
         infra.db.SchemaInitializer.initializeRuntimeDatabase();
 
         SpringApplication.run(Gw2ApiApplication.class, args);
@@ -138,7 +140,7 @@ public class Gw2ApiApplication {
     }
 
     /**
-     * Crafting Profit's cached-result use case (TARGET_ARCHITECTURE.md §9.1), shared rather than
+     * Crafting Profit's cached-result use case (docs/ARCHITECTURE.md, Calculation, detail and search boundaries), shared rather than
      * per-request: it holds no per-call state, and the coordinators it uses must be the shared ones
      * for their admission rules to mean anything. The per-request state stays where it was — each
      * call builds its own {@link CraftingProfitService} over its own captured session, which is what
@@ -308,7 +310,7 @@ public class Gw2ApiApplication {
     }
 
     /**
-     * Upstream validation of a caller-supplied GW2 key (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+     * Upstream validation of a caller-supplied GW2 key (STORY-API-010; docs/ARCHITECTURE.md, Account access, credentials and deletion).
      *
      * <p>The live adapter is the default. {@code gw2.account-access.test-fixtures} replaces it with
      * the offline fixture adapter so the HTTP access contract can be verified without sending a
@@ -431,7 +433,7 @@ public class Gw2ApiApplication {
     }
 
     /**
-     * The icon-delivery boundary (STORY-API-009, TARGET_ARCHITECTURE.md §12.1) over the persistent
+     * The icon-delivery boundary (STORY-API-009; docs/ARCHITECTURE.md, Runtime and source boundaries) over the persistent
      * filesystem cache at {@code ICON_CACHE_DIR} and the upstream image adapter.
      *
      * <p>Shared on purpose, unlike the calculation services: the in-process miss coordination is the

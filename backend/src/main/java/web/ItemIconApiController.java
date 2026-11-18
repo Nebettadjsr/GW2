@@ -18,7 +18,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
- * HTTP boundary for one item image (STORY-API-009, TARGET_ARCHITECTURE.md §12.1):
+ * HTTP boundary for one item image (STORY-API-009; docs/ARCHITECTURE.md, Runtime and source boundaries):
  * {@code GET /api/items/{itemId}/icon/{sourceKey}.{ext}}, the URL the item-bearing reads emit.
  *
  * <p>Thin by construction: it hands the route's two values to {@link IconDelivery} and turns the one
@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
  * are validated before anything is accessed, no request value can name a file, a host or a URL, and
  * there is no listing or index response anywhere under the route.
  *
- * <p>Response contract (§12.1):
+ * <p>Response contract:
  * <ul>
  *   <li>200 with the stored bytes, the verified {@code Content-Type}, {@code nosniff},
  *       {@code Cache-Control: public, max-age=86400} and a strong {@code ETag}.</li>
