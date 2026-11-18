@@ -74,7 +74,8 @@ function syncResolution(): void {
 }
 
 /**
- * The events 13.4 requires a detail to be invalidated by, and nothing else. The key deliberately
+ * The events `docs/ARCHITECTURE.md` section 7 (context/generation guards) names for invalidating a detail,
+ * and nothing else. The key deliberately
  * contains the selected recipe, backend's echoed scope/settings and applied result version —
  * sorting and searching are absent from it, so re-ordering the list leaves a valid detail alone. A
  * started reload empties `calculationInputs` while it is in flight, which clears the tree immediately

@@ -107,7 +107,8 @@ function syncResolution(): void {
  * STORY-WEB-034 — a changed input *generation*: a replacement calculation computed the row from
  * newer inputs, so the explanation beside it has to be the new generation's as well. The display
  * controls are still not part of this, so re-ordering or filtering the table invalidates nothing
- * (`TARGET_ARCHITECTURE.md` 13.4).
+ * (`docs/ARCHITECTURE.md` section 7: context, generation and request guards reject late
+ * detail answers; an unchanged completed detail is reused on return).
  */
 watch(
   () =>
