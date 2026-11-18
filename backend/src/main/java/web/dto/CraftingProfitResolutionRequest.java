@@ -1,8 +1,7 @@
 package web.dto;
 
 /**
- * Transport request body for {@code POST /api/crafting/profit/resolution} (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.1).
+ * Transport request body for {@code POST /api/crafting/profit/resolution} (STORY-API-008).
  *
  * <p>Two members, both required: the recipe whose resolution is asked about, and the calculation it
  * is resolved in. {@code calculation} is deliberately the <em>existing</em> table request contract
@@ -11,7 +10,7 @@ package web.dto;
  * route adds no calculation control of its own.
  *
  * <p>Nothing else is an input: row numbers, prices and material maps are not part of this contract,
- * because the detail operation is a fresh calculation and not retrieval of an earlier one (§13.2).
+ * because the detail operation is a fresh calculation and not retrieval of an earlier one.
  * The one optional member below is not an exception to that — it is never used to retrieve or
  * reconstruct an earlier calculation, only to tell the caller whether this fresh one explains the
  * same inputs.
@@ -22,7 +21,7 @@ package web.dto;
  * @param calculation the scope and settings to resolve it in; required, though its individual
  *                    members keep {@link CraftingProfitRequest}'s optional-with-defaults semantics
  * @param basedOnCalculationId optional: the {@code freshness.calculationId} of the table response
- *                    whose row the caller is asking about (TARGET_ARCHITECTURE.md §9.1/§10.2). When
+ *                    whose row the caller is asking about . When
  *                    given and the inputs have changed since, the response says
  *                    {@code RECALCULATED_FOR_CHANGED_INPUTS} and carries the matching updated row,
  *                    so a detail computed from newer inputs is never presented as the explanation of

@@ -1,13 +1,12 @@
 package web.dto;
 
 /**
- * Transport response body for {@code POST /api/crafting/profit/resolution} (STORY-API-008,
- * TARGET_ARCHITECTURE.md §10.2 and STORY-API-008's response envelope).
+ * Transport response body for {@code POST /api/crafting/profit/resolution} (STORY-API-008's response envelope).
  *
  * <p>{@code recipeId} and {@code calculation} echo the <em>requested</em> identity and the effective
  * inputs, which is what a caller associates the response with. They say nothing about how the root
  * requirement was actually sourced - that belongs to {@link #tree()}, whose root carries its own
- * actually selected recipe (§13.3, AR-003).
+ * actually selected recipe (AR-003).
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *

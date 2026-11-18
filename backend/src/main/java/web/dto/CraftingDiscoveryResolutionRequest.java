@@ -1,8 +1,7 @@
 package web.dto;
 
 /**
- * Transport request body for {@code POST /api/crafting/discovery/resolution} (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.1).
+ * Transport request body for {@code POST /api/crafting/discovery/resolution} (STORY-API-008).
  *
  * <p>The Discovery counterpart of {@link CraftingProfitResolutionRequest}: the same two required
  * members, with {@code calculation} being the existing Discovery table request contract

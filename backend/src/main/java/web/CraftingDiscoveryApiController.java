@@ -25,8 +25,8 @@ import java.sql.SQLException;
 import java.util.function.Supplier;
 
 /**
- * HTTP boundary for the Crafting Discovery calculation (STORY-API-002, TARGET_ARCHITECTURE.md §9) and
- * for one selected recipe's resolution detail (STORY-API-008, §13).
+ * HTTP boundary for the Crafting Discovery calculation (STORY-API-002) and
+ * for one selected recipe's resolution detail (STORY-API-008).
  *
  * <p>Thin by construction, exactly like {@link CraftingProfitApiController}: it validates and
  * defaults the request, hands the resulting {@link DiscChoice}/{@link CraftingSettings} and the
@@ -172,7 +172,7 @@ public class CraftingDiscoveryApiController {
 
     /**
      * Explains how one selected recipe's output requirement is resolved in a Discovery calculation
-     * (STORY-API-008, TARGET_ARCHITECTURE.md §13.1).
+     * (STORY-API-008).
      *
      * <p>The body is required and carries both members: {@code recipeId} and the {@code calculation}
      * it is resolved in, the latter being this route's own table request contract - so the required

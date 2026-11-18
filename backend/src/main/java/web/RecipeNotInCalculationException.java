@@ -2,7 +2,7 @@ package web;
 
 /**
  * A valid recipe ID that the detail operation's own fresh visible candidate set does not contain
- * (STORY-API-008, TARGET_ARCHITECTURE.md §13.4). {@link ApiExceptionHandler} maps it to HTTP 404
+ * (STORY-API-008). {@link ApiExceptionHandler} maps it to HTTP 404
  * with the error code {@code RECIPE_NOT_IN_CALCULATION}.
  *
  * <p>It means "not part of this calculation" - including a recipe that is no longer discoverable in

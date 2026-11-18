@@ -5,8 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * One requirement in a resolution tree, as reported by both detail routes (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.3's recursive node shape).
+ * One requirement in a resolution tree, as reported by both detail routes (STORY-API-008's recursive node shape).
  *
  * <p>A transport copy of the domain's {@code craft.CraftTraceNode}, with an optional Discovery-only
  * recipe-knowledge label derived from the explicit account-known and eligible-candidate sets. No
@@ -18,7 +17,7 @@ import java.util.List;
  *
  * <p>Identity is the node's own: {@link #recipeId()} is the recipe the resolver <em>actually</em>
  * selected or attempted for this requirement - null when no crafting path was selected - and it is
- * unrelated to the requested recipe on the response envelope, which may differ (§13.3, AR-003). For
+ * unrelated to the requested recipe on the response envelope, which may differ (AR-003). For
  * a requirement satisfied from owned stock there is no recipe, no craft and no child: none is
  * invented.
  *
@@ -47,7 +46,7 @@ import java.util.List;
  *                           order the resolver produced them; repeated items in different branches
  *                           remain separate occurrences
  * @param iconUrl            this application's image URL for <em>this node's own item</em>
- *                           (TARGET_ARCHITECTURE.md §12.1), never the requested recipe's output and
+ *                           (application icon route), never the requested recipe's output and
  *                           never derived from how the requirement was sourced; null when the
  *                           operation captured no accepted source for that item. Display metadata
  *                           only: it changes no quantity, cost or state
