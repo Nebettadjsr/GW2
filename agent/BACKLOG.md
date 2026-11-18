@@ -1,6 +1,6 @@
 # Supervised work and handoffs
 
-Updated 17 November 2026. GitHub issues, PRs, reviews and CI own execution state. This file records current owner authorization and handoff constraints. The [roadmap](../docs/ROADMAP.md) owns future scope; [Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) explains the implemented process.
+Updated 18 November 2026. GitHub issues, PRs, reviews and CI own execution state. This file records current owner authorization and handoff constraints. The [roadmap](../docs/ROADMAP.md) owns future scope; [Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) explains the implemented process.
 
 ## Current owner authorization
 
@@ -21,6 +21,16 @@ keeping the desktop tool content available with horizontal scrolling. This super
 blocking guard, width-based proof/loading deferral and automatic modal closure. Keep the
 same issue/PR and independent QA ownership; no mobile tool-layout optimization is requested.
 
+The owner accepted that concrete local UI and PR #244 merged. The subsequent instruction
+to proceed continues broader coverage request #21. The next released bounded slice is
+[#245, STORY-COV-007](https://github.com/Nebettadjsr/GW2/issues/245): active shared material-catalog
+publication, rollback and retry. Independent QA owns test/fixture design and authorship;
+Claude may add only the agreed package-private public-array fetch overload/delegation.
+Use production migrations and a separate owned disposable PostgreSQL fixture. No new
+validation policy, UI, schema, live-account operation or deployment is authorized. Require
+final-head full CI, native review and independently verified focused results before merge;
+no further visual approval is needed for this backend-only slice. GitHub owns its live state.
+
 ## Confirmed earlier scope
 
 - Public Home, legal pages, calculation bounds and the Bank/Materials reservation correction are approved and deployed. The owner confirmed the finished behavior works. Earlier local-only holds for those completed releases are superseded.
@@ -29,34 +39,21 @@ same issue/PR and independent QA ownership; no mobile tool-layout optimization i
 - Pre-release load/capacity measurements, VM work, additional-user-key searches and broad analysis work are withdrawn. Preserve concrete future optimization opportunities and use actual production observations without claiming a supported-user capacity.
 - Preserve unrelated maintainer changes, normal local application sessions and account data. No real-account mutations are authorized for verification. Hosting/provider changes, paid services, billing and genuine product choices remain owner decisions.
 
-## Desktop-browser handoff
+## Coverage handoffs
 
-[Issue #243](https://github.com/Nebettadjsr/GW2/issues/243) owns acceptance criteria, source/test
-scope and current execution status. Its prerequisites #111/#242 and #240/#241 are merged.
-Provide the notice as presentation only and preserve existing account,
-crafting and character state on resize. The curated aggregate is `npm run smoke:ci`
-(`node scripts/run-desktop-journeys.mjs`) after build in the existing required frontend CI job.
-The browser CI step and revised notice/canvas are implemented on the same branch. Independent
-QA and full CI at `1d017fc` verify the revised behavior; the PR records subsequent test
-synchronization corrections and final-head evidence. Require current-head CI/review and local
-owner visual acceptance before accepting the change. Consult the PR for live status.
-This change is not deployed.
+[#243](https://github.com/Nebettadjsr/GW2/issues/243) / #244 delivered the ten controlled browser
+journeys and accepted informational notice. Preserve their desktop interaction, failure,
+account-isolation and state-retention assertions in normal frontend CI. They establish UI/request
+behavior, not backend economics, live upstream behavior or a line/branch percentage. Narrow
+tool content stays available through horizontal scrolling; public reading remains fluid.
 
-Cover public reading/connection, saved reservations into Profit/search/detail, recoverable
-failure/retry, account isolation and the viewport boundary through real Chromium with controlled
-HTTP responses. These journeys establish UI/request behavior, not backend economics or a
-line/branch percentage. Remove unsupported phone/tablet tool-layout repetitions while retaining
-their relevant desktop feature assertions and existing keyboard/focus/zoom/short-height coverage.
-Public reading and the notice remain readable below the notice threshold; tool content remains
-available through horizontal scrolling without a small-screen usability guarantee.
-
-The issue is held with `pairing` during preparation and acceptance. Independent QA owns all
-frontend tests, scripts, fixture/helpers and mobile-test removals. Claude may inspect/run them
-but implements only the released production UI/package/CI and documentation scope. A separate
-documentation pass maintains the owning specification/testing/process files; no archived UD/ADR
-queue is reactivated. The new notice requires concrete local owner visual approval before
-acceptance; do not replace that review with browser screenshots or automated assertions.
-Keep the ordinary local app and accepted preview intact. Merge/public deployment remain separate.
+[#245](https://github.com/Nebettadjsr/GW2/issues/245) / #246 owns the subsequent shared
+material-catalog publication slice and its execution evidence. Independent QA's five real-SQL
+publication cases plus one early global-refresh failure/retry case use only synthetic upstream
+answers and generated production-Flyway schemas. The production seam reuses the existing
+transaction; no new product, payload or storage policy is selected. Current measurements and
+remaining gaps belong in QUALITY_METRICS. Full current-head CI/native review and independent
+focused evidence remain required. No UI approval or production deployment is part of this slice.
 
 [#21](https://github.com/Nebettadjsr/GW2/issues/21) stays open for later backend gaps selected
 from full current CI reports, not the browser journey count. [#60](https://github.com/Nebettadjsr/GW2/issues/60)

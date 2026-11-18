@@ -1252,6 +1252,14 @@ Extends §9. A test in this layer must:
 
 Exact tooling (Testcontainers, another Docker-based approach, or another isolated-database mechanism) remains an open decision — see §29. This document intentionally requires the *property* ("isolated real PostgreSQL") rather than mandating one specific technology ahead of that decision.
 
+`MaterialCategoryPublicationTest` exercises the active public-array fetch-to-publication
+flow on production Flyway schemas: literal ordered replacement/scoped readback, unchanged
+account rows/markers, real insertion/cleanup faults, rollback and explicit retry.
+`GlobalDataRefreshServiceTest` covers early category-step failure status and recovery.
+These controlled synthetic payloads establish application/SQL behavior, not a captured
+ArenaNet response contract. No live API or owner database is required. The injected
+`PublicArrayFetcher` overload reuses the production transaction rather than copying it.
+
 ## 31.3 Layer 3 — GW2 API Contract/Fixture Tests
 
 Extends §10. A test in this layer must:

@@ -20,7 +20,11 @@ public final class MaterialCategorySync {
     record Category(int id, String name, int displayOrder, List<Integer> itemIds) {}
 
     public static void syncMaterialCategories() throws Exception {
-        JsonNode root = Gw2ApiClient.getPublicArray("https://api.guildwars2.com/v2/materials?ids=all");
+        syncMaterialCategories(Gw2ApiClient::getPublicArray);
+    }
+
+    static void syncMaterialCategories(PublicArrayFetcher fetcher) throws Exception {
+        JsonNode root = fetcher.get("https://api.guildwars2.com/v2/materials?ids=all");
         List<Category> categories = parse(root);
         try (Connection con = Db.open()) {
             MaterialStorageSchema.ensure(con);
