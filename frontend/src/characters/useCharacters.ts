@@ -2,15 +2,16 @@
  * Read state for the Characters destination (STORY-CHAR-002).
  *
  * Independent reads: the roster (CHARACTERS coverage), the selected character's detail, and its
- * equipment tabs (CHARACTER_EQUIPMENT_TABS coverage), plus lazily read inventory and the optional saved
- * builds (only to name the active elite). Unavailable optional sources never erase an admitted roster. Every answer is guarded by the account generation it was requested under and by the
- * character that is still selected, so a late answer for a replaced account or a previous selection
- * is discarded. Nothing is derived from the data: absence of an equipment row is never turned into an
- * empty slot, and `tabs` absent is never read as `[]`.
+ * equipment tabs (CHARACTER_EQUIPMENT_TABS coverage), plus lazily read inventory and the optional
+ * saved builds. Unavailable optional sources never erase an admitted roster. Every answer is guarded by
+ * the account generation it was requested under and by the character that is still selected, so a late
+ * answer for a replaced account or a previous selection is discarded. Nothing is derived from the data:
+ * absence of an equipment row is never turned into an empty slot, and `tabs` absent is never read as `[]`.
  *
  * Recovery of the optional equipment/builds sources uses the existing refresh operation through
  * `refreshEquipment`/`recoverBuilds`: at most one equipment refresh in flight, a bounded task wait and
- * bounded coverage retries, failures propagated to the caller. This hook starts none by itself: the
+ * bounded coverage retries. `refreshEquipment` catches its failure into `refreshMessage` (the screen
+ * forwards it as its refresh failure); `recoverBuilds` rejects. This hook starts none by itself: the
  * owning screen decides when via the shared automatic account refresh, or on the user's request.
  */
 import { computed, getCurrentScope, onScopeDispose, ref, shallowRef } from 'vue'
@@ -104,8 +105,9 @@ export function useCharacters(
   const inventoryFailure = ref<ReadFailure | null>(null)
   let inventoryId = 0
 
-  // Saved builds: read only for the selected character, solely to name its ACTIVE elite specialization
-  // in the header. Not retained across characters; any doubt falls back to the base profession.
+  // Saved builds: read only for the selected character. They decorate the header with the ACTIVE elite
+  // specialization (any doubt falls back to the base profession) and feed the inspectable Builds
+  // section (buildSource/buildTabs/shownBuild). Last-good builds are retained per character name.
   const buildPhase = ref<ReadPhase>('idle')
   const buildResponse = shallowRef<CharacterBuildTabsResponse | null>(null)
   /** Last Builds answer with tabs, per character name; account-bound because this state is. */
