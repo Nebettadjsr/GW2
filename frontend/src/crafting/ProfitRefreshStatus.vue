@@ -40,14 +40,10 @@ const isVisible = computed(
   () => props.failure !== null || ((props.isProvisional || props.isPending) && props.isRecovering)
 )
 
-const explanation = computed(() =>
-  props.isPending
-    ? 'No calculation could be made from the data synchronized so far, so no results are shown. ' +
-      'They appear as soon as the refresh below has finished.'
-    : 'The results below were calculated from the data that last synchronized successfully. They ' +
-      'stay on screen until the refresh has finished, and are then replaced automatically with the ' +
-      'recalculated ones.'
-)
+/** Shown only while no result exists (`isPending`); a provisional result shows the chip alone. */
+const explanation =
+  'No calculation could be made from the data synchronized so far, so no results are shown. ' +
+  'They appear as soon as the refresh below has finished.'
 
 const failureExplanation = computed(() =>
   props.isPending
