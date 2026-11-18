@@ -30,8 +30,11 @@ import SyncScreen from './sync/SyncScreen.vue'
  * inputs, results and requests alone.
  *
  * Each destination is a real URL (`useHashRoute`), so Back, Forward, a bookmark and a reload all work
- * normally and each screen has its own document title. Navigating issues no request of the shell's
- * own: no calculation and no synchronization operation can follow from opening a destination.
+ * normally and each screen has its own document title. Navigating issues no request or calculation of
+ * the shell's own. The screens it opens do their normal work: the shared crafting bootstrap runs on
+ * first use of a crafting page, and a newly mounted screen reads its own inputs. A kept-alive screen
+ * does not repeat that on return, and no calculation or synchronization operation is submitted by the
+ * navigation itself.
  *
  * This workspace is created per connected account (the app keys it by the connection generation), so
  * replacing or disconnecting the key discards every screen, selection, result and tracked task of the
@@ -159,10 +162,11 @@ watch(
     </KeepAlive>
 
     <!--
-      Ectoplasm Salvage is deliberately not kept alive: it does have inputs (quantity, salvage
-      method, tool and price mode), but they are meant to reset on navigation; only the viewport
-      width is retained across a width-only change. Its result is a snapshot of live Trading Post prices — so opening it
-      again should calculate again rather than re-present an older snapshot as current.
+      Ectoplasm Salvage is deliberately not kept alive. Its quantity, salvage method, tool and
+      price-mode inputs survive a width-only change (the screen stays mounted, with no refetch or
+      reset), but navigating away unmounts it, so opening it again resets those inputs and
+      refetches the live Trading Post price snapshot rather than re-presenting an older one as
+      current.
     -->
     <EctoSalvageScreen v-if="route.current.value.id === 'ecto'" />
 
