@@ -36,10 +36,11 @@ scope and current execution status. Its prerequisites #111/#242 and #240/#241 ar
 Provide the notice as presentation only and preserve existing account,
 crafting and character state on resize. The curated aggregate is `npm run smoke:ci`
 (`node scripts/run-desktop-journeys.mjs`) after build in the existing required frontend CI job.
-The browser CI step exists; the revised notice/canvas scope is being implemented on the same
-branch. Prior results at `906a808` concern the superseded blocking proposal. Local owner visual
-review remains pending; require current-head CI/review before acceptance and consult the PR
-for their live status. This change is not deployed.
+The browser CI step and revised notice/canvas are implemented on the same branch. Independent
+QA and full CI at `1d017fc` verify the revised behavior; the PR records subsequent test
+synchronization corrections and final-head evidence. Require current-head CI/review and local
+owner visual acceptance before accepting the change. Consult the PR for live status.
+This change is not deployed.
 
 Cover public reading/connection, saved reservations into Profit/search/detail, recoverable
 failure/retry, account isolation and the viewport boundary through real Chromium with controlled

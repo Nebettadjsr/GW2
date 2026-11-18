@@ -8,19 +8,19 @@ The GitHub Actions `Coverage KPI report` job publishes per-module/package rates 
 
 ## Verified CI baseline
 
-Source: STORY-COV-006 source/test revision `906a8084b0573dda1dc50f822e7147f1c063f94d`,
-successful [CI run 44140588439](https://github.com/Nebettadjsr/GW2/actions/runs/44140588439),
-generated 17 November 2026. The explicitly dispatched run measured that same revision,
-including both review corrections, as recorded in `coverage-kpi.json`. Downloaded and
-inspected that day: `coverage-reports` artifact `14354212284`, with its raw JaCoCo counters
+Source: STORY-COV-006 source/test revision `1d017fce91a827413f5933f2090122124e29091a`,
+successful [CI run 44252493662](https://github.com/Nebettadjsr/GW2/actions/runs/44252493662),
+generated 18 November 2026. The explicitly dispatched run measured the warning-only
+revision, as recorded in `coverage-kpi.json`. Downloaded and inspected that day:
+`coverage-reports` artifact `14404313486`, with its raw JaCoCo counters
 cross-checked. These numbers describe that identified run. Later documentation-only commits
 do not constitute another measured result; final-head CI and owner acceptance remain separate.
 
 | Area | Line coverage | Branch coverage |
 | --- | --- | --- |
 | Java backend | 91.40% (10,522 / 11,512) | 81.42% (5,376 / 6,603) |
-| Frontend TypeScript | 96.44% (4,063 / 4,213) | 86.50% (4,256 / 4,920) |
-| Combined weighted | 92.75% (14,585 / 15,725) | 83.59% (9,632 / 11,523) |
+| Frontend TypeScript | 96.51% (4,043 / 4,189) | 86.50% (4,216 / 4,874) |
+| Combined weighted | 92.76% (14,565 / 15,701) | 83.58% (9,592 / 11,477) |
 
 Both application modules exceed the line target; both still have branch gaps. A combined percentage does not establish adequate coverage of any individual critical path.
 
@@ -45,23 +45,26 @@ journeys increased the percentage without a separately measured coverage change.
 existing KPI baseline above remains unchanged. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
 owns commands, viewport checks and evidence limits.
 
-**Prior-policy evidence (17 November):** independent local QA on
-`906a8084b0573dda1dc50f822e7147f1c063f94d` passed 30 focused
-automated checks, the fresh type-checking production build and all ten curated controlled
-browser journeys. These are scoped local results, not a new full-suite coverage measurement.
-CI run `44140588439` also passed its Chromium installation, all ten browser journeys and evidence
-upload. Review's in-flight Profit and Ecto resize-state gaps
-were reproduced by two failing regressions before correction. Both now pass: a pending answer
-survives narrowing without recalculation, and Ecto preserves inputs without width-only refetch
-while retaining normal navigation reset. Two further Chromium regressions reproduced native
-Help/Delete confirmation dialogs trapping navigation when hidden. The correction closes them
-without discarding the admitted form/key or confirming deletion; both real Home clicks pass.
-Final-head CI/review and owner visual acceptance remain required; [PR #244](https://github.com/Nebettadjsr/GW2/pull/244)
-owns their live status. The 18 November warning-only policy supersedes blocking/no-request
-and automatic-modal-close assertions; those earlier passes and percentages do not establish
-verification of the revision. QA preserves unaffected user stories and explains replaced
-assertions. The owner visual check is still pending. No merge, deployment or
-real-upstream success is implied by these measurements.
+**Warning-only evidence (18 November):** independent local QA on `1d017fc` passed 30 focused
+checks, the fresh type-checking production build and all ten curated browser journeys.
+CI `44252493662` also passed; downloaded browser artifact `14404681915` confirms ten passes,
+both child commands exiting zero and no timeout. Initial narrow tools load normally, actual
+document scrolling reaches the rightmost tool action, pending Profit and Ecto state survive
+resize without duplicate work, and Help/Delete confirmation remains modal until ordinary
+close/cancel. No deletion is submitted. Public reading, recovery, account isolation and
+reservation-to-Profit journeys remain covered.
+
+The 18 November owner revision explicitly supersedes prior blocking/no-request and
+automatic-modal-close assertions. Independent QA replaced them with visible-content,
+normal-loading and modal-retention assertions, then corrected a resize-render race by
+waiting for the notice to detach before the existing exact-1024px absence assertion.
+This adds no retries or threshold relaxation. Production source is unchanged at QA
+correction `0c24106`, which independently passes the same
+30 focused checks, fresh build and ten browser journeys. Removing obsolete admission/width-gate
+source also changes measured denominators; the small percentage change is not evidence
+of broader browser coverage. Final-head CI/review and owner visual acceptance remain
+required; [PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns live status.
+No merge, deployment or real-upstream success is implied by these measurements.
 
 ## Current improvement candidates
 
@@ -75,7 +78,7 @@ Selected package figures from the same artifact:
 | Backend `parser` | 98.12% | 73.81% | Malformed and optional payload branches; prioritize meaningful input cases. |
 | Backend `infra.db` | 79.17% | 65.38% | Connection/pool lifecycle and failure handling. |
 | Frontend `characters` | 95.95% | 78.19% | Equipment/build/inventory state and unavailable-data branches. |
-| Frontend `account` | 94.04% | 81.48% | Connection restoration, switching and deletion behavior. |
+| Frontend `account` | 94.62% | 81.64% | Connection restoration, switching and deletion behavior. |
 | Frontend `home` | 67.57% | 88.46% | Inspect uncovered behavior before adding static-content assertions. |
 
 [Issue #21](https://github.com/Nebettadjsr/GW2/issues/21) remains the broader request. Refresh class/method counters from the current artifact before choosing another slice. A low package percentage alone does not justify a production rewrite.

@@ -25,7 +25,8 @@ existing Playwright-core/controlled-origin helpers. The implementation branch pr
 `npm run smoke:ci` (`node scripts/run-desktop-journeys.mjs`) after build in the required
 frontend CI job. The owner revised the local proposal on 18 November to a nonblocking notice
 and horizontal desktop canvas: initial narrow tools load normally, and width does not hide
-content or close modals. QA updates superseded assertions while preserving the user stories.
+content or close modals. Source `1d017fc` and independent QA implement this revision; QA
+replaced superseded assertions while preserving the user stories.
 Consult the PR for current verification; local owner acceptance and final-head CI/review are
 required before merging. It is not deployed.
 
