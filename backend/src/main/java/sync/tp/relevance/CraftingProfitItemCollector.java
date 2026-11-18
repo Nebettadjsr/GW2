@@ -194,6 +194,12 @@ FROM relevant_tradeable
         }
     }
 
+    /**
+     * The unscoped selection, retained for a pre-cutover database whose recipe knowledge is not yet
+     * account-owned. On a managed (versioned) schema it refuses rather than guess an account; use
+     * {@link #collect(Connection, model.AccountScope)} for one account's demand or
+     * {@link #collectGlobal(Connection)} for the shared crafting graph.
+     */
     public Set<Integer> collect(Connection con) throws Exception {
         // Relevance is derived from account and character recipe knowledge, which is account-owned
         // on a migrated database, so this selection needs a scope it does not have yet.

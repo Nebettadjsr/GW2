@@ -3,8 +3,7 @@ package infra.icons;
 import java.time.Duration;
 
 /**
- * The finite protective bounds requires the implementation to choose and
- * document. They are limits that keep one cache miss from consuming unbounded time, memory, sockets
+ * The finite protective bounds the implementation chooses and documents. They are limits that keep one cache miss from consuming unbounded time, memory, sockets
  * or disk - not measured latencies, and not a claim about how fast the upstream host answers.
  *
  * <p>The values are deliberately generous relative to a ~10 KB game icon: an icon that needs more

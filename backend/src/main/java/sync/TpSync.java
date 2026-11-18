@@ -323,7 +323,7 @@ public final class TpSync {
     /**
      * The Profit price refresh: fetch the stale or missing quotes the Profit selection requires.
      *
-     * <p>Carries no account scope, so on the versioned database it asks for the global selection
+     * <p>Carries no account scope, so on the versioned database it asks for the global selection:
      * the shared crafting graph and the shared quote cache, with no account row
      * entering the demand and no account inferred. On a pre-cutover database the selection derived
      * from the stored recipe knowledge is unchanged.
