@@ -90,7 +90,7 @@ public final class ItemSync {
     }
 
     /**
-     * Owner full item-catalog synchronization (STORY-STATUS-004): captures one finite
+     * Owner full item-catalog synchronization: captures one finite
      * {@code /v2/items} ID snapshot, re-downloads the detail of <em>every</em> captured ID (unchanged
      * ones included) in 200-ID batches, and only after all batches validated and committed removes
      * rows absent from the snapshot that no {@code recipe_ingredients} row still references. A
