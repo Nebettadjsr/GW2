@@ -48,10 +48,9 @@ public final class ProfitInputSession implements AutoCloseable {
     private final AccountScope scope;
 
     /**
-     * An unscoped session over an already-prepared connection. Retained as its own constructor
-     * because it is the one package-visible way an application-layer test builds a session over a
-     * connection it supplies, without reaching a database
-     * ({@code CraftingProfitServiceSessionTest.sessionOn}).
+     * An unscoped session over an already-prepared connection. Kept with exactly this signature
+     * because {@code CraftingProfitServiceSessionTest.sessionOn} reaches it by reflection to build a
+     * session over a connection it supplies, without reaching a database.
      */
     private ProfitInputSession(Connection connection) {
         this(connection, null);

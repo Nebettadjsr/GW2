@@ -107,9 +107,11 @@ public record CraftingResolutionDetail(
                                                 Map<Integer, PriceQuote> capturedQuotes,
                                                 Set<Integer> knownUsableRecipeIds,
                                                 Set<Integer> discoverableRecipeIds) {
-        CraftingResolutionDetail detail = of(recipeId, recipe, row, explanation, capturedItems, capturedQuotes);
-        return new CraftingResolutionDetail(detail.recipeId, detail.status, detail.recipe, detail.row,
-                detail.explanation, detail.items, detail.quotes, knownUsableRecipeIds, discoverableRecipeIds);
+        return new CraftingResolutionDetail(
+                recipeId,
+                explanation.available() ? Status.AVAILABLE : Status.RESULT_UNAVAILABLE,
+                recipe, row, explanation, capturedItems, capturedQuotes,
+                knownUsableRecipeIds, discoverableRecipeIds);
     }
 
     /**
