@@ -278,18 +278,6 @@ a {
   gap: var(--space-3);
 }
 
-.cluster {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-/* Lets a control group shrink below its natural width instead of pushing the page wider. */
-.cluster > * {
-  min-width: 0;
-}
-
 .prose {
   max-width: var(--prose-max);
 }
@@ -363,12 +351,6 @@ a {
 
 .detail-values dd {
   margin: 0;
-}
-
-/* The one value in its group that should be read first; the label still carries the meaning. */
-.detail-values__lead {
-  font-size: var(--text-base);
-  font-weight: 600;
 }
 
 /* The backend's own code and message: available, but read after the sentence that explains it. */
