@@ -8,7 +8,7 @@
  * not one. An unrecognized state stays visible as itself — it must never round up to success.
  *
  * No progress, percentage, step count or cancellation exists in these words, because none exists in
- * the contract (`CURRENT_ARCHITECTURE.md` 5.7–5.9).
+ * the contract (`ARCHITECTURE.md` 6).
  */
 import type { SyncOperationView } from './useSyncOperations'
 
@@ -27,7 +27,7 @@ const TASK_STATES: Readonly<Record<string, StatusPresentation>> = {
   FAILED: { text: 'Failed', tone: 'failure' }
 }
 
-/** The four states `CURRENT_ARCHITECTURE.md` 5.7 defines, plus anything else shown as itself. */
+/** The four task states the backend reports (`ARCHITECTURE.md` 6), plus anything else shown as itself. */
 export function describeTaskState(state: string): StatusPresentation {
   return TASK_STATES[state] ?? { text: `Unrecognized state: ${state}`, tone: 'unknown' }
 }
