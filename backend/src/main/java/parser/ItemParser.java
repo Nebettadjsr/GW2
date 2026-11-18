@@ -10,8 +10,8 @@ public final class ItemParser {
             String name,
             String type,
             String rarity,
-            Integer vendorValue,   // nullable ok
-            String iconUrl,        // nullable ok (optional, aber praktisch)
+            Integer vendorValue,   // null when vendor_value is absent
+            String iconUrl,        // null when the item has no icon
             Boolean noMysticForge  // null when flags are missing or malformed
     ) {
         public ItemRow(int itemId, String name, String type, String rarity, Integer vendorValue, String iconUrl) {
