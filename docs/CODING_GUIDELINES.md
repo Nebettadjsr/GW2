@@ -12,7 +12,7 @@ use judgment — don't ritualize the process past the point it adds value.
 
 **Most changes are local — treat them that way.** A typical bugfix, small feature slice, or
 change confined to one component: just implement it per Sections 2–6, verify it (Section 4),
-and move on. Do not read `ROADMAP.md`, the backlog, or unrelated parts of the codebase for a
+and move on. Do not read the backlog or unrelated parts of the codebase for a
 change like this — that's wasted context/tokens for something that doesn't need it.
 
 **Only widen the lens for changes that are genuinely cross-cutting**, specifically:

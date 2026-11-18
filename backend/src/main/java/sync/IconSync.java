@@ -465,7 +465,7 @@ public final class IconSync {
      *
      * <p>Reads no account table, so it requires no {@code model.AccountScope} and is refused by
      * nothing - this is the selection that keeps the icon-metadata refresh usable on a migrated,
-     * empty-account database (STORY-SYNC-007, docs/ROADMAP.md Phase 6). Like the unscoped union it
+     * empty-account database. Like the unscoped union it
      * reads the referenced families directly rather than through {@code items}, so a referenced id
      * with no metadata row is still discovered, and it filters by no tradeability source.
      */

@@ -11,17 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Intended (spec-correct) behavior tests for DOMAIN_SPEC.md section 11.1 / DQ-007 ("Bound
- * Materials"), implemented per UD-001's Resolution: the selected character is an explicit
- * input, threaded in here as a pre-split {@code PlanState} (sellable owned quantity vs.
- * account-bound/soulbound-usable owned quantity) - the same split
- * {@code repo.InventoryRepository.loadOwnedInventoryForCharacter(String)} produces. These
- * tests supersede {@link CraftingResolverBoundMaterialCharacterizationTest} as the "does
- * section 3.4 have an intended-behavior test" answer for docs/ROADMAP.md Phase 0 exit
- * criterion 3; that characterization test is kept alongside this one because it still
- * accurately documents the still-unchanged, still-live flat-inventory production path
- * (single-arg {@code PlanState} constructor / {@code loadOwnedInventory()}) - see
- * STORY-DOM-011's Result section.
+ * Bound-material behavior with an explicit selected-character inventory split:
+ * sellable owned quantity versus account-bound/soulbound-usable quantity.
+ * The single-argument constructor's flat-inventory behavior is covered separately by
+ * {@link CraftingResolverBoundMaterialCharacterizationTest}.
  */
 class CraftingResolverBoundMaterialTest {
 

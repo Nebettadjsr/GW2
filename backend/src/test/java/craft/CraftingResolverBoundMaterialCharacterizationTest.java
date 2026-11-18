@@ -10,17 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Characterization tests for DOMAIN_SPEC.md section 11.1 ("Bound Materials") vs.
- * KNOWN_PROBLEMS.md section 3.4: the domain layer has no concept of account-bound or
- * soulbound materials, and no "selected character" concept at all. An owned quantity
- * that per section 11.1 "must not be counted as usable inventory for the selected
- * character" (a soulbound-to-another-character item) is today indistinguishable, at the
- * craft.PlanState/CraftingResolver level, from any other owned, tradable material.
- * <p>
- * These tests do NOT assert correct (spec-compliant) behavior - they pin down the
- * current, non-compliant behavior so that a future fix (which requires a
- * "selected character" concept - see agent/stories/BACKLOG.md) is a deliberate,
- * visible change rather than a silent one.
+ * Characterizes the flat-inventory overload: quantities supplied to the single-argument
+ * {@code PlanState} constructor carry no binding information. Selected-character binding
+ * behavior uses an explicit inventory split and is covered by
+ * {@link CraftingResolverBoundMaterialTest}.
  */
 class CraftingResolverBoundMaterialCharacterizationTest {
 

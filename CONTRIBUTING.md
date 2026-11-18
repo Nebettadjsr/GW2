@@ -12,7 +12,7 @@ Read the relevant [domain rules](docs/DOMAIN_SPEC.md),
 [coding conventions](docs/CODING_GUIDELINES.md). Existing code alone does not
 authorize a new product rule.
 
-[Development workflow](docs/DEVELOPMENT_WORKFLOW.md) explains the complete
+[Development workflow](agent/DEVELOPMENT_WORKFLOW.md) explains the
 issue/agent/branch/PR/CI/review process, including what is automatic and what
 requires an explicit session. Human contributions use the same acceptance and
 review standards; they do not need to run Claude.

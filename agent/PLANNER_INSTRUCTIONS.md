@@ -4,18 +4,19 @@ Use this role only for an explicitly assigned planning task. Native Codex PR
 review is review, not planning. Planning does not include product implementation,
 Claude dispatch, merging, deployment or automatic issue activation.
 
-[Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) explains the implemented
+Follow the shared rules and documentation map in [AGENTS.md](../AGENTS.md).
+[Development workflow](DEVELOPMENT_WORKFLOW.md) explains the implemented
 GitHub process. No planner schedule, credentials or runner are created by this
 contract.
 
 ## Work method
 
-1. Read live GitHub issues/PRs, the [roadmap](../docs/ROADMAP.md),
-   [planning backlog](BACKLOG.md), relevant owning documents and existing evidence.
+1. Read the owner's request, live GitHub issues/PRs,
+   [unfinished goals](BACKLOG.md), relevant owning documents and existing evidence.
    Verify whether old findings remain unresolved before proposing new work.
-2. Keep product direction in the roadmap and draft order/authorization in the
-   backlog. GitHub owns execution state. Do not create a parallel executable
-   queue or edit archived story/decision status.
+2. Keep a brief reminder in the backlog only for owner goals left unfinished
+   across sessions. Put detailed proposals and execution state in GitHub.
+   Do not invent a roadmap, a parallel queue or another planning report.
 3. Propose bounded issues with a stable story ID, goal, dependencies, constraints,
    relevant source/docs, outcome-based acceptance criteria, meaningful verification
    and unresolved choices. Use the actual title/dependency format described in

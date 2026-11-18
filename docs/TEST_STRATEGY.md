@@ -2,7 +2,11 @@
 
 ## GitHub issue and pull-request verification
 
-The implementing agent normally authors and maintains production code, tests, and fixtures together to meet the issue's acceptance criteria. An explicit issue or supervisor handoff can instead assign test and fixture authorship to independent QA; preserve that scoped ownership until the handoff changes it. Existing coverage can be reused; a low-risk change may need no new test when the PR states why. Changed or weakened assertions require an evidence-backed reason in the PR. CI runs the default backend and frontend suites. Codex reviews the issue, behavior, documentation, and test diff; a green suite alone does not establish completion. Questions requiring a Product Owner decision stay on the issue or PR with `needs-decision`. The actual delivery process is documented in [Development workflow](DEVELOPMENT_WORKFLOW.md).
+Existing coverage can be reused; a low-risk change may need no new test when the PR states
+why. Explain changed or weakened assertions with evidence. CI runs the default suites;
+a green suite alone does not establish that the required behavior is correct. Agent roles
+and delivery rules are defined in [AGENTS.md](../AGENTS.md) and
+[Development workflow](../agent/DEVELOPMENT_WORKFLOW.md).
 
 ## 1. Purpose
 
@@ -818,8 +822,8 @@ seven-day retention. An absent or incomplete result
 must not be interpreted as a passing journey. Screenshot/trace evidence does not replace the
 owner's visual acceptance for a changed UI layout.
 
-Browser outcome counts are separate from the Vitest/JaCoCo percentages in §26 and
-[Quality metrics](QUALITY_METRICS.md). A controlled pass establishes the named journeys and
+Browser outcome counts are separate from the Vitest/JaCoCo percentages in §26.
+A controlled pass establishes the named journeys and
 viewport combinations, not exhaustive end-to-end coverage or a production latency claim.
 
 ---
@@ -1104,9 +1108,9 @@ Developers and AI agents can generate reports locally:
 - Combined local KPI: `python .github/scripts/publish_coverage_kpi.py`; this writes
   `quality-reports/coverage-kpi.md` and `quality-reports/coverage-kpi.json`.
 
-The baseline is recorded separately in `docs/QUALITY_METRICS.md` and must distinguish measured
-results, estimates, and unavailable values. Re-establish it when coverage infrastructure or
-test scope changes; do not copy live run counts into this strategy document.
+Use the identified CI revision and coverage artifact as the baseline. Distinguish measured
+results, estimates and unavailable values. Refresh it when measurement scope changes;
+record comparisons in the issue/PR rather than another tracked coverage ledger.
 
 New or changed behavior should aim to maintain at least 90% coverage in affected areas, with
 special attention to business-critical branches and edge cases. Coverage is a minimum quality
@@ -1181,7 +1185,9 @@ A CI failure is investigated on the current PR branch. The implementing agent fi
 
 The Java 25 backend uses Maven, JUnit Jupiter and Surefire, with JaCoCo reports. The Vue/TypeScript frontend uses Vitest, jsdom, type checking and the production Vite build. Domain tests exercise independent crafting types; repository and HTTP tests supply their required real PostgreSQL or fake upstream boundaries.
 
-Current coverage is recorded in [Quality metrics](QUALITY_METRICS.md), with a successful CI revision and artifact. Open structural or behavior findings belong in [Known problems](KNOWN_PROBLEMS.md). Neither test counts nor old harness state are evidence for the current commit.
+Current coverage comes from successful CI at an identified revision and artifact. Open
+structural or behavior findings belong in [Known problems](KNOWN_PROBLEMS.md). Neither
+test counts nor old harness state are evidence for the current commit.
 
 Keep new tooling proportional to the check it enables. Do not introduce a testing platform solely to reproduce a retired migration or measurement programme.
 
@@ -1230,7 +1236,8 @@ Prioritize uncovered active behavior and regression risks in the existing applic
 
 # 31. Persistence & External-API Test Layers
 
-This section formalizes, as four explicit layers, how §4.1, §9, and §10 above combine to cover persistence and Guild Wars 2 API behavior specifically. `docs/ROADMAP.md` references these layer names directly in its exit criteria; this section is what defines them. `docs/ROADMAP.md` decides *when* a layer's coverage must exist by phase — it does not redefine *how* the layer works.
+These four layers combine the domain, persistence and external-API methods in §4.1, §9
+and §10. Select the layers that establish the behavior affected by the change.
 
 ## 31.1 Layer 1 — Unit / Domain Tests
 
