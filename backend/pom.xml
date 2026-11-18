@@ -68,7 +68,7 @@
         </dependency>
 
         <!--
-            STORY-INFRA-004 (ADR-010, TARGET_ARCHITECTURE.md §7.3): versioned PostgreSQL schema
+            STORY-INFRA-004 (ADR-010, docs/ARCHITECTURE.md §4): versioned PostgreSQL schema
             management. Both artifacts are version-managed by the spring-boot-dependencies BOM
             imported above, so the engine and its PostgreSQL module cannot drift apart from each
             other or from the Spring Boot line - PostgreSQL support is a separate Flyway dependency

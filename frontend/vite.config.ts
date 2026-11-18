@@ -53,7 +53,8 @@ export default defineConfig(({ mode }) => {
         reporter: ['html', 'json-summary', 'lcov'],
         reportsDirectory: 'coverage',
         include: ['src/**/*.{ts,vue}'],
-        exclude: ['src/**/*.spec.ts', 'src/**/*.d.ts']
+        // Test-only helpers live under `__tests__` and are not application source.
+        exclude: ['src/**/*.spec.ts', 'src/**/*.d.ts', 'src/**/__tests__/**']
       }
     }
   }
