@@ -320,7 +320,6 @@ async function advanceHabit(): Promise<void> {
 .beginner__intro { display: grid; gap: var(--space-3); }
 .beginner__intro > p { max-width: 86ch; line-height: 1.7; }
 .beginner__intro h2 { font-size: var(--text-2xl); }
-.beginner__audience { color: var(--color-muted); font-size: var(--text-sm); }
 .beginner__chapters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
 .beginner__chapters button { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-control); background: transparent; color: var(--color-text); font: inherit; text-align: left; }
 .beginner__chapters button:hover { background: var(--color-surface); }
