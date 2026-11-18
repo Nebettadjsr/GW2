@@ -15,7 +15,7 @@ class ItemReadServiceTest {
     @Test
     void refreshesOnlyMetadataMissingAnIconThenReadsStoredResult() throws Exception {
         Map<Integer, ItemRepository.ItemInfo> stored = new HashMap<>();
-        stored.put(19721, new ItemRepository.ItemInfo(19721, "Glob", null,
+        stored.put(19721, new ItemRepository.ItemInfo(19721, "Glob",
                 "https://render.guildwars2.com/file/ABCDEF0123456789/1234.png"));
         var repository = new ItemRepository() {
             @Override public Map<Integer, ItemInfo> loadItems(Set<Integer> ids) {
@@ -25,7 +25,7 @@ class ItemReadServiceTest {
         var requestedRefresh = new java.util.ArrayList<Set<Integer>>();
         var service = new ItemReadService(new EctoLivePriceGateway(), repository, ids -> {
             requestedRefresh.add(Set.copyOf(ids));
-            stored.put(23041, new ItemRepository.ItemInfo(23041, "Fine Salvage Kit", null, "new-icon"));
+            stored.put(23041, new ItemRepository.ItemInfo(23041, "Fine Salvage Kit", "new-icon"));
         });
 
         var result = service.metadata(Set.of(19721, 23041));

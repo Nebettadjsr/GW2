@@ -3,7 +3,6 @@ package application;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import repo.AccountSyncStateRepository;
 import repo.EnvConfig;
 
 import java.sql.Connection;
@@ -44,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ProfitInputPublicationTest {
 
-    private static final String SOURCE = AccountSyncStateRepository.CHARACTERS;
+    private static final String SOURCE = "CHARACTERS";
     private static final Instant GENERATION_ONE = Instant.parse("2026-10-12T09:00:00Z");
     private static final Instant GENERATION_TWO = Instant.parse("2026-10-12T10:00:00Z");
 
@@ -58,8 +57,8 @@ class ProfitInputPublicationTest {
             statement.execute("CREATE SCHEMA " + schema);
         }
         admin.setSchema(schema);
-        AccountSyncStateRepository.ensure(admin);
         try (Statement statement = admin.createStatement()) {
+            statement.execute("CREATE TABLE probe_marker (source text PRIMARY KEY, fetched_at timestamptz NOT NULL)");
             statement.execute("CREATE TABLE probe_rows (name text PRIMARY KEY)");
         }
         publishGeneration(GENERATION_ONE, List.of("first-a", "first-b"), true);
@@ -106,7 +105,7 @@ class ProfitInputPublicationTest {
             refresher.setSchema(schema);
             refresher.setAutoCommit(false);
             replaceRows(refresher, List.of("uncommitted-a"));
-            AccountSyncStateRepository.mark(refresher, SOURCE, GENERATION_TWO);
+            mark(refresher, SOURCE, GENERATION_TWO);
 
             try (Connection reader = captureSession()) {
                 assertEquals(GENERATION_ONE, markerOn(reader).orElseThrow());
@@ -160,7 +159,7 @@ class ProfitInputPublicationTest {
             writer.setAutoCommit(false);
             try {
                 replaceRows(writer, rows);
-                AccountSyncStateRepository.mark(writer, SOURCE, version);
+                mark(writer, SOURCE, version);
                 if (commit) writer.commit();
                 else writer.rollback();
             } catch (Exception failure) {
@@ -193,7 +192,24 @@ class ProfitInputPublicationTest {
     }
 
     private static Optional<Instant> markerOn(Connection con) throws Exception {
-        return new AccountSyncStateRepository().lookup(con, SOURCE);
+        try (PreparedStatement ps = con.prepareStatement("SELECT fetched_at FROM probe_marker WHERE source = ?")) {
+            ps.setString(1, SOURCE);
+            try (var rs = ps.executeQuery()) {
+                return rs.next() ? Optional.of(rs.getTimestamp(1).toInstant()) : Optional.empty();
+            }
+        }
+    }
+
+    /** Stands in for the source's completion marker, written in the same transaction as its rows. */
+    private static void mark(Connection con, String source, Instant fetchedAt) throws Exception {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO probe_marker(source, fetched_at) VALUES (?, ?)
+                ON CONFLICT (source) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
+                """)) {
+            ps.setString(1, source);
+            ps.setTimestamp(2, java.sql.Timestamp.from(fetchedAt));
+            ps.executeUpdate();
+        }
     }
 
     private static List<String> rowsOn(Connection con) throws Exception {

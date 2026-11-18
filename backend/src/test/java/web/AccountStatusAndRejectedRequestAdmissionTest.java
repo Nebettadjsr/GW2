@@ -37,7 +37,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * through its final activity write, and a request rejected inside preHandle after admission releases it.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-        properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true"})
+        properties = {"gw2.account-access.enforce=true"})
 @AutoConfigureMockMvc
 class AccountStatusAndRejectedRequestAdmissionTest {
     private static final String ORIGIN = "http://localhost";

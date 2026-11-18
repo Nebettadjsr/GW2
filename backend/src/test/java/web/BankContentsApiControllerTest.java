@@ -54,7 +54,6 @@ class BankContentsApiControllerTest {
     private static final String REJECTED_SOURCE = "https://cdn.example.com/file/ABCDEF0123456789/1234.png";
 
     /** The desktop path the same row still carries for JavaFX; it must never appear in the response. */
-    private static final String LOCAL_ICON_PATH = "C:\\icons\\items\\19721.png";
 
     private MockMvc mockMvcFor(StubBankContentsService service) {
         return MockMvcBuilders
@@ -69,10 +68,10 @@ class BankContentsApiControllerTest {
     @Test
     void cachedNamesAndExplicitNullsPreserveBankHolesCountsIconsAndEligibility() throws Exception {
         var service = new StubBankContentsService(List.of(
-                withItemName(new BankRepository.BankSlotRow(0, 19721, 250, LOCAL_ICON_PATH,
+                withItemName(new BankRepository.BankSlotRow(0, 19721, 250,
                         ECTO_SOURCE, "Rare", false), "Glob of Ectoplasm"),
-                new BankRepository.BankSlotRow(1, null, null, null, null, null),
-                new BankRepository.BankSlotRow(2, 99999, 3, null, null, null, false)));
+                new BankRepository.BankSlotRow(1, null, null, null, null),
+                new BankRepository.BankSlotRow(2, 99999, 3, null, null, false)));
 
         String body = mockMvcFor(service).perform(get("/api/account/bank"))
                 .andExpect(status().isOk())
@@ -99,18 +98,18 @@ class BankContentsApiControllerTest {
 
     @Test
     void existingBankRowConstructorsDefaultTheAddedNameToNull() throws Exception {
-        assertNull(itemName(new BankRepository.BankSlotRow(0, 19721, 5, null, null, "Rare")));
-        assertNull(itemName(new BankRepository.BankSlotRow(0, 19721, 5, null, null, "Rare", false)));
+        assertNull(itemName(new BankRepository.BankSlotRow(0, 19721, 5, null, "Rare")));
+        assertNull(itemName(new BankRepository.BankSlotRow(0, 19721, 5, null, "Rare", false)));
     }
 
     @Test
     void batchResponseKeepsRawNullableBindingAndOwnerForActualSlotGuards() throws Exception {
         var service = new StubBankContentsService(List.of(
-                withBinding(new BankRepository.BankSlotRow(0, 200, 250, null, null, null), "Character", "Aria"),
-                withBinding(new BankRepository.BankSlotRow(4, 200, 250, null, null, null), "Character", "Bran"),
-                withBinding(new BankRepository.BankSlotRow(9, 200, 250, null, null, null), null, null),
-                withBinding(new BankRepository.BankSlotRow(30, 200, 250, null, null, null), "Unrecognized binding", ""),
-                new BankRepository.BankSlotRow(31, null, null, null, null, null)));
+                withBinding(new BankRepository.BankSlotRow(0, 200, 250, null, null), "Character", "Aria"),
+                withBinding(new BankRepository.BankSlotRow(4, 200, 250, null, null), "Character", "Bran"),
+                withBinding(new BankRepository.BankSlotRow(9, 200, 250, null, null), null, null),
+                withBinding(new BankRepository.BankSlotRow(30, 200, 250, null, null), "Unrecognized binding", ""),
+                new BankRepository.BankSlotRow(31, null, null, null, null)));
 
         JsonNode slots = JSON.readTree(mockMvcFor(service).perform(get("/api/account/bank"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.slotCount").value(5))
@@ -131,9 +130,9 @@ class BankContentsApiControllerTest {
     @Test
     void existingBankRowAndDtoConstructorsDefaultAddedGuardsToNull() {
         for (Record row : List.of(
-                new BankRepository.BankSlotRow(0, 200, 1, null, null, null),
-                new BankRepository.BankSlotRow(0, 200, 1, null, null, null, true),
-                new BankRepository.BankSlotRow(0, 200, 1, null, null, null, true, "Ore"),
+                new BankRepository.BankSlotRow(0, 200, 1, null, null),
+                new BankRepository.BankSlotRow(0, 200, 1, null, null, true),
+                new BankRepository.BankSlotRow(0, 200, 1, null, null, true, "Ore"),
                 new web.dto.BankContentsResponse.BankSlotDto(0, 200, 1, null, null, true),
                 new web.dto.BankContentsResponse.BankSlotDto(0, 200, 1, null, null, true, "Ore"))) {
             JsonNode value = JSON.valueToTree(row);
@@ -145,8 +144,8 @@ class BankContentsApiControllerTest {
     @Test
     void exposesTheBackendSelectionDecisionWithoutRemovingTheSlot() throws Exception {
         var service = new StubBankContentsService(List.of(
-                new BankRepository.BankSlotRow(0, 20017, 2, null, null, "Fine", false),
-                new BankRepository.BankSlotRow(1, 19997, 3, null, null, "Fine", true)));
+                new BankRepository.BankSlotRow(0, 20017, 2, null, "Fine", false),
+                new BankRepository.BankSlotRow(1, 19997, 3, null, "Fine", true)));
         mockMvcFor(service).perform(get("/api/account/bank"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.slots.length()").value(2))
@@ -157,9 +156,9 @@ class BankContentsApiControllerTest {
     @Test
     void returnsEverySlotInServiceOrderWithItsIdentityQuantityAndDisplayMetadata() throws Exception {
         StubBankContentsService service = new StubBankContentsService(List.of(
-                new BankRepository.BankSlotRow(0, 19721, 250, LOCAL_ICON_PATH, ECTO_SOURCE, "Rare"),
-                new BankRepository.BankSlotRow(1, 24295, 1, null, VIAL_SOURCE, "Fine"),
-                new BankRepository.BankSlotRow(2, 68063, 7, null, null, null)));
+                new BankRepository.BankSlotRow(0, 19721, 250, ECTO_SOURCE, "Rare"),
+                new BankRepository.BankSlotRow(1, 24295, 1, VIAL_SOURCE, "Fine"),
+                new BankRepository.BankSlotRow(2, 68063, 7, null, null)));
 
         mockMvcFor(service).perform(get("/api/account/bank"))
                 .andExpect(status().isOk())
@@ -188,9 +187,9 @@ class BankContentsApiControllerTest {
     @Test
     void anEmptySlotIsKeptInPlaceWithNullItemAndCount() throws Exception {
         StubBankContentsService service = new StubBankContentsService(List.of(
-                new BankRepository.BankSlotRow(0, 19721, 250, LOCAL_ICON_PATH, ECTO_SOURCE, "Rare"),
-                new BankRepository.BankSlotRow(1, null, null, null, null, null),
-                new BankRepository.BankSlotRow(2, 24295, 3, null, REJECTED_SOURCE, "Fine")));
+                new BankRepository.BankSlotRow(0, 19721, 250, ECTO_SOURCE, "Rare"),
+                new BankRepository.BankSlotRow(1, null, null, null, null),
+                new BankRepository.BankSlotRow(2, 24295, 3, REJECTED_SOURCE, "Fine")));
 
         String body = mockMvcFor(service).perform(get("/api/account/bank"))
                 .andExpect(status().isOk())
@@ -212,7 +211,7 @@ class BankContentsApiControllerTest {
     @Test
     void aSlotCarriesOnlyTheDocumentedTransportFields() throws Exception {
         StubBankContentsService service = new StubBankContentsService(List.of(
-                new BankRepository.BankSlotRow(0, 19721, 250, LOCAL_ICON_PATH, ECTO_SOURCE, "Rare")));
+                new BankRepository.BankSlotRow(0, 19721, 250, ECTO_SOURCE, "Rare")));
 
         String body = mockMvcFor(service).perform(get("/api/account/bank"))
                 .andExpect(status().isOk())

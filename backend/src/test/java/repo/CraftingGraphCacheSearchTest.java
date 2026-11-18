@@ -37,7 +37,7 @@ class CraftingGraphCacheSearchTest {
         };
         ItemRepository itemRepo = new ItemRepository() {
             @Override public Map<Integer, ItemInfo> loadItems(java.util.Set<Integer> ids) {
-                return Map.of(10, new ItemInfo(10, "Cabbage", null, null), 20, new ItemInfo(20, "Soup", null, null));
+                return Map.of(10, new ItemInfo(10, "Cabbage", null), 20, new ItemInfo(20, "Soup", null));
             }
         };
         CraftingGraphCache cache = new CraftingGraphCache(recipeRepo, itemRepo);

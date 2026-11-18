@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * old session is refused before any handler, so nothing can recreate the root.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-        properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true"})
+        properties = {"gw2.account-access.enforce=true"})
 @AutoConfigureMockMvc
 class AccountAdmittedRequestDeletionTest {
     private static final String ORIGIN = "http://localhost";

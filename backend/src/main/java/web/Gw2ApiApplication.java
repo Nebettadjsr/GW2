@@ -32,7 +32,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import repo.AppConfig;
-import repo.AccountLuckSchema;
 import repo.CraftingGraphCache;
 import repo.ItemIconMetadataRepository;
 import repo.ItemRepository;
@@ -41,7 +40,6 @@ import web.access.AccountAccessHttp;
 import web.task.BackgroundTaskService;
 
 import java.nio.file.Path;
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.function.Supplier;
@@ -273,9 +271,7 @@ public class Gw2ApiApplication {
 
     /** Scoped Luck read; the progression is global, the stored consumed Luck is the account's. */
     @Bean
-    public AccountLuckService accountLuckService(
-            @Value("${gw2.account-luck.schema-init:true}") boolean initializeSchema) throws SQLException {
-        if (initializeSchema) AccountLuckSchema.ensure();
+    public AccountLuckService accountLuckService() {
         return new AccountLuckService();
     }
 

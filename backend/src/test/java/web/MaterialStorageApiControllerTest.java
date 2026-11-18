@@ -50,7 +50,6 @@ class MaterialStorageApiControllerTest {
     private static final String REJECTED_SOURCE = "https://cdn.example.com/file/ABCDEF0123456789/1234.png";
 
     /** The desktop path the same row still carries for JavaFX; it must never appear in the response. */
-    private static final String LOCAL_ICON_PATH = "C:\\icons\\items\\19718.png";
 
     private MockMvc mockMvcFor(StubMaterialStorageService service) {
         return MockMvcBuilders
@@ -98,9 +97,9 @@ class MaterialStorageApiControllerTest {
 
     @Test
     void existingMaterialRowConstructorsDefaultTheAddedNameToNull() throws Exception {
-        assertNull(itemName(new MaterialStorageRow(1, 19718, 5, null, null, "Basic")));
+        assertNull(itemName(new MaterialStorageRow(1, 19718, 5, null, "Basic")));
         assertNull(itemName(new MaterialStorageRow(1, "Category", 2, 0, 19718, 5, null, "Basic")));
-        assertNull(itemName(new MaterialStorageRow(1, "Category", 2, 0, 19718, 5, null, null, "Basic")));
+        assertNull(itemName(new MaterialStorageRow(1, "Category", 2, 0, 19718, 5, null, "Basic")));
     }
 
     @Test
@@ -176,8 +175,6 @@ class MaterialStorageApiControllerTest {
         category.get("materials").get(0).fieldNames().forEachRemaining(stackFields::add);
         assertEquals(Set.of("position", "itemId", "itemName", "count", "iconUrl", "rarity"), Set.copyOf(stackFields),
                 "the stack must be a transport record, not a serialized repository row");
-        assertFalse(body.contains(LOCAL_ICON_PATH.replace("\\", "\\\\")),
-                "the backend filesystem path must not reach the browser: " + body);
         assertFalse(body.contains("render.guildwars2.com"),
                 "no upstream URL may reach the browser: " + body);
     }

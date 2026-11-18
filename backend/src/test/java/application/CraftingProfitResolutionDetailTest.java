@@ -340,7 +340,7 @@ class CraftingProfitResolutionDetailTest {
         fakes.visible = List.of(TARGET);
         fakes.characters = List.of(new CharacterRepository.DiscRow("Aria", "Artificer", 400, true));
         fakes.sellable = Map.of(200, 5);
-        fakes.items = Map.of(100, new ItemRepository.ItemInfo(100, "Glob of Ectoplasm", null, null));
+        fakes.items = Map.of(100, new ItemRepository.ItemInfo(100, "Glob of Ectoplasm", null));
         var service = fakes.service();
 
         CraftingResolutionDetail detail =

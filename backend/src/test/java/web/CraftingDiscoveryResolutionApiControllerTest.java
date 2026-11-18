@@ -66,8 +66,8 @@ class CraftingDiscoveryResolutionApiControllerTest {
             5, 100, 1, 300, "Chef", List.of(new Ingredient(200, 2)));
 
     private static final Map<Integer, ItemRepository.ItemInfo> ITEMS = Map.of(
-            100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null, null),
-            200, new ItemRepository.ItemInfo(200, "Carrot", null, null));
+            100, new ItemRepository.ItemInfo(100, "Bowl of Soup", null),
+            200, new ItemRepository.ItemInfo(200, "Carrot", null));
 
     private static final Map<Integer, PriceQuote> QUOTES = Map.of(
             100, new PriceQuote(400, 500),
@@ -525,7 +525,7 @@ class CraftingDiscoveryResolutionApiControllerTest {
                     recipeId, CraftingResolutionDetail.Status.AVAILABLE, recipe,
                     new CraftResult(recipeId, "Chef", 1, Map.of(), Map.of(), 1, 0, 2, 1, 1, null),
                     new SingleCraftExplanation(recipeId, recipeId, 1, true, root),
-                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, "Item " + recipeId, null, null)),
+                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, "Item " + recipeId, null)),
                     Map.of());
         }
     }

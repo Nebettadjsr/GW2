@@ -1,5 +1,7 @@
 package repo;
 
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class BankRepositoryTest {
 
+    private static final AccountScope A = AccountScope.of("10000000-0000-0000-0000-00000000000a");
+    private static final AccountScope B = AccountScope.of("20000000-0000-0000-0000-00000000000b");
+
     private final String schema = "test_bank_" + UUID.randomUUID().toString().replace("-", "");
     private Connection con;
 
@@ -45,34 +50,15 @@ class BankRepositoryTest {
         try (Statement st = con.createStatement()) {
             st.execute("CREATE SCHEMA " + schema);
         }
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema).defaultSchema(schema)
+                .locations("classpath:db/migration").load().migrate();
         con.setSchema(schema);
-
         try (Statement st = con.createStatement()) {
-            st.execute("""
-                CREATE TABLE account_bank (
-                    slot        INTEGER PRIMARY KEY,
-                    item_id     INTEGER,
-                    count       INTEGER,
-                    binding     TEXT,
-                    bound_to    TEXT,
-                    charges     INTEGER,
-                    stats_id    INTEGER,
-                    stats_attrs JSONB,
-                    fetched_at  TIMESTAMPTZ
-                )
-                """);
-            st.execute("""
-                CREATE TABLE items (
-                    item_id      INTEGER PRIMARY KEY,
-                    name         TEXT,
-                    type         TEXT,
-                    rarity       TEXT,
-                    vendor_value INTEGER,
-                    icon_path    TEXT,
-                    icon_url     TEXT,
-                    fetched_at   TIMESTAMPTZ
-                )
-                """);
+            st.execute("INSERT INTO account_registry (account_id) VALUES ('" + A.accountId() + "'), ('"
+                    + B.accountId() + "')");
         }
     }
 
@@ -90,86 +76,85 @@ class BankRepositoryTest {
     @Test
     void loadsEverySlotInSlotOrderWithJoinedIconAndRarity() throws Exception {
         try (Statement st = con.createStatement()) {
-            // 19721 carries retained icon metadata as well, so the batch read is proven to supply both
-            // the desktop path and the upstream source without a second query (STORY-API-009).
-            st.execute("INSERT INTO items (item_id, name, rarity, icon_path, icon_url) VALUES (19721, 'Glob of Ectoplasm', 'Rare', 'C:\\icons\\19721.png', 'https://render.guildwars2.com/file/ABCD/1.png')");
-            st.execute("INSERT INTO items (item_id, name, rarity, icon_path) VALUES (24277, 'Pile of Crystalline Dust', 'Basic', 'C:\\icons\\24277.png')");
+            // 19721 carries retained upstream icon metadata; 24277 has none, so the batch read is
+            // proven to supply a present and an absent icon source without a second query.
+            st.execute("INSERT INTO items (item_id, name, rarity, icon_url) VALUES (19721, 'Glob of Ectoplasm', 'Rare', 'https://render.guildwars2.com/file/ABCD/1.png')");
+            st.execute("INSERT INTO items (item_id, name, rarity) VALUES (24277, 'Pile of Crystalline Dust', 'Basic')");
             // Inserted out of slot order on purpose: ORDER BY slot must decide the result order.
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (2, 24277, 250)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, 19721, 5)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('" + A.accountId() + "', 2, 24277, 250)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('" + A.accountId() + "', 0, 19721, 5)");
         }
 
-        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con);
+        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con, A);
 
         assertEquals(2, slots.size());
         assertEquals(withItemName(new BankRepository.BankSlotRow(
-                0, 19721, 5, "C:\\icons\\19721.png", "https://render.guildwars2.com/file/ABCD/1.png", "Rare"), "Glob of Ectoplasm"),
+                0, 19721, 5, "https://render.guildwars2.com/file/ABCD/1.png", "Rare"), "Glob of Ectoplasm"),
                 slots.get(0));
-        assertEquals(withItemName(new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", null, "Basic"),
+        assertEquals(withItemName(new BankRepository.BankSlotRow(2, 24277, 250, null, "Basic"),
                 "Pile of Crystalline Dust"), slots.get(1));
     }
 
     @Test
     void emptySlotKeepsNullItemAndCount_andUnknownItemKeepsNullIconAndRarity() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (0, NULL, NULL)");
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (1, 99999, 3)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('" + A.accountId() + "', 0, NULL, NULL)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('" + A.accountId() + "', 1, 99999, 3)");
         }
 
-        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con);
+        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con, A);
 
         assertEquals(2, slots.size());
 
         BankRepository.BankSlotRow empty = slots.get(0);
         assertNull(empty.itemId());
         assertNull(empty.count());
-        assertNull(empty.iconPath());
         assertNull(itemName(empty));
 
         BankRepository.BankSlotRow unjoined = slots.get(1);
         assertEquals(99999, unjoined.itemId());
         assertEquals(3, unjoined.count());
-        assertNull(unjoined.iconPath());
         assertNull(unjoined.rarity());
         assertNull(itemName(unjoined));
     }
 
     @Test
-    void emptyBankTableReturnsAnEmptyList() throws Exception {
-        assertTrue(new BankRepository().loadBankSlots(con).isEmpty());
+    void emptyBankReturnsAnEmptyList() throws Exception {
+        assertTrue(new BankRepository().loadBankSlots(con, A).isEmpty());
     }
 
     @Test
     void batchRowsKeepEachSameItemStacksRawBindingAndOwnerIncludingNulls() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count, binding, bound_to) VALUES"
-                    + " (9, 200, 250, 'Character', 'Bran'), (4, 200, 250, 'Character', 'Aria'),"
-                    + " (0, 200, 250, 'Account', NULL), (30, 200, 250, NULL, NULL),"
-                    + " (31, 99999, 1, 'Unrecognized binding', ''), (32, NULL, NULL, NULL, NULL)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count, binding, bound_to) VALUES"
+                    + " ('" + A.accountId() + "', 9, 200, 250, 'Character', 'Bran'), ('" + A.accountId() + "', 4, 200, 250, 'Character', 'Aria'),"
+                    + " ('" + A.accountId() + "', 0, 200, 250, 'Account', NULL), ('" + A.accountId() + "', 30, 200, 250, NULL, NULL),"
+                    + " ('" + A.accountId() + "', 31, 99999, 1, 'Unrecognized binding', ''), ('" + A.accountId() + "', 32, NULL, NULL, NULL, NULL),"
+                    + " ('" + B.accountId() + "', 0, 200, 999, 'Character', 'Other')");
         }
 
-        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con);
+        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(con, A);
 
         assertEquals(List.of(
-                withBinding(new BankRepository.BankSlotRow(0, 200, 250, null, null, null), "Account", null),
-                withBinding(new BankRepository.BankSlotRow(4, 200, 250, null, null, null), "Character", "Aria"),
-                withBinding(new BankRepository.BankSlotRow(9, 200, 250, null, null, null), "Character", "Bran"),
-                withBinding(new BankRepository.BankSlotRow(30, 200, 250, null, null, null), null, null),
-                withBinding(new BankRepository.BankSlotRow(31, 99999, 1, null, null, null), "Unrecognized binding", ""),
-                withBinding(new BankRepository.BankSlotRow(32, null, null, null, null, null), null, null)), slots);
+                withBinding(new BankRepository.BankSlotRow(0, 200, 250, null, null), "Account", null),
+                withBinding(new BankRepository.BankSlotRow(4, 200, 250, null, null), "Character", "Aria"),
+                withBinding(new BankRepository.BankSlotRow(9, 200, 250, null, null), "Character", "Bran"),
+                withBinding(new BankRepository.BankSlotRow(30, 200, 250, null, null), null, null),
+                withBinding(new BankRepository.BankSlotRow(31, 99999, 1, null, null), "Unrecognized binding", ""),
+                withBinding(new BankRepository.BankSlotRow(32, null, null, null, null), null, null)), slots);
     }
 
     @Test
     void noArgLoadUsesTheSharedDbConnectionConfiguration() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO account_bank (slot, item_id, count) VALUES (7, 19721, 1)");
+            st.execute("INSERT INTO account_bank (account_id, slot, item_id, count) VALUES ('" + A.accountId() + "', 7, 19721, 1)");
         }
 
         // Db.open() reads repo.AppConfig/EnvConfig, then honors this property to reach the
         // disposable schema - the same shared path every other repository uses.
         System.setProperty(Db.TEST_SCHEMA_PROPERTY, schema);
 
-        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots();
+        List<BankRepository.BankSlotRow> slots = new BankRepository().loadBankSlots(A);
 
         assertEquals(1, slots.size());
         assertEquals(7, slots.get(0).slot());

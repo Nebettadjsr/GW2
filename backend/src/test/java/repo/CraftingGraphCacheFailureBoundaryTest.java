@@ -72,7 +72,7 @@ class CraftingGraphCacheFailureBoundaryTest {
         private Map<Integer, ItemInfo> infos(Set<Integer> ids) {
             Map<Integer, ItemInfo> out = new HashMap<>();
             for (int id : ids) {
-                if (names.containsKey(id)) out.put(id, new ItemInfo(id, names.get(id), null, null));
+                if (names.containsKey(id)) out.put(id, new ItemInfo(id, names.get(id), null));
             }
             return out;
         }

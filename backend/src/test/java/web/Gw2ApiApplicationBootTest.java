@@ -49,8 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * API call either. STORY-API-008 added the two resolution-detail operations to the existing crafting
  * controllers, so what this test adds for them is that their decided paths are really mapped.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "gw2.account-luck.schema-init=false")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class Gw2ApiApplicationBootTest {
 
     @LocalServerPort

@@ -2,7 +2,6 @@ package api;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import repo.AppConfig;
 
 import java.io.IOException;
 import java.net.URI;
@@ -29,17 +28,6 @@ public final class Gw2ApiClient {
     // -----------------------
     // Authenticated endpoint -> JSON (strict 200/206)
     // -----------------------
-    public static JsonNode getAuth(String url) throws IOException, InterruptedException {
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Accept", "application/json")
-                .header("Authorization", "Bearer " + AppConfig.API_KEY.trim())
-                .GET()
-                .build();
-
-        return sendJsonStrict(req, url);
-    }
-
     /**
      * GW2 definitively rejected the supplied key (HTTP 401/403). Carries only the request target and
      * status; 429, 5xx, transport failures and malformed payloads are never this type.

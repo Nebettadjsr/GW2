@@ -1,6 +1,5 @@
 package sync;
 
-import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import model.CharacterInfo;
 import parser.*;

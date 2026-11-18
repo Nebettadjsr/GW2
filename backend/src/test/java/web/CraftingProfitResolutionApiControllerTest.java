@@ -74,8 +74,8 @@ class CraftingProfitResolutionApiControllerTest {
             7, 100, 2, 275, "Artificer", List.of(new Ingredient(200, 3)));
 
     private static final Map<Integer, ItemRepository.ItemInfo> ITEMS = Map.of(
-            100, new ItemRepository.ItemInfo(100, "Widget", null, null),
-            200, new ItemRepository.ItemInfo(200, "Ingot", null, null));
+            100, new ItemRepository.ItemInfo(100, "Widget", null),
+            200, new ItemRepository.ItemInfo(200, "Ingot", null));
 
     /** Retained icon sources and the application URLs they must derive (STORY-API-009). */
     private static final String OUTPUT_SOURCE = "https://render.guildwars2.com/file/ABCDEF0123456789/1234.png";
@@ -327,10 +327,10 @@ class CraftingProfitResolutionApiControllerTest {
                 .build();
 
         Map<Integer, ItemRepository.ItemInfo> items = Map.of(
-                100, new ItemRepository.ItemInfo(100, "Widget", "C:\\icons\\items\\100.png", OUTPUT_SOURCE),
-                200, new ItemRepository.ItemInfo(200, "Ingot", null, INGOT_SOURCE),
-                300, new ItemRepository.ItemInfo(300, "Owned Bar", null, null),
-                400, new ItemRepository.ItemInfo(400, "Scrap", null, "https://cdn.example.com/x.png"));
+                100, new ItemRepository.ItemInfo(100, "Widget", OUTPUT_SOURCE),
+                200, new ItemRepository.ItemInfo(200, "Ingot", INGOT_SOURCE),
+                300, new ItemRepository.ItemInfo(300, "Owned Bar", null),
+                400, new ItemRepository.ItemInfo(400, "Scrap", "https://cdn.example.com/x.png"));
 
         factory.next(service -> service.canned = new CraftingResolutionDetail(
                 7, CraftingResolutionDetail.Status.AVAILABLE, REQUESTED,
@@ -1093,7 +1093,7 @@ class CraftingProfitResolutionApiControllerTest {
                     recipeId, CraftingResolutionDetail.Status.AVAILABLE, recipe,
                     new CraftResult(recipeId, "Chef", 1, Map.of(), Map.of(), 1, 0, 2, 1, 1, null),
                     new SingleCraftExplanation(recipeId, recipeId, 1, true, root),
-                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, "Item " + recipeId, null, null)),
+                    Map.of(recipeId, new ItemRepository.ItemInfo(recipeId, "Item " + recipeId, null)),
                     Map.of());
             return new ResolutionOutcome(derived, call.consistency,
                     CraftingProfitApiControllerTest.freshness("request-" + recipeId,

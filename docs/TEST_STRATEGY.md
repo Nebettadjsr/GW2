@@ -1144,14 +1144,17 @@ whether the tests establish the acceptance behavior, especially at integration b
 - Keep stable external-system fixtures separate from opt-in live integration checks.
 - Run the relevant automated tests and builds, inspect affected-area and package coverage, and
   report any unresolved testing/coverage gap. A known defect is not closed until its regression
-  test passes unless a documented exception is approved and linked from the bug record.
+  test passes unless a documented exception is approved and linked from the bug issue.
 
-## 26.2 Permanent bug registry
+## 26.2 Confirmed defect evidence
 
-Confirmed defects are recorded under `docs/bugs/` using the report template and lifecycle in
-that directory's README. Reproduction data that must remain version-controlled belongs under
-`docs/bugs/fixtures/` or an application test fixture directory referenced by the bug record.
-Do not create retrospective records for historical defects as part of unrelated work.
+Confirmed defects are reported through the GitHub bug issue form, which owns the observed
+behavior, exact reproduction steps, inputs/settings, severity and evidence. A fix keeps the
+original observed failure as a named regression test (§17, §26.1) whose fixtures live with the
+application tests, are compact and secret-free, and record provenance when derived from an
+external system. A known defect is not closed until that regression test passes unless an
+approved exception is documented on the issue. Do not create per-defect Markdown records;
+the closed `BUG-2026-001` record is kept only as history under `docs/archive/bugs/`.
 
 ---
 
@@ -1473,9 +1476,9 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
   and disposable by construction, and each Layer 2 test still creates and drops
   its own uniquely named schema inside it. No schema, migration or seed data is
   pre-provisioned, because every such test builds what it needs.
-- **`GW2_API_KEY`**: set to a literal placeholder. `repo.AppConfig` reads it at
-  class-initialization time, so the variable must exist, but no test in the
-  default run makes a live Guild Wars 2 API call (§14, §31.4). **A real key must
+- **`GW2_API_KEY`**: not read by the backend (browser account operations supply
+  their own transient key); the workflow may still carry a literal placeholder. No test in
+  the default run makes a live Guild Wars 2 API call (§14, §31.4). **A real key must
   never appear in the workflow, in a log, or in a repository variable for CI**;
   if a future test genuinely needs one, it belongs in Layer 4 and therefore
   outside this gate.

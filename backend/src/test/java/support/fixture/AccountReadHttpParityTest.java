@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * misattributed quantity changes a hand-written value.
  */
 @SpringBootTest(classes = web.Gw2ApiApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"gw2.account-luck.schema-init=false", "gw2.account-access.enforce=true",
+        properties = {"gw2.account-access.enforce=true",
                 "gw2.global-refresh.initial-delay-ms=3600000",
                 "gw2.owner.account-guid=" + SyntheticFixtures.A, "gw2.test.suite=account-read-parity"})
 @Import(PopulatedFixtureHttpTest.Proofs.class)
