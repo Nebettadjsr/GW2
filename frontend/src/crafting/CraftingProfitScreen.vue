@@ -241,9 +241,10 @@ function onSelect(recipeId: number): void {
 /**
  * Both the header's refresh control and the failed-request retry. Each asks for the calculation
  * again and nothing else: the backend answers from its last successfully synchronized inputs and
- * admits the refresh those inputs still need, so the page starts no synchronization of its own and
+ * admits the refresh those inputs still need, so these controls start no synchronization of their own and
  * no System Status visit is involved. What happens after the answer — polling the advertised tasks
- * and replacing the result — is the bounded recovery cycle in `useCraftingProfit`.
+ * and replacing the result, including the one explicit keyed admission when the backend reports a
+ * credential is needed — is the bounded recovery cycle in `useCraftingProfit`.
  */
 function onReload(): void {
   void profit.reload()

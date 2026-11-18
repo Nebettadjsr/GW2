@@ -309,10 +309,6 @@ export function useCraftingProfit(
       bankQuantities, materialQuantities, bankAllocations: protection.allocationsFor() }
   }
 
-  function contextKey(): string {
-    return effectiveKey()
-  }
-
   /** Request-relevant context: saved IDs matter only while protection is effectively enabled. */
   function effectiveKey(): string {
     const context = protectionContext()
@@ -355,7 +351,7 @@ export function useCraftingProfit(
   ): Promise<RequestOutcome> {
     if (disposed) return { kind: 'superseded' }
     const requestId = ++newestRequestId
-    const dispatchedContext = contextKey()
+    const dispatchedContext = effectiveKey()
     const token = protection.beginRequest()
     if (foreground) isLoading.value = true
 
@@ -363,7 +359,7 @@ export function useCraftingProfit(
       const response = await api.calculateProfit(request)
       if (requestId !== newestRequestId) return { kind: 'superseded' }
       if (cycle !== undefined && cycle !== activeCycle) return { kind: 'superseded' }
-      if (dispatchedContext !== contextKey()) return { kind: 'superseded' }
+      if (dispatchedContext !== effectiveKey()) return { kind: 'superseded' }
       if (!echoConfirms(request, response)) {
         protection.reconcile(token, null)
         return { kind: 'failed', message: PROTECTION_UNCONFIRMED }
@@ -374,7 +370,7 @@ export function useCraftingProfit(
     } catch (cause) {
       if (requestId !== newestRequestId) return { kind: 'superseded' }
       if (cycle !== undefined && cycle !== activeCycle) return { kind: 'superseded' }
-      if (dispatchedContext !== contextKey()) return { kind: 'superseded' }
+      if (dispatchedContext !== effectiveKey()) return { kind: 'superseded' }
       return { kind: 'failed', message: describeFailure(cause) }
     } finally {
       if (foreground && requestId === newestRequestId) isLoading.value = false
@@ -674,7 +670,8 @@ export function useCraftingProfit(
     /**
      * Opening the screen loads the selector facts and asks for the backend's default calculation.
      * The two run together so a selector failure still leaves a usable default result, and the
-     * first request carries no scope or settings at all — the defaults applied are the backend's.
+     * first request omits the ordinary scope and settings defaults — the defaults applied are the
+     * backend's. It can still carry the saved enabled-protection fields from `currentRequest()`.
      */
     async open(): Promise<void> {
       opened = true
@@ -703,8 +700,9 @@ export function useCraftingProfit(
      * calculation again, which is what makes the backend recheck its own freshness and admit what
      * is still needed. The retry's own request is inside the new budget, so a recalculation that
      * never answers ends the same bounded way instead of leaving the page waiting silently. It
-     * starts no refresh of its own, so no second account writer can appear, and it assumes nothing
-     * about whether earlier work was cancelled.
+     * starts no refresh itself; the cycle admits at most one explicit keyed account refresh, and
+     * only when the backend answers with a credential-needed signal and a key is retained. It
+     * assumes nothing about whether earlier work was cancelled.
      */
     async retryRefresh(): Promise<void> {
       abandonRecovery()
