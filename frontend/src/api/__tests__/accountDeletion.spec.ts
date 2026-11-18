@@ -9,6 +9,7 @@ import {
 } from '../accountSession'
 import { getJson, installAccountTransport } from '../http'
 import { DELETION_CHANNEL } from '../accountDeletionSignal'
+import { choose } from '@/materials/__tests__/selectionFixture'
 import { useMaterialProtection, resetMaterialProtection, PREFERENCE_KEY_PREFIX } from '@/materials/materialProtectionState'
 
 const A = '11111111-1111-1111-1111-111111111111'
@@ -50,8 +51,7 @@ describe('deleteAccountData', () => {
     window.localStorage.setItem(PREFERENCE_KEY_PREFIX + B, '{"version":1,"protectedItemIds":[2],"enabled":true}')
     await connectKey('KEY')
     const mp = useMaterialProtection()
-    mp.setPending([5])
-    mp.commit()
+    choose(mp, [5])
     mp.reserveQuantity(19697, 'bank', 250)
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).not.toBeNull()
 
@@ -81,8 +81,7 @@ describe('deleteAccountData', () => {
   ])('%s preserves key, session, preferences and broadcasts nothing', async (_n, answer, expected) => {
     await connectKey('KEY')
     const mp = useMaterialProtection()
-    mp.setPending([5])
-    mp.commit()
+    choose(mp, [5])
     mp.reserveQuantity(19697, 'materials', 250)
     const posted = vi.fn()
     const channel = new BroadcastChannel(DELETION_CHANNEL)
@@ -122,8 +121,7 @@ describe('deleteAccountData', () => {
   ])('a %s %s rechecks the lease only on a new explicit deletion confirmation', async (status, code) => {
     await connectKey('KEY')
     const mp = useMaterialProtection()
-    mp.setPending([5])
-    mp.commit()
+    choose(mp, [5])
     calls.length = 0
     let refused = true
     handler = call => {
@@ -152,8 +150,7 @@ describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {
     account = B
     await connectKey('KEY-B')
     const mp = useMaterialProtection()
-    mp.setPending([9])
-    mp.commit()
+    choose(mp, [9])
     const saved = window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)
     let reads = 0
     handler = call => {
@@ -225,13 +222,11 @@ describe('ACCOUNT_DATA_DELETED recovery and cross-tab invalidation', () => {
   it('forgets an inactive GUID shadow on a signal while preserving the current different account', async () => {
     await connectKey('KEY-A')
     const mp = useMaterialProtection()
-    mp.setPending([5])
-    mp.commit()
+    choose(mp, [5])
     mp.reserveQuantity(19697, 'bank', 250)
     account = B
     await connectKey('KEY-B')
-    mp.setPending([9])
-    mp.commit()
+    choose(mp, [9])
     mp.reserveQuantity(19697, 'materials', 17)
     const bPreference = window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)
     calls.length = 0
@@ -259,8 +254,7 @@ describe('deletion cleanup of the captured GUID and deferred races', () => {
     window.localStorage.setItem(PREFERENCE_KEY_PREFIX + B, '{"version":1,"protectedItemIds":[2],"enabled":true}')
     await connectKey('KEY')
     const mp = useMaterialProtection()
-    mp.setPending([5])
-    mp.commit()
+    choose(mp, [5])
   }
   const deferredDelete = (): { release: (r: Response) => void } => {
     const box: { release: (r: Response) => void } = { release: () => undefined }
@@ -313,9 +307,8 @@ describe('deletion cleanup of the captured GUID and deferred races', () => {
     const mp = useMaterialProtection()
     expect(mp.state.status).toBe('ready')
     expect(mp.beginRequest()?.accountId).toBe(A)
-    mp.setPending([8], 'bank')
-    expect(mp.state.pending).toEqual([8])
-    mp.commit()
+    choose(mp, [8], 'bank')
+    expect(mp.state.committed).toEqual([8])
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toContain('8')
   })
 

@@ -11,6 +11,7 @@ import {
 import { connection, connectKey, disconnect, installAccountSession, resetAccountSession } from '@/api/accountSession'
 import { installAccountTransport } from '@/api/http'
 import { resetMaterialProtection, useMaterialProtection } from '@/materials/materialProtectionState'
+import { choose } from '@/materials/__tests__/selectionFixture'
 import { accountLuck, itemMetadata, itemPrices, METADATA_IDS } from '@/ecto/__tests__/currentEctoFixtures'
 
 /**
@@ -431,8 +432,7 @@ describe('App shell', () => {
   it('keepsTheProfitSelectionWhenFollowingTheProtectionLinksToBankAndMaterialsAndBack', async () => {
     connection.accountId = 'aaaaaaaa-0000-0000-0000-000000000001'
     const protection = useMaterialProtection()
-    protection.setPending([3, 4])
-    protection.commit()
+    choose(protection, [3, 4])
     try {
       const open = await openApp()
       await open.find('[data-test="search"]').setValue('Iron')

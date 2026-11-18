@@ -48,13 +48,13 @@ const unitsBySlot = computed(() => {
 function stackState(slot: BankSlot): { selected: boolean; mixed: boolean; finite: boolean; reserved: number } {
   const units = unitsBySlot.value.get(slot.slot) ?? 0
   const count = slot.count ?? 0
-  const all = slot.itemId !== null && pendingIds.value.has(slot.itemId)
+  const all = slot.itemId !== null && selectedIds.value.has(slot.itemId)
   if (all) return { selected: true, mixed: false, finite: false, reserved: 0 }
   return { selected: units > 0 && units >= count, mixed: units > 0 && units < count, finite: units > 0, reserved: units }
 }
 // A new snapshot may invalidate manual hints: clean them up with at most one preference write.
 watch(() => bank.data.value, data => { if (data?.slots) protection.pruneStaleBankHints(rowGuards.value) })
-const pendingIds = computed(() => new Set(protection.pendingFor('bank')))
+const selectedIds = computed(() => new Set(protection.committedFor('bank')))
 const selectable = computed(() => protection.state.status === 'ready')
 const pageItemIds = computed(() => [...new Set((bank.data.value?.slots ?? [])
   .flatMap(slot => slot.itemId === null || slot.protectionSelectable === false ? [] : [slot.itemId]))])
@@ -67,7 +67,7 @@ function isEmptySlot(slot: BankSlot): boolean {
 function notesFor(slots: BankSlot[]): ReservationNote[] {
   const notes = new Map<number, ReservationNote>()
   for (const slot of slots) {
-    if (slot.itemId === null || slot.protectionSelectable === false || pendingIds.value.has(slot.itemId)) continue
+    if (slot.itemId === null || slot.protectionSelectable === false || selectedIds.value.has(slot.itemId)) continue
     const target = protection.quantityFor('bank', slot.itemId)
     if (target <= 0) continue
     const known = notes.get(slot.itemId)

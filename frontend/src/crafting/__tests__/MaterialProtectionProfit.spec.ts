@@ -11,6 +11,7 @@ import {
 } from '@/materials/materialProtectionState'
 import { calculationKey } from '../useProfitResolution'
 import CraftingProfitScreen from '../CraftingProfitScreen.vue'
+import { choose } from '@/materials/__tests__/selectionFixture'
 import { DEFAULT_SETTINGS, FakeCraftingApi, deferred, echoedProfitResponse, profitableRow, resolutionResponse } from './fixtures'
 
 const A = 'aaaaaaaa-0000-0000-0000-000000000001'
@@ -57,8 +58,7 @@ afterEach(() => {
 
 function commit(ids: number[]): void {
   const state = useMaterialProtection()
-  state.setPending(ids)
-  state.commit()
+  choose(state, ids)
 }
 
 describe('Crafting Profit material protection', () => {
@@ -134,13 +134,13 @@ describe('Crafting Profit material protection', () => {
     expect(detailRequests).toBeGreaterThan(0)
     expect(fake.resolutionRequests.at(-1)!.calculation.settings).toMatchObject(scopedSelection([3]))
 
-    useMaterialProtection().togglePendingGroup([3, 4, 5])
+    useMaterialProtection().togglePendingGroup([3, 4, 5], 'bank')
     await flushPromises()
     expect(fake.profitRequests).toHaveLength(count + 1)
-    expect(fake.profitRequests.at(-1)!.settings).toMatchObject(scopedSelection([3, 4, 5]))
+    expect(fake.profitRequests.at(-1)!.settings).toMatchObject({ ...scopedSelection([3]), protectedBankItemIds: [3, 4, 5] })
     expect((w.find('[data-test="max-displayed"]').element as HTMLInputElement).value).toBe('7')
     // Detail was re-requested for the new echoed settings, identical to the list echo.
-    expect(fake.resolutionRequests.at(-1)!.calculation.settings).toMatchObject(scopedSelection([3, 4, 5]))
+    expect(fake.resolutionRequests.at(-1)!.calculation.settings).toMatchObject({ ...scopedSelection([3]), protectedBankItemIds: [3, 4, 5] })
     expect(fake.resolutionRequests.at(-1)!.calculation.settings?.materialProtectionEnabled).toBe(true)
   })
 
@@ -432,8 +432,7 @@ describe('storage recovery', () => {
       storage: { getItem: () => null, setItem: () => { if (fail) throw new Error('x') }, removeItem: () => undefined },
       accountId: () => A
     })
-    m.setPending([1])
-    m.commit()
+    choose(m, [1])
     expect(m.state.diagnostic).toBe('write-failed')
     fail = false
     m.setActivation(true)
@@ -454,8 +453,7 @@ describe('read-failed warning', () => {
       accountId: () => A
     })
     expect(m.state.diagnostic).toBe('read-failed')
-    m.setPending([7])
-    m.commit()
+    choose(m, [7])
     expect(m.state.diagnostic).toBe('read-failed')
     m.setActivation(true)
     expect(m.state.diagnostic).toBe('read-failed')
@@ -489,8 +487,7 @@ describe('storage recovery of recovered diagnostics', () => {
     const { storage, data } = memory(raw)
     const m = createMaterialProtectionState({ storage, accountId: () => A })
     expect(m.state.diagnostic).toBe(diagnostic)
-    m.setPending([5, 2])
-    m.commit()
+    choose(m, [5, 2])
     expect(m.state.diagnostic).toBeNull()
     const reloaded = createMaterialProtectionState({ storage, accountId: () => A })
     expect(reloaded.state.diagnostic).toBeNull()
@@ -508,8 +505,7 @@ describe('saving an empty selection clears latent activation', () => {
     commit([3])
     useMaterialProtection().setActivation(true)
     const m = useMaterialProtection()
-    m.setPending([])
-    m.commit()
+    choose(m, [])
     expect(m.state.activation).toBe(false)
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).enabled).toBe(false)
 
@@ -519,8 +515,7 @@ describe('saving an empty selection clears latent activation', () => {
 
     const fake = api()
     const w = await open(fake)
-    m.setPending([4])
-    m.commit()
+    choose(m, [4])
     await flushPromises()
     expect(m.state.activation).toBe(false)
     expect((toggle(w).element as HTMLInputElement).checked).toBe(false)
@@ -532,8 +527,7 @@ describe('saving an empty selection clears latent activation', () => {
     commit([3])
     const m = useMaterialProtection()
     m.setActivation(true)
-    m.setPending([3, 9])
-    m.commit()
+    choose(m, [3, 9])
     expect(m.state.activation).toBe(true)
   })
 })

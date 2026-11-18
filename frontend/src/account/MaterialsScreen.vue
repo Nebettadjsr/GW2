@@ -25,13 +25,13 @@ const automatic = useAutomaticAccountRefresh({
 onMounted(() => { void materials.load() })
 const protection = useMaterialProtection()
 const actionTarget = ref<ItemActionTarget | null>(null)
-const pendingIds = computed(() => new Set(protection.pendingFor('materials')))
+const selectedIds = computed(() => new Set(protection.committedFor('materials')))
 const selectable = computed(() => protection.state.status === 'ready')
 const hasNoCategories = computed(() => materials.data.value?.categories?.length === 0)
 const pageItemIds = computed(() => (materials.data.value?.categories ?? [])
   .flatMap(category => category.materials.map(material => material.itemId)))
 function categorySelected(category: MaterialCategory): boolean {
-  return category.materials.length > 0 && category.materials.every(material => pendingIds.value.has(material.itemId))
+  return category.materials.length > 0 && category.materials.every(material => selectedIds.value.has(material.itemId))
 }
 function toggleCategory(category: MaterialCategory): void {
   protection.togglePendingGroup(category.materials.map(material => material.itemId), 'materials')
@@ -40,7 +40,7 @@ function notesFor(category: MaterialCategory): ReservationNote[] {
   const notes = new Map<number, ReservationNote>()
   for (const material of category.materials) {
     const target = protection.quantityFor('materials', material.itemId)
-    if (target <= 0 || pendingIds.value.has(material.itemId) || notes.has(material.itemId)) continue
+    if (target <= 0 || selectedIds.value.has(material.itemId) || notes.has(material.itemId)) continue
     notes.set(material.itemId, { itemId: material.itemId, name: material.itemName ?? null, target })
   }
   return [...notes.values()]
@@ -49,7 +49,7 @@ function presetsFor(category: MaterialCategory): readonly MaterialPreset[] {
   return MATERIAL_PRESETS.filter(preset => preset.categoryId === category.category)
 }
 function presetSelected(preset: MaterialPreset): boolean {
-  return preset.itemIds.every(id => pendingIds.value.has(id))
+  return preset.itemIds.every(id => selectedIds.value.has(id))
 }
 </script>
 
@@ -91,7 +91,7 @@ function presetSelected(preset: MaterialPreset): boolean {
                   :show-one="true" :title="material.itemName ?? `Item #${material.itemId}`" :item-name="material.itemName ?? null"
                   :reserved="protection.quantityFor('materials', material.itemId)"
                   @menu="(_id: number, x: number, y: number) => actionTarget = { itemId: material.itemId, name: material.itemName ?? null, count: material.count, x, y }"
-                  :selected="selectable ? pendingIds.has(material.itemId) : undefined"
+                  :selected="selectable ? selectedIds.has(material.itemId) : undefined"
                   @toggle="(id: number) => protection.togglePending(id, 'materials')" />
               </li>
             </ol>
