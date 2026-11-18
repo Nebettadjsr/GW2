@@ -22,6 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MaterialStorageServiceTest {
 
+    private static final model.AccountScope SCOPE = model.AccountScope.of("11111111-1111-1111-1111-111111111111");
+    private static final model.AccountScope OTHER = model.AccountScope.of("22222222-2222-2222-2222-222222222222");
+
     @Test
     void groupsStacksByCategoryNameInTheEstablishedCategoryOrder() throws Exception {
         var repo = new FakeMaterialStorageRepository();
@@ -32,12 +35,15 @@ class MaterialStorageServiceTest {
                 row(1, "Basic", 2, 0, 19719, 40),
                 row(1, "Basic", 2, 1, 19697, 100));
 
-        List<MaterialCategory> categories = new MaterialStorageService(repo).getMaterialStorage();
+        List<MaterialCategory> categories = new MaterialStorageService(repo).getMaterialStorage(SCOPE);
 
         assertEquals(List.of("Cooking", "Basic"), names(categories));
         assertEquals(List.of(12142), itemIds(categories.get(0)));
         assertEquals(List.of(19719, 19697), itemIds(categories.get(1)));
         assertEquals(1, repo.callCount);
+        assertEquals(List.of(SCOPE), repo.scopes, "the caller's scope, and no other account, reaches the read");
+        new MaterialStorageService(repo).getMaterialStorage(OTHER);
+        assertEquals(List.of(SCOPE, OTHER), repo.scopes);
     }
 
     @Test
@@ -45,7 +51,7 @@ class MaterialStorageServiceTest {
         var repo = new FakeMaterialStorageRepository();
         repo.canned = List.of();
 
-        assertTrue(new MaterialStorageService(repo).getMaterialStorage().isEmpty());
+        assertTrue(new MaterialStorageService(repo).getMaterialStorage(SCOPE).isEmpty());
         assertEquals(1, repo.callCount);
     }
 
@@ -55,7 +61,7 @@ class MaterialStorageServiceTest {
         repo.failure = new SQLException("simulated material storage read failure");
 
         SQLException thrown = assertThrows(SQLException.class,
-                () -> new MaterialStorageService(repo).getMaterialStorage());
+                () -> new MaterialStorageService(repo).getMaterialStorage(SCOPE));
         assertSame(repo.failure, thrown);
     }
 
@@ -75,10 +81,12 @@ class MaterialStorageServiceTest {
         List<MaterialStorageRow> canned = List.of();
         SQLException failure;
         int callCount = 0;
+        final List<model.AccountScope> scopes = new java.util.ArrayList<>();
 
         @Override
-        public List<MaterialStorageRow> loadMaterialStorage() throws SQLException {
+        public List<MaterialStorageRow> loadMaterialStorage(model.AccountScope scope) throws SQLException {
             callCount++;
+            scopes.add(scope);
             if (failure != null) throw failure;
             return canned;
         }

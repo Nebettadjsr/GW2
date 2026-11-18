@@ -19,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class BankContentsServiceTest {
 
+    private static final model.AccountScope SCOPE = model.AccountScope.of("11111111-1111-1111-1111-111111111111");
+    private static final model.AccountScope OTHER = model.AccountScope.of("22222222-2222-2222-2222-222222222222");
+
     @Test
     void returnsTheRepositoryRowsInOrderAndDelegatesExactlyOnce() throws Exception {
         var repo = new FakeBankRepository();
@@ -27,10 +30,13 @@ class BankContentsServiceTest {
                 new BankRepository.BankSlotRow(1, null, null, null, null, null),
                 new BankRepository.BankSlotRow(2, 24277, 250, "C:\\icons\\24277.png", null, "Basic"));
 
-        List<BankRepository.BankSlotRow> slots = new BankContentsService(repo).getBankContents();
+        List<BankRepository.BankSlotRow> slots = new BankContentsService(repo).getBankContents(SCOPE);
 
         assertEquals(repo.canned, slots);
         assertEquals(1, repo.callCount);
+        assertEquals(List.of(SCOPE), repo.scopes, "the caller's scope, and no other account, reaches the read");
+        new BankContentsService(repo).getBankContents(OTHER);
+        assertEquals(List.of(SCOPE, OTHER), repo.scopes);
     }
 
     @Test
@@ -38,7 +44,7 @@ class BankContentsServiceTest {
         var repo = new FakeBankRepository();
         repo.canned = List.of();
 
-        assertTrue(new BankContentsService(repo).getBankContents().isEmpty());
+        assertTrue(new BankContentsService(repo).getBankContents(SCOPE).isEmpty());
         assertEquals(1, repo.callCount);
     }
 
@@ -48,7 +54,7 @@ class BankContentsServiceTest {
         repo.failure = new SQLException("simulated bank read failure");
 
         SQLException thrown = assertThrows(SQLException.class,
-                () -> new BankContentsService(repo).getBankContents());
+                () -> new BankContentsService(repo).getBankContents(SCOPE));
         assertSame(repo.failure, thrown);
     }
 
@@ -56,10 +62,12 @@ class BankContentsServiceTest {
         List<BankSlotRow> canned = List.of();
         SQLException failure;
         int callCount = 0;
+        final List<model.AccountScope> scopes = new java.util.ArrayList<>();
 
         @Override
-        public List<BankSlotRow> loadBankSlots() throws SQLException {
+        public List<BankSlotRow> loadBankSlots(model.AccountScope scope) throws SQLException {
             callCount++;
+            scopes.add(scope);
             if (failure != null) throw failure;
             return canned;
         }

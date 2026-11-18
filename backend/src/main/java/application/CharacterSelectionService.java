@@ -7,9 +7,10 @@ import java.sql.SQLException;
 import java.util.List;
 
 /**
- * Character-selector reads for the crafting views: the synced crafting-discipline rows and
- * character names both crafting selectors are populated from. It performs no calculation and
- * coordinates one persistence collaborator; {@code CraftingSelectorOptionsApiController} is its
+ * Character-selector read for the crafting views: one account's synced crafting-discipline rows,
+ * which both crafting selectors are populated from. Cached Profit and Discovery validate selected
+ * character names against the account roster directly, not through this use case. It performs no
+ * calculation and coordinates one persistence collaborator; {@code CraftingSelectorOptionsApiController} is its
  * caller.
  *
  * <p>Read-only: no synchronization and no database write happens here or in
@@ -34,37 +35,10 @@ public class CharacterSelectionService {
     }
 
     /**
-     * Every synced character's crafting disciplines with their ratings, in the repository's order
-     * (discipline, then rating descending, then character name); empty when nothing is synced.
-     * Both crafting views turn these rows into their {@code DiscChoice} selector entries.
-     */
-    public List<CharacterRepository.DiscRow> getCraftingCharacterOptions() throws SQLException {
-        return charRepo.loadAllCharacterCrafting();
-    }
-
-    /**
-     * Every synced character name ordered by name; empty when nothing is synced. Populates
-     * Discovery's separate Character selector, which feeds the binding-aware owned-inventory
-     * lookup (DOMAIN_SPEC.md section 11.1 / DQ-007).
-     */
-    public List<String> getCharacterNames() throws SQLException {
-        return charRepo.loadAllCharacterNames();
-    }
-
-    /**
      * One account's crafting-discipline rows (STORY-APP-015). The scope is passed in by the boundary
      * that authorized the request; this use case has no account of its own to fall back to.
      */
     public List<CharacterRepository.DiscRow> getCraftingCharacterOptions(AccountScope scope) throws SQLException {
         return charRepo.loadAllCharacterCrafting(scope);
-    }
-
-    /**
-     * One account's character names (STORY-APP-015). A character name identifies a character only
-     * within its account, so the selected character a later binding-aware inventory read uses must
-     * be chosen from this account's own roster.
-     */
-    public List<String> getCharacterNames(AccountScope scope) throws SQLException {
-        return charRepo.loadAllCharacterNames(scope);
     }
 }

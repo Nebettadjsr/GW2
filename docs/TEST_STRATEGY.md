@@ -1393,14 +1393,25 @@ recursive resolution tree (fields, child order and count) for Profit and Discove
 tree depth of at least three, so the comparisons are not vacuous. Isolated controller contract tests (§35.1) remain
 stubbed-service transport checks and do not replace these guarantees.
 
+`support.fixture.AccountReadHttpParityTest` is the matching owner for Bank and Materials. Over the same kind of
+disposable `kpi_` schema and the same offline ports it logs in two principals with overlapping item ids and compares
+`GET /api/account/bank` and `/api/account/materials` with hand-written expected payloads (no service or DTO mapper
+as oracle): every projected field in slot/category/position order, JSON null versus zero (empty slot, zero count,
+item without metadata), binding/bound-to and the protection flag, canonical `/api/items/{id}/icon/...` URLs with
+no upstream URL or filesystem path, shared-catalog grouping including an unstored category and a category with no
+positions, and each account's own quantities. `PopulatedFixtureHttpTest` keeps the totals/isolation/pending/grant
+checks. Application-service tests (`BankContentsServiceTest`, `MaterialStorageServiceTest`,
+`CharacterSelectionServiceTest`, `AccountLuckServiceTest`) cover scope propagation, grouping and failure
+propagation through injected in-memory repositories; they do not call a no-scope read, because none exists.
+
 **Owner-data checks (explicit runs only).** Any check against the developer's real database (§34) is separately
 scoped, named `*IT` so Surefire's default patterns exclude them (§36.2), and not automatic acceptance. Such a run
-boots the real application on a random port with no schema override, so it reads that database exactly as the running application does. The retired owner-database equivalence suites' assertions now live in the default parity test above; the bullets below describe what an explicit owner-data run must still do.
+boots the real application on a random port with no schema override, so it reads that database exactly as the running application does. The retired owner-database equivalence suites' assertions now live in the default parity tests above, and the withdrawn one-off page-budget timing probes (`CraftingProfitApiRealDbPerfIT`, `CraftingDiscoveryApiRealDbPerfIT`: unauthenticated, owner-data, STORY-API-001/002 JavaFX budgets) were removed rather than adapted; a future timing probe must use explicit authenticated scoped requests. The bullets below describe what an explicit owner-data run must still do.
 
 - **Timing, when the issue requires it** (§34): measure from issuing the HTTP request to holding the complete response body. Report startup versus repeat scope, row count, response size, settings, data scale and environment. A backend-only observation does not prove a browser navigation-to-complete-page requirement.
 - **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
 - **Compare a nullable field's JSON null against the source null explicitly.** Jackson's `asInt()`/`asText()` on a JSON null return `0`/`""`, so a naive comparison agrees with a mapping that substituted a zero for an absent value — which is precisely the distinction a response carrying absent items, quantities or display metadata exists to preserve. Read such fields through a null-returning helper, and print how many rows actually carried a null, so a run's output says whether the real data exercised that path at all.
-- These print evidence and, for timing, assert nothing — matching `application.CraftingProfitServiceRealDbPerfIT`'s precedent. The equivalence check does assert, since a mismatch is a defect rather than a measurement.
+- These print evidence and, for timing, assert nothing — a precedent that no longer has a file in the repository. The equivalence check does assert, since a mismatch is a defect rather than a measurement.
 - **A recursive payload is compared recursively, in order, or not at all.** For a tree-shaped response, walk the domain structure and the JSON together and compare every node's own fields and its child count and child order, rather than comparing a root, a size or a serialized string. A root-only comparison passes while children are reordered, merged, dropped or silently truncated, which is exactly what a repeated occurrence and a split-sourcing case exist to detect.
 - **Choose the measured case by probing, not by assuming it is representative.** Where a payload's size depends on what the domain decided rather than on the request, select the candidate by running the operation on a few plausible inputs and keeping the one that actually produced the larger structure — and print how many were tried and what was found. A single arbitrary input can resolve in one node and turn a "deep tree" measurement into an unmarked shallow one; the selection heuristic must stay outside every assertion so its approximation cannot make a check pass.
 

@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Deliberately does not call the endpoints - that would need the real database. Transport
  * behavior is covered by {@link CraftingProfitApiControllerTest} and
- * {@link CraftingDiscoveryApiControllerTest}, real-database timing by {@code *RealDbPerfIT}. The
+ * {@link CraftingDiscoveryApiControllerTest}, scoped parity by {@code support.fixture.*HttpParityTest}. The
  * service factory and the cached use case are never invoked here, so no connection is opened. The narrowly scoped
  * account-Luck schema initialization is disabled for this wiring-only test; normal startup runs it.
  *
