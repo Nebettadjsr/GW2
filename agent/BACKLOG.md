@@ -22,7 +22,7 @@ blocking guard, width-based proof/loading deferral and automatic modal closure. 
 same issue/PR and independent QA ownership; no mobile tool-layout optimization is requested.
 
 The owner accepted that concrete local UI and PR #244 merged. The subsequent instruction
-to proceed continues broader coverage request #21. The next released bounded slice is
+to proceed continues broader coverage request #21. The first subsequent bounded slice is
 [#245, STORY-COV-007](https://github.com/Nebettadjsr/GW2/issues/245): active shared material-catalog
 publication, rollback and retry. Independent QA owns test/fixture design and authorship;
 Claude may add only the agreed package-private public-array fetch overload/delegation.
@@ -30,6 +30,16 @@ Use production migrations and a separate owned disposable PostgreSQL fixture. No
 validation policy, UI, schema, live-account operation or deployment is authorized. Require
 final-head full CI, native review and independently verified focused results before merge;
 no further visual approval is needed for this backend-only slice. GitHub owns its live state.
+
+After #245 merged through #246, the supervisor released
+[#247, STORY-COV-008](https://github.com/Nebettadjsr/GW2/issues/247): managed-schema account
+item-metadata completion, real SQL rollback/retry, failed-batch recovery and interruption.
+Fresh full CI `44261427182` confirms the active gaps persist. This is test-only work using
+existing injection points: independent QA owns tests/fixtures; production files are read-only.
+No Claude production task is needed unless a concrete defect requires a separately released
+fix. Require focused independent evidence, complete current-head CI/native review and
+supervisor acceptance. Preserve account rows/markers and all existing assertions; no new
+UI, payload policy, schema, live-account operation or deployment is authorized.
 
 ## Confirmed earlier scope
 
