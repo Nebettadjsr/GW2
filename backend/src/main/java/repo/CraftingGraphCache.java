@@ -86,11 +86,7 @@ public class CraftingGraphCache {
     public CraftingGraph loadForSnapshot(Connection con) throws IOException, SQLException {
         if (con == null) return load();
         List<Recipe> recipes = recipeRepo.loadAllRecipes(con);
-        Set<Integer> itemIds = new java.util.HashSet<>();
-        for (Recipe recipe : recipes) {
-            itemIds.add(recipe.outputItemId);
-            recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
-        }
+        Set<Integer> itemIds = referencedItemIds(recipes);
         Map<Integer, String> itemNames = new java.util.HashMap<>();
         itemRepo.loadItems(con, itemIds).forEach((itemId, item) -> {
             if (item.name != null) itemNames.put(itemId, item.name);
@@ -98,14 +94,19 @@ public class CraftingGraphCache {
         return new CraftingGraph(recipes, itemNames);
     }
 
-    public synchronized CraftingGraph rebuild() throws IOException, SQLException {
-        File file = new File(cacheFilePath());
-        List<Recipe> recipes = recipeRepo.loadAllRecipes();
+    private static Set<Integer> referencedItemIds(List<Recipe> recipes) {
         Set<Integer> itemIds = new java.util.HashSet<>();
         for (Recipe recipe : recipes) {
             itemIds.add(recipe.outputItemId);
             recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
         }
+        return itemIds;
+    }
+
+    public synchronized CraftingGraph rebuild() throws IOException, SQLException {
+        File file = new File(cacheFilePath());
+        List<Recipe> recipes = recipeRepo.loadAllRecipes();
+        Set<Integer> itemIds = referencedItemIds(recipes);
         Map<Integer, String> itemNames = new java.util.HashMap<>();
         itemRepo.loadItems(itemIds).forEach((itemId, item) -> {
             if (item.name != null) itemNames.put(itemId, item.name);
@@ -144,11 +145,7 @@ public class CraftingGraphCache {
                 deadline.check();
                 deadline.limitTransaction(con);
                 List<Recipe> recipes = recipeRepo.loadAllRecipes(con);
-                Set<Integer> itemIds = new java.util.HashSet<>();
-                for (Recipe recipe : recipes) {
-                    itemIds.add(recipe.outputItemId);
-                    recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
-                }
+                Set<Integer> itemIds = referencedItemIds(recipes);
                 deadline.check();
                 deadline.limitTransaction(con);
                 Map<Integer, String> itemNames = new java.util.HashMap<>();
