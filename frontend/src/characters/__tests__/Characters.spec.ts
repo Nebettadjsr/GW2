@@ -6,6 +6,7 @@ import { connection } from '@/api/accountSession'
 import { syncApi } from '@/api/syncApi'
 import type { CharactersApi } from '@/api/charactersApi'
 import type { CharacterBuildTabsResponse, CharacterInventoryResponse, CharacterEquipmentTabsResponse, CharacterOverview, CharacterReadResponse } from '@/api/types'
+import BuildsPanel from '../BuildsPanel.vue'
 import CharactersScreen from '../CharactersScreen.vue'
 import { useCharacters } from '../useCharacters'
 
@@ -1012,6 +1013,37 @@ describe('Builds section', () => {
     expect(tooltip.textContent).toContain('Damage Increase: 3%')
     await selected[0]!.trigger('keydown', { key: 'Escape' }); await flushPromises()
     expect(document.querySelector('[role="tooltip"]')).toBeNull()
+  })
+
+  it('replaces the projected trait choices when the same tab identity is supplied with new build data', async () => {
+    const tab = (specialization: Record<string, unknown>) => [{ tab: 2, active: true, specializations: [specialization] }] as never
+    const spec = (over: Record<string, unknown>) => ({ specialization: { id: 62, resolved: true, name: 'Willbender', profession: 'Guardian', elite: true }, ...over })
+    const w = mount(BuildsPanel, { props: { tabs: tab(spec({
+      traits: [trait(12, 'Major', 1, 1), null, null], minorTraits: [trait(10, 'Minor', 1, 0)],
+      majorTraits: [trait(13, 'Major', 1, 2), trait(12, 'Major', 1, 1), trait(11, 'Major', 1, 0)] })), selected: 2 } })
+    expect(w.findAll('[data-test="trait"]').map((t) => t.attributes('aria-label'))).toEqual(['T10, minor', 'T11, major', 'T12, major, selected', 'T13, major'])
+
+    // Same tab number, replaced data: new tier-2 choices, selection moved to T22, an offered-but-unplaced T99,
+    // and a selected T30 that is not offered at all.
+    await w.setProps({ tabs: tab(spec({
+      traits: [trait(22, 'Major', 2, 1), trait(30, 'Major', 2, 0), null],
+      minorTraits: [trait(20, 'Minor', 2, 0)],
+      majorTraits: [trait(23, 'Major', 2, 2), trait(22, 'Major', 2, 1), trait(21, 'Major', 2, 0), trait(99, 'Major', 0, 0, 'CONFLICT')] })) })
+    const rows = w.findAll('[data-test="trait-row"]')
+    expect(rows.map((r) => r.attributes('data-tier'))).toEqual(['2'])
+    expect(rows[0]!.findAll('[data-test="trait"]').map((t) => t.attributes('aria-label'))).toEqual(['T20, minor', 'T21, major', 'T22, major, selected', 'T23, major'])
+    expect(rows[0]!.findAll('.trait--selected')).toHaveLength(1)
+    expect(w.find('[data-test="trait-unplaced"]').text()).toBe('T99')
+    expect(w.find('[data-test="trait-selected-list"]').text()).toBe('T30 · selected')
+    expect(w.text()).not.toMatch(/T1[0-3]\b/)
+
+    // Absent choices stay distinct from empty ones: the selected trait is listed with the "not available" note.
+    await w.setProps({ tabs: tab(spec({ traits: [trait(22, 'Major', 2, 1), null, null] })) })
+    expect(w.findAll('[data-test="trait-row"]')).toHaveLength(0)
+    expect(w.find('[data-test="trait-selected-list"]').text()).toBe('T22 · selected (choices not available)')
+    await w.setProps({ tabs: tab(spec({ traits: [trait(22, 'Major', 2, 1), null, null], minorTraits: [], majorTraits: [] })) })
+    expect(w.findAll('[data-test="trait-row"]')).toHaveLength(0)
+    expect(w.find('[data-test="trait-selected-list"]').text()).toBe('T22 · selected')
   })
 
   it('arrow/Home/End move between build tabs with roving tabindex', async () => {

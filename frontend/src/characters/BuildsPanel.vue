@@ -53,6 +53,10 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
   const offered = new Set([...(spec.minorTraits ?? []), ...(spec.majorTraits ?? [])].map((t) => t.id))
   return (spec.traits ?? []).filter((t): t is BuildTraitRef => t !== null && !offered.has(t.id))
 }
+/** Per-render view data, computed once per spec instead of rescanning in each template expression. */
+const specViews = computed(() => (shown.value?.specializations ?? []).map((spec) => ({
+  spec, selected: selectedIds(spec), placed: layout(spec), unshown: unshownSelected(spec),
+})))
 </script>
 
 <template>
@@ -79,7 +83,7 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
 
       <h3 class="build__heading build__heading--traits">Traits</h3>
       <div class="build__specs" data-test="build-specializations">
-        <article v-for="(spec, i) in shown.specializations" :key="i" class="spec" :aria-label="specLabel(spec)" data-test="build-spec">
+        <article v-for="({ spec, selected, placed, unshown }, i) in specViews" :key="i" class="spec" :aria-label="specLabel(spec)" data-test="build-spec">
           <img v-if="spec.specialization?.backgroundUrl" :src="spec.specialization.backgroundUrl" alt="" class="spec__art" />
           <header class="spec__head">
             <img v-if="spec.specialization?.iconUrl" :src="spec.specialization.iconUrl" :title="specLabel(spec)" alt="" class="spec__emblem" />
@@ -87,24 +91,24 @@ function unshownSelected(spec: BuildSpecialization): BuildTraitRef[] {
           </header>
           <div class="spec__choices">
           <template v-if="spec.minorTraits || spec.majorTraits">
-            <div v-for="row in layout(spec).rows" :key="row.tier" class="trait-row" :data-tier="row.tier" data-test="trait-row">
+            <div v-for="row in placed.rows" :key="row.tier" class="trait-row" :data-tier="row.tier" data-test="trait-row">
               <div class="trait-minors">
                 <BuildReferenceTile v-for="t in row.minor" :key="t.id" :reference="t" :label="`${traitLabel(t)}, minor`" class="trait trait--minor" data-test="trait" />
               </div>
               <div class="trait-majors">
-                <BuildReferenceTile v-for="t in row.major" :key="t.id" :reference="t" :selected="selectedIds(spec).has(t.id)"
-                  :label="`${traitLabel(t)}, major${selectedIds(spec).has(t.id) ? ', selected' : ''}`" class="trait trait--major"
-                  :class="{ 'trait--selected': selectedIds(spec).has(t.id) }" :style="{ gridRow: t.order! + 1 }" data-test="trait" />
+                <BuildReferenceTile v-for="t in row.major" :key="t.id" :reference="t" :selected="selected.has(t.id)"
+                  :label="`${traitLabel(t)}, major${selected.has(t.id) ? ', selected' : ''}`" class="trait trait--major"
+                  :class="{ 'trait--selected': selected.has(t.id) }" :style="{ gridRow: t.order! + 1 }" data-test="trait" />
               </div>
             </div>
-            <ul v-if="layout(spec).other.length" class="spec__other meta" aria-label="Choices without a known position" data-test="trait-unplaced">
-              <li v-for="t in layout(spec).other" :key="t.id" :class="{ 'trait--selected-text': selectedIds(spec).has(t.id) }">
-                {{ traitLabel(t) }}{{ selectedIds(spec).has(t.id) ? ' · selected' : '' }}
+            <ul v-if="placed.other.length" class="spec__other meta" aria-label="Choices without a known position" data-test="trait-unplaced">
+              <li v-for="t in placed.other" :key="t.id" :class="{ 'trait--selected-text': selected.has(t.id) }">
+                {{ traitLabel(t) }}{{ selected.has(t.id) ? ' · selected' : '' }}
               </li>
             </ul>
           </template>
-          <ul v-if="unshownSelected(spec).length" class="spec__other meta" aria-label="Selected traits" data-test="trait-selected-list">
-            <li v-for="t in unshownSelected(spec)" :key="t.id">{{ traitLabel(t) }} · selected<template v-if="!(spec.minorTraits || spec.majorTraits)"> (choices not available)</template></li>
+          <ul v-if="unshown.length" class="spec__other meta" aria-label="Selected traits" data-test="trait-selected-list">
+            <li v-for="t in unshown" :key="t.id">{{ traitLabel(t) }} · selected<template v-if="!(spec.minorTraits || spec.majorTraits)"> (choices not available)</template></li>
           </ul>
           <p v-if="!spec.traits" class="meta" data-test="trait-none">No traits saved.</p>
           </div>
