@@ -116,7 +116,7 @@ public final class RecipeSync {
     }
 
     /**
-     * Owner full recipe-catalog synchronization (STORY-STATUS-004): the same publication protocol as
+     * Owner full recipe-catalog synchronization: the same publication protocol as
      * {@link #syncAllRecipesGlobalSafe()} (incomplete before detail batches, committed disposable
      * batches stay after a failure, complete only after the whole sequence), but it never skips on an
      * unchanged ID list, re-downloads every captured recipe, and rejects incomplete or malformed
@@ -228,13 +228,12 @@ public final class RecipeSync {
         try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             deadline.limitTransaction(con);
+            Integer[] ids = remoteIds.toArray(Integer[]::new);
             try (PreparedStatement ps = con.prepareStatement("DELETE FROM recipe_ingredients WHERE NOT (recipe_id = ANY (?))")) {
-                Integer[] ids = remoteIds.toArray(Integer[]::new);
                 ps.setArray(1, con.createArrayOf("int4", ids));
                 ps.executeUpdate();
             }
             try (PreparedStatement ps = con.prepareStatement("DELETE FROM recipes WHERE NOT (recipe_id = ANY (?))")) {
-                Integer[] ids = remoteIds.toArray(Integer[]::new);
                 ps.setArray(1, con.createArrayOf("int4", ids));
                 ps.executeUpdate();
             }
@@ -245,8 +244,7 @@ public final class RecipeSync {
 
     /**
      * Upserts a batch of already-parsed {@link RecipeParser.RecipeRow} values into {@code recipes}.
-     * Extracted from {@link #syncAllRecipesGlobalSafe} so the write path is callable independently
-     * of the live GW2 fetch in tests, mirroring {@link TpSync#upsertTpPrices}'s precedent.
+     * Separate from the fetch so the write path is callable independently of the live GW2 API in tests.
      */
     static void upsertRecipes(Connection con, List<RecipeParser.RecipeRow> rows, Timestamp runTs) throws SQLException {
 
@@ -337,9 +335,9 @@ public final class RecipeSync {
     /**
      * Upserts a batch of already-parsed {@link RecipeParser.IngredientRow} values into
      * {@code recipe_ingredients}, flushing every {@link SyncConstants#DB_FLUSH_BATCH} rows.
-     * Extracted from {@link #syncRecipeIngredients} so the write path is callable independently of
-     * the live GW2 fetch in tests, mirroring {@link TpSync#upsertTpPrices}'s precedent. The
-     * surrounding autocommit/commit/rollback control stays with the caller, as in the original code.
+     * Separate from the fetch so the write path is callable independently of the live GW2 API in
+     * tests. Each full flush commits; the caller controls the final commit or rollback, which cannot
+     * undo earlier committed flushes.
      */
     static void upsertRecipeIngredients(Connection con, List<RecipeParser.IngredientRow> ingRows) throws SQLException {
 

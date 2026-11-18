@@ -3,7 +3,7 @@ package sync;
 import api.TaskDeadline;
 
 /**
- * Thin instantiable seam over the owner full-catalog operations (STORY-STATUS-004), mirroring
+ * Thin instantiable seam over the deadline-aware owner full-catalog operations, mirroring
  * {@link GlobalDataRefreshGateway}: lets the application service be tested with a fake gateway.
  */
 public class FullCatalogGateway {

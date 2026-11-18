@@ -132,7 +132,9 @@ numeric bounds and resource/lifecycle behavior, not just happy-path return value
 - Use records, sealed hierarchies and exhaustive switches where they clarify the model.
   Preserve equality, constructor, serialization and mutability contracts; do not rewrite
   data types merely to use newer syntax.
-- `Optional<T>` only as a return type, never as a field or parameter.
+- Prefer `Optional<T>` for method return values. Preserve existing explicit snapshot/DTO fields
+  that model absence; do not rewrite their API or serialization contracts for style. Avoid adding
+  `Optional` parameters or `Optional` fields in ordinary mutable state.
 - Use the existing executor/admission model unless the task requires a change. Virtual
   threads suit blocking I/O, not faster CPU calculations; preserve cancellation, single-writer
   limits, interruption and shutdown. See the [Java 25 virtual-thread guide](https://docs.oracle.com/en/java/javase/25/core/virtual-threads.html).

@@ -112,9 +112,9 @@ public final class CharacterSync {
      *
      * <p>A validated empty roster <em>is</em> published, like every other source
      * (a successful empty or unchanged source has a valid marker and
-     * advances its generation): a key that lost its {@code characters} permission is not an empty
-     * list, it is an HTTP 403 that {@link #fetchCharacterNames()} throws on, and a body that is not
-     * an array is rejected by the parser. So an empty {@code /v2/characters} array means this account
+     * advances its generation). Permission failures propagate through the supplied
+     * {@link AccountSync.AuthFetcher}; a body that is not an array is rejected by the strict names
+     * parser. So an empty {@code /v2/characters} array means this account
      * owns no characters, and the account's character source is then legitimately empty and current.
      *
      * <p>Conversely, a character the roster named whose detail response cannot be parsed is a
@@ -518,7 +518,7 @@ public final class CharacterSync {
         deleteStaleChildren(con, scope, "character_items", characterId, runTs);
     }
 
-    /** The table name is one of this class's own three literals, never caller input. */
+    /** The table name is a fixed internal literal, never caller input. */
     private static void deleteStaleChildren(Connection con, model.AccountScope scope, String table,
                                             long characterId, Timestamp runTs) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("DELETE FROM " + table
