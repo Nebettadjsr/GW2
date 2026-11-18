@@ -358,16 +358,17 @@ public class PlanState {
     }
 
     public int consumeInventory(int itemId, int qtyWanted) {
-        int have = inventory.getOrDefault(itemId, 0);
-        int used = Math.min(have, qtyWanted);
+        return consumeFrom(SELLABLE, inventory, null, itemId, qtyWanted);
+    }
 
-        if (used <= 0) {
-            return 0;
-        }
+    /** Takes up to {@code wanted} from one pool, journalling the new value (absent once emptied). */
+    private int consumeFrom(int kind, Map<Integer, Integer> pool, String owner, int itemId, int wanted) {
+        int have = pool.getOrDefault(itemId, 0);
+        int used = Math.min(have, wanted);
+        if (used <= 0) return 0;
 
         int left = have - used;
-        setValue(SELLABLE, itemId, null, left > 0 ? left : ABSENT);
-
+        setValue(kind, itemId, owner, left > 0 ? left : ABSENT);
         return used;
     }
 
@@ -381,20 +382,6 @@ public class PlanState {
         int remaining = boundInventory.getOrDefault(itemId, 0);
         for (var stock : characterBoundInventory.values()) remaining += stock.getOrDefault(itemId, 0);
         return initialBoundTotals.getOrDefault(itemId, 0) - remaining;
-    }
-
-    private int consumeBoundInventory(int itemId, int qtyWanted) {
-        int have = boundInventory.getOrDefault(itemId, 0);
-        int used = Math.min(have, qtyWanted);
-
-        if (used <= 0) {
-            return 0;
-        }
-
-        int left = have - used;
-        setValue(ACCOUNT_BOUND, itemId, null, left > 0 ? left : ABSENT);
-
-        return used;
     }
 
     /**
@@ -417,20 +404,12 @@ public class PlanState {
      * single-character/legacy path and by any consumption not attributable to one character).
      */
     public InventoryConsumption consumeInventoryWithBinding(int itemId, int qtyWanted, String assignedCharacter) {
-        int usedCharacterBound = 0;
-        if (assignedCharacter != null) {
-            Map<Integer, Integer> ownerStock = characterBoundInventory.get(assignedCharacter);
-            if (ownerStock != null) {
-                int have = ownerStock.getOrDefault(itemId, 0);
-                usedCharacterBound = Math.min(have, qtyWanted);
-                if (usedCharacterBound > 0) {
-                    int left = have - usedCharacterBound;
-                    setValue(CHARACTER_BOUND, itemId, assignedCharacter, left > 0 ? left : ABSENT);
-                }
-            }
-        }
+        Map<Integer, Integer> ownerStock = assignedCharacter == null ? null
+                : characterBoundInventory.get(assignedCharacter);
+        int usedCharacterBound = ownerStock == null ? 0
+                : consumeFrom(CHARACTER_BOUND, ownerStock, assignedCharacter, itemId, qtyWanted);
 
-        int usedAccountBound = consumeBoundInventory(itemId, qtyWanted - usedCharacterBound);
+        int usedAccountBound = consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - usedCharacterBound);
         int usedSellable = consumeInventory(itemId, qtyWanted - usedCharacterBound - usedAccountBound);
         return new InventoryConsumption(usedCharacterBound + usedAccountBound, usedSellable);
     }

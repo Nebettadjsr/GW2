@@ -1,8 +1,10 @@
 package craft;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class CraftingSettings {
     public final boolean useOwnMats;
@@ -22,7 +24,7 @@ public class CraftingSettings {
     public final Map<Integer, Integer> protectedBankQuantities;
     public final Map<Integer, Integer> protectedMaterialQuantities;
     /** Canonical manual Bank row intent (ascending slot); a guard over the fixed totals, never authority. */
-    public final java.util.List<BankAllocation> protectedBankAllocations;
+    public final List<BankAllocation> protectedBankAllocations;
 
     public CraftingSettings(boolean useOwnMats,
                             boolean allowBuy,
@@ -63,7 +65,7 @@ public class CraftingSettings {
                             Map<Integer, Integer> protectedMaterialQuantities) {
         this(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
                 materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
-                protectedBankQuantities, protectedMaterialQuantities, java.util.List.of());
+                protectedBankQuantities, protectedMaterialQuantities, List.of());
     }
 
     public CraftingSettings(boolean useOwnMats, boolean allowBuy, int maxBuyCopper,
@@ -72,9 +74,9 @@ public class CraftingSettings {
                             Collection<Integer> protectedBankItemIds, Collection<Integer> protectedMaterialItemIds,
                             Map<Integer, Integer> protectedBankQuantities,
                             Map<Integer, Integer> protectedMaterialQuantities,
-                            java.util.List<BankAllocation> protectedBankAllocations) {
-        this.protectedBankAllocations = protectedBankAllocations == null ? java.util.List.of()
-                : java.util.List.copyOf(protectedBankAllocations);
+                            List<BankAllocation> protectedBankAllocations) {
+        this.protectedBankAllocations = protectedBankAllocations == null ? List.of()
+                : List.copyOf(protectedBankAllocations);
         this.protectedBankQuantities = canonicalQuantities(protectedBankQuantities, protectedBankItemIds, protectedItemIds);
         this.protectedMaterialQuantities = canonicalQuantities(protectedMaterialQuantities, protectedMaterialItemIds, protectedItemIds);
         this.materialProtectionEnabled = materialProtectionEnabled;
@@ -94,7 +96,7 @@ public class CraftingSettings {
                                                               Collection<Integer> sourceAll,
                                                               Collection<Integer> globalAll) {
         if (quantities == null || quantities.isEmpty()) return Map.of();
-        Map<Integer, Integer> out = new java.util.TreeMap<>();
+        Map<Integer, Integer> out = new TreeMap<>();
         quantities.forEach((id, qty) -> {
             if (id == null || qty == null || qty <= 0) return;
             if (sourceAll != null && sourceAll.contains(id)) return;
