@@ -41,6 +41,12 @@ fix. Require focused independent evidence, complete current-head CI/native revie
 supervisor acceptance. Preserve account rows/markers and all existing assertions; no new
 UI, payload policy, schema, live-account operation or deployment is authorized.
 
+Independent QA's test-only revision `910cfc8` passes 47 focused checks; complete CI
+`44263087384` passes with all ten browser journeys. [PR #248](https://github.com/Nebettadjsr/GW2/pull/248)
+owns final-head review/acceptance. The metadata slice needs no production fix. Keep #21
+open for further meaningful gaps selected from the updated full measurement; do not
+automatically activate unrelated candidates or treat this progress as the 90% branch target.
+
 ## Confirmed earlier scope
 
 - Public Home, legal pages, calculation bounds and the Bank/Materials reservation correction are approved and deployed. The owner confirmed the finished behavior works. Earlier local-only holds for those completed releases are superseded.
@@ -57,13 +63,13 @@ account-isolation and state-retention assertions in normal frontend CI. They est
 behavior, not backend economics, live upstream behavior or a line/branch percentage. Narrow
 tool content stays available through horizontal scrolling; public reading remains fluid.
 
-[#245](https://github.com/Nebettadjsr/GW2/issues/245) / #246 owns the subsequent shared
+[#245](https://github.com/Nebettadjsr/GW2/issues/245) / #246 delivered the subsequent shared
 material-catalog publication slice and its execution evidence. Independent QA's five real-SQL
 publication cases plus one early global-refresh failure/retry case use only synthetic upstream
 answers and generated production-Flyway schemas. The production seam reuses the existing
 transaction; no new product, payload or storage policy is selected. Current measurements and
 remaining gaps belong in QUALITY_METRICS. Full current-head CI/native review and independent
-focused evidence remain required. No UI approval or production deployment is part of this slice.
+focused evidence passed before merge. No UI approval or production deployment is part of this slice.
 
 [#21](https://github.com/Nebettadjsr/GW2/issues/21) stays open for later backend gaps selected
 from full current CI reports, not the browser journey count. [#60](https://github.com/Nebettadjsr/GW2/issues/60)

@@ -1260,6 +1260,17 @@ These controlled synthetic payloads establish application/SQL behavior, not a ca
 ArenaNet response contract. No live API or owner database is required. The injected
 `PublicArrayFetcher` overload reuses the production transaction rather than copying it.
 
+`AccountItemMetadataRepairTest` uses the existing injected metadata source with production
+Flyway schemas. It checks incomplete/unknown facts, warm and retry selection, a real late
+flag-update fault in both connection modes, per-batch commit/rollback, continuation after
+ordinary failure and cancellation before later batches. Separate-connection readback checks
+committed facts and unchanged account rows/markers; interrupt state is cleared before cleanup.
+`ScopedFetchOwnershipTest` checks that ordinary metadata outage still permits valid Bank
+publication, interruption preserves the previous generation, and an explicit retry recovers
+without changing the other account. The 201/401-ID fixtures cross fixed batch boundaries;
+they are bounded behavior cases, not load measurements. No production change or live call
+is required by this test-only slice (#247).
+
 ## 31.3 Layer 3 — GW2 API Contract/Fixture Tests
 
 Extends §10. A test in this layer must:

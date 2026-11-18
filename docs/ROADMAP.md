@@ -24,19 +24,24 @@ keeps narrow tool content available on a horizontal desktop canvas; width never 
 or closes modals. `npm run smoke:ci` runs the ten controlled journeys in ordinary frontend CI.
 Browser outcomes remain separate from line/branch coverage. This is not another Oracle deployment.
 
-The owner then directed continued coverage work. The first subsequent slice is
-[#245, STORY-COV-007](https://github.com/Nebettadjsr/GW2/issues/245): active shared material-catalog
-publication through production SQL, ordered replacement, rollback and explicit retry, plus
-early global-refresh failure reporting. Use a minimal existing-boundary fetch seam and
-isolated production-migration PostgreSQL fixtures. Preserve account rows/markers and all
-existing assertions. Do not broaden payload policy, introduce schema changes or reactivate
-legacy unscoped paths to raise a percentage. #21 remains open for subsequent meaningful gaps.
+The owner then directed continued coverage work.
+[#245, STORY-COV-007](https://github.com/Nebettadjsr/GW2/issues/245) covers active shared
+material-catalog publication through production SQL, ordered replacement, rollback and
+explicit retry, plus early global-refresh failure reporting. It uses a minimal fetch seam
+and isolated production-migration PostgreSQL fixtures, preserving account rows/markers
+and existing assertions. It merged through #246 with independent PostgreSQL evidence and
+complete CI/review. #21 remains open for subsequent meaningful gaps.
 
 After that slice merged, [#247, STORY-COV-008](https://github.com/Nebettadjsr/GW2/issues/247)
 is the next released test-only handoff: managed-schema account item-metadata completion,
 SQL rollback/retry, batching and interruption through existing boundaries. No production
 change is expected. Default full CI/native review and independent focused PostgreSQL
 evidence remain required; GitHub owns execution status.
+
+Test-only revision `910cfc8` passes independent focused QA (47 checks) and complete CI
+`44263087384`, including all ten controlled browser journeys. #248 owns final acceptance;
+[Quality metrics](QUALITY_METRICS.md) records the measured counts and remaining gaps.
+No production defect or new architecture/product decision was found in this slice.
 
 Independent QA owns tests, fixtures/helpers and explained mobile-test removals for this session;
 Claude implements the released source/package/CI scope. Preserve desktop feature assertions,
@@ -53,7 +58,6 @@ remove resolved findings and retain concrete future performance work.
 
 | Issue | Remaining scope |
 | --- | --- |
-| [#245](https://github.com/Nebettadjsr/GW2/issues/245) | Authorized shared material-catalog publication and failure/retry coverage. |
 | [#21](https://github.com/Nebettadjsr/GW2/issues/21) | Broader coverage improvements, selected from current package and branch gaps. |
 | [#60](https://github.com/Nebettadjsr/GW2/issues/60) | Optional real-database fixture migration and account-task lookup semantics. |
 | [#228](https://github.com/Nebettadjsr/GW2/issues/228) | Portable production configuration for the restricted database role and HTTPS origin. |

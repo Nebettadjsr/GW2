@@ -8,19 +8,19 @@ The GitHub Actions `Coverage KPI report` job publishes per-module/package rates 
 
 ## Verified CI baseline
 
-Source: STORY-COV-007 source/test revision `14a3054e31588499e197f8d110facffeb69538f2`,
-successful [CI run 44260769452](https://github.com/Nebettadjsr/GW2/actions/runs/44260769452),
-generated 18 November 2026. The explicitly dispatched run measured the material-catalog
-publication tests and minimal fetch seam, as recorded in `coverage-kpi.json`. Downloaded
-and inspected that day: `coverage-reports` artifact `14408340797`, with raw JaCoCo counters
+Source: STORY-COV-008 test revision `910cfc8aa2a8eb17a340a13e848803aa8decf033`,
+successful [CI run 44263087384](https://github.com/Nebettadjsr/GW2/actions/runs/44263087384),
+generated 18 November 2026. The complete push run includes the material-catalog and account
+metadata repair tests, as recorded in `coverage-kpi.json`. Downloaded
+and inspected that day: `coverage-reports` artifact `14409740450`, with raw JaCoCo counters
 cross-checked. These numbers describe that identified run. Later documentation-only commits
 do not constitute another measured result; final-head CI and owner acceptance remain separate.
 
 | Area | Line coverage | Branch coverage |
 | --- | --- | --- |
-| Java backend | 91.69% (10,557 / 11,514) | 81.58% (5,387 / 6,603) |
+| Java backend | 91.78% (10,567 / 11,514) | 81.67% (5,393 / 6,603) |
 | Frontend TypeScript | 96.51% (4,043 / 4,189) | 86.50% (4,216 / 4,874) |
-| Combined weighted | 92.98% (14,600 / 15,703) | 83.67% (9,603 / 11,477) |
+| Combined weighted | 93.04% (14,610 / 15,703) | 83.72% (9,609 / 11,477) |
 
 Both application modules exceed the line target; both still have branch gaps. A combined percentage does not establish adequate coverage of any individual critical path.
 
@@ -42,7 +42,7 @@ A failed journey fails the frontend job. Missing or incomplete artifacts are not
 These are **journey outcomes, not line/branch coverage**. Do not add browser step counts to
 Vitest test counts or JaCoCo/Vitest covered-line totals, and do not claim that controlled
 journeys increased the percentage without a separately measured coverage change. The
-existing KPI baseline above remains unchanged. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
+KPI reports measure the default code suites separately. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
 owns commands, viewport checks and evidence limits.
 
 **Warning-only evidence (18 November):** independent local QA on `1d017fc` passed 30 focused
@@ -62,9 +62,11 @@ This adds no retries or threshold relaxation. Production source is unchanged at 
 correction `0c24106`, which independently passes the same
 30 focused checks, fresh build and ten browser journeys. Removing obsolete admission/width-gate
 source also changes measured denominators; the small percentage change is not evidence
-of broader browser coverage. Final-head CI/review and owner visual acceptance remain
-required; [PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns live status.
-No merge, deployment or real-upstream success is implied by these measurements.
+of broader browser coverage. The owner accepted the local UI and
+[PR #244](https://github.com/Nebettadjsr/GW2/pull/244) merged. Current baseline CI
+`44263087384`, browser artifact `14408159829`, again confirms all ten journeys passed,
+both child commands exited zero and neither timed out. No production deployment or
+real-upstream success is implied by these measurements.
 
 ## Current improvement candidates
 
@@ -73,7 +75,7 @@ Selected package figures from the same artifact:
 | Area | Lines | Branches | Reason to inspect |
 | --- | --- | --- | --- |
 | Backend `web.access` | 95.27% | 92.14% | Account route mapping and session/recovery coverage added in #111; named remaining defensive gaps below. |
-| Backend `sync` | 83.22% | 76.44% | Material catalog publication covered in #245; active metadata/failure paths remain. |
+| Backend `sync` | 83.69% | 77.02% | Catalog publication (#245) and metadata rollback/recovery (#247) covered; other refresh paths remain. |
 | Backend `application.access` | 95.59% | 80.82% | Account proof, expiry and access-policy branches. |
 | Backend `parser` | 98.12% | 73.81% | Malformed and optional payload branches; prioritize meaningful input cases. |
 | Backend `infra.db` | 79.17% | 65.38% | Connection/pool lifecycle and failure handling. |
@@ -87,8 +89,8 @@ Selected package figures from the same artifact:
 
 Independent QA added 72 deterministic HTTP cases using the production guard registration,
 session controller and access/session services with a controlled proof port and clock.
-The focused check passed 103 cases, including 31 unchanged adjacent cases; the full CI run
-above then passed backend/frontend suites, build and workflow checks. Production code and
+The focused check passed 103 cases, including 31 unchanged adjacent cases; that slice's full
+CI then passed backend/frontend suites, build and workflow checks. Production code and
 existing assertions did not change.
 
 Compared with [baseline CI 43821055103](https://github.com/Nebettadjsr/GW2/actions/runs/43821055103)
@@ -138,6 +140,35 @@ would not improve this offline transaction evidence. `GlobalDataRefreshService` 
 29/29 lines and 3/6 branches: its additional failure story improves behavior evidence
 without claiming another measured branch. The other `refreshAll` decisions remain candidates.
 The broader backend branch target is not met; #21 remains open. Browser coverage is unchanged.
+
+## Account metadata repair improvement (#247)
+
+Independent QA added six cases through existing injection points, with no production
+change. A fresh four-class local run passes 47 cases with no failures/errors/skips.
+The new cases verify managed-schema completeness and unknown/omitted metadata retry,
+late flag-update rollback with both original auto-commit modes, failed-batch continuation,
+interruption after an earlier commit and explicit recovery. Gateway assertions distinguish
+best-effort metadata outage from cancellation that must retain the previous Bank generation;
+the other account's rows and markers remain unchanged. Real SQL faults stay inside generated
+disposable schemas, and tests clear interrupt state before readback/cleanup.
+
+Before: post-#245 full CI `44261427182` at `929bc01`. After: full CI `44263087384` at `910cfc8`.
+Downloaded raw counters establish:
+
+| Scope | Lines before / after | Branches before / after |
+| --- | --- | --- |
+| `IconSync` injected account repair | 30 / 33 → 33 / 33 | 20 / 26 → 25 / 26 |
+| `IconSync.applyItemMetadata` | 25 / 28 → 28 / 28 | 11 / 12 → 11 / 12 |
+| `ItemCraftingMetadata` | 11 / 11 → 11 / 11 | 8 / 10 → 9 / 10 |
+| `AccountRefreshGateway.repairItemMetadata` | 4 / 10 → 7 / 10 | no branches |
+| `sync` package | 1,617 / 1,943 → 1,626 / 1,943 | 795 / 1,040 → 801 / 1,040 |
+| Backend overall | 10,559 / 11,514 → 10,567 / 11,514 | 5,387 / 6,603 → 5,393 / 6,603 |
+
+Remaining named paths include the Java-null array-root alternative, missing vendor-value
+default, gateway setup/outside-batch general-exception catch and live adapters. The offline
+suite deliberately does not call real HTTP/image services to cover delegation wrappers.
+These bounded cases establish recovery behavior, not live availability or production capacity.
+Frontend percentages and the ten controlled browser journeys are unchanged. #21 remains open.
 
 ## Reading and refreshing reports
 
