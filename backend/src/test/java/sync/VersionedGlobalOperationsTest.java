@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** STORY-SYNC-007: global selection remains usable on the migrated, empty-account schema. */
@@ -84,10 +85,10 @@ class VersionedGlobalOperationsTest {
     }
 
     @Test
-    void iconMetadataAccountInputsAreScopedAndGlobalInputsRemainShared() throws Exception {
-        assertEquals(List.of(10, 11, 30, 31, 40, 41), IconSync.globalReferencedOrUnknownItemIds(con));
-        assertEquals(List.of(20, 22, 24), IconSync.accountReferencedItemIds(con, new AccountScope(accountA)));
-        assertEquals(List.of(21, 23, 25), IconSync.accountReferencedItemIds(con, new AccountScope(accountB)));
+    void iconMetadataGlobalSelectionExcludesEveryAccountOwnedFamily() throws Exception {
+        List<Integer> selected = IconSync.globalReferencedOrUnknownItemIds(con);
+        assertEquals(List.of(10, 11, 30, 31, 40, 41), selected);
+        for (int accountOwned : new int[] {20, 21, 22, 23, 24, 25}) assertFalse(selected.contains(accountOwned));
     }
 
     @Test

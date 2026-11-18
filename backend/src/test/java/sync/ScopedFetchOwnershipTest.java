@@ -269,6 +269,20 @@ class ScopedFetchOwnershipTest {
     }
 
     @Test
+    void metadataRepairCallbackReceivesInstalledBagContainersAndItemsOnce() throws Exception {
+        String detail = "{\"name\":\"Ana\",\"profession\":\"Guardian\",\"race\":\"Human\","
+                + "\"gender\":\"Female\",\"level\":80,\"created\":\"2020-01-01T00:00:00Z\","
+                + "\"age\":1,\"deaths\":0,\"crafting\":[],\"recipes\":[],\"equipment\":[],"
+                + "\"bags\":[{\"id\":8932,\"size\":2,\"inventory\":[{\"id\":8932,\"count\":1},null]},null]}";
+        AccountSync.AuthFetcher fetcher = url -> url.endsWith("/characters/Ana")
+                ? JSON.readTree(detail) : credentialOf(A, "[\"Ana\"]").get(url);
+        java.util.List<Integer> captured = new java.util.ArrayList<>();
+        CharacterSync.syncCharactersCraftingAndRecipes(AccountScope.of(A), fetcher, captured::addAll);
+        assertEquals(java.util.List.of(8932), captured,
+                "installed bag containers and carried items are requested once, never null ids");
+    }
+
+    @Test
     void incompleteDetailPreservesSeededRosterChildrenAndMarker() throws Exception {
         AccountScope scope = AccountScope.of(A);
         String detail = "{\"name\":\"Ana\",\"profession\":\"Guardian\",\"race\":\"Human\","

@@ -38,7 +38,7 @@ public final class IconSync {
      * cover, and how many of those have no {@code items} row at all, and calls neither the GW2 API nor
      * any write.
      *
-     * <p>Invocation is documented in {@code docs/CURRENT_ARCHITECTURE.md} §5.14.
+     * <p>Run it with no argument for the refresh or with {@code --dry-run} for the coverage report.
      */
     public static void main(String[] args) throws Exception {
         // A retained entry point passes the same startup schema gate as the backend before it opens a connection.
@@ -70,8 +70,10 @@ public final class IconSync {
     }
 
     /**
-     * Upsert, because a referenced item may have no {@code items} row at all: account
-     * synchronization stores the id, and nothing ever creates the metadata row an icon needs.
+     * Upsert, because a referenced item may have no cached {@code items} row at all: account
+     * synchronization stores item ids, and the metadata row an icon needs is created by this write
+     * (the pre-publication {@link #repairMissingMetadata} or an explicit refresh), so a reference may
+     * lack cached metadata until then.
      *
      * <p>A row that is created carries the canonical metadata upstream reports. A row that already
      * exists keeps every value it holds - each {@code COALESCE} prefers the stored side, so a populated
@@ -254,13 +256,21 @@ public final class IconSync {
     }
 
     /**
-     * Completes metadata for item ids an account publication just stored: ids with no
-     * {@code items} row or no {@code icon_url} are fetched from the canonical items endpoint and written
-     * through the ordinary metadata upsert, so a first or later account sync needs no separate global
-     * refresh. Ids that already carry an icon source and non-blank name, type and rarity cost no upstream call.
+     * Completes metadata for item ids an account refresh is about to publish (and ids it already
+     * stores): ids with no {@code items} row, no accepted {@code icon_url}, or a blank name, type or
+     * rarity are fetched from the canonical items endpoint and written through the ordinary metadata
+     * upsert, so a first or later account sync needs no separate global refresh. On the managed schema
+     * a row also counts as incomplete while {@code no_mystic_forge} is null. Complete ids cost no
+     * upstream call.
      *
-     * <p>Best effort and bounded: an unavailable batch is reported and left for the next sync or the
-     * on-demand read repair; it never fails or rolls back the already committed account publication.
+     * <p>This runs <em>before</em> the scoped account publication (AccountRefreshGateway, character
+     * refresh), on the caller's own connection and never inside the account publication transaction.
+     * Each upstream batch is written in its own short metadata transaction, so a failed batch loses
+     * only that batch and never touches last-good account state.
+     *
+     * <p>Best effort and bounded: an unavailable or malformed batch is reported and left for the next
+     * sync or the on-demand read repair; it does not fail the refresh. An interrupt is not swallowed: the
+     * thread's interrupt flag is restored and the {@link InterruptedException} propagates.
      *
      * @return the ids whose metadata request failed
      */
@@ -436,12 +446,13 @@ public final class IconSync {
     /**
      * What one unscoped icon-metadata refresh covers on the database in front of it.
      *
-     * <p>On the versioned database the mixed selection is reduced to its global half
-     *: the shared item, recipe and material-catalog references need no account, so
-     * global icon metadata stays available with no verified credential, while the three
-     * account-owned families stay behind {@link #accountReferencedItemIds} rather than being read
-     * across accounts. No account is inferred - an unscoped caller simply contributes no account
-     * reference, including when the account registry is empty.
+     * <p>On the versioned database the mixed selection is reduced to its global half: the shared
+     * item, recipe and material-catalog references need no account, so global icon metadata stays
+     * available with no verified credential. The three account-owned families are not read here, since
+     * this entry point carries no account scope and must not read across accounts; their items get
+     * metadata through {@link #repairMissingMetadata}, which an account refresh calls with the ids it
+     * is about to publish (including installed bag containers). An unscoped caller contributes no
+     * account reference, including when the account registry is empty.
      *
      * <p>On a pre-cutover database nothing changes: the one unscoped union
      * {@link #referencedOrUnknownItemIds} has always run there keeps running, so an existing
@@ -474,50 +485,6 @@ public final class IconSync {
         ) referenced
         ORDER BY item_id
         """);
-    }
-
-    /**
-     * The account half of the selection for one verified account: the item ids this
-     * account's bank slots, material storage and character inventories refer to.
-     *
-     * <p>Every family is keyed by the account GUID, so another account's rows can neither widen nor
-     * narrow this selection, while the metadata the refresh then writes stays shared global data -
-     * two accounts referring to the same item ask for the same {@code items} row.
-     *
-     * <p>Requires the versioned account schema: on a pre-migration database there is no account GUID
-     * to scope by, which {@code requireManagedAccountSchema} says instead of failing on a missing
-     * column.
-     */
-    static List<Integer> accountReferencedItemIds(Connection con, model.AccountScope scope)
-            throws SQLException {
-
-        repo.ManagedSchema.requireManagedAccountSchema(con, "icon-metadata account item selection");
-
-        String sql = """
-        SELECT item_id FROM (
-            SELECT item_id FROM account_bank WHERE account_id = ? AND item_id IS NOT NULL
-            UNION SELECT item_id FROM account_materials WHERE account_id = ?
-            UNION SELECT item_id FROM character_items WHERE account_id = ?
-            UNION SELECT container_item_id FROM character_bags
-                WHERE account_id = ? AND container_item_id IS NOT NULL
-        ) referenced
-        ORDER BY item_id
-        """;
-
-        List<Integer> ids = new ArrayList<>();
-
-        try (PreparedStatement ps = con.prepareStatement(sql)) {
-
-            for (int parameter = 1; parameter <= 4; parameter++)
-                ps.setObject(parameter, scope.accountId());
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next())
-                    ids.add(rs.getInt(1));
-            }
-        }
-
-        return ids;
     }
 
     /**
