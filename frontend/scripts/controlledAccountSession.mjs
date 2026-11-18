@@ -3,15 +3,20 @@ import assert from 'node:assert/strict'
 const DUMMY_KEY = 'synthetic-read-only-smoke-key'
 const ACCOUNT_ID = '00000000-0000-4000-8000-000000000194'
 
-/** Test-only backend boundary; the real App restores and proves the retained synthetic key. */
-export function createControlledAccountSession({ calculationRoutes, searchQueries, searchResults = {}, accountReadRoutes = [], publicReadRoutes = [] }) {
+/**
+ * Test-only backend boundary; the real App restores and proves the retained synthetic key.
+ * `keyedRoutes` are POST refreshes that, like the real App, must forward that key as a header;
+ * `publicDocumentPaths` are document paths (Playwright reports no fragment) that owe no proof.
+ */
+export function createControlledAccountSession({ calculationRoutes, searchQueries, searchResults = {}, accountReadRoutes = [], publicReadRoutes = [], keyedRoutes = [], publicDocumentPaths = [] }) {
   const methods = new Map([
     ['/api/session', 'POST'],
     ['/api/crafting/selector-options', 'GET'],
     ['/api/crafting/ingredient-search', 'GET'],
     ...accountReadRoutes.map(path => [path, 'GET']),
     ...publicReadRoutes.map(path => [path, 'GET']),
-    ...calculationRoutes.map(path => [path, 'POST'])
+    ...calculationRoutes.map(path => [path, 'POST']),
+    ...keyedRoutes.map(path => [path, 'POST'])
   ])
   const failures = []
   let documents = 0
@@ -27,7 +32,10 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
       }, { origin, key: DUMMY_KEY })
       page.on('request', request => {
         if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-          documents += 1
+          // A public document (Home at /welcome) restores no key, so it owes no proof and any
+          // API read it made would still be rejected below as preceding one.
+          const target = new URL(request.url())
+          if (!publicDocumentPaths.includes(target.pathname)) documents += 1
           needsProof = true
         }
       })
@@ -71,7 +79,10 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
         })
         return true
       }
-      if (key !== undefined) return reject(400, `Raw key sent outside proof: ${url.pathname}`)
+      // Keyed refreshes forward the retained key as a header, and require it; nothing else may carry it.
+      if (keyedRoutes.includes(url.pathname) ? key !== DUMMY_KEY : key !== undefined) {
+        return reject(400, `Wrong key forwarding outside proof: ${url.pathname}`)
+      }
       if (needsProof) return reject(401, `Request preceded this document's proof: ${url.pathname}`)
       if (url.pathname === '/api/crafting/ingredient-search') {
         const query = url.searchParams.get('query')

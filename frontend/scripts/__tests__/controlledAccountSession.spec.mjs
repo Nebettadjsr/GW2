@@ -42,6 +42,17 @@ describe('controlled account boundary', () => {
     expect(request('/api/items/prices?ids=1', 'GET').reply.status).toBe(404)
   })
 
+  it('requires the retained key header on keyed refreshes and forbids it on every other protected route', () => {
+    const { request } = fixture({ keyedRoutes: ['/api/sync/account'], calculationRoutes: ['/api/crafting/profit'] })
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    const context = { 'x-account-context': 'smoke-context-1' }
+    expect(request('/api/sync/account', 'POST', context).reply.status).toBe(400)
+    expect(request('/api/sync/account', 'POST', { ...context, 'x-gw2-api-key': 'another-key' }).reply.status).toBe(400)
+    expect(request('/api/sync/account', 'POST', { ...context, 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).handled).toBe(false)
+    expect(request('/api/sync/account', 'GET', { ...context, 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).reply.status).toBe(405)
+    expect(request('/api/crafting/profit', 'POST', { ...context, 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).reply.status).toBe(400)
+  })
+
   it('admits protected fixtures only after the normal retained-key proof with its returned context', () => {
     const { request } = fixture()
     expect(request('/api/crafting/profit', 'POST').reply.status).toBe(401)
