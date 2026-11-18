@@ -85,7 +85,6 @@ async function show(event: MouseEvent | FocusEvent): Promise<void> {
 .gear-tooltip { position: fixed; z-index: 1000; width: 340px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow-y: auto; box-sizing: border-box; background: rgba(5, 8, 11, 0.97); color: #eee; border: 1px solid #48515a; box-shadow: 0 8px 30px #0009; padding: 16px; font-size: 15px; line-height: 1.4; }
 .gear-tooltip__title { display: flex; align-items: center; gap: 12px; font-size: 19px; margin-bottom: 16px; }
 .gear-tooltip__attributes { color: #55ee66; margin-bottom: 16px; }
-.gear-tooltip__upgrade { color: #69baff; display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .gear-tooltip__facts { margin-top: 16px; }
 .gear-tooltip__description { color: #b8e3e7; margin: 14px 0; }
 .gear-tooltip__effect { color: #69baff; }

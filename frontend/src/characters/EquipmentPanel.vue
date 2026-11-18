@@ -7,7 +7,9 @@ import type { EquipmentEntry, EquipmentItemRef, EquipmentTab } from '@/api/types
 
 /**
  * Read-only equipment view for the template selected in the page navigation.
- * Only supplied entries are listed; no empty or locked slots are invented.
+ * Entries are only what the saved data supplies; empty or locked gear is never inferred. The fixed slot tiles
+ * show a neutral "no saved item" placeholder when no entry was supplied for a slot, which says nothing about
+ * whether the slot is empty in game.
  */
 const props = defineProps<{ tabs: EquipmentTab[]; shown: EquipmentTab | null; profession?: string; sharedEquipment?: EquipmentEntry[] }>()
 const professionArt = import.meta.glob('./art/*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
@@ -19,7 +21,7 @@ const aquatic = ['HelmAquatic', 'WeaponAquaticA', 'WeaponAquaticB']
 const tools = ['Sickle', 'Axe', 'Pick']
 const fishing = ['FishingRod', 'FishingBait', 'FishingLure']
 const jadeBot = ['PowerCore', 'SensoryArray', 'ServiceChip']
-const placed = new Set([...armor, ...weapons, ...trinkets, ...aquatic, ...tools, ...fishing, ...jadeBot, 'Backpack'])
+const placed = new Set([...armor, ...weapons, ...trinkets, ...aquatic, ...tools, ...fishing, ...jadeBot])
 const additional = computed(() => props.shown?.equipment.filter(e => !e.slot || !placed.has(e.slot)) ?? [])
 function itemAt(slot: string): EquipmentEntry | undefined {
   // Prefer a template's own relic when supplied; otherwise show the character-wide equipped relic.
