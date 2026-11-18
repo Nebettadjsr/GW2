@@ -102,19 +102,7 @@ public class RecipeRepository {
                         unlockedByAnyCharacter.contains(recipeId));
                 if (!known) continue;
 
-                int outputItemId = rs.getInt("output_item_id");
-                int outputCount = rs.getInt("output_item_count");
-                int outputMinRating = rs.getInt("min_rating");
-
-                Array discsArr = rs.getArray("disciplines");
-                String disciplinesText = "";
-                if (discsArr != null) {
-                    String[] discs = (String[]) discsArr.getArray();
-                    if (discs != null && discs.length > 0) disciplinesText = String.join(", ", discs);
-                }
-
-                List<Ingredient> ings = ingredientsByRecipe.getOrDefault(recipeId, List.of());
-                out.add(new Recipe(recipeId, outputItemId, outputCount, outputMinRating, disciplinesText, ings));
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
             }
         }
 
@@ -168,30 +156,26 @@ public class RecipeRepository {
 
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
-                int outputItemId = rs.getInt("output_item_id");
-                int outputCount = rs.getInt("output_item_count");
-                int outputMinRating = rs.getInt("min_rating");
-
-                Array discsArr = rs.getArray("disciplines");
-                String disciplinesText = "";
-
-                if (discsArr != null) {
-                    String[] discs = (String[]) discsArr.getArray();
-                    if (discs != null && discs.length > 0) {
-                        disciplinesText = String.join(", ", discs);
-                    }
-                }
-
-                List<Ingredient> ings =
-                        ingredientsByRecipe.getOrDefault(recipeId, List.of());
-
-                out.add(new Recipe(recipeId, outputItemId, outputCount, outputMinRating, disciplinesText, ings));
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
             }
         }
 
         return out;
     }
 
+
+    /** Maps the current {@code recipes} row (id column already read) with its ingredients; one mapping for every read. */
+    private static Recipe mapRecipe(ResultSet rs, int recipeId, Map<Integer, List<Ingredient>> ingredientsByRecipe)
+            throws SQLException {
+        Array discsArr = rs.getArray("disciplines");
+        String disciplinesText = "";
+        if (discsArr != null) {
+            String[] discs = (String[]) discsArr.getArray();
+            if (discs != null && discs.length > 0) disciplinesText = String.join(", ", discs);
+        }
+        return new Recipe(recipeId, rs.getInt("output_item_id"), rs.getInt("output_item_count"),
+                rs.getInt("min_rating"), disciplinesText, ingredientsByRecipe.getOrDefault(recipeId, List.of()));
+    }
 
     private Map<Integer, List<Ingredient>> loadIngredientsByRecipe(Connection con) throws SQLException {
         String sql = """
