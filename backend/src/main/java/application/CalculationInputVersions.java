@@ -20,8 +20,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The input versions one Crafting Profit calculation was captured against, and the two readers that
- * produce them (TARGET_ARCHITECTURE.md §9.1).
+ * The input versions one Crafting Profit calculation was captured against, and their readers.
  *
  * <p>Both readers take the calculation's own {@link ProfitInputSession} connection, so the versions
  * reported come from the same database snapshot the calculation's data came from. Reading them
@@ -71,9 +70,8 @@ public final class CalculationInputVersions {
     }
 
     /**
-     * Reads one account's source markers, completion instant <em>and</em> generation
-     * (STORY-APP-015, TARGET_ARCHITECTURE.md §7.2 "Freshness envelopes identify the captured account
-     * and source generations, never later live markers").
+     * Reads one account's source markers, completion instant <em>and</em> generation.
+     * Freshness identifies the captured account and source generations, never later live markers.
      *
      * <p>Separate from {@link AccountSourceVersionReader} because a generation is what a completion
      * instant cannot be: two publications of an unchanged payload may record the same instant, and a

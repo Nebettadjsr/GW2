@@ -30,7 +30,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Application-layer use case for the Crafting Discovery flow (TARGET_ARCHITECTURE.md §8): loads
+ * Application-layer use case for the Crafting Discovery flow: loads
  * the missing-discoverable-recipe/graph/inventory/price/item data the documented flow needs and
  * invokes the single-character planner and (lazily) the recipe-tree builder. Holds no JavaFX
  * dependency and reimplements no domain calculation; it only coordinates repositories and
@@ -79,7 +79,7 @@ public class CraftingDiscoveryService {
         this(recipeRepo, invRepo, tpRepo, itemRepo, new CraftingGraphCache(recipeRepo), new CraftingPlanner());
     }
 
-    /** Full seam used by application-layer tests to substitute fake/in-memory adapters (TARGET_ARCHITECTURE.md §25). */
+    /** Full seam used by application-layer tests to substitute fake/in-memory adapters. */
     public CraftingDiscoveryService(RecipeRepository recipeRepo,
                                     InventoryRepository invRepo,
                                     TpPriceRepository tpRepo,
@@ -258,7 +258,7 @@ public class CraftingDiscoveryService {
         this.lastUsableRecipeIds = candidates.usableRecipeIds();
 
         CalculationInputs inputs =
-                loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
+                loadCalculationInputs(oneCraftSettings, choice.charName, candidates.allRecipes());
 
         Map<Integer, CraftResult> results = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateAllSingleCraft(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.boundInventory(),
@@ -275,7 +275,7 @@ public class CraftingDiscoveryService {
     }
 
     /**
-     * Freshly calculated detail for one selected recipe (TARGET_ARCHITECTURE.md section 13.1/13.2):
+     * Freshly calculated detail for one selected recipe:
      * loads this operation's own inputs, checks {@code recipeId} against the candidate set those
      * inputs just produced, and derives both the row summary and the semantic explanation from
      * them. This is a fresh calculation, not retrieval of an earlier reload()'s result.
@@ -304,7 +304,7 @@ public class CraftingDiscoveryService {
         }
 
         CalculationInputs inputs =
-                loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
+                loadCalculationInputs(oneCraftSettings, choice.charName, candidates.allRecipes());
 
         CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateSingleCraft(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
@@ -320,10 +320,6 @@ public class CraftingDiscoveryService {
         return CraftingResolutionDetail.ofDiscovery(
                 recipeId, selected, row, explanation, inputs.items(), inputs.tp(),
                 knownUsableRecipeIds, candidates.candidateRecipeIds());
-    }
-
-    private String characterName(DiscChoice choice) {
-        return choice.charName;
     }
 
     private void requireCharacterScope(DiscChoice choice) {

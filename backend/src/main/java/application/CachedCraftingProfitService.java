@@ -19,7 +19,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Crafting Profit's stale-while-revalidate use case (TARGET_ARCHITECTURE.md §9.1, ADR-007).
+ * Crafting Profit's stale-while-revalidate use case.
  *
  * <p>It replaces the two blocking paths the feature used to take — the account freshness gate that
  * refused the request with 503 while a refresh ran, and the synchronous Trading Post fetch inside
@@ -347,11 +347,11 @@ public class CachedCraftingProfitService {
     }
 
     /**
-     * The scoped envelope: describes the captured account and generations, and admits no refresh
-     * work. A needed account refresh is reported as {@link #CREDENTIAL_REQUIRED}: a cached read
-     * carries no GW2 key, so nothing is admitted and no configured credential is used. The existing coordinators run the unscoped sequences, so admitting through them from an
-     * account-scoped calculation would silently invoke legacy work; the credential-aware scoped
-     * coordinator belongs to issue #11. Outstanding needs are reported as a failure instead.
+     * The scoped envelope: describes the captured account and generations. Needed account refreshes
+     * are admitted only through the credential-aware {@link ScopedAccountRefreshCoordinator} for a
+     * keyed request; a cached read with no key admits nothing, uses no configured credential and
+     * reports {@link #CREDENTIAL_REQUIRED} instead. Shared Trading Post quotes are account-free and
+     * need no key, so their refresh is admitted as for the unscoped calculation.
      */
     private CalculationFreshness describeScoped(String requestId,
                                                 CalculationInputVersions captured,

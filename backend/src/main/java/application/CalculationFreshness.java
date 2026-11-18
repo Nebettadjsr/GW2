@@ -5,8 +5,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * What a Crafting Profit response says about the inputs its calculation actually used
- * (TARGET_ARCHITECTURE.md §9.1's freshness envelope).
+ * What a Crafting Profit response says about the inputs its calculation actually used.
  *
  * <p>Application-owned and transport-free: no HTTP status, URL or task handle appears here, only the
  * task identifiers the status route already publishes. The economic result is untouched by it — this

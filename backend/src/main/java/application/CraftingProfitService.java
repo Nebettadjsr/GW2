@@ -34,7 +34,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Application-layer use case for the Crafting Profit flow (TARGET_ARCHITECTURE.md §8): loads the
+ * Application-layer use case for the Crafting Profit flow: loads the
  * recipe/graph/roster/inventory/price/item data the documented flow needs and invokes the
  * coordinated planner and (lazily) the recipe-tree builder. Holds no JavaFX dependency and
  * reimplements no domain calculation; it only coordinates repositories and {@code craft.*} domain
@@ -51,8 +51,8 @@ public class CraftingProfitService {
     private final CraftingPlanner planner;
 
     /**
-     * The captured read view this service's operations load their inputs through
-     * (TARGET_ARCHITECTURE.md §9.1). When it carries a connection, every input read below runs on
+     * The captured read view this service's operations load their inputs through.
+     * When it carries a connection, every input read below runs on
      * it, so one operation cannot mix input generations or pair part-written refresh data with an
      * older completion marker. A {@link ProfitInputSession#detached()} session keeps the previous
      * behavior of letting each repository open its own connection.
@@ -154,7 +154,7 @@ public class CraftingProfitService {
     }
 
     /**
-     * Freshly calculated detail for one selected recipe (TARGET_ARCHITECTURE.md section 13.1/13.2):
+     * Freshly calculated detail for one selected recipe:
      * loads this operation's own inputs, checks {@code recipeId} against the candidate set those
      * inputs just produced, and derives both the row summary and the semantic explanation from
      * them. This is a fresh calculation, not retrieval of an earlier reload()'s result.
@@ -354,11 +354,6 @@ public class CraftingProfitService {
     }
 
     /**
-     * Lazy per-recipe detail lookup (view calls this on row selection): returns the cached
-     * coordinated result for {@code recipeId}, building and caching its resolution tree on first
-     * request. Returns {@code null} if {@code recipeId} is not part of the most recent reload().
-     */
-    /**
      * The most recent reload()'s result for {@code recipeId} exactly as the planner produced it,
      * without building its resolution tree. For callers that only read the computed numbers (such
      * as the reload-summary counters logged to the console), since
@@ -370,6 +365,11 @@ public class CraftingProfitService {
         return lastResultsByRecipeId.get(recipeId);
     }
 
+    /**
+     * Lazy per-recipe detail lookup (view calls this on row selection): returns the cached
+     * coordinated result for {@code recipeId}, building and caching its resolution tree on first
+     * request. Returns {@code null} if {@code recipeId} is not part of the most recent reload().
+     */
     public CraftResult getResultByRecipeId(int recipeId) {
         CraftResult cr = lastResultsByRecipeId.get(recipeId);
         if (cr == null) return null;
