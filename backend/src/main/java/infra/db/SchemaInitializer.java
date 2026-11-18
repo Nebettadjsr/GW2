@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The startup schema gate (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.3-7.4).
+ * The startup schema gate.
  *
  * <p>Every retained entry point runs this before any repository, scheduler or background task can
  * touch the database, and the process does not continue when it fails - so service access resumes
@@ -46,11 +46,11 @@ public final class SchemaInitializer {
     /** Flyway's history table - the marker that the versioned chain owns a schema. */
     public static final String HISTORY_TABLE = "flyway_schema_history";
 
-    /** Where the versioned SQL lives; {@code TARGET_ARCHITECTURE.md} §7.3 fixes this location. */
+    /** Where the versioned SQL lives. */
     public static final String MIGRATION_LOCATION = "classpath:db/migration";
 
     /**
-     * The migration policies §7.3 requires to stay off, stated where a check can read them.
+     * The migration policies that must stay off, stated where a check can read them.
      *
      * @param baselineOnMigrate automatic baselining of a non-empty schema - always {@code false},
      *                          so an existing database is never silently declared current
@@ -89,7 +89,7 @@ public final class SchemaInitializer {
     /**
      * Same gate, with a deterministic transactional migration failure appended to the chain.
      *
-     * <p>Only a check uses the second argument, to drive the rollback/retry behavior §7.3 requires
+     * <p>Only a check uses the second argument, to drive the rollback/retry behavior required
      * without shipping a broken migration: the injected version runs in the same transaction Flyway
      * gives every other version, so its failure rolls back both its own statements and its history
      * row. Production calls {@link #initialize(DataSource)}, where it is {@code null}.
@@ -186,7 +186,7 @@ public final class SchemaInitializer {
     /**
      * Drops every table, view and standalone sequence in {@code schema}.
      *
-     * <p>Deliberately shape-blind: §7.4 wants a legacy schema and an unrecognized one treated the
+     * <p>Deliberately shape-blind: a legacy schema and an unrecognized one are treated the
      * same way, so no fingerprint, table whitelist or ownership inference decides what goes. The
      * drops run in one transaction, so a schema is either emptied or untouched.
      */

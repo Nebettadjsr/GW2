@@ -14,8 +14,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Turns one {@code /v2/account} and one {@code /v2/tokeninfo} response into an {@link AccountProof}
- * (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+ * Turns one {@code /v2/account} and one {@code /v2/tokeninfo} response into an {@link AccountProof}.
  *
  * <p>Separate from the HTTP adapter so that the offline fixture adapter proves keys through exactly
  * this validation rather than through a second, more forgiving copy of it: shape checks, the GUID

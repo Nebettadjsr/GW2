@@ -17,13 +17,13 @@ import java.time.Clock;
 import java.time.Duration;
 
 /**
- * Proves a transient GW2 API key against the live API (STORY-API-010, TARGET_ARCHITECTURE.md §8.1
- * and §11).
+ * Proves a transient GW2 API key against the live API.
  *
- * <p>Deliberately not built on {@code api.Gw2ApiClient}: that client authenticates every call with
- * the locally configured key and collapses every non-200 status into one exception, while this
- * adapter must use the <em>caller's</em> key and must tell a definitive rejection apart from an
- * outage - the two outcomes have opposite consequences for a session.
+ * <p>Deliberately kept separate from {@code api.Gw2ApiClient}, which can also send a caller-supplied
+ * key and reports typed authentication rejection. Proof needs its own HTTP policy: a definitive
+ * rejection (400/401/403) must be told apart from an outage, rate limit ({@code Retry-After}
+ * guidance) and a malformed or unexpected response, because these outcomes have different
+ * consequences for a session; redirects are refused and failures carry sanitized messages only.
  *
  * <p>The key appears only in the {@code Authorization} header of the two requests. It is never put
  * in a URL, a log record, an exception message or the returned {@link AccountProof}, and no response

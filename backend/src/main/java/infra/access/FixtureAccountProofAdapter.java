@@ -17,7 +17,7 @@ import java.time.Duration;
 
 /**
  * An offline stand-in for {@link Gw2AccountProofAdapter}, enabled only by
- * {@code gw2.account-access.test-fixtures} (STORY-API-010, TEST_STRATEGY.md §31.3).
+ * {@code gw2.account-access.test-fixtures}.
  *
  * <p>It exists because the access contract - cookie policy, origin/CSRF, access-context binding,
  * grant rejection and the status mapping - is only observable over HTTP, and no automated layer may
