@@ -106,7 +106,6 @@ function presetSelected(preset: MaterialPreset): boolean {
 
 <style scoped>
 .screen { width: min(100%, 900px); margin-inline: auto; }
-.detail { display: block; margin-top: var(--space-2); }
 .material-category { margin-block: var(--space-4); }
 .material-category h2 { margin: 0 0 var(--space-2); font-size: var(--text-base); }
 .material-category__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
