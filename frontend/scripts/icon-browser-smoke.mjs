@@ -15,7 +15,10 @@
  *   2. the delivery attributes of 12.1: the supplied URL verbatim, `referrerpolicy=no-referrer`,
  *      reserved width/height, prompt loading for the detail and native lazy loading in the lists;
  *   3. one bundled neutral fallback for a null URL, a 404, a 503 and a decode failure, each
- *      requested exactly once — no retry loop;
+ *      requested exactly once in the table; the tree's 503 node and the bank's 503 slot are asserted
+ *      to settle to the failed fallback (no <img>, exact name/count), and the failed images are
+ *      asserted unchanged and unfetched across a controlled rerender. Browser caching/coalescing
+ *      means request counts alone are only bounds, never proof that a component cannot retry;
  *   4. an image that arrives late shifts nothing, at a wide and a narrow viewport;
  *   5. an empty bank slot stays empty, and item text, counts and row/detail interaction
  *      survive every image failure.
@@ -536,6 +539,52 @@ async function run() {
         src: node.querySelector('img')?.getAttribute('src') ?? null
       }))
     )
+    // The tree is fixed by treeFor(): exact names, states and URLs in document order, including the
+    // 503 node, which must settle to the failed fallback with no <img> — independent of the row's.
+    // Child nodes sit in a collapsed <details>, and tree images are natively lazy, so nothing below the
+    // root is fetched until the group is opened and the node is in view. Open it as a user would
+    // (summary click), bring the 503 node into view, then wait for it to settle.
+    const rootToggle = page.locator('[data-test="tree-node"] > [data-test="node-children"] > summary').first()
+    await rootToggle.click()
+    await page
+      .locator('[data-test="tree-node"] .node__identity', { hasText: 'Unavailable Material' })
+      .scrollIntoViewIfNeeded()
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('[data-test="tree-node"] .node__identity')].some(
+          (node) =>
+            node.querySelector('[data-test="node-name"]')?.textContent.trim() === 'Unavailable Material' &&
+            node.querySelector('[data-test="item-icon"]')?.getAttribute('data-icon-state') === 'failed'
+        ),
+      undefined,
+      { timeout: TIMEOUT_MS }
+    )
+    const settledTree = await page.$$eval('[data-test="tree-node"] .node__identity', (nodes) =>
+      nodes.map((node) => ({
+        name: node.querySelector('[data-test="node-name"]').textContent.trim(),
+        state: node.querySelector('[data-test="item-icon"]').getAttribute('data-icon-state'),
+        src: node.querySelector('img')?.getAttribute('src') ?? null
+      }))
+    )
+    const expectedTree = [
+      { name: ROWS[0].outputName, state: 'image', src: ITEMS.ok.url },
+      { name: 'Jpeg Material', state: 'image', src: ITEMS.okJpeg.url },
+      { name: 'Unavailable Material', state: 'failed', src: null },
+      { name: 'Material Without Metadata', state: 'no-url', src: null },
+      { name: 'Jpeg Material', state: 'image', src: ITEMS.okJpeg.url }
+    ]
+    check(
+      JSON.stringify(settledTree) === JSON.stringify(expectedTree),
+      `The tree icons are not the supplied ones:\n  rendered ${JSON.stringify(settledTree)}\n  expected ${JSON.stringify(expectedTree)}`
+    )
+    const askedAfterTree = imageRequests.get(ITEMS.unavailable.url) ?? 0
+    // The row asked once (step 3). The tree node is a second, independent element: it may be served
+    // by the browser's own in-document handling of the identical address, so 0 or 1 further requests
+    // are accepted — what is pinned is that the node settled to failed with no <img> (above).
+    check(
+      askedAfterTree - 1 >= 0 && askedAfterTree - 1 <= 1,
+      `The tree's 503 node brought the unavailable URL to ${askedAfterTree} requests; expected 1 or 2.`
+    )
     const repeated = treeIcons.filter((icon) => icon.name === 'Jpeg Material')
     check(repeated.length === 2, `Expected the repeated item twice in the tree: ${JSON.stringify(treeIcons)}`)
     check(
@@ -563,6 +612,56 @@ async function run() {
         'no calculation triggered'
     )
 
+    // 5b. Same-view stability. Select another row and come back: the table re-renders around icons
+    // that stay mounted. The 404 and undecodable URLs appear only in table rows (and, later, the
+    // materials list), so their request counts must not move, and every row icon must keep its
+    // settled state. The 503 URL is not counted here because the second row's tree legitimately
+    // mounts it again. This is evidence for this view only; it does not bound other components.
+    const rowStates = async () =>
+      JSON.stringify(
+        await page.$$eval('[data-test="profit-row"] [data-test="item-icon"]', (icons) =>
+          icons.map((icon) => [icon.getAttribute('data-icon-state'), icon.querySelector('img')?.getAttribute('src') ?? null])
+        )
+      )
+    const statesBeforeRerender = await rowStates()
+    const goneAsked = imageRequests.get(ITEMS.gone.url)
+    const garbageAsked = imageRequests.get(ITEMS.undecodable.url)
+    const rows = page.locator('[data-test="profit-table"] tbody [data-test="select-row"]')
+    await rows.nth(1).focus()
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(
+      (name) => document.querySelector('[data-test="detail-name"]')?.textContent.trim() === name,
+      ROWS[1].outputName,
+      { timeout: TIMEOUT_MS }
+    )
+    await rows.nth(0).focus()
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(
+      (name) => document.querySelector('[data-test="detail-name"]')?.textContent.trim() === name,
+      ROWS[0].outputName,
+      { timeout: TIMEOUT_MS }
+    )
+    await waitForSettledIcons(page, 0)
+    await page.waitForTimeout(500)
+    check(
+      (await rowStates()) === statesBeforeRerender,
+      'A row icon changed state across an unrelated rerender.'
+    )
+    check(
+      imageRequests.get(ITEMS.gone.url) === goneAsked && imageRequests.get(ITEMS.undecodable.url) === garbageAsked,
+      `A failed image was fetched again across a rerender: 404 ${goneAsked}→${imageRequests.get(ITEMS.gone.url)}, ` +
+        `undecodable ${garbageAsked}→${imageRequests.get(ITEMS.undecodable.url)}`
+    )
+    record('failed row images stay failed and unfetched across a rerender', `404 ×${goneAsked}, undecodable ×${garbageAsked}`)
+
+    const askedAfterRerender = imageRequests.get(ITEMS.unavailable.url) ?? 0
+    // Selecting row 2 mounts its own tree, whose root is the 503 item, and returning to row 1
+    // remounts its tree; up to two further requests are legitimate fresh mounts. A retry loop
+    // would keep growing, which the bank stability check below also watches.
+    check(
+      askedAfterRerender - askedAfterTree <= 2,
+      `The 503 URL was requested ${askedAfterRerender - askedAfterTree} more times across the row rerender.`
+    )
     // 6. Minimum desktop: nothing overflows and icons retain their square dimensions.
     await page.setViewportSize(NARROW)
     await waitForSettledIcons(page, 0)
@@ -581,10 +680,12 @@ async function run() {
       `${narrowIcons.length} square icon boxes, no horizontal page overflow`
     )
     await page.setViewportSize(WIDE)
+    await page.waitForTimeout(1000)
 
     // 7. Bank and Materials: empty slots stay empty and item text survives every image failure.
     await page.click('[data-test="nav-bank"]')
     await page.waitForSelector('[data-test="bank-slots"]', { timeout: TIMEOUT_MS })
+    await page.waitForTimeout(1500)
     const slots = await page.$$eval('[data-test="bank-slot"]', (elements) =>
       elements.map((slot) => ({
         empty: slot.querySelector('[data-test="bank-empty-slot"]') !== null,
@@ -602,10 +703,48 @@ async function run() {
       slots.filter((slot) => !slot.empty).every((slot) => slot.icons === 1 && slot.identity !== null),
       `An occupied slot lost its icon or its identity: ${JSON.stringify(slots)}`
     )
-    const unavailableSlot = slots.find((slot) => slot.identity?.startsWith(`Item #${ITEMS.unavailable.id} `))
+    const askedAtBank = imageRequests.get(ITEMS.unavailable.url) ?? 0
+    const bankIcons = await iconReport(page)
+    // Exact independent identity and count for the 503 slot and its neighbours, in slot order. The
+    // tile's title is the only visible identity today (no rarity in the current UI/DTO).
+    const bankIdentity = slots.map((slot) => ({ empty: slot.empty, count: slot.count, idPrefix: slot.identity?.split(' ')[0] + ' ' + slot.identity?.split(' ')[1] }))
+    const expectedBank = [
+      { empty: false, count: '42', idPrefix: `Item #${ITEMS.ok.id}` },
+      { empty: true, count: null, idPrefix: 'undefined undefined' },
+      { empty: false, count: '7', idPrefix: `Item #${ITEMS.unavailable.id}` },
+      { empty: true, count: null, idPrefix: 'undefined undefined' },
+      { empty: false, count: '250', idPrefix: `Item #${ITEMS.none.id}` }
+    ]
     check(
-      unavailableSlot !== undefined && unavailableSlot.count === '7',
-      `The slot whose image is unavailable lost its text: ${JSON.stringify(unavailableSlot)}`
+      JSON.stringify(bankIdentity) === JSON.stringify(expectedBank),
+      `The bank slots are not the supplied ones:\n  rendered ${JSON.stringify(bankIdentity)}\n  expected ${JSON.stringify(expectedBank)}`
+    )
+    const expectedBankIcons = [
+      { state: 'image', src: ITEMS.ok.url },
+      { state: 'failed', src: null },
+      { state: 'no-url', src: null }
+    ]
+    check(
+      JSON.stringify(bankIcons.map((icon) => ({ state: icon.state, src: icon.src }))) === JSON.stringify(expectedBankIcons),
+      `The bank icons are not the expected image/failed/no-url trio: ${JSON.stringify(bankIcons)}`
+    )
+    check(
+      bankIcons.filter((icon) => icon.state === 'failed').length === 1 && bankIcons[1].ariaHidden,
+      `Exactly the 503 slot must show the fallback, hidden from assistive technology: ${JSON.stringify(bankIcons)}`
+    )
+    // Same-view stability: a controlled unrelated rerender (viewport round trip) in the settled bank
+    // must neither fetch again nor change any icon.
+    await page.setViewportSize(NARROW)
+    await page.setViewportSize(WIDE)
+    await page.waitForTimeout(1_000)
+    check(
+      (imageRequests.get(ITEMS.unavailable.url) ?? 0) === askedAtBank,
+      `The settled bank fetched the 503 image again: ${askedAtBank} → ${imageRequests.get(ITEMS.unavailable.url)}`
+    )
+    check(
+      JSON.stringify((await iconReport(page)).map((icon) => [icon.state, icon.src])) ===
+        JSON.stringify(bankIcons.map((icon) => [icon.state, icon.src])),
+      'A bank icon changed across an unrelated rerender.'
     )
     record(
       'bank keeps empty slots empty and text intact',
@@ -641,15 +780,12 @@ async function run() {
     )
     check(jsonFromImages.length === 0, `An image request went somewhere else: ${JSON.stringify(jsonFromImages)}`)
     check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)
-    // The 503 item is shown on three surfaces during this run — a profit row, a tree node and a bank
-    // slot. The row and tree node share one document, where the browser may fold their identical
-    // addresses into one fetch (step 3 pinned that view at one request); the bank slot is a later
-    // remount and asks again. So two or three requests are expected; more would mean a retry loop.
-    const unavailableAsked = imageRequests.get(ITEMS.unavailable.url) ?? 0
+    // Request counts for the 503 URL are bounded per surface above (row once, tree 0-1, bank settled and
+    // stable). Browser caching and coalescing mean a count alone never proves a component cannot retry;
+    // the stability checks across rerenders are the discriminating evidence.
     check(
-      unavailableAsked >= 2 && unavailableAsked <= 3,
-      `The unavailable image was requested ${unavailableAsked} times for the 3 places it appears — ` +
-        'expected 2 or 3; more means something retried, fewer means a surface stopped asking.'
+      (imageRequests.get(ITEMS.unavailable.url) ?? 0) <= 6,
+      `The unavailable image was requested ${imageRequests.get(ITEMS.unavailable.url)} times in total.`
     )
     record('synthetic account proofs, strict routes and methods', session.verify())
     record(
