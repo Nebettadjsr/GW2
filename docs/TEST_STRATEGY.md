@@ -1105,6 +1105,8 @@ Developers and AI agents can generate reports locally:
 - Frontend: `cd frontend && npm ci && npm run test:coverage`; HTML at
   `frontend/coverage/index.html`, machine-readable summary at
   `frontend/coverage/coverage-summary.json`.
+  Only application source under `src/` is measured: specs, declaration files and test-only
+  helpers under `src/**/__tests__/` are excluded from coverage (not from test selection).
 - Combined local KPI: `python .github/scripts/publish_coverage_kpi.py`; this writes
   `quality-reports/coverage-kpi.md` and `quality-reports/coverage-kpi.json`.
 
