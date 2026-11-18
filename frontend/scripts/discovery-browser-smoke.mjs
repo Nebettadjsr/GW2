@@ -39,7 +39,7 @@ const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 30_000)
 const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
 
 const WIDE = { width: 1440, height: 900 }
-const NARROW = { width: 360, height: 800 }
+const NARROW = { width: 1024, height: 900 } // Minimum supported desktop; no phone-layout contract.
 
 const DISCOVERY_ROUTE = '/api/crafting/discovery'
 const RESOLUTION_ROUTE = '/api/crafting/discovery/resolution'
@@ -772,16 +772,9 @@ async function run() {
     )
     record('sorting and cached ingredient search do not recalculate and keep the detail', `${afterViewChanges} calculation/detail calls so far`)
 
-    // 11. Narrow: the detail moves below the list, and nothing overflows sideways.
+    // 11. Minimum desktop: local table scrolling remains reachable by keyboard.
     await page.fill('[data-test="discovery-search"]', '')
     await openDiscovery(page, stub.origin, NARROW)
-    const narrowResults = await boxOf(page, '[data-test="discovery-results-region"]')
-    const narrowDetail = await boxOf(page, '[data-test="discovery-detail"]')
-    check(
-      narrowDetail.top >= narrowResults.top,
-      `At ${NARROW.width}px the detail did not move below the list ` +
-        `(list top ${narrowResults.top}, detail top ${narrowDetail.top}).`
-    )
     const narrowOverflow = await pageOverflow(page)
     check(
       narrowOverflow.scrollWidth <= narrowOverflow.clientWidth + 1,
@@ -798,7 +791,7 @@ async function run() {
       `The scrollable table region cannot be focused for keyboard scrolling: ${JSON.stringify(tableRegion)}`
     )
     record(
-      `detail below the list at ${NARROW.width}×${NARROW.height}`,
+      `keyboard-reachable table at ${NARROW.width}×${NARROW.height}`,
       `no page overflow, table region focusable (scrollable: ${tableRegion.scrollable})`
     )
 

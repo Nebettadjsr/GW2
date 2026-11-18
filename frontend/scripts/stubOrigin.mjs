@@ -26,7 +26,7 @@ const MIME_TYPES = {
  * @param {(context: { request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse, url: URL, body: string, sendJson: (status: number, body: unknown) => void }) => void} options.answerApi
  */
 export async function startStubOrigin({ port, distDir, answerApi }) {
-  const origin = `http://127.0.0.1:${port}`
+  let origin = `http://127.0.0.1:${port}`
   /** Every `/api/` request this origin answered, so a run can assert what the browser really sent. */
   const requests = []
   let served = 0
@@ -39,7 +39,8 @@ export async function startStubOrigin({ port, distDir, answerApi }) {
   }
 
   function serveStatic(response, pathname) {
-    const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '')
+    // Match the production proxy's canonical public entry point, including direct reloads.
+    const relative = pathname === '/' ? 'index.html' : pathname === '/welcome' ? 'welcome.html' : pathname.replace(/^\//, '')
     const file = `${distDir}${relative}`
     if (!file.startsWith(distDir) || !existsSync(file)) {
       response.writeHead(404)
@@ -77,12 +78,18 @@ export async function startStubOrigin({ port, distDir, answerApi }) {
     server.listen(port, '127.0.0.1', () => resolve(undefined))
   })
 
+  // Port zero lets a sequential/isolated journey own a free port without racing another listener.
+  origin = `http://127.0.0.1:${server.address().port}`
+
   return {
     origin,
     requests,
     /** Requests this origin answered; zero after a page load means a foreign origin served it. */
     servedCount: () => served,
     requestsTo: (prefix) => requests.filter((recorded) => recorded.path.startsWith(prefix)),
-    close: () => server.close()
+    close: () => new Promise((resolve, reject) => {
+      server.close(error => error ? reject(error) : resolve())
+      server.closeAllConnections()
+    })
   }
 }

@@ -165,14 +165,54 @@ preserves each run instead of canceling it when another commit arrives.
 |---|---|
 | `Workflow checks` | actionlint 1.7.12, native nginx test runtime, Python helper tests |
 | `Backend tests (Maven)` | Java 25, isolated PostgreSQL 17, `./mvnw -B -ntp test jacoco:report` |
-| `Frontend tests (Vitest)` | Node 22, `npm ci`, Vitest coverage, type-check and production build |
+| `Frontend tests (Vitest)` | Node 22, `npm ci`, Vitest coverage, type-check/build and the controlled browser journey step described below |
 | `Coverage KPI report` | Combine available JaCoCo/Vitest reports for the source revision |
 
 The Maven default includes database-backed `*Test` classes using isolated schemas;
-`*IT` classes remain excluded by naming convention. Live GW2 API, explicit
-database equivalence and browser checks require applicable commands/evidence in
-[Test strategy](TEST_STRATEGY.md). Default CI does not run browser smoke scripts
-or verify the production site.
+`*IT` classes remain excluded by naming convention. Live API, populated-database
+equivalence and real-backend/full-stack browser checks still require explicit
+commands/evidence under [Test strategy](TEST_STRATEGY.md). Controlled browser
+journeys are a separate deterministic CI selection; they do not verify production.
+
+### Controlled desktop journeys: STORY-COV-006
+
+[Issue #243](https://github.com/Nebettadjsr/GW2/issues/243) implements `npm run smoke:ci`
+(`node scripts/run-desktop-journeys.mjs`) after the production frontend build,
+inside the existing required frontend job. The PR's exact-head CI and required
+owner visual acceptance remain separate from local verification. An older green
+frontend check is not evidence that this step ran for the current head.
+
+The runner executes a curated sequence of real-browser journeys against fresh
+built assets and owned `127.0.0.1` synthetic API origins. It covers public reading,
+connection, failures/recovery, account switching, the narrow-screen notice/scrolling
+and reservations. It blocks real upstream traffic and needs no real
+GW2 key, application backend or database. It does not invoke every legacy
+`smoke:*` script, some of which require live or full-stack environments.
+
+The [product viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns the threshold and
+public-page exemptions. Following the 18 November revision, browser evidence checks the
+notice with actual tool content and horizontal scrolling at 390/1023 CSS pixels, no notice
+at 1024 and wider, and preserves desktop keyboard/focus,
+short-height and zoom checks. Home, guides and legal reading pages remain
+responsive below the notice threshold; their narrow checks are still relevant. Earlier
+width-blocking/no-request/forced-modal-close assertions are replaced for this owner decision.
+
+The existing locked `playwright-core` CLI installs matching Chromium and Linux
+dependencies; the browser run step exports its executable as `GW2_BROWSER_PATH`
+in the same shell before `npm run smoke:ci`, rather than depending on a runner's
+preinstalled browser. Two child processes run sequentially, each bounded to
+180 seconds plus 10 seconds for owned-resource teardown, with no retries. The
+CI step has an eight-minute timeout. An occupied
+port, unexpected request, stale bundle or missing browser fails verification.
+See [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
+for local/Linux/Windows commands and fixture boundaries.
+
+Named outcomes and bounded failure logs/screenshots/traces are written to
+`frontend/quality-reports/desktop-journeys/`, overridable by `GW2_SMOKE_OUTPUT`,
+and uploaded as `desktop-browser-journeys` with `if: always()` and seven-day
+retention. A journey failure fails the required frontend job. These results do
+not alter Vitest/JaCoCo percentages or prove production latency. Record the exact
+revision and actual run; local verification does not imply a merge or deployment.
 
 Artifacts are `java-coverage`, `frontend-coverage` and combined
 `coverage-reports`. The combined report supplies raw sources, module/package
@@ -329,7 +369,7 @@ Documentation-only merges do not require an app rebuild/deployment.
 | [`test_select_claude_story.py`](../.github/scripts/test_select_claude_story.py) | Offline selector, merged-dependency, rework and fork checks |
 | [`save_claude_recovery.py`](../.github/scripts/save_claude_recovery.py) | Binary patch/base/report capture |
 | [`test_save_claude_recovery.py`](../.github/scripts/test_save_claude_recovery.py) | New/binary/deleted/committed recovery and failed publication checks |
-| [`ci.yml`](../.github/workflows/ci.yml) | Full default suites, type/build, workflow checks and coverage artifacts |
+| [`ci.yml`](../.github/workflows/ci.yml) | Full default suites, type/build, workflow checks, coverage artifacts and STORY-COV-006's controlled journey integration |
 | [`summarize_test_failures.py`](../.github/scripts/summarize_test_failures.py) | Backend JUnit failure annotations |
 | [`publish_coverage_kpi.py`](../.github/scripts/publish_coverage_kpi.py) | Weighted measured coverage and warning-only report |
 | [`review-merge.yml`](../.github/workflows/review-merge.yml) | Trusted-default-branch review/CI event gate |

@@ -35,6 +35,7 @@ export function defaultFrontendDir() {
  */
 export const BUILD_INPUTS = [
   'index.html',
+  'welcome.html',
   'package-lock.json',
   'package.json',
   'public',
@@ -78,7 +79,7 @@ export function newestBuildInput(frontendDir, inputs = BUILD_INPUTS) {
 function referencedFiles(documentFile) {
   const html = readFileSync(documentFile, 'utf8')
   const matches = [...html.matchAll(/(?:src|href)="\/([^"/][^"]*)"/g)].map((match) => match[1])
-  return [...new Set(matches)]
+  return [...new Set(matches.filter(file => !file.startsWith('#')))]
 }
 
 /**
@@ -100,6 +101,21 @@ export function describeBundleFreshness({ frontendDir, inputs = BUILD_INPUTS } =
     }
   }
   const builtAtMs = statSync(documentFile).mtimeMs
+
+  // Vite emits a separate public entry. A fresh app entry cannot validate an older/missing Home.
+  const welcomeFile = join(distDir, 'welcome.html')
+  if (inputs.includes('welcome.html')) {
+    if (!existsSync(welcomeFile)) return { fresh: false,
+      reason: 'frontend/dist/welcome.html is missing — run `npm run build` in frontend/ first.', detail: 'no public build output' }
+    const missingWelcome = referencedFiles(welcomeFile).filter(file => !existsSync(join(distDir, file)))
+    if (missingWelcome.length) return { fresh: false,
+      reason: `frontend/dist is incomplete: welcome.html references ${missingWelcome.join(', ')} — run npm run build.`,
+      detail: 'public entry assets absent' }
+    const newest = newestBuildInput(root, inputs)
+    if (newest && newest.mtimeMs > statSync(welcomeFile).mtimeMs) return { fresh: false,
+      reason: `frontend/dist/welcome.html is stale: ${newest.path} changed after the public entry — run npm run build.`,
+      detail: `dist/welcome.html built ${asIso(statSync(welcomeFile).mtimeMs)}; ${newest.path} ${asIso(newest.mtimeMs)}` }
+  }
 
   const missing = referencedFiles(documentFile).filter((file) => !existsSync(join(distDir, file)))
   if (missing.length > 0) {

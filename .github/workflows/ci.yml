@@ -155,6 +155,26 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+      # Controlled-browser journeys against the build above (not source coverage). The pinned
+      # playwright-core CLI installs Chromium; no retries, finite timeout, failures fail the job.
+      - name: Install Chromium with the locked Playwright CLI
+        run: node node_modules/playwright-core/cli.js install --with-deps --no-shell chromium
+
+      - name: Desktop browser journeys
+        timeout-minutes: 8
+        run: |
+          export GW2_BROWSER_PATH="$(node -e "import('playwright-core').then(m => console.log(m.chromium.executablePath()))")"
+          npm run smoke:ci
+
+      - name: Upload desktop browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-browser-journeys
+          path: frontend/quality-reports/desktop-journeys
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: Upload frontend coverage reports
         if: always()
         uses: actions/upload-artifact@v4

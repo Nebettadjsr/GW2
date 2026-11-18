@@ -8,7 +8,7 @@ import { useHashRoute } from './shell/useHashRoute'
 /**
  * The application root. A key retained in this browser session is proven again before any account
  * data loads; the workspace below is re-created whenever the connected account may have changed, so
- * nothing of a previous account survives into the next (`TARGET_ARCHITECTURE.md` 8.2).
+ * nothing of a previous account survives into the next (`ARCHITECTURE.md`).
  */
 const route = useHashRoute()
 
@@ -19,8 +19,8 @@ const route = useHashRoute()
  */
 watch(
   () => isPublicDestination(route.current.value),
-  (onPublicPage) => {
-    if (!onPublicPage) void restoreConnection()
+  (publicPage) => {
+    if (!publicPage) void restoreConnection()
   },
   { immediate: true }
 )

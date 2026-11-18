@@ -115,6 +115,27 @@ universal time-based deletion guarantee. See [OPERATIONS_RUNBOOK](OPERATIONS_RUN
 
 ### Verification evidence and limits
 
+The owner revised #243 on 18 November: narrow tools keep their content and normal loading,
+with an informational notice and horizontally scrollable desktop canvas. This replaces the
+earlier blocking guard and forced modal closure; [DOMAIN_SPEC](DOMAIN_SPEC.md#supported-browser-viewport)
+owns current behavior. Source revision `1d017fc` implements this with ordinary route/KeepAlive
+rendering, a notice-only viewport helper and a tool-only 1024px minimum canvas. Width no longer
+gates account restoration/bootstrap or closes dialogs. The live Oracle revision is unchanged.
+[PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns current
+implementation, verification, visual acceptance and merge status.
+
+The existing `npm run smoke:ci` gate runs controlled-browser journeys after the frontend build,
+using locked Chromium and seven-day `desktop-browser-journeys` artifacts. Independent QA
+verified 30 focused tests, type-check/build and all ten journeys on `1d017fc` on 18 November.
+Full [CI 44252493662](https://github.com/Nebettadjsr/GW2/actions/runs/44252493662) at that
+revision passed; its downloaded browser artifact confirms all ten journeys and zero child
+timeouts/nonzero exits. This verifies the revised notice, visible narrow tools, actual
+horizontal scrolling, retained state and normal modal behavior. QA subsequently corrected
+an immediate resize assertion to wait for notice removal, preserving the exact 1024px
+absence requirement. Consult the PR for final-head evidence and owner visual acceptance.
+Independent QA repeated the focused/build/ten-journey checks successfully on corrected test
+revision `0c24106337aecdb2f0480977aaf42be1f230b184`; production source is unchanged.
+
 Before #236 merged, independent QA passed 306 relevant backend checks, 213 focused frontend
 checks, type/build and 19 controlled visible desktop/narrow browser phases. Full frontend CI
 passed 933 tests; exact-head review and required CI were green. The hosted verifier passed

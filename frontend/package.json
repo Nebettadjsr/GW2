@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "smoke:ci": "node scripts/run-desktop-journeys.mjs",
     "smoke:browser": "node scripts/browser-smoke.mjs",
     "smoke:sync": "node scripts/sync-browser-smoke.mjs",
     "smoke:stack": "node scripts/stack-browser-smoke.mjs",

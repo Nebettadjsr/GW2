@@ -52,6 +52,20 @@ without introducing extra services solely to make the design more elaborate.
 
 ## 3. Browser responsibilities and assets
 
+The [supported browser viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns
+the informational width notice and public-reading exceptions. Viewport detection controls
+presentation only: narrow tools retain a desktop-width canvas with horizontal scrolling.
+It must not gate account restoration, bootstrap, mounting, requests or native dialogs. Keep
+the ordinary route/KeepAlive lifecycle unchanged across resize; no hidden/inert admission
+machinery is needed. Account-generation guards and backend authorization still own account
+isolation. Public reading pages retain their account-restoration exemption and fluid layout.
+
+Controlled real-browser journeys use the production frontend with a synthetic HTTP boundary.
+They verify real navigation, event handling, native focus and request wiring, independently
+of Vitest/JaCoCo coverage. They do not prove backend economics, live ArenaNet behavior or
+production capacity. Their command, CI execution and evidence format belong in TEST_STRATEGY;
+CURRENT_STATE_SPEC distinguishes implemented changes from the actual deployed revision.
+
 The browser presents backend results and owns filtering, sorting, selection and loading/error
 state. Crafting Profit, Discovery, recipe eligibility, recursive resolution, opportunity cost,
 daily rules, tree quantities and purchase/owned-material values remain authoritative backend

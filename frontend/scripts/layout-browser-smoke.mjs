@@ -25,11 +25,10 @@ const PORT = Number(process.env.GW2_LAYOUT_SMOKE_PORT ?? 5175)
 const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 30_000)
 const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
 
-/** Verification examples, not breakpoint values: a phone, a tablet and a desktop width. */
+/** Supported tool widths; public reading and the below-minimum notice have separate journeys. */
 const VIEWPORTS = [
   { name: 'desktop 1440×900', width: 1440, height: 900 },
-  { name: 'tablet 768×1024', width: 768, height: 1024 },
-  { name: 'phone 360×800', width: 360, height: 800 }
+  { name: 'minimum desktop 1024×900', width: 1024, height: 900 }
 ]
 
 /**
@@ -772,7 +771,7 @@ async function run() {
     )
     record(`all ${navIds.length} rendered destinations are covered by this check`, navIds.join(', '))
 
-    // 2. Every area reachable by its own URL, named, marked and reflowing at three widths.
+    // 2. Every area reachable by its own URL, named and marked at supported desktop widths.
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       // The headings this pass actually read, reported below: a step line that only claims "reflow"
@@ -813,7 +812,7 @@ async function run() {
     }
 
     // 3. The wide comparison table keeps its scrolling local, and is reachable by keyboard.
-    await page.setViewportSize({ width: 360, height: 800 })
+    await page.setViewportSize({ width: 1024, height: 900 })
     await openArea(page, stub.origin, PROFIT_AREA)
     const region = await page.$eval('.table-region', (element) => ({
       scrollWidth: element.scrollWidth,
@@ -824,14 +823,14 @@ async function run() {
     }))
     check(
       region.scrollWidth > region.clientWidth,
-      'The table did not overflow its region at 360px, so this check proved nothing.'
+      'The table did not overflow its region at1024px, so this check proved nothing.'
     )
     check(
       region.tabindex === '0' && region.role === 'region' && region.label !== null,
       `The scrollable region is not a named, focusable region: ${JSON.stringify(region)}`
     )
     record(
-      'table scrolling stays inside its own region at 360px',
+      'table scrolling stays inside its own region at1024px',
       `region ${region.clientWidth}px wide holds ${region.scrollWidth}px of columns`
     )
 

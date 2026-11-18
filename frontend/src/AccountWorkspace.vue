@@ -15,12 +15,19 @@ import SiteFooter from './shell/SiteFooter.vue'
 import SiteHeader from './shell/SiteHeader.vue'
 import PageHeader from './shell/PageHeader.vue'
 import { useHashRoute } from './shell/useHashRoute'
+import DesktopWidthNotice from './shell/DesktopWidthNotice.vue'
+import { useNarrowViewport } from './shell/useNarrowViewport'
 import { provideSyncOperations } from './sync/provideSyncOperations'
 import SyncScreen from './sync/SyncScreen.vue'
 
 /**
  * The application shell: one site header with the navigation, and the open application area below it
  * (`FRONTEND_UX_GUIDELINES.md` 2, 3).
+ *
+ * Below 1024 CSS pixels every tool destination shows an informational notice above its screen. The
+ * screen itself is unchanged: it keeps a desktop-width canvas that the page scrolls horizontally, and
+ * the width never gates, defers, hides or restarts any account work, so a width-only change leaves
+ * inputs, results and requests alone.
  *
  * Each destination is a real URL (`useHashRoute`), so Back, Forward, a bookmark and a reload all work
  * normally and each screen has its own document title. Navigating issues no request of the shell's
@@ -35,12 +42,15 @@ import SyncScreen from './sync/SyncScreen.vue'
  * second polling loop. Nothing is persisted: a reload starts with no tracked task.
  */
 const route = useHashRoute()
+const narrow = useNarrowViewport()
 const sync = provideSyncOperations()
 const bootstrap = useAccountBootstrap()
 const isConnected = computed(() => connection.phase === 'connected')
 const isConnecting = computed(() => connection.phase === 'restoring' || connection.phase === 'connecting')
 const onInfoPage = computed(() => isInfoDestination(route.current.value))
 const onHome = computed(() => route.current.value.id === 'home')
+const isTool = computed(() => !onHome.value && !onInfoPage.value)
+const showNotice = computed(() => isTool.value && narrow.value)
 const onSystemStatus = computed(() => route.current.value.id === 'synchronization')
 const onCraftingPage = computed(() => ['crafting', 'discovery'].includes(route.current.value.id))
 const craftingReady = computed(() => !['checking', 'syncing'].includes(bootstrap.phase.value))
@@ -92,19 +102,21 @@ watch(
     @navigate="onNavigate"
   />
 
-  <main id="main-content" ref="main" class="page" tabindex="-1">
+  <main id="main-content" ref="main" class="page" :class="{ 'page--tool': isTool }" tabindex="-1">
     <!--
       The API-key controls live only on System Status (STORY-FIX-004), which therefore renders whether
       or not an account is connected — a direct URL or reload while disconnected must still reach it.
       Every other destination needs the account and points to System Status instead of repeating the form.
     -->
+    <DesktopWidthNotice v-if="showNotice" />
+
     <SyncScreen v-if="onSystemStatus" />
 
     <HomeScreen v-if="onHome" @navigate="onNavigate" />
 
     <InfoPage v-if="onInfoPage" :page="route.current.value.id" />
 
-    <section v-if="!onHome && !onInfoPage && !onSystemStatus && !isConnected" class="account-needed">
+    <section v-if="isTool && !onSystemStatus && !isConnected" class="account-needed">
     <PageHeader :heading="route.current.value.label" />
     <p role="status" data-test="connection-needed">
       <template v-if="isConnecting">Checking your GW2 API key…</template>

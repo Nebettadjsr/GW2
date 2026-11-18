@@ -23,6 +23,33 @@ This document is the authoritative source for intended domain behavior.
 
 Implementation details such as JavaFX, PostgreSQL, Java classes, REST APIs, containers, or frontend technology do not belong here unless they affect domain semantics.
 
+### Supported browser viewport
+
+**Product Owner revision, 18 November 2026; STORY-COV-006 (#243).** This replaces the
+17 November blocking proposal. Crafting Profit, Discovery, Ecto Salvage, System Status,
+Bank, Materials and Characters use a desktop layout with a **1024 CSS pixel** baseline.
+Below that viewport width, show this informational notice above the actual tool content:
+**"This page is not optimized for mobile use. You can scroll horizontally to use the whole page."**
+Do not include "yet" or imply that mobile optimization is planned.
+
+Keep tool content available on narrower screens using horizontal scrolling over the desktop
+canvas. The notice must fit the viewport. Do not hide, disable, make inert or defer a tool
+because the viewport is narrow. Initial narrow tool URLs use normal account restoration,
+authorization and data loading. At 1024 pixels and wider, omit the notice. Determine its
+visibility from the viewport, not the user agent. Dedicated phone/tablet tool layouts and
+small-screen usability optimization are not product requirements.
+
+Width changes alone must not disconnect, clear keys/drafts/reservations, change the route,
+reset selections or inputs, discard pending answers, duplicate calculation/proof/refetch
+work, or automatically close/reopen native dialogs. Native modals retain ordinary explicit
+Close/Escape behavior. Actual navigation, account expiry, grants and refresh retain their
+existing semantics. The notice is presentation only, not an account-access boundary.
+
+Keep desktop keyboard access, focus, zoom and short-height scrolling usable. Home, its guide
+tabs, Legal notice, Privacy and Cookies & browser storage continue to reflow at narrow widths
+without the tool's wide canvas or notice. Merely opening those public pages issues no account
+requests or retained-key restoration.
+
 ---
 
 # 2. Domain Objectives
@@ -69,8 +96,8 @@ from the backend; no presentation layer calculates fees or profit.
 
 The entire recipe row must be selectable, with an accessible keyboard equivalent
 and a visible selection indicator. On wide screens, selection populates a dedicated
-right-hand detail panel that remains visible while scrolling; small screens may
-use a suitable responsive arrangement. Show applicable buy cost prominently with
+right-hand detail panel that remains visible while scrolling; adapt within the supported
+desktop viewport contract above. Show applicable buy cost prominently with
 cost wording and the negative/cost visual treatment, a clearly labelled Trading
 Post price for one output item, useful recipe and shopping/material information,
 and a GW2 Wiki link when a reliable URL can be constructed. Remove a redundant

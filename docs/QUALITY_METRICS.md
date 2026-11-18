@@ -8,15 +8,63 @@ The GitHub Actions `Coverage KPI report` job publishes per-module/package rates 
 
 ## Verified CI baseline
 
-Source: [PR #242](https://github.com/Nebettadjsr/GW2/pull/242) test commit `5aa6c2bcf9168397e470a6cc00ae80645cfb7497`, successful [CI run 44032869374](https://github.com/Nebettadjsr/GW2/actions/runs/44032869374), generated 17 November 2026. Downloaded and inspected that day: `coverage-reports` artifact `14306345927`, `coverage-kpi/coverage-kpi.json`, cross-checked with its `coverage-input/java-coverage/jacoco.xml`. These are results for that commit; the following documentation refresh changes no measured source or tests.
+Source: STORY-COV-006 source/test revision `1d017fce91a827413f5933f2090122124e29091a`,
+successful [CI run 44252493662](https://github.com/Nebettadjsr/GW2/actions/runs/44252493662),
+generated 18 November 2026. The explicitly dispatched run measured the warning-only
+revision, as recorded in `coverage-kpi.json`. Downloaded and inspected that day:
+`coverage-reports` artifact `14404313486`, with its raw JaCoCo counters
+cross-checked. These numbers describe that identified run. Later documentation-only commits
+do not constitute another measured result; final-head CI and owner acceptance remain separate.
 
 | Area | Line coverage | Branch coverage |
 | --- | --- | --- |
-| Java backend | 91.36% (10,517 / 11,512) | 81.42% (5,376 / 6,603) |
-| Frontend TypeScript | 96.43% (4,026 / 4,175) | 86.48% (4,209 / 4,867) |
-| Combined weighted | 92.71% (14,543 / 15,687) | 83.57% (9,585 / 11,470) |
+| Java backend | 91.40% (10,522 / 11,512) | 81.42% (5,376 / 6,603) |
+| Frontend TypeScript | 96.51% (4,043 / 4,189) | 86.50% (4,216 / 4,874) |
+| Combined weighted | 92.76% (14,565 / 15,701) | 83.58% (9,592 / 11,477) |
 
 Both application modules exceed the line target; both still have branch gaps. A combined percentage does not establish adequate coverage of any individual critical path.
+
+## Browser journey evidence
+
+[STORY-COV-006 / issue #243](https://github.com/Nebettadjsr/GW2/issues/243) implements a separate
+controlled real-browser gate: `npm run smoke:ci` invokes
+`node scripts/run-desktop-journeys.mjs` after the frontend build in the required frontend
+CI job. Its named journeys cover public reading, connection, failure/recovery, account
+switching, narrow-screen notice/scrolling and reservations. The synthetic API origin
+does not establish real backend/SQL/upstream behavior or production capacity.
+
+Report journey/step outcomes, exact source revision, browser/build scope and available bounded
+failure diagnostics. Default output is `frontend/quality-reports/desktop-journeys/`, overridable
+with `GW2_SMOKE_OUTPUT`; CI uploads available results/screenshots/traces as
+`desktop-browser-journeys` with `if: always()` and seven-day retention.
+A failed journey fails the frontend job. Missing or incomplete artifacts are not a passed run.
+
+These are **journey outcomes, not line/branch coverage**. Do not add browser step counts to
+Vitest test counts or JaCoCo/Vitest covered-line totals, and do not claim that controlled
+journeys increased the percentage without a separately measured coverage change. The
+existing KPI baseline above remains unchanged. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
+owns commands, viewport checks and evidence limits.
+
+**Warning-only evidence (18 November):** independent local QA on `1d017fc` passed 30 focused
+checks, the fresh type-checking production build and all ten curated browser journeys.
+CI `44252493662` also passed; downloaded browser artifact `14404681915` confirms ten passes,
+both child commands exiting zero and no timeout. Initial narrow tools load normally, actual
+document scrolling reaches the rightmost tool action, pending Profit and Ecto state survive
+resize without duplicate work, and Help/Delete confirmation remains modal until ordinary
+close/cancel. No deletion is submitted. Public reading, recovery, account isolation and
+reservation-to-Profit journeys remain covered.
+
+The 18 November owner revision explicitly supersedes prior blocking/no-request and
+automatic-modal-close assertions. Independent QA replaced them with visible-content,
+normal-loading and modal-retention assertions, then corrected a resize-render race by
+waiting for the notice to detach before the existing exact-1024px absence assertion.
+This adds no retries or threshold relaxation. Production source is unchanged at QA
+correction `0c24106`, which independently passes the same
+30 focused checks, fresh build and ten browser journeys. Removing obsolete admission/width-gate
+source also changes measured denominators; the small percentage change is not evidence
+of broader browser coverage. Final-head CI/review and owner visual acceptance remain
+required; [PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns live status.
+No merge, deployment or real-upstream success is implied by these measurements.
 
 ## Current improvement candidates
 
@@ -30,7 +78,7 @@ Selected package figures from the same artifact:
 | Backend `parser` | 98.12% | 73.81% | Malformed and optional payload branches; prioritize meaningful input cases. |
 | Backend `infra.db` | 79.17% | 65.38% | Connection/pool lifecycle and failure handling. |
 | Frontend `characters` | 95.95% | 78.19% | Equipment/build/inventory state and unavailable-data branches. |
-| Frontend `account` | 94.04% | 81.48% | Connection restoration, switching and deletion behavior. |
+| Frontend `account` | 94.62% | 81.64% | Connection restoration, switching and deletion behavior. |
 | Frontend `home` | 67.57% | 88.46% | Inspect uncovered behavior before adding static-content assertions. |
 
 [Issue #21](https://github.com/Nebettadjsr/GW2/issues/21) remains the broader request. Refresh class/method counters from the current artifact before choosing another slice. A low package percentage alone does not justify a production rewrite.

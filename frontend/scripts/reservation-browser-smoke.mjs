@@ -1,6 +1,6 @@
 /**
  * #235 controlled local acceptance: native tile/menu/modal interaction, autosave, latest-on-return
- * Profit context, fixed targets and cached search at desktop/narrow widths. This supplies backend
+ * Profit context, fixed targets and cached search at a supported desktop width. This supplies backend
  * answers; authoritative quantity arithmetic is covered by backend QA, not this browser fixture.
  *
  * Run after npm run build: node scripts/reservation-browser-smoke.mjs
@@ -8,6 +8,8 @@
  * No real key/backend/database/upstream is used. Every owned browser/server closes in finally.
  */
 import assert from 'node:assert/strict'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
@@ -17,6 +19,14 @@ import { createControlledAccountSession } from './controlledAccountSession.mjs'
 import { ITEM, TABLE, DETAIL, bankSnapshot, materials, tableResponse, detailResponse } from './reservationBrowserFixtures.mjs'
 
 const TIMEOUT = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 15000)
+const OUTPUT = resolve(process.env.GW2_SMOKE_OUTPUT ?? 'quality-reports/desktop-journeys')
+let browser
+process.on('message', async message => {
+  if (message?.type !== 'gw2-journey-timeout') return
+  process.exitCode = 1
+  await browser?.close().catch(() => {}) // The cancelled active check closes its origin in finally.
+})
+process.channel?.unref()
 const PREFIX = 'gw2.materialProtection.v1.00000000-0000-4000-8000-000000000194'
 const session = createControlledAccountSession({ calculationRoutes: [TABLE, DETAIL], searchQueries: ['Copper Ore', '19698'],
   searchResults: { '19698': [11] },
@@ -132,9 +142,8 @@ async function reservationPresentation(page, gridSelector, quantity, source) {
   assert.ok(layout.lines.length > 0, 'Reservation notes have no rendered text')
   for (const line of layout.lines) assert.ok(line.left >= layout.notes.left - 1 && line.right <= layout.notes.right + 1 &&
     line.top >= layout.notes.top - 1 && line.bottom <= layout.notes.bottom + 1, `Reservation note text is clipped: ${JSON.stringify(layout)}`)
-  if (layout.width >= 1000) assert.ok(layout.notes.left >= layout.grid.right - 1 && layout.notes.top < layout.grid.bottom,
+  assert.ok(layout.notes.left >= layout.grid.right - 1 && layout.notes.top < layout.grid.bottom,
     `Desktop reservation notes are not beside their own grid: ${JSON.stringify(layout)}`)
-  else assert.ok(layout.notes.top >= layout.grid.bottom - 1, `Narrow reservation notes are not below their own grid: ${JSON.stringify(layout)}`)
   await noPageOverflow(page)
 }
 
@@ -147,6 +156,8 @@ async function runViewport(browser, stub, viewport) {
   stock = 300
   const label = `${viewport.width}×${viewport.height}`
   const initialTables = requestCount(stub, TABLE)
+  await page.context().tracing.start({ screenshots: true, snapshots: true, sources: false })
+  let traced = true
   try {
     await page.goto(`${stub.origin}/#/crafting`, { waitUntil: 'networkidle' })
     await page.locator('[data-test="profit-table"]').waitFor()
@@ -393,26 +404,39 @@ async function runViewport(browser, stub, viewport) {
     assert.equal(requestCount(stub, TABLE), stackTables + 1, 'Latest stack layout calculated more than once')
     await noPageOverflow(page)
     record(`${label} actual third-stack click preserves partial rows, yellow/native states and exact guarded wire intent`)
+  } catch (error) {
+    await page.screenshot({ path: join(OUTPUT, 'reservations.png'), fullPage: true }).catch(() => {})
+    await page.context().tracing.stop({ path: join(OUTPUT, 'reservations.trace.zip') }).catch(() => {})
+    traced = false
+    throw error
   } finally {
+    if (traced) await page.context().tracing.stop()
     await page.close()
   }
 }
 
 async function main() {
+  await mkdir(OUTPUT, { recursive: true })
   console.log(`Bundle: ${requireFreshBundle()}`)
   const stub = await startStubOrigin({ port: Number(process.env.GW2_RESERVATION_SMOKE_PORT ?? 5184),
     distDir: fileURLToPath(new URL('../dist/', import.meta.url)), answerApi })
-  let browser
   try {
     browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
     await runViewport(browser, stub, { width: 1440, height: 900 })
-    await runViewport(browser, stub, { width: 360, height: 800 })
     assert.ok(stub.servedCount() > 0, 'The owned loopback server served no frontend')
     assert.deepEqual(failures, [], 'Browser/controlled fixture errors')
     record('normal synthetic proof, exact methods/routes/context and no raw-key/sync/off-origin traffic', session.verify())
     console.log(`\nReservation browser check PASSED (${steps.length} steps).`)
+    await writeFile(join(OUTPUT, 'reservations.json'), JSON.stringify({ results: [{ name: 'reserve-stock-and-use-profit',
+      status: 'passed', viewport: { width: 1440, height: 900 }, steps }] }, null, 2))
   } finally {
-    try { await browser?.close() } finally { stub.close() }
+    try { await browser?.close() } finally { await stub.close() }
   }
 }
-main().catch(error => { console.error(`\nReservation browser check FAILED after ${steps.length} steps: ${error.stack}`); process.exitCode = 1 })
+main().catch(async error => {
+  console.error(`\nReservation browser check FAILED after ${steps.length} steps: ${error.stack}`)
+  process.exitCode = 1
+  await mkdir(OUTPUT, { recursive: true })
+  await writeFile(join(OUTPUT, 'reservations.json'), JSON.stringify({ results: [{ name: 'reserve-stock-and-use-profit',
+    status: 'failed', steps, error: error.stack }], boundaryFailures: failures }, null, 2))
+})

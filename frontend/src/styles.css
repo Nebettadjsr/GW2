@@ -640,8 +640,9 @@ legend {
     padding: var(--space-4) var(--space-3) var(--space-6);
   }
 
-  .page-actions,
-  .page-actions > button {
+  /* Tool pages keep their desktop-width canvas, so their actions keep the desktop arrangement. */
+  .page:not(.page--tool) .page-actions,
+  .page:not(.page--tool) .page-actions > button {
     width: 100%;
   }
 }
@@ -945,4 +946,26 @@ html {
   color: var(--color-muted);
   font-size: var(--text-sm);
   line-height: 1.6;
+}
+
+.desktop-notice {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border, currentColor);
+  border-radius: 4px;
+  background: var(--color-surface, transparent);
+}
+
+/* Tool pages keep a desktop-width canvas; narrower viewports scroll the document horizontally. */
+.page--tool {
+  min-width: 1024px;
+}
+
+/* The notice stays within the first screen however far the canvas extends. */
+.page--tool .desktop-notice {
+  position: sticky;
+  left: var(--space-4);
+  box-sizing: border-box;
+  width: calc(100vw - 2 * var(--space-4));
+  max-width: 100%;
 }
