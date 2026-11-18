@@ -7,7 +7,7 @@ import java.util.Optional;
 
 /**
  * Where the authorized {@link AccountContext} of the request being served lives (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1 "Request and application scope").
+ * ARCHITECTURE.md "Account access, credentials and deletion").
  *
  * <p>A request attribute rather than a thread-local or a process-wide "current account": the scope
  * must not be inherited implicitly by a worker, and an admitted operation has to be handed the

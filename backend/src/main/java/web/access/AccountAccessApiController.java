@@ -2,7 +2,7 @@ package web.access;
 
 import application.access.AccountAccessService;
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import application.access.AccountLifecycleGate;
 import application.access.AccountSessions;
 import application.access.InvalidCredentialException;
 import application.access.MalformedProofException;
@@ -18,11 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import web.dto.ApiErrorResponse;
 import web.dto.SessionAccessResponse;
 
-import java.util.Comparator;
-import java.util.List;
-
 /**
- * The session proof, renewal and logout HTTP contract (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+ * The session proof, renewal and logout HTTP contract (STORY-API-010, ARCHITECTURE.md "Account access, credentials and deletion").
  *
  * <p>All three are state-changing and all three validate the origin first - including proof, which
  * is the one an attacker would otherwise use to install their own account in a victim's browser.
@@ -57,7 +54,7 @@ public class AccountAccessApiController {
             return credentialRejected();
         } catch (ProofUnavailableException e) {
             return proofUnavailable(e);
-        } catch (application.access.AccountLifecycleGate.Unavailable e) {
+        } catch (AccountLifecycleGate.Unavailable e) {
             return error(HttpStatus.SERVICE_UNAVAILABLE, "DATA_STORE_UNAVAILABLE",
                     "The account is busy; try again shortly");
         }
@@ -100,7 +97,7 @@ public class AccountAccessApiController {
                 case CONTEXT_MISMATCH -> contextRejected();
                 default -> sessionRequired();
             };
-        } catch (application.access.AccountLifecycleGate.Unavailable e) {
+        } catch (AccountLifecycleGate.Unavailable e) {
             return error(HttpStatus.SERVICE_UNAVAILABLE, "DATA_STORE_UNAVAILABLE",
                     "The account is busy; try again shortly");
         }
@@ -138,16 +135,10 @@ public class AccountAccessApiController {
         return noStore(status)
                 .header(HttpHeaders.SET_COOKIE, http.sessionCookie(request, session.sessionId()))
                 .header(AccountAccessHttp.ACCESS_CONTEXT_HEADER, context.accessContext())
-                .body(new SessionAccessResponse(context.accountId(), context.accessContext(), context.expiresAt(),
-                        grantNames(context)));
+                .body(SessionAccessResponse.of(context));
     }
 
-    private static List<String> grantNames(AccountContext context) {
-        return context.grants().stream().map(AccountGrant::apiName).sorted(Comparator.naturalOrder())
-                .toList();
-    }
-
-    /** Every session response, successful or not, is uncacheable: §8.1 requires {@code no-store}. */
+    /** Every session response, successful or not, is uncacheable: the contract requires {@code no-store}. */
     private static ResponseEntity.BodyBuilder noStore(HttpStatus status) {
         return ResponseEntity.status(status)
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")

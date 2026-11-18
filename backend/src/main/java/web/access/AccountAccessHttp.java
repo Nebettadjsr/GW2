@@ -11,7 +11,7 @@ import java.util.Set;
 
 /**
  * The transport-level rules of the account-access contract in one place (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1 and §8.2): the names the browser must use, same-origin/CSRF
+ * ARCHITECTURE.md "Account access, credentials and deletion"): the names the browser must use, same-origin/CSRF
  * validation of state-changing requests, and the shape of the session cookie.
  *
  * <p>Kept separate from the controller and the interceptor because both apply exactly these rules
@@ -84,7 +84,7 @@ public final class AccountAccessHttp {
 
     /**
      * {@code Secure} is omitted only for plain HTTP on a loopback host - the explicit localhost
-     * development case §8.1 permits. Any other plain-HTTP origin still gets {@code Secure}, so a
+     * development case the contract permits. Any other plain-HTTP origin still gets {@code Secure}, so a
      * misconfigured deployment loses the cookie instead of leaking it.
      */
     private static boolean requiresSecureCookie(HttpServletRequest request) {

@@ -43,7 +43,7 @@ public class ApiExceptionHandler {
 
     /**
      * The resolution-detail routes' only non-200 outcome that is not an error on the caller's or the
-     * backend's side (STORY-API-008, TARGET_ARCHITECTURE.md §13.4): the request was valid and the
+     * backend's side (STORY-API-008): the request was valid and the
      * calculation ran, but its own fresh visible recipes do not include the requested one. Blocked
      * resolutions and unavailable calculation results are completed 200 responses, not failures, so
      * they never reach this advice.
