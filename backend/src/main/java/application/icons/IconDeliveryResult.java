@@ -1,7 +1,7 @@
 package application.icons;
 
 /**
- * What one image request produced (TARGET_ARCHITECTURE.md §12.1). The four cases are exactly the
+ * What one image request produced (docs/ARCHITECTURE.md). The four cases are exactly the
  * outcomes the endpoint has to distinguish, and none of them carries a filesystem path, an upstream
  * URL or an exception message from a lower layer.
  */
