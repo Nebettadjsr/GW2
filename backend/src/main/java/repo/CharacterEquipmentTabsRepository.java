@@ -18,8 +18,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Account-scoped, read-only access to the saved equipment tabs of one selected character
- * (STORY-CHAR-005). Canonical item display metadata is joined from the shared {@code items} table at
+ * Account-scoped, read-only access to the saved equipment tabs of one selected character.
+ * Canonical item display metadata is joined from the shared {@code items} table at
  * read time and is never copied into the account-owned tab tables.
  */
 public class CharacterEquipmentTabsRepository {

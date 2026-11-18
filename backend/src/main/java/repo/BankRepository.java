@@ -8,11 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Slot-level read of the account bank for the Bank view's display (STORY-APP-009). Holds the query
- * and connection lifecycle that {@code BankView} previously ran itself against a hardcoded inline
- * {@code DriverManager} connection (docs/KNOWN_PROBLEMS.md §2.2); the SQL, its {@code items} join,
- * its {@code slot} ordering and its nullable columns are unchanged from that pre-extraction
- * version.
+ * Slot-level read of the account bank for the Bank view's display. Owns the query and connection
+ * lifecycle: an {@code items} LEFT JOIN, {@code slot} ordering and nullable item/count/icon columns,
+ * so empty slots and slots whose item has no cached metadata are still reported.
  *
  * <p>Separate from {@link InventoryRepository}, which also reads {@code account_bank} but for a
  * different purpose and with different semantics: that one aggregates owned quantity per item
@@ -26,9 +24,9 @@ public class BankRepository {
      * are null for an empty slot; {@code iconPath}/{@code iconUrl}/{@code rarity} are null when the
      * slot's item has no matching {@code items} row (LEFT JOIN).
      *
-     * <p>{@code iconPath} is the local desktop file JavaFX renders; {@code iconUrl} is the retained
-     * upstream icon source ({@code items.icon_url}) a browser-facing read derives its image URL from
-     * (TARGET_ARCHITECTURE.md §12.1). Both come from this one batch read, so neither costs a per-row
+     * <p>{@code iconPath} is retained legacy metadata (a local icon file path); {@code iconUrl} is
+     * the retained upstream icon source ({@code items.icon_url}) a browser-facing read derives its
+     * image URL from. Both come from this one batch read, so neither costs a per-row
      * lookup. {@code itemName} is the shared cached {@code items.name}, null for an empty slot or
      * an item without a cached row (never invented).
      */
@@ -56,7 +54,7 @@ public class BankRepository {
     }
 
     /**
-     * One account's bank slots, ordered by slot (STORY-APP-015).
+     * One account's bank slots, ordered by slot.
      *
      * <p>The same query as the unscoped {@link #loadBankSlots(Connection)} with the owning account
      * added to the {@code WHERE} clause: slots are keyed {@code (account_id, slot)}, so two accounts
@@ -100,10 +98,9 @@ public class BankRepository {
      *
      * <p>The entry point for a caller that holds no {@link model.AccountScope}, which on the
      * versioned database means it has no account to read: it returns no rows rather than reading
-     * across accounts (STORY-SYNC-007). Nothing is inferred - not a configured, last-used or only
+     * across accounts. Nothing is inferred - not a configured, last-used or only
      * registered account - and no row of any account is exposed, so a global workflow that merely
-     * passes an account input along (the item-icon read path) stays usable while scope resolution is
-     * introduced by its own story.
+     * passes an account input along (the item-icon read path) stays usable.
      *
      * <p>An empty result here is the absence of a scope, <em>not</em> a claim that this account's
      * bank is empty or that its synchronization succeeded: completion stays recorded per source in
@@ -111,8 +108,8 @@ public class BankRepository {
      * {@link #loadBankSlots(model.AccountScope)} is the only path that reports an account's actual
      * slots.
      *
-     * <p>On a pre-cutover database nothing changes: the unscoped query below is this installation's
-     * only bank read and keeps returning its rows.
+     * <p>On a pre-versioned database the unscoped query below is the only bank read and keeps
+     * returning its rows.
      */
     public List<BankSlotRow> loadBankSlots() throws SQLException {
         try (Connection con = Db.open()) {
@@ -127,9 +124,8 @@ public class BankRepository {
      * (docs/TEST_STRATEGY.md §31.2), mirroring {@link InventoryRepository}'s existing pattern.
      */
     public List<BankSlotRow> loadBankSlots(Connection con) throws SQLException {
-        // Reads every account's bank slots on a migrated database, which account isolation forbids
-        // (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.2). The scoped replacement arrives with the
-        // account-access stories; until then this is unavailable rather than cross-account.
+        // Reads every account's bank slots, which account isolation forbids on a managed database;
+        // callers there use the scoped overload, so this is refused rather than cross-account.
         ManagedSchema.rejectUnscopedAccountAccess(con, "account_bank without an account scope");
         String sql = """
             SELECT b.slot, b.item_id, b.count, i.icon_path, i.icon_url, i.rarity, i.name AS item_name, b.binding, b.bound_to

@@ -30,7 +30,7 @@ public class CharacterRepository {
         List<String> out = new ArrayList<>();
         try (Connection con = Db.open()) {
             // A character name is unique within an account, not globally, so this roster read has
-            // no meaning without an account scope on a migrated database (STORY-INFRA-004).
+            // no meaning without an account scope on a managed database.
             ManagedSchema.rejectUnscopedAccountAccess(con, "characters without an account scope");
             try (PreparedStatement ps = con.prepareStatement(sql);
                  ResultSet rs = ps.executeQuery()) {
@@ -44,10 +44,9 @@ public class CharacterRepository {
     }
 
     /**
-     * One account's character names, ordered by name (STORY-APP-015).
+     * One account's character names, ordered by name.
      *
-     * <p>A character name is unique within an account, never globally
-     * (TARGET_ARCHITECTURE.md §7.2), so this is the only form of the roster read that has a defined
+     * <p>A character name is unique within an account, never globally, so this is the only form of the roster read that has a defined
      * answer on the versioned schema: two accounts may both own a character called "Shared Name" and
      * each sees only its own.
      */
@@ -72,7 +71,7 @@ public class CharacterRepository {
     }
 
     /**
-     * One account's per-character discipline ratings (STORY-APP-015).
+     * One account's per-character discipline ratings.
      *
      * <p>The join to the roster carries the account GUID in both halves, matching the composite
      * {@code (account_id, character_id)} parent key: joining on {@code character_id} alone would let
@@ -121,8 +120,8 @@ public class CharacterRepository {
 
     /**
      * Same query as {@link #loadAllCharacterCrafting()}, but on a caller-supplied connection, so one
-     * calculation can read every input it needs inside a single consistent database snapshot
-     * (TARGET_ARCHITECTURE.md §9.1: readers must not mix input generations).
+     * calculation can read every input it needs inside a single consistent database snapshot,
+     * so readers never mix input generations.
      */
     public List<DiscRow> loadAllCharacterCrafting(Connection con) throws SQLException {
         ManagedSchema.rejectUnscopedAccountAccess(con, "character_crafting without an account scope");
@@ -153,7 +152,7 @@ public class CharacterRepository {
     public record Discipline(String discipline, int rating, boolean active) {}
 
     /**
-     * One character's identity facts and crafting disciplines (STORY-CHAR-001). Nullable identity
+     * One character's identity facts and crafting disciplines. Nullable identity
      * columns stay null: nothing is defaulted or fabricated.
      */
     public record CharacterProfile(String name, String profession, String race, String gender,

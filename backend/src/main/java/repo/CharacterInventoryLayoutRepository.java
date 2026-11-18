@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Account-scoped, read-only bag layout of one selected character (STORY-CHAR-006). Reads the bag
+ * Account-scoped, read-only bag layout of one selected character. Reads the bag
  * manifest and the occupied {@code character_items} BAG rows inside one caller-supplied snapshot, then
  * derives empty cells from published capacity minus occupied coordinates. Constant query count: parent
  * marker, character, layout publication, manifest, occupied rows and one batched metadata lookup.

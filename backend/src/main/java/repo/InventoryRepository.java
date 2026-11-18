@@ -15,7 +15,7 @@ public class InventoryRepository {
 
     /**
      * The three account-owned pools the owned quantity is summed from, each scoped by its account
-     * GUID (STORY-APP-015). {@code account_materials} has no {@code bound_to} column, so its rows
+     * GUID. {@code account_materials} has no {@code bound_to} column, so its rows
      * can only be unbound or account-bound, never soulbound - the {@code NULL} literal keeps the
      * three result shapes identical so one row loop can classify all of them.
      */
@@ -39,7 +39,7 @@ public class InventoryRepository {
     };
 
     /**
-     * One account's total owned quantity per item (STORY-APP-015), the scoped form of
+     * One account's total owned quantity per item, the scoped form of
      * {@link #loadOwnedInventory(Connection)}.
      *
      * <p>Same pool definition as the unscoped version - material storage plus bank plus every
@@ -55,8 +55,7 @@ public class InventoryRepository {
     }
 
     /**
-     * One account's owned quantity split by binding usability for {@code selectedCharacterName}
-     * (STORY-APP-015), the scoped form of
+     * One account's owned quantity split by binding usability for {@code selectedCharacterName}, the scoped form of
      * {@link #loadOwnedInventoryForCharacter(Connection, String)}.
      *
      * <p>The binding rules themselves are unchanged and stay in {@link #classifyOwnedRow}: scoping
@@ -86,7 +85,7 @@ public class InventoryRepository {
     }
 
     /**
-     * One account's three-way coordinated inventory split (STORY-APP-015), the scoped form of
+     * One account's three-way coordinated inventory split, the scoped form of
      * {@link #loadOwnedInventoryForCharacters(Connection, Set)}.
      */
     public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con,
@@ -285,10 +284,11 @@ public class InventoryRepository {
      *
      * Also includes item quantities held in character_items (all characters, all bag/equipment
      * locations) per DOMAIN_SPEC.md DQ-006 ("owned pool = material storage + bank + all character
-     * inventories"). Binding (binding/bound_to) is intentionally not filtered here — every owned
-     * character_items row counts toward the pool the same as bank/materials rows. Restricting
-     * usable quantity by binding (DOMAIN_SPEC.md DQ-007) is a separate, not-yet-implemented rule
-     * that needs a "selected character" concept that does not exist in the planner input yet.
+     * inventories"). This legacy unfiltered aggregate ignores binding (binding/bound_to): every owned
+     * character_items row counts toward the pool the same as bank/materials rows. Binding-aware
+     * usable quantity (DOMAIN_SPEC.md DQ-007) is implemented separately by the selected-character
+     * methods such as {@link #loadOwnedInventoryForCharacter(String)} and
+     * {@link #loadOwnedInventoryForCharacters(Set)}, which split the pools by binding.
      */
     public Map<Integer, Integer> loadOwnedInventory() throws SQLException {
         try (Connection con = repo.Db.open()) {
@@ -304,7 +304,7 @@ public class InventoryRepository {
      */
     public Map<Integer, Integer> loadOwnedInventory(Connection con) throws SQLException {
         // Aggregates owned quantity across account_materials, account_bank and character_items, all
-        // of which carry a verified account GUID on a migrated database (STORY-INFRA-004): summing
+        // of which carry a verified account GUID on a managed database: summing
         // them without a scope would mix accounts, so the unscoped path is refused there.
         ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
         Map<Integer, Integer> inv = new HashMap<>();
@@ -436,16 +436,7 @@ public class InventoryRepository {
             }
         }
 
-        Set<Integer> itemIds = new HashSet<>();
-        itemIds.addAll(sellable.keySet());
-        itemIds.addAll(bound.keySet());
-
-        Map<Integer, OwnedQuantity> result = new HashMap<>();
-        for (int itemId : itemIds) {
-            result.put(itemId, new OwnedQuantity(sellable.getOrDefault(itemId, 0), bound.getOrDefault(itemId, 0)));
-        }
-
-        return result;
+        return combine(sellable, bound);
     }
 
     private static void classifyOwnedRow(int itemId, int count, String binding, String boundTo,
@@ -479,8 +470,7 @@ public class InventoryRepository {
     }
 
     /**
-     * Owned inventory for coordinated multi-character planning (DOMAIN_SPEC.md section 2.2.1 /
-     * STORY-DOM-014): the shared account-wide ordinary/tradable pool, the shared account-wide
+     * Owned inventory for coordinated multi-character planning (DOMAIN_SPEC.md section 2.2.1): the shared account-wide ordinary/tradable pool, the shared account-wide
      * account-bound pool (usable by any character), and soulbound owned quantity split by owning
      * character - usable only by that exact character.
      */
@@ -529,7 +519,9 @@ public class InventoryRepository {
     /**
      * Source exclusions and finite reservations apply before aggregation; cached quantities and
      * character stock are untouched. A finite target is subtracted once per item and store across
-     * its stacks (at most the owned amount). Partial reservation across stacks with different
+     * its stacks (at most the owned amount). This overload passes no Bank slot
+     * allocations; the overload taking {@code bankAllocations} implements Bank slot allocation. Only the
+     * mixed-binding Materials case is unresolved: a partial reservation across stacks with different
      * bindings/owners has no approved allocation rule and fails with
      * {@link UnresolvedReservationAllocationException}.
      */

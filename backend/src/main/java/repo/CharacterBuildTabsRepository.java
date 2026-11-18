@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Account-scoped, read-only access to one selected character's saved build tabs (STORY-CHAR-007). Raw
+ * Account-scoped, read-only access to one selected character's saved build tabs. Raw
  * stored identifiers only: no metadata is joined, so nothing is named or iconised here.
  */
 public class CharacterBuildTabsRepository {
