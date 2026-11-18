@@ -209,7 +209,11 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
    * or a read/write failed, so A->B->A and reconnect never fall back to a stale stored record.
    */
   const shadow = new Map<string, { ids: number[]; enabled: boolean; sources: SelectionView[] | null; selections: ViewSelections; quantities: ViewQuantities; allocations: BankAllocation[] }>()
-  /** Bumped on every local edit and account change; guards delayed canonical responses. */
+  /**
+   * Bumped on every local edit and account change; guards delayed canonical responses. An edit bumps it
+   * BEFORE its first reactive mutation, so a synchronous consumer's replacement request already carries
+   * the new version and stays reconcilable.
+   */
   let editVersion = 0
   /** Last started request; a canonical response is accepted only from this one. */
   let requestSequence = 0
@@ -394,6 +398,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   /** One checkbox/tile click: toggles the item in this view's selection and autosaves once. */
   function togglePending(itemId: number, view: SelectionView): void {
     if (ready() === null) return
+    editVersion += 1
     const next = new Set(state.committedByView[view])
     if (next.has(itemId)) next.delete(itemId)
     else next.add(itemId)
@@ -406,6 +411,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   function togglePendingGroup(itemIds: readonly number[], view: SelectionView): void {
     const ids = canonicalIds(itemIds)
     if (ready() === null || ids.length === 0) return
+    editVersion += 1
     const next = new Set(state.committedByView[view])
     const deselect = ids.every(id => next.has(id))
     for (const id of ids) {
@@ -424,7 +430,6 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
   function save(): void {
     const accountId = ready()
     if (accountId === null) return
-    editVersion += 1
     syncSelectionTotals()
     state.committedSources = (['bank', 'materials'] as const).filter(source => state.committedByView[source].length > 0 || Object.keys(state.quantitiesByView[source]).length > 0)
     // Empty-selection safety rule: an empty selection cannot stay activated, and a later
@@ -452,6 +457,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
    */
   function reserveQuantity(itemId: number, view: SelectionView, quantity: unknown): boolean {
     if (ready() === null || !Number.isSafeInteger(itemId) || itemId <= 0 || !validReservationQuantity(quantity)) return false
+    editVersion += 1
     state.committedByView[view] = state.committedByView[view].filter(id => id !== itemId)
     if (view === 'bank') state.bankAllocations = state.bankAllocations.filter(row => row.itemId !== itemId)
     if (quantity === 0) delete state.quantitiesByView[view][itemId]
@@ -499,6 +505,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
     units.set(slot, units.get(slot) === target.count ? 0 : target.count)
     const sum = [...units.values()].reduce((a, b) => a + b, 0)
     if (sum > MAX_RESERVATION_QUANTITY) return // reject before touching any valid existing intent
+    editVersion += 1
     state.committedByView.bank = state.committedByView.bank.filter(id => id !== itemId)
     state.bankAllocations = state.bankAllocations.filter(row => row.itemId !== itemId)
     if (sum <= 0) {
@@ -523,6 +530,7 @@ export function createMaterialProtectionState(options: MaterialProtectionOptions
       if (!hintsMatch(current, hintsOf(itemId))) stale.add(itemId)
     }
     if (stale.size === 0) return
+    editVersion += 1
     state.bankAllocations = state.bankAllocations.filter(row => !stale.has(row.itemId))
     save()
   }

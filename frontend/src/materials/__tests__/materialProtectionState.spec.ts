@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, reactive } from 'vue'
+import { createApp, defineComponent, h, nextTick, reactive, watch } from 'vue'
 import {
   PREFERENCE_KEY_PREFIX,
   canonicalIds,
@@ -177,6 +177,52 @@ describe('delayed work', () => {
     expect(m.state.effective).toBeNull()
     source.id = A
     expect(m.reconcile(forA, settings)).toBe(false)
+  })
+
+  describe('request started synchronously by a reactive consumer during an edit', () => {
+    const settings = { materialProtectionEnabled: true, protectedItemIds: [5] }
+    function observe(m: MaterialProtectionState) {
+      const tokens: ReturnType<MaterialProtectionState['beginRequest']>[] = []
+      const stop = watch(() => JSON.stringify([m.state.committedByView, m.state.quantitiesByView, m.state.bankAllocations]),
+        () => { tokens.push(m.beginRequest()) }, { flush: 'sync' })
+      return { tokens, stop }
+    }
+    const rows = [{ slot: 1, itemId: 5, count: 10, binding: null, boundTo: null }]
+    const actions: [string, (m: MaterialProtectionState) => void][] = [
+      ['togglePending', m => m.togglePending(5, 'bank')],
+      ['togglePendingGroup', m => m.togglePendingGroup([5, 6], 'materials')],
+      ['reserveQuantity', m => { m.reserveQuantity(5, 'bank', 3) }],
+      ['toggleBankStack', m => m.toggleBankStack(5, 1, rows)]
+    ]
+    for (const [name, act] of actions) {
+      it(`${name}: the latest token stays reconcilable; an earlier one is rejected`, () => {
+        const m = make()
+        source.id = A
+        const before = m.beginRequest()
+        const { tokens, stop } = observe(m)
+        act(m)
+        stop()
+        expect(tokens.length).toBeGreaterThan(0)
+        expect(m.reconcile(before, settings)).toBe(false)
+        expect(m.reconcile(tokens[tokens.length - 1]!, settings)).toBe(true)
+        expect(m.state.effective?.protectedItemIds).toEqual([5])
+        // a genuinely later edit invalidates it
+        const latest = m.beginRequest()
+        m.togglePending(77, 'bank')
+        expect(m.reconcile(latest, settings)).toBe(false)
+      })
+    }
+
+    it('pruneStaleBankHints: a request started by the pruning edit stays reconcilable', () => {
+      const m = make()
+      source.id = A
+      m.toggleBankStack(5, 1, rows)
+      const { tokens, stop } = observe(m)
+      m.pruneStaleBankHints([{ ...rows[0]!, count: 12 }])
+      stop()
+      expect(tokens.length).toBeGreaterThan(0)
+      expect(m.reconcile(tokens[tokens.length - 1]!, settings)).toBe(true)
+    })
   })
 
   it('treats omitted protection fields as no claim and leaves the committed preference alone', () => {
