@@ -117,6 +117,10 @@ and build metadata is repaired during bounded synchronization, never ordinary re
 `REPEATABLE READ` transaction. Authorization and freshness remain separate from one another.
 Ordinary account reads do not use a configured/last-used account or fetch upstream directly.
 
+Character roster, inventory, equipment and build-tab reads share
+`CharacterRosterService.ConnectionSource.snapshot`, which owns read-only `REPEATABLE READ`
+setup, rollback and connection closure. Each call retains its own connection and scoped queries.
+
 ### Schema lifecycle
 
 `infra.db.SchemaInitializer` runs before Spring startup and before the retained icon-maintenance

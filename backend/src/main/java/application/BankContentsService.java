@@ -7,13 +7,12 @@ import java.sql.SQLException;
 import java.util.List;
 
 /**
- * Application-layer use case for the Bank view's read ("GetBankContents",
- * TARGET_ARCHITECTURE.md §8, STORY-APP-009): returns every account-bank slot, in slot order, with
- * the item/icon/rarity columns the view renders. Holds no JavaFX dependency and performs no
- * calculation; it coordinates one persistence collaborator. {@code BankView} is its sole caller.
+ * Bank read use case: returns every account-bank slot, in slot order, with the item/icon/rarity
+ * columns the Bank API renders. It performs no calculation and coordinates one persistence
+ * collaborator; {@code BankContentsApiController} is its caller.
  *
  * <p>Read-only: no synchronization and no database write happens here or in
- * {@link BankRepository}. A {@link SQLException} propagates unchanged, so the view keeps deciding
+ * {@link BankRepository}. A {@link SQLException} propagates unchanged, so the caller keeps deciding
  * how to present a load failure.
  */
 public class BankContentsService {
@@ -24,7 +23,7 @@ public class BankContentsService {
         this(new BankRepository());
     }
 
-    /** Seam used by application-layer tests to substitute a fake repository (TARGET_ARCHITECTURE.md §25). */
+    /** Seam used by application-layer tests to substitute a fake repository. */
     public BankContentsService(BankRepository bankRepo) {
         this.bankRepo = bankRepo;
     }

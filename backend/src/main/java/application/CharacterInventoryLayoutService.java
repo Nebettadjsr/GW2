@@ -8,7 +8,6 @@ import repo.CharacterInventoryLayoutRepository;
 import repo.CharacterInventoryLayoutRepository.Bag;
 import repo.Db;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
@@ -65,16 +64,7 @@ public class CharacterInventoryLayoutService {
                     "The verified key is restricted from the character endpoint, so inventory cannot be read.");
         }
         CharacterInventoryLayoutRepository.Snapshot snap;
-        try (Connection con = connections.open()) {
-            con.setReadOnly(true);
-            con.setAutoCommit(false);
-            con.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-            try {
-                snap = repository.load(con, scope, name);
-            } finally {
-                con.rollback();
-            }
-        }
+        snap = connections.snapshot(con -> repository.load(con, scope, name));
         boolean refreshing = coordinator != null
                 && coordinator.isRefreshing(scope, AccountSyncStateRepository.CHARACTERS);
         boolean failed = coordinator != null

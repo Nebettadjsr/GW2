@@ -7,20 +7,18 @@ import java.sql.SQLException;
 import java.util.List;
 
 /**
- * Application-layer use case for the crafting views' character-selector reads
- * ("GetCraftingCharacterOptions" / "GetCharacterNames", TARGET_ARCHITECTURE.md §8,
- * STORY-APP-010): returns the synced crafting-discipline rows and character names both crafting
- * selectors are populated from. Holds no JavaFX dependency and performs no calculation; it
- * coordinates one persistence collaborator. {@code CraftingProfitView} and
- * {@code CraftingDiscoveryView} are its callers.
+ * Character-selector reads for the crafting views: the synced crafting-discipline rows and
+ * character names both crafting selectors are populated from. It performs no calculation and
+ * coordinates one persistence collaborator; {@code CraftingSelectorOptionsApiController} is its
+ * caller.
  *
  * <p>Read-only: no synchronization and no database write happens here or in
- * {@link CharacterRepository}. A {@link SQLException} propagates unchanged, so each view keeps
+ * {@link CharacterRepository}. A {@link SQLException} propagates unchanged, so the caller keeps
  * deciding how to present a selector-load failure.
  *
  * <p>Deliberately not merged into {@code CraftingProfitService}/{@code CraftingDiscoveryService}:
- * those own one calculation each, whereas both views need the same selector read, and the read must
- * not be coupled to a calculation reload.
+ * those own one calculation each, whereas both need the same selector read, and the read must not
+ * be coupled to a calculation reload.
  */
 public class CharacterSelectionService {
 
@@ -30,7 +28,7 @@ public class CharacterSelectionService {
         this(new CharacterRepository());
     }
 
-    /** Seam used by application-layer tests to substitute a fake repository (TARGET_ARCHITECTURE.md §25). */
+    /** Seam used by application-layer tests to substitute a fake repository. */
     public CharacterSelectionService(CharacterRepository charRepo) {
         this.charRepo = charRepo;
     }
