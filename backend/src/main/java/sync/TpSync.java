@@ -57,7 +57,7 @@ public final class TpSync {
     }
 
     /**
-     * Owner full Trading Post synchronization (STORY-STATUS-004): snapshots every ID in
+     * Owner full Trading Post synchronization: snapshots every ID in
      * {@code tp_tradeable_items}, bypassing the ordinary ten-minute freshness selection, through the
      * same shared {@code tp_prices} write path. Fails (never silently succeeds) on an empty catalog.
      */
@@ -324,7 +324,7 @@ public final class TpSync {
      * The Profit price refresh: fetch the stale or missing quotes the Profit selection requires.
      *
      * <p>Carries no account scope, so on the versioned database it asks for the global selection
-     * (STORY-SYNC-007): the shared crafting graph and the shared quote cache, with no account row
+     * the shared crafting graph and the shared quote cache, with no account row
      * entering the demand and no account inferred. On a pre-cutover database the selection derived
      * from the stored recipe knowledge is unchanged.
      *
@@ -342,7 +342,7 @@ public final class TpSync {
     }
 
     /**
-     * The Profit price refresh for one authorized account's calculation (STORY-API-011): the stale or
+     * The Profit price refresh for one authorized account's calculation: the stale or
      * missing quotes that account's required item set needs, into the same shared quote cache and
      * under the same ten-minute policy as the global selection.
      */
