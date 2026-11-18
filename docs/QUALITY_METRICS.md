@@ -30,7 +30,7 @@ Both application modules exceed the line target; both still have branch gaps. A 
 controlled real-browser gate: `npm run smoke:ci` invokes
 `node scripts/run-desktop-journeys.mjs` after the frontend build in the required frontend
 CI job. Its named journeys cover public reading, connection, failure/recovery, account
-switching, the supported-tool viewport boundary and reservations. The synthetic API origin
+switching, narrow-screen notice/scrolling and reservations. The synthetic API origin
 does not establish real backend/SQL/upstream behavior or production capacity.
 
 Report journey/step outcomes, exact source revision, browser/build scope and available bounded
@@ -45,7 +45,8 @@ journeys increased the percentage without a separately measured coverage change.
 existing KPI baseline above remains unchanged. [Test strategy §12.5](TEST_STRATEGY.md#125-automatic-desktop-user-journeys)
 owns commands, viewport checks and evidence limits.
 
-Independent local QA on `906a8084b0573dda1dc50f822e7147f1c063f94d` passed 30 focused
+**Prior-policy evidence (17 November):** independent local QA on
+`906a8084b0573dda1dc50f822e7147f1c063f94d` passed 30 focused
 automated checks, the fresh type-checking production build and all ten curated controlled
 browser journeys. These are scoped local results, not a new full-suite coverage measurement.
 CI run `44140588439` also passed its Chromium installation, all ten browser journeys and evidence
@@ -56,7 +57,10 @@ while retaining normal navigation reset. Two further Chromium regressions reprod
 Help/Delete confirmation dialogs trapping navigation when hidden. The correction closes them
 without discarding the admitted form/key or confirming deletion; both real Home clicks pass.
 Final-head CI/review and owner visual acceptance remain required; [PR #244](https://github.com/Nebettadjsr/GW2/pull/244)
-owns their live status. The owner visual check is still pending. No merge, deployment or
+owns their live status. The 18 November warning-only policy supersedes blocking/no-request
+and automatic-modal-close assertions; those earlier passes and percentages do not establish
+verification of the revision. QA preserves unaffected user stories and explains replaced
+assertions. The owner visual check is still pending. No merge, deployment or
 real-upstream success is implied by these measurements.
 
 ## Current improvement candidates

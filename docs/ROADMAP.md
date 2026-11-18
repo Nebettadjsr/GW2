@@ -23,8 +23,11 @@ curated real-browser desktop journeys, the owner-confirmed
 test repetitions and maintained process/testing documentation. Reuse the production build and
 existing Playwright-core/controlled-origin helpers. The implementation branch provides
 `npm run smoke:ci` (`node scripts/run-desktop-journeys.mjs`) after build in the required
-frontend CI job. Independent QA passes its ten curated journeys; local owner acceptance
-and final-head CI/review remain required before merging. It is not deployed.
+frontend CI job. The owner revised the local proposal on 18 November to a nonblocking notice
+and horizontal desktop canvas: initial narrow tools load normally, and width does not hide
+content or close modals. QA updates superseded assertions while preserving the user stories.
+Consult the PR for current verification; local owner acceptance and final-head CI/review are
+required before merging. It is not deployed.
 
 Independent QA owns tests, fixtures/helpers and explained mobile-test removals for this session;
 Claude implements the released source/package/CI scope. Preserve desktop feature assertions,

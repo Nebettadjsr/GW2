@@ -16,6 +16,11 @@ bounded implementation handoff. It is separate from the broader backend request 
 remains open. No new authentication policy, accepted-page redesign, provider change or retired
 capacity programme is authorized.
 
+On 18 November the owner revised the width behavior: show an informational notice while
+keeping the desktop tool content available with horizontal scrolling. This supersedes the
+blocking guard, width-based proof/loading deferral and automatic modal closure. Keep the
+same issue/PR and independent QA ownership; no mobile tool-layout optimization is requested.
+
 ## Confirmed earlier scope
 
 - Public Home, legal pages, calculation bounds and the Bank/Materials reservation correction are approved and deployed. The owner confirmed the finished behavior works. Earlier local-only holds for those completed releases are superseded.
@@ -28,12 +33,11 @@ capacity programme is authorized.
 
 [Issue #243](https://github.com/Nebettadjsr/GW2/issues/243) owns acceptance criteria, source/test
 scope and current execution status. Its prerequisites #111/#242 and #240/#241 are merged.
-Provide the notice through the real App capability boundary and preserve existing account,
+Provide the notice as presentation only and preserve existing account,
 crafting and character state on resize. The curated aggregate is `npm run smoke:ci`
 (`node scripts/run-desktop-journeys.mjs`) after build in the existing required frontend CI job.
-The notice, `smoke:ci` and the CI step are implemented on the #243 branch. Independent QA
-passes 30 focused tests, a fresh build and ten browser journeys at `906a808`, including the
-review-driven pending-Profit, Ecto and native-modal resize regressions. Local owner visual
+The browser CI step exists; the revised notice/canvas scope is being implemented on the same
+branch. Prior results at `906a808` concern the superseded blocking proposal. Local owner visual
 review remains pending; require current-head CI/review before acceptance and consult the PR
 for their live status. This change is not deployed.
 
@@ -42,7 +46,8 @@ failure/retry, account isolation and the viewport boundary through real Chromium
 HTTP responses. These journeys establish UI/request behavior, not backend economics or a
 line/branch percentage. Remove unsupported phone/tablet tool-layout repetitions while retaining
 their relevant desktop feature assertions and existing keyboard/focus/zoom/short-height coverage.
-Public reading and the notice remain readable and keyboard-accessible below the tool boundary.
+Public reading and the notice remain readable below the notice threshold; tool content remains
+available through horizontal scrolling without a small-screen usability guarantee.
 
 The issue is held with `pairing` during preparation and acceptance. Independent QA owns all
 frontend tests, scripts, fixture/helpers and mobile-test removals. Claude may inspect/run them

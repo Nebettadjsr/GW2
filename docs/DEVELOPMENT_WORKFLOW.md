@@ -184,16 +184,18 @@ frontend check is not evidence that this step ran for the current head.
 
 The runner executes a curated sequence of real-browser journeys against fresh
 built assets and owned `127.0.0.1` synthetic API origins. It covers public reading,
-connection, failures/recovery, account switching, the supported-tool viewport
-boundary and reservations. It blocks real upstream traffic and needs no real
+connection, failures/recovery, account switching, the narrow-screen notice/scrolling
+and reservations. It blocks real upstream traffic and needs no real
 GW2 key, application backend or database. It does not invoke every legacy
 `smoke:*` script, some of which require live or full-stack environments.
 
 The [product viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns the threshold and
-public-page exemptions. Browser evidence checks the notice at 1023 CSS pixels,
-tools at 1024 and wider desktop sizes, and preserves desktop keyboard/focus,
+public-page exemptions. Following the 18 November revision, browser evidence checks the
+notice with actual tool content and horizontal scrolling at 390/1023 CSS pixels, no notice
+at 1024 and wider, and preserves desktop keyboard/focus,
 short-height and zoom checks. Home, guides and legal reading pages remain
-available below the tool threshold; their narrow checks are still relevant.
+responsive below the notice threshold; their narrow checks are still relevant. Earlier
+width-blocking/no-request/forced-modal-close assertions are replaced for this owner decision.
 
 The existing locked `playwright-core` CLI installs matching Chromium and Linux
 dependencies; the browser run step exports its executable as `GW2_BROWSER_PATH`

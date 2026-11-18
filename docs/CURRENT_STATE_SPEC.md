@@ -115,22 +115,20 @@ universal time-based deletion guarantee. See [OPERATIONS_RUNBOOK](OPERATIONS_RUN
 
 ### Verification evidence and limits
 
-Issue #243 branch (not yet merged or deployed; the live Oracle revision is unchanged): below 1024 CSS
-pixels (`matchMedia`, `useDesktopTools`) every tool destination shows `DesktopWidthNotice`. Initial
-blocked tool loads do not restore a retained key, bootstrap or mount screens. An already-admitted
-current screen stays mounted inside a hidden, inert region across width-only changes; real route
-changes keep their normal lifecycle. Home and the legal/privacy/storage pages stay public.
-Open native tool dialogs close on blocking, releasing public navigation without discarding
-the admitted screen or its draft. `npm run smoke:ci` runs ten controlled-browser journeys
-after the build in the frontend CI job
-(Chromium via the locked playwright-core CLI) and uploads `desktop-browser-journeys` evidence
-with seven-day retention. Independent QA verified 30 focused tests, type-check/build and all
-ten journeys at `906a8084b0573dda1dc50f822e7147f1c063f94d` on 17 November 2026, including
-pending Profit/Ecto state preservation and native-dialog navigation across resize. Full CI run
+The owner revised #243 on 18 November: narrow tools keep their content and normal loading,
+with an informational notice and horizontally scrollable desktop canvas. This replaces the
+earlier blocking guard and forced modal closure; [DOMAIN_SPEC](DOMAIN_SPEC.md#supported-browser-viewport)
+owns current behavior. The revision is being implemented in the existing local PR; the live
+Oracle revision is unchanged. [PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns current
+implementation, verification, visual acceptance and merge status.
+
+The existing `npm run smoke:ci` gate runs controlled-browser journeys after the frontend build,
+using locked Chromium and seven-day `desktop-browser-journeys` artifacts. Prior-policy evidence:
+independent QA verified 30 focused tests, type-check/build and ten journeys at
+`906a8084b0573dda1dc50f822e7147f1c063f94d` on 17 November 2026. Full CI run
 [44140588439](https://github.com/Nebettadjsr/GW2/actions/runs/44140588439) at that revision
-passed, including 951 frontend tests and all ten browser journeys. Owner visual review is
-still pending. [PR #244](https://github.com/Nebettadjsr/GW2/pull/244) owns live final-head
-CI/review and merge status; the identified evidence above is a recorded measurement.
+passed, including 951 frontend tests and all ten browser journeys. Those results predate the
+18 November policy revision and do not verify the warning-only implementation.
 
 Before #236 merged, independent QA passed 306 relevant backend checks, 213 focused frontend
 checks, type/build and 19 controlled visible desktop/narrow browser phases. Full frontend CI

@@ -53,18 +53,12 @@ without introducing extra services solely to make the design more elaborate.
 ## 3. Browser responsibilities and assets
 
 The [supported browser viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns
-tool availability, the width notice and public-reading exceptions. The frontend capability
-gate must run before account restoration and initial tool mounting. A blocked initial route
-must not acquire an account context or make hidden feature requests. Width changes preserve
-already mounted account/crafting/character state rather than recreating the workspace merely
-to render the notice. The admitted current route stays mounted inside a hidden, inert tool
-region; width changes must not invoke navigation deactivation or discard pending answers.
-Navigation while narrow does not admit an unopened tool. Actual route changes retain their
-normal lifecycle, and account-generation guards still own account isolation.
-Before leaving a tool hidden, close its open native dialogs through their normal close
-lifecycle so the modal top layer cannot leave public navigation inert. Preserve the admitted
-screen and its drafts; widening does not reopen the dialogs.
-This UI capability check does not grant or replace backend authorization.
+the informational width notice and public-reading exceptions. Viewport detection controls
+presentation only: narrow tools retain a desktop-width canvas with horizontal scrolling.
+It must not gate account restoration, bootstrap, mounting, requests or native dialogs. Keep
+the ordinary route/KeepAlive lifecycle unchanged across resize; no hidden/inert admission
+machinery is needed. Account-generation guards and backend authorization still own account
+isolation. Public reading pages retain their account-restoration exemption and fluid layout.
 
 Controlled real-browser journeys use the production frontend with a synthetic HTTP boundary.
 They verify real navigation, event handling, native focus and request wiring, independently

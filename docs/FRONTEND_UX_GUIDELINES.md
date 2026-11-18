@@ -7,7 +7,8 @@ This document owns reusable web presentation and interaction requirements. It im
 The Product Owner's visual-design direction of 2026-09-25 extends that foundation: build an attractive, responsive, Guild Wars 2-inspired website with a coherent visual identity, polished feedback and natural browser behavior. The requirements below describe intended presentation, not a claim that the existing frontend already implements it.
 
 The later [supported browser viewport decision](DOMAIN_SPEC.md#supported-browser-viewport)
-governs tool availability and supersedes earlier phone/tablet tool-layout expectations.
+governs the informational notice/desktop canvas and supersedes earlier phone/tablet layout
+expectations and the initial blocking proposal.
 Public reading pages retain their responsive presentation. The remaining requirements apply
 within that product support policy.
 
@@ -175,12 +176,11 @@ nothing until an image is supplied. Essential instructions remain readable witho
 ## 3. Desktop tools and public reading layouts
 
 Render the width notice required by [the product policy](DOMAIN_SPEC.md#supported-browser-viewport)
-as clear readable page content, with an accessible heading/status and short explanation.
-Keep global navigation and public-page links usable. Unsupported tool controls must not
-remain interactive behind an overlay. Changing only the notice must preserve the current
-route, account and kept-alive tool state; reopening a supported viewport is not a new account
-connection or a reason to submit another calculation. Move focus out of content made
-unavailable without trapping it or stealing it repeatedly on resize. The concrete new notice
+as concise readable text above the actual tool content, fitting the viewport. It is a warning,
+not a replacement page, overlay or access gate. Keep the desktop canvas available through
+horizontal scrolling, with no clipping or width-based hiding/inert controls. Do not promise
+future mobile optimization. Resizing must preserve normal route/account/tool/modal state;
+it neither submits another calculation nor closes an open modal. The concrete new notice
 requires Product Owner review in the local application before acceptance.
 
 Use the restrained dark, Guild Wars 2-inspired visual identity in section 9, with readable typography, consistent spacing and clear group boundaries. Favor clarity over decoration, hierarchy over raw density, and user-relevant information over diagnostic data. Visual polish is part of the intended result; it must support rather than obscure the data.
@@ -195,7 +195,8 @@ information pages reflow at narrower widths. No phone-specific tool composition 
 A table may scroll horizontally when comparison genuinely requires two dimensions. Confine
 that scrolling to its labelled region and preserve keyboard access. Avoid clipped controls,
 inaccessible details or overlapping content at supported widths. Public reading pages must
-not inherit a tool's wide canvas. Use content-driven breakpoints within the product policy.
+not inherit a tool's wide canvas. At narrow tool viewports, document-level horizontal scrolling
+is intentional; no phone-specific rearrangement or usability polish is required.
 
 ## 4. Crafting Profit information hierarchy
 
@@ -304,7 +305,7 @@ Use a recognizable site header with logo/wordmark, concise destination links and
 
 Navigation destinations use real links, direct URLs, normal Back/Forward and meaningful
 document titles. Actions use buttons. Navigation remains keyboard-accessible, including
-public reading at narrow widths and the unsupported-tool notice. Avoid a modal for every
+public reading at narrow widths and the informational tool notice. Avoid a modal for every
 detail; inline or dedicated regions usually preserve browsing context better. Sticky
 elements must not obscure content or consume excessive height in a short desktop viewport.
 

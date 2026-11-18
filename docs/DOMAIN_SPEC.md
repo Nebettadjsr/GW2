@@ -25,33 +25,30 @@ Implementation details such as JavaFX, PostgreSQL, Java classes, REST APIs, cont
 
 ### Supported browser viewport
 
-**Product Owner decision, 17 November 2026; STORY-COV-006 (#243).** Account tools are
-supported at a browser viewport width of at least **1024 CSS pixels**, including exactly
-1024. This applies to Crafting Profit, Crafting Discovery, Ecto Salvage, System Status,
-Bank, Materials and Characters. Determine capability from the current viewport, not a
-user-agent string or an assumed device type. Phone/tablet layouts for these tools are
-not supported product requirements.
+**Product Owner revision, 18 November 2026; STORY-COV-006 (#243).** This replaces the
+17 November blocking proposal. Crafting Profit, Discovery, Ecto Salvage, System Status,
+Bank, Materials and Characters use a desktop layout with a **1024 CSS pixel** baseline.
+Below that viewport width, show this informational notice above the actual tool content:
+**"This page is not optimized for mobile use. You can scroll horizontally to use the whole page."**
+Do not include "yet" or imply that mobile optimization is planned.
 
-Below that width, show **"Please use a PC or a wider browser window"** and briefly explain
-the minimum width. Unsupported tool controls are unavailable; navigation to public reading
-pages remains usable. Home, its beginner-guide tabs, Legal notice, Privacy and Cookies &
-browser storage remain readable at narrower widths and issue no API calls or retained-key
-restoration merely because they were opened.
+Keep tool content available on narrower screens using horizontal scrolling over the desktop
+canvas. The notice must fit the viewport. Do not hide, disable, make inert or defer a tool
+because the viewport is narrow. Initial narrow tool URLs use normal account restoration,
+authorization and data loading. At 1024 pixels and wider, omit the notice. Determine its
+visibility from the viewport, not the user agent. Dedicated phone/tablet tool layouts and
+small-screen usability optimization are not product requirements.
 
-An initial direct load of a blocked tool must not restore/prove a retained key, make hidden
-tool API requests, calculate or start synchronization. Resizing across the boundary must not
-disconnect, clear credentials or saved reservations, change the route, reset retained
-crafting/character selections, or duplicate a calculation solely because the notice appeared
-or disappeared. Widening makes the existing destination available without requiring key
-entry again. Work already admitted need not be cancelled; do not imply that narrowing the
-window cancelled it. These rules do not change ordinary account expiry, grants or refresh
-semantics.
+Width changes alone must not disconnect, clear keys/drafts/reservations, change the route,
+reset selections or inputs, discard pending answers, duplicate calculation/proof/refetch
+work, or automatically close/reopen native dialogs. Native modals retain ordinary explicit
+Close/Escape behavior. Actual navigation, account expiry, grants and refresh retain their
+existing semantics. The notice is presentation only, not an account-access boundary.
 
-Keep keyboard access, focus handling, browser zoom and short-height scrolling usable at
-supported tool widths. Browser zoom is evaluated through the resulting CSS viewport;
-it is not an exemption from the width boundary. Public reading pages continue to reflow.
-The notice is a product support boundary, not account authorization or evidence that a
-particular physical device is a PC.
+Keep desktop keyboard access, focus, zoom and short-height scrolling usable. Home, its guide
+tabs, Legal notice, Privacy and Cookies & browser storage continue to reflow at narrow widths
+without the tool's wide canvas or notice. Merely opening those public pages issues no account
+requests or retained-key restoration.
 
 ---
 

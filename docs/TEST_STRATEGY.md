@@ -661,7 +661,7 @@ silent:
 | Type check | `npm run type-check` | strict typing across `.ts` and `.vue` | that received JSON matches those types |
 | Component/unit | `npm test` | rendering, interaction, request construction, state transitions | that the real backend connection works |
 | Production build | `npm run build` | the locked dependency set builds to static assets | runtime behavior |
-| Automatic controlled browser journeys (STORY-COV-006) | `npm run smoke:ci` | a real browser drives the built app through public reading, connection, failure/recovery, account switching, the supported-tool viewport boundary and reservations against an owned synthetic API | real backend/SQL/upstream behavior, production performance or additional Vitest/JaCoCo line coverage |
+| Automatic controlled browser journeys (STORY-COV-006) | `npm run smoke:ci` | a real browser drives the built app through public reading, connection, failure/recovery, account switching, narrow-screen notice/scrolling and reservations against an owned synthetic API | real backend/SQL/upstream behavior, production performance or additional Vitest/JaCoCo line coverage |
 | Explicit real-backend browser smoke | `npm run smoke:browser`, `npm run smoke:account` | a real browser retrieves and renders real backend results, compared against the very response it received | performance (§34), any state the live data did not contain, and whether a compared value is domain-correct |
 | Browser smoke, controlled boundary | `npm run smoke:sync` | a real browser drives controls whose live counterpart would mutate data, and presents the answers | that a real operation ran, or anything about the backend's own behavior |
 | Focused controlled layout and accessibility | `npm run smoke:layout`, `npm run smoke:profit` | supported desktop layout, increased text size, keyboard focus and contrast, URLs/titles, result/detail placement, selection and sticky positioning where the script explicitly measures them | automatic acceptance of legacy phone-tool scenarios, unvisited combinations, real data or performance |
@@ -723,9 +723,9 @@ their execution time.
 
 Layout, focus and contrast claims are *measured in a real browser*, never inferred from the stylesheet.
 Apply the [supported-tool viewport policy](DOMAIN_SPEC.md#supported-browser-viewport): verify the notice at
-1023 CSS pixels and supported tools at 1024 CSS pixels and representative wider desktop sizes.
-Below the threshold, test the boundary notice and navigation rather than a phone layout for
-the tools. Home, guides and legal reading pages remain exempt and may be checked at narrow
+390/1023 CSS pixels, plus normal tool content and measurable horizontal scrolling. At 1024
+and wider, tools retain the desktop layout without the notice. These are warning/canvas checks,
+not a requirement to optimize phone layouts. Home, guides and legal reading pages remain exempt and may be checked at narrow
 widths. Keep desktop keyboard/focus, short-height and zoom/text-enlargement assertions; zoom
 that takes the effective CSS viewport below the threshold should produce the notice.
 Six rules keep such a check honest:
@@ -792,12 +792,16 @@ build inputs/output must be current too. No real API key, application backend or
 required. Fixtures provide backend results; browser checks do not reimplement economic rules.
 
 Viewport regressions include an unfinished Profit answer held across narrowing and released
-while blocked: widening must show it without a second calculation. Ecto quantity, salvage/tool
+while narrow: it must render without a second calculation. Ecto quantity, salvage/tool
 and price modes survive width-only changes without refetching, while actual navigation retains
-its normal reset/refetch. Reaching an unopened tool while narrow must not start hidden work.
-Real-Chromium regressions also open Help and Delete confirmation before narrowing: neither
-may remain native-modal or block an ordinary Home click. The admitted form draft/key survive
-a width-only return without reopening or refetch. Never confirm deletion in these journeys.
+its normal reset/refetch. Initial/reached narrow tools restore/load normally with visible content;
+width is not an access or account-work gate. Test actual horizontal scroll movement and reaching
+the desktop canvas, rather than only declared CSS width.
+Real-Chromium regressions open Help and Delete confirmation before narrowing: their normal modal
+interaction remains available, then explicit Close/Escape permits navigation. Width alone must
+not close/reopen them, clear the form draft/key or trigger refetch. Never confirm deletion.
+The 18 November owner decision explicitly replaces earlier blocking, no-request-at-narrow and
+forced-modal-close assertions. Preserve the unaffected account/desktop user-story regressions.
 
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to
