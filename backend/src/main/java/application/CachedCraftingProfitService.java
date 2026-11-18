@@ -19,7 +19,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Crafting Profit's stale-while-revalidate use case (TARGET_ARCHITECTURE.md §9.1, ADR-007).
+ * Crafting Profit's stale-while-revalidate use case.
  *
  * <p>It replaces the two blocking paths the feature used to take — the account freshness gate that
  * refused the request with 503 while a refresh ran, and the synchronous Trading Post fetch inside

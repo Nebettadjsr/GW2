@@ -12,27 +12,27 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * What one resolution-detail operation produced for one selected recipe
- * (TARGET_ARCHITECTURE.md section 13.2/13.3): the recipe's normal row summary and the domain's
+ * What one resolution-detail operation produced for one selected recipe:
+ * the recipe's normal row summary and the domain's
  * semantic explanation of one execution of it, both computed from the single set of inputs that
  * operation captured.
  *
- * <p>It carries calculation facts only. The wire envelope of section 13.3 - {@code consistency},
+ * <p>It carries calculation facts only. The wire envelope - {@code consistency},
  * {@code calculatedAt}, the echoed {@code calculation} inputs and the DTO shapes - belongs to the
  * HTTP layer, and nothing here is JSON-, HTTP- or JavaFX-aware.
  *
  * <p>{@link #recipe()}, {@link #items()} and {@link #quotes()} are the inputs this operation
  * captured, carried so that a presentation layer can describe the recipe, name items and report
- * quotes from <em>this</em> operation's facts rather than reading anything again (section 13.2).
+ * quotes from <em>this</em> operation's facts rather than reading anything again.
  *
- * <p>{@link Status} keeps the three outcomes section 13.3/13.4 require apart. A blocked
+ * <p>{@link Status} keeps the three outcomes apart. A blocked
  * explanation is {@link Status#AVAILABLE}: it exists and carries its reasons, unlike
  * {@link Status#RESULT_UNAVAILABLE}, where there is no resolution result to explain at all, and
  * unlike {@link Status#RECIPE_NOT_IN_CALCULATION}, where this operation produced no row for the
  * recipe in the first place.
  *
  * @param recipeId    the recipe that was asked about; the root node's actually selected recipe may
- *                    differ (TARGET_ARCHITECTURE.md section 13.3, AR-003).
+ *                    differ from this requested ID.
  * @param status      which of the three outcomes above applies.
  * @param recipe      the selected recipe as this operation's crafting graph holds it, or null when
  *                    {@code status} is {@link Status#RECIPE_NOT_IN_CALCULATION}.

@@ -12,7 +12,7 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * One calculation's captured read view of the persisted inputs (TARGET_ARCHITECTURE.md §9.1).
+ * One calculation's captured read view of the persisted inputs.
  *
  * <p>Every input a single Crafting Profit calculation reads — the account source completion
  * markers, the Trading Post coverage report, recipe knowledge, the character roster, the owned
@@ -78,9 +78,8 @@ public final class ProfitInputSession implements AutoCloseable {
     }
 
     /**
-     * One account's snapshot session (STORY-APP-015, TARGET_ARCHITECTURE.md §7.2 "Preserve the
-     * existing {@code REPEATABLE READ} calculation-input transaction across scoped rows, markers and
-     * shared inputs").
+     * One account's {@code REPEATABLE READ} snapshot across scoped rows, source markers and
+     * shared inputs.
      *
      * <p>The same single transaction as {@link #open()}, with the account it belongs to carried
      * alongside: the account's rows, the account's source markers and the shared global inputs are
