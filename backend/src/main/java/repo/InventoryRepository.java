@@ -303,7 +303,7 @@ public class InventoryRepository {
      */
     public Map<Integer, Integer> loadOwnedInventory(Connection con) throws SQLException {
         // Aggregates owned quantity across account_materials, account_bank and character_items, all
-        // of which carry a verified account GUID on a migrated database (STORY-INFRA-004): summing
+        // of which carry a verified account GUID on a managed database: summing
         // them without a scope would mix accounts, so the unscoped path is refused there.
         ManagedSchema.rejectUnscopedAccountAccess(con, "owned inventory without an account scope");
         Map<Integer, Integer> inv = new HashMap<>();
@@ -478,8 +478,7 @@ public class InventoryRepository {
     }
 
     /**
-     * Owned inventory for coordinated multi-character planning (DOMAIN_SPEC.md section 2.2.1 /
-     * STORY-DOM-014): the shared account-wide ordinary/tradable pool, the shared account-wide
+     * Owned inventory for coordinated multi-character planning (DOMAIN_SPEC.md section 2.2.1): the shared account-wide ordinary/tradable pool, the shared account-wide
      * account-bound pool (usable by any character), and soulbound owned quantity split by owning
      * character - usable only by that exact character.
      */

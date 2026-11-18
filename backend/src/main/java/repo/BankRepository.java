@@ -24,9 +24,9 @@ public class BankRepository {
      * are null for an empty slot; {@code iconPath}/{@code iconUrl}/{@code rarity} are null when the
      * slot's item has no matching {@code items} row (LEFT JOIN).
      *
-     * <p>{@code iconPath} is the local desktop file JavaFX renders; {@code iconUrl} is the retained
-     * upstream icon source ({@code items.icon_url}) a browser-facing read derives its image URL from
-     * (TARGET_ARCHITECTURE.md §12.1). Both come from this one batch read, so neither costs a per-row
+     * <p>{@code iconPath} is retained legacy metadata (a local icon file path); {@code iconUrl} is
+     * the retained upstream icon source ({@code items.icon_url}) a browser-facing read derives its
+     * image URL from. Both come from this one batch read, so neither costs a per-row
      * lookup. {@code itemName} is the shared cached {@code items.name}, null for an empty slot or
      * an item without a cached row (never invented).
      */
@@ -100,8 +100,7 @@ public class BankRepository {
      * versioned database means it has no account to read: it returns no rows rather than reading
      * across accounts. Nothing is inferred - not a configured, last-used or only
      * registered account - and no row of any account is exposed, so a global workflow that merely
-     * passes an account input along (the item-icon read path) stays usable while scope resolution is
-     * introduced by its own story.
+     * passes an account input along (the item-icon read path) stays usable.
      *
      * <p>An empty result here is the absence of a scope, <em>not</em> a claim that this account's
      * bank is empty or that its synchronization succeeded: completion stays recorded per source in

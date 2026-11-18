@@ -38,8 +38,8 @@ public class MaterialStorageRepository {
      * {@code account_materials} join carries the owning account, so a quantity is this account's or
      * zero, never another account's. And the "has this been synchronized at all?" question is
      * answered by this account's {@code MATERIALS} marker in {@code account_source_state} instead of
-     * the singleton {@code account_materials_sync} row, which is retired as a runtime authority
-     * (TARGET_ARCHITECTURE.md §7.2): that row said only that <em>somebody</em> had synchronized.
+     * the singleton {@code account_materials_sync} row, which is not a runtime authority on a
+     * managed database: that row said only that <em>somebody</em> had synchronized.
      *
      * <p>The catalog itself ({@code material_categories}, {@code material_category_items}) and item
      * metadata stay global and unjoined to any account, so both accounts read the same positions and
@@ -77,7 +77,7 @@ public class MaterialStorageRepository {
 
     public List<MaterialStorageRow> loadMaterialStorage(Connection con) throws SQLException {
         // The join below reads account_materials without an account GUID, and the singleton
-        // account_materials_sync marker no longer exists on a migrated database (STORY-INFRA-004).
+        // account_materials_sync marker does not exist on a managed database.
         ManagedSchema.rejectUnscopedAccountAccess(con, "material storage without an account scope");
         MaterialStorageSchema.ensure(con);
         try (PreparedStatement sync = con.prepareStatement("SELECT fetched_at FROM account_materials_sync WHERE id = 1");
