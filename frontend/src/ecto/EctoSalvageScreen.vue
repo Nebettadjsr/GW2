@@ -252,27 +252,24 @@ const normalizedEctoCount = computed(() => {
 const expectedLuck = computed(() => normalizedEctoCount.value * selectedMethod.value.luckPerEcto)
 const expectedDust = computed(() => normalizedEctoCount.value * selectedMethod.value.dustPerEcto)
 
-const ectoCostCopper = computed<number | null>(() =>
-  selectedEctoPrice.value == null ? null : normalizedEctoCount.value * selectedEctoPrice.value
-)
+/** One arithmetic for the quantity result and every Luck target: same rounding, fee and null rules. */
+function costsFor(ectos: number) {
+  const ectoCost = selectedEctoPrice.value == null ? null : ectos * selectedEctoPrice.value
+  const salvageCost = Math.round(ectos * selectedTool.value.costPerUseCopper)
+  const gemCost = ectos * (selectedTool.value.gemsPerUse ?? 0)
+  const dustNet = selectedDustPrice.value == null
+    ? null
+    : Math.floor(ectos * selectedMethod.value.dustPerEcto * selectedDustPrice.value * TP_SELL_MULTIPLIER)
+  const effective = ectoCost == null || dustNet == null ? null : ectoCost + salvageCost - dustNet
+  return { ectoCost, salvageCost, gemCost, dustNet, effective }
+}
 
-const salvageCostCopper = computed(() =>
-  Math.round(normalizedEctoCount.value * selectedTool.value.costPerUseCopper)
-)
-
-const salvageGemCost = computed(() =>
-  normalizedEctoCount.value * (selectedTool.value.gemsPerUse ?? 0)
-)
-
-const dustNetCopper = computed<number | null>(() => {
-  if (selectedDustPrice.value == null) return null
-  return Math.floor(expectedDust.value * selectedDustPrice.value * TP_SELL_MULTIPLIER)
-})
-
-const effectiveLuckCostCopper = computed<number | null>(() => {
-  if (ectoCostCopper.value == null || dustNetCopper.value == null) return null
-  return ectoCostCopper.value + salvageCostCopper.value - dustNetCopper.value
-})
+const quantityCosts = computed(() => costsFor(normalizedEctoCount.value))
+const ectoCostCopper = computed(() => quantityCosts.value.ectoCost)
+const salvageCostCopper = computed(() => quantityCosts.value.salvageCost)
+const salvageGemCost = computed(() => quantityCosts.value.gemCost)
+const dustNetCopper = computed(() => quantityCosts.value.dustNet)
+const effectiveLuckCostCopper = computed(() => quantityCosts.value.effective)
 
 const costPer1000LuckCopper = computed<number | null>(() => {
   if (effectiveLuckCostCopper.value == null || expectedLuck.value <= 0) return null
@@ -299,45 +296,19 @@ function buildTarget(
   const ectosRequired = luckRemaining <= 0
     ? 0
     : Math.ceil(luckRemaining / selectedMethod.value.luckPerEcto)
+  const costs = costsFor(ectosRequired)
 
-    const targetDust = ectosRequired * selectedMethod.value.dustPerEcto
-    const targetSalvageCost = Math.round(
-      ectosRequired * selectedTool.value.costPerUseCopper
-    )
-    const targetGemCost =
-      ectosRequired * (selectedTool.value.gemsPerUse ?? 0)
-
-    const ectoCostCopper =
-      selectedEctoPrice.value != null
-        ? ectosRequired * selectedEctoPrice.value
-        : null
-
-    let effectiveCostCopper: number | null = null
-
-    if (ectoCostCopper != null && selectedDustPrice.value != null) {
-      const dustNet = Math.floor(
-        targetDust *
-        selectedDustPrice.value *
-        TP_SELL_MULTIPLIER
-      )
-
-      effectiveCostCopper =
-        ectoCostCopper +
-        targetSalvageCost -
-        dustNet
-    }
-
-    return {
-      key,
-      label,
-      magicFindPercent,
-      luckRemaining,
-      ectosRequired,
-      ectoCostCopper,
-      salvageCostCopper: targetSalvageCost,
-      gemCost: targetGemCost,
-      effectiveCostCopper
-    }
+  return {
+    key,
+    label,
+    magicFindPercent,
+    luckRemaining,
+    ectosRequired,
+    ectoCostCopper: costs.ectoCost,
+    salvageCostCopper: costs.salvageCost,
+    gemCost: costs.gemCost,
+    effectiveCostCopper: costs.effective
+  }
 }
 
 const luckTargets = computed<DisplayLuckTarget[]>(() => {
