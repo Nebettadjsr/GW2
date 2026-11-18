@@ -152,7 +152,7 @@ public class CharacterRepository {
     public record Discipline(String discipline, int rating, boolean active) {}
 
     /**
-     * One character's identity facts and crafting disciplines Nullable identity
+     * One character's identity facts and crafting disciplines. Nullable identity
      * columns stay null: nothing is defaulted or fabricated.
      */
     public record CharacterProfile(String name, String profession, String race, String gender,

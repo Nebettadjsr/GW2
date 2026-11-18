@@ -284,10 +284,11 @@ public class InventoryRepository {
      *
      * Also includes item quantities held in character_items (all characters, all bag/equipment
      * locations) per DOMAIN_SPEC.md DQ-006 ("owned pool = material storage + bank + all character
-     * inventories"). Binding (binding/bound_to) is intentionally not filtered here — every owned
-     * character_items row counts toward the pool the same as bank/materials rows. Restricting
-     * usable quantity by binding (DOMAIN_SPEC.md DQ-007) is a separate, not-yet-implemented rule
-     * that needs a "selected character" concept that does not exist in the planner input yet.
+     * inventories"). This legacy unfiltered aggregate ignores binding (binding/bound_to): every owned
+     * character_items row counts toward the pool the same as bank/materials rows. Binding-aware
+     * usable quantity (DOMAIN_SPEC.md DQ-007) is implemented separately by the selected-character
+     * methods such as {@link #loadOwnedInventoryForCharacter(String)} and
+     * {@link #loadOwnedInventoryForCharacters(Set)}, which split the pools by binding.
      */
     public Map<Integer, Integer> loadOwnedInventory() throws SQLException {
         try (Connection con = repo.Db.open()) {
@@ -518,7 +519,9 @@ public class InventoryRepository {
     /**
      * Source exclusions and finite reservations apply before aggregation; cached quantities and
      * character stock are untouched. A finite target is subtracted once per item and store across
-     * its stacks (at most the owned amount). Partial reservation across stacks with different
+     * its stacks (at most the owned amount). This overload passes no Bank slot
+     * allocations; the overload taking {@code bankAllocations} implements Bank slot allocation. Only the
+     * mixed-binding Materials case is unresolved: a partial reservation across stacks with different
      * bindings/owners has no approved allocation rule and fails with
      * {@link UnresolvedReservationAllocationException}.
      */
