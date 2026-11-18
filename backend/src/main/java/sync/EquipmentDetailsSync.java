@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Independently committed, globally shared cache of slim public equipment details and itemstats rows
- * (STORY-CHAR-014). Only ids with no stored row are requested, so a warm cache makes no upstream call.
+ * Independently committed, globally shared cache of slim public equipment details and itemstats rows.
+ * Only ids with no stored row are requested, so a warm cache makes no upstream call.
  * No database connection is held during an HTTP request; each batch (at most
  * {@link SyncConstants#HTTP_IDS_BATCH} ids) is committed on its own, and a failed or malformed batch
  * never removes stored data.
@@ -163,7 +163,7 @@ public final class EquipmentDetailsSync {
     }
 
     /**
-     * Full item refresh (STORY-STATUS-004): rewrites the slim projection of items that <em>already</em>
+     * Full item refresh: rewrites the slim projection of items that <em>already</em>
      * have an {@code equipment_item_details} row from the same validated {@code /v2/items} payload, on
      * the caller's transaction. Uncached items get no row, an unprojectable record for a cached row fails the batch,
      * and {@code equipment_item_stats} is never touched.

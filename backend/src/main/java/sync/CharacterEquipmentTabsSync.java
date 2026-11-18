@@ -25,7 +25,7 @@ import java.util.Set;
 
 /**
  * Independently refreshed saved-equipment-tab coverage over the already-published {@code CHARACTERS}
- * roster (STORY-CHAR-005, Option A). It never fetches, advances or completes {@code CHARACTERS}, never
+ * roster. It never fetches, advances or completes {@code CHARACTERS}, never
  * touches {@code character_items}, and runs through the shared account refresh coordinator.
  *
  * <p>Order: capture the published roster and its generation, fetch and validate every character's tabs
