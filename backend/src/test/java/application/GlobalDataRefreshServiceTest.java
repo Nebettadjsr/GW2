@@ -10,8 +10,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Application-layer orchestration tests (TARGET_ARCHITECTURE.md §25, STORY-APP-005) for
@@ -50,6 +54,44 @@ class GlobalDataRefreshServiceTest {
         assertEquals(0, graphCache.rebuildCount);
         assertEquals(List.of(), graphCache.graphCalls);
         assertEquals(false, result.graphRebuilt());
+    }
+
+    @Test
+    void materialCategoryFailureStopsLaterWorkRecordsSafeStatusAndAllowsExplicitRetry() throws Exception {
+        var gateway = new RecordingGateway();
+        var graphCache = new RecordingCache();
+        var service = new GlobalDataRefreshService(gateway, new CraftingGraphRebuildService(graphCache));
+        gateway.materialCategoriesFailure = new IOException("private upstream diagnostic must not become status");
+        gateway.onMaterialCategories = () -> assertTrue(service.status().running(), "the active refresh is visible");
+
+        var thrown = assertThrows(IOException.class, service::refreshAll);
+
+        assertSame(gateway.materialCategoriesFailure, thrown);
+        assertEquals(List.of("materialCategories"), gateway.calls);
+        assertEquals(List.of(), graphCache.graphCalls);
+        assertEquals(0, graphCache.rebuildCount);
+        var failed = service.status();
+        assertFalse(failed.running());
+        assertNotNull(failed.lastCheckedAt());
+        assertEquals("IOException", failed.lastFailure(), "status reports only the safe exception type");
+        assertNull(failed.lastChangedAt());
+        assertNull(failed.lastRecipeSyncAt());
+        assertNull(failed.lastGraphRebuildAt());
+
+        gateway.materialCategoriesFailure = null;
+        var result = service.refreshAll();
+
+        assertEquals(List.of("materialCategories", "materialCategories", "materialIcons", "tradeableItems", "globalRecipes"), gateway.calls);
+        assertEquals(List.of("invalidate", "rebuild"), graphCache.graphCalls);
+        assertEquals(1, graphCache.rebuildCount);
+        assertEquals(new GlobalDataRefreshService.RefreshResult(true, true, true), result);
+        var recovered = service.status();
+        assertFalse(recovered.running());
+        assertNull(recovered.lastFailure());
+        assertNotNull(recovered.lastCheckedAt());
+        assertNotNull(recovered.lastChangedAt());
+        assertNotNull(recovered.lastRecipeSyncAt());
+        assertNotNull(recovered.lastGraphRebuildAt());
     }
 
     @Test
@@ -95,11 +137,17 @@ class GlobalDataRefreshServiceTest {
 
     private static class RecordingGateway extends GlobalDataRefreshGateway {
         final List<String> calls = new ArrayList<>();
+        Exception materialCategoriesFailure;
+        Runnable onMaterialCategories = () -> {};
         Exception tradeableItemsFailure;
         Exception globalRecipesFailure;
         boolean recipesChanged = true;
 
-        @Override public void syncMaterialCategories() { calls.add("materialCategories"); }
+        @Override public void syncMaterialCategories() throws Exception {
+            calls.add("materialCategories");
+            onMaterialCategories.run();
+            if (materialCategoriesFailure != null) throw materialCategoriesFailure;
+        }
         @Override public void syncMaterialItemMetadata() { calls.add("materialIcons"); }
 
         @Override
