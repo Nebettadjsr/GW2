@@ -98,8 +98,8 @@ public final class ProfitInputSession implements AutoCloseable {
     /**
      * The account this snapshot belongs to, or null when it has none.
      *
-     * <p>A null scope is not "the default account": it means the session was opened through a
-     * retained unscoped path, which the versioned account schema refuses outright. Collaborators
+     * <p>A null scope is not "the default account": production {@code open()} always binds one.
+     * Null belongs only to detached or reflection-created in-memory test seams. Collaborators
      * branch on it to choose the scoped repository read, never to pick an account.
      */
     public AccountScope scope() {

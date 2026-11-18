@@ -112,11 +112,14 @@ class TradingPostCoverageCoordinationTest {
         try (Statement statement = admin.createStatement()) {
             statement.execute("INSERT INTO account_registry (account_id) VALUES ('" + SCOPE.id() + "')");
 
-            // Recipes 1 and 2 are known to the account, so items 10, 11, 20 and 21 are required.
-            // Recipe 3 is known to nobody yet: items 40 and 41 only become relevant when the account
-            // learns it. The shared recipe graph is global; only the knowledge rows are account-owned.
+            // Recipe 1 is unlocked on the account and recipe 2 is learned only by one of its
+            // characters, so items 10, 11, 20 and 21 are required. Recipe 3 is known to nobody yet:
+            // items 40 and 41 only become relevant when the account learns it. The shared recipe
+            // graph is global; only the knowledge rows are account-owned.
             statement.execute("INSERT INTO items (item_id, name) VALUES (10,'a'),(11,'b'),(20,'c'),(21,'d'),(40,'e'),(41,'f')");
-            statement.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + SCOPE.id() + "', 1), ('" + SCOPE.id() + "', 2)");
+            statement.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + SCOPE.id() + "', 1)");
+            statement.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('" + SCOPE.id() + "', 7, 'Crafter')");
+            statement.execute("INSERT INTO character_recipes (account_id, character_id, recipe_id) VALUES ('" + SCOPE.id() + "', 7, 2)");
             statement.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (1, 10), (2, 20), (3, 40)");
             statement.execute("INSERT INTO recipe_ingredients (recipe_id, item_id) VALUES (1, 11), (2, 21), (3, 41)");
             statement.execute("INSERT INTO tp_tradeable_items (item_id) VALUES (10), (11), (20), (21), (40), (41)");
