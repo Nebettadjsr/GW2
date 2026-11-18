@@ -270,15 +270,6 @@ class CharacterInventoryLayoutTest {
                 "an explicitly validated empty manifest is a genuine success");
     }
 
-    @Test
-    void accountReferencedItemIdsIncludeInstalledContainersDistinct() throws Exception {
-        publish(A, payload("Ana", manifest(), bagItem(0, 2, 8932, 5)));
-        try (Connection c = connect()) {
-            c.setSchema(schema);
-            assertEquals(List.of(8932, 8933), IconSync.accountReferencedItemIds(c, A));
-        }
-    }
-
     private void exec(String... statements) throws SQLException {
         try (Statement s = admin.createStatement()) { for (String q : statements) s.execute(q); }
     }
