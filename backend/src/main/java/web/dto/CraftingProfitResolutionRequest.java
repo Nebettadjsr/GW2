@@ -21,7 +21,7 @@ package web.dto;
  * @param calculation the scope and settings to resolve it in; required, though its individual
  *                    members keep {@link CraftingProfitRequest}'s optional-with-defaults semantics
  * @param basedOnCalculationId optional: the {@code freshness.calculationId} of the table response
- *                    whose row the caller is asking about . When
+ *                    whose row the caller is asking about. When
  *                    given and the inputs have changed since, the response says
  *                    {@code RECALCULATED_FOR_CHANGED_INPUTS} and carries the matching updated row,
  *                    so a detail computed from newer inputs is never presented as the explanation of
