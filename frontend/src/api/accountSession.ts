@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import {
+  ACCOUNT_CHANGED_CODE,
   API_BASE_PATH,
   ApiRequestError,
   installAccountTransport,
@@ -11,7 +12,7 @@ import {
 import { onDeletionSignal, publishDeletionSignal } from './accountDeletionSignal'
 
 /**
- * The browser side of account access (`TARGET_ARCHITECTURE.md` 8.1, 8.2, UD-018).
+ * The browser side of account access (`docs/ARCHITECTURE.md`, UD-018).
  *
  * The only holder of the GW2 API key: it is kept in `sessionStorage`, so navigation and reloads do
  * not ask for it again, and is sent to the backend only as the `X-GW2-API-Key` header of a proof or
@@ -365,6 +366,12 @@ function localDeletionReset(notice: string): void {
   connection.deletionNotice = notice
 }
 
+/** A lapsed lease (401) or an access context another tab replaced in the shared cookie (403). */
+function isStaleContext(error: ApiRequestError): boolean {
+  return (error.status === 401 && error.code === 'SESSION_REQUIRED') ||
+    (error.status === 403 && (error.code === 'ACCOUNT_ACCESS_DENIED' || error.code === 'ACCESS_CONTEXT_MISMATCH'))
+}
+
 export type DeleteAccountDataResult = 'deleted' | 'already-deleted' | 'work-in-progress' | 'reconfirm' | 'failed' | 'stale'
 
 /** Authoritative deletion of one GUID: its saved browser state goes first, then (if still current) the session. */
@@ -408,10 +415,7 @@ export async function deleteAccountData(): Promise<DeleteAccountDataResult> {
     return wasCurrent ? 'already-deleted' : 'stale'
   }
   if (!current()) return 'stale'
-  const lapsed = error.status === 401 && error.code === 'SESSION_REQUIRED'
-  const mismatched = error.status === 403 &&
-    (error.code === 'ACCOUNT_ACCESS_DENIED' || error.code === 'ACCESS_CONTEXT_MISMATCH')
-  if (lapsed || mismatched) {
+  if (isStaleContext(error)) {
     // Recheck the retained key before the next explicit confirmation. Never replay DELETE as part
     // of error recovery, and never reuse a context another tab's shared cookie has displaced.
     lease = null
@@ -439,7 +443,7 @@ const transport: AccountTransport = {
       await establish(false)
     }
     if (epoch !== accountEpoch) {
-      throw new ApiRequestError('The account changed before this request started.', 'ACCOUNT_CHANGED', null)
+      throw new ApiRequestError('The account changed before this request started.', ACCOUNT_CHANGED_CODE, null)
     }
     const key = readKey()
     if (lease === null || key === null) throw keyRequired()
@@ -467,10 +471,7 @@ const transport: AccountTransport = {
     }
     // A lapsed lease (401) or a context another tab replaced in the shared cookie (403): prove the
     // retained key again and let the caller repeat the request once.
-    const lapsed = error.status === 401 && error.code === 'SESSION_REQUIRED'
-    const mismatched = error.status === 403 &&
-      (error.code === 'ACCOUNT_ACCESS_DENIED' || error.code === 'ACCESS_CONTEXT_MISMATCH')
-    if (!lapsed && !mismatched) return false
+    if (!isStaleContext(error)) return false
     lease = null
     await establish(false)
     return transport.isCurrent(ticket)
