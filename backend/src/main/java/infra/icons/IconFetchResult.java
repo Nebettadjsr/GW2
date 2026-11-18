@@ -1,7 +1,7 @@
 package infra.icons;
 
 /**
- * What one upstream image request produced. The four cases are kept apart because §12.1 maps them to
+ * What one upstream image request produced. The four cases are kept apart because callers map them to
  * different outcomes: a missing image is a 404, a rejected or temporarily failing one a 503, and only
  * {@link Fetched} bytes may ever be published.
  */

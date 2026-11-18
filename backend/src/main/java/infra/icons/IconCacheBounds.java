@@ -3,7 +3,7 @@ package infra.icons;
 import java.time.Duration;
 
 /**
- * The finite protective bounds TARGET_ARCHITECTURE.md §12.1 requires the implementation to choose and
+ * The finite protective bounds requires the implementation to choose and
  * document. They are limits that keep one cache miss from consuming unbounded time, memory, sockets
  * or disk - not measured latencies, and not a claim about how fast the upstream host answers.
  *

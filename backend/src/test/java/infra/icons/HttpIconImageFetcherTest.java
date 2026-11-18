@@ -6,11 +6,26 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Authenticator;
+import java.net.CookieHandler;
+import java.net.ProxySelector;
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -225,5 +240,156 @@ class HttpIconImageFetcherTest {
                 "png");
 
         assertInstanceOf(IconFetchResult.TemporaryFailure.class, fetcher.fetch(unreachable));
+    }
+
+    // ---------- response body lifecycle ----------
+
+    /** An input stream that records how often it was closed, optionally failing on read or close. */
+    private static final class TrackedBody extends InputStream {
+        private final ByteArrayInputStream delegate;
+        private final boolean failOnRead;
+        private final boolean failOnClose;
+        int closeCount;
+
+        TrackedBody(byte[] bytes, boolean failOnRead, boolean failOnClose) {
+            this.delegate = new ByteArrayInputStream(bytes);
+            this.failOnRead = failOnRead;
+            this.failOnClose = failOnClose;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (failOnRead) throw new IOException("simulated read failure");
+            return delegate.read();
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            if (failOnRead) throw new IOException("simulated read failure");
+            return delegate.read(b, off, len);
+        }
+
+        @Override
+        public void close() throws IOException {
+            closeCount++;
+            if (failOnClose) throw new IOException("simulated close failure");
+        }
+    }
+
+    /** A client that answers every request with one canned response and never touches the network. */
+    private static HttpIconImageFetcher fetcherAnswering(int statusCode, TrackedBody body) {
+        HttpResponse<InputStream> response = new HttpResponse<>() {
+            @Override public int statusCode() { return statusCode; }
+            @Override public HttpRequest request() { return null; }
+            @Override public Optional<HttpResponse<InputStream>> previousResponse() { return Optional.empty(); }
+            @Override public HttpHeaders headers() { return HttpHeaders.of(Map.of(), (a, b) -> true); }
+            @Override public InputStream body() { return body; }
+            @Override public Optional<javax.net.ssl.SSLSession> sslSession() { return Optional.empty(); }
+            @Override public URI uri() { return URI.create("https://render.guildwars2.com/file/ABCD/1.png"); }
+            @Override public HttpClient.Version version() { return HttpClient.Version.HTTP_1_1; }
+        };
+        HttpClient client = new HttpClient() {
+            @Override public Optional<CookieHandler> cookieHandler() { return Optional.empty(); }
+            @Override public Optional<Duration> connectTimeout() { return Optional.empty(); }
+            @Override public Redirect followRedirects() { return Redirect.NEVER; }
+            @Override public Optional<ProxySelector> proxy() { return Optional.empty(); }
+            @Override public SSLContext sslContext() { return null; }
+            @Override public SSLParameters sslParameters() { return null; }
+            @Override public Optional<Authenticator> authenticator() { return Optional.empty(); }
+            @Override public Version version() { return Version.HTTP_1_1; }
+            @Override public Optional<Executor> executor() { return Optional.empty(); }
+
+            @Override
+            @SuppressWarnings("unchecked")
+            public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> handler) {
+                return (HttpResponse<T>) response;
+            }
+
+            @Override
+            public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                    HttpRequest request, HttpResponse.BodyHandler<T> handler) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                    HttpRequest request,
+                    HttpResponse.BodyHandler<T> handler,
+                    HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        return new HttpIconImageFetcher(client);
+    }
+
+    private static IconSource pngSource() {
+        return new IconSource(
+                "https://render.guildwars2.com/file/ABCD/1.png",
+                "50dc20284b8e24f872bc768471d8ec57efa59bb49b012531b2293dc8c50e6472",
+                "png");
+    }
+
+    @Test
+    void aValidImageResponseBodyIsClosedExactlyOnce() {
+        TrackedBody body = new TrackedBody(TestImages.png(), false, false);
+
+        IconFetchResult result = fetcherAnswering(200, body).fetch(pngSource());
+
+        assertInstanceOf(IconFetchResult.Fetched.class, result);
+        assertEquals(1, body.closeCount);
+    }
+
+    @Test
+    void a404ResponseBodyIsClosedAndStillMeansMissing() {
+        TrackedBody body = new TrackedBody(TestImages.htmlErrorBody(), false, false);
+
+        IconFetchResult result = fetcherAnswering(404, body).fetch(pngSource());
+
+        assertInstanceOf(IconFetchResult.UpstreamMissing.class, result);
+        assertEquals(1, body.closeCount);
+    }
+
+    @Test
+    void redirectAndServerErrorResponseBodiesAreClosedAndStillTemporaryFailures() {
+        for (int statusCode : new int[] {302, 500, 503}) {
+            TrackedBody body = new TrackedBody(new byte[] {1, 2, 3}, false, false);
+
+            IconFetchResult result = fetcherAnswering(statusCode, body).fetch(pngSource());
+
+            assertInstanceOf(IconFetchResult.TemporaryFailure.class, result, "status " + statusCode);
+            assertEquals(1, body.closeCount, "status " + statusCode);
+        }
+    }
+
+    @Test
+    void rejectedAndOversizedResponseBodiesAreClosed() {
+        TrackedBody html = new TrackedBody(TestImages.htmlErrorBody(), false, false);
+        assertInstanceOf(IconFetchResult.RejectedImage.class, fetcherAnswering(200, html).fetch(pngSource()));
+        assertEquals(1, html.closeCount);
+
+        TrackedBody huge = new TrackedBody(new byte[IconCacheBounds.MAX_RESPONSE_BYTES + 1_024], false, false);
+        assertInstanceOf(IconFetchResult.RejectedImage.class, fetcherAnswering(200, huge).fetch(pngSource()));
+        assertEquals(1, huge.closeCount);
+    }
+
+    @Test
+    void aBodyThatFailsWhileReadingIsClosedAndReportedAsTemporaryFailure() {
+        TrackedBody body = new TrackedBody(TestImages.png(), true, false);
+
+        IconFetchResult result = fetcherAnswering(200, body).fetch(pngSource());
+
+        assertInstanceOf(IconFetchResult.TemporaryFailure.class, result);
+        assertEquals(1, body.closeCount);
+    }
+
+    @Test
+    void aFailureToCloseAnUnwantedStatusBodyDoesNotChangeTheStatusOutcome() {
+        TrackedBody missing = new TrackedBody(new byte[] {1}, false, true);
+        assertInstanceOf(IconFetchResult.UpstreamMissing.class, fetcherAnswering(404, missing).fetch(pngSource()));
+        assertEquals(1, missing.closeCount);
+
+        TrackedBody failing = new TrackedBody(new byte[] {1}, false, true);
+        assertInstanceOf(IconFetchResult.TemporaryFailure.class, fetcherAnswering(500, failing).fetch(pngSource()));
+        assertEquals(1, failing.closeCount);
     }
 }

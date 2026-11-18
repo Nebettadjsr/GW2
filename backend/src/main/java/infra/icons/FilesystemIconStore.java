@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * The persistent icon cache on local disk (TARGET_ARCHITECTURE.md §12.1): one file per canonical
+ * The persistent icon cache on local disk: one file per canonical
  * source at {@code <ICON_CACHE_DIR>/assets-v1/{sourceKey}.{ext}}, so items sharing a source share one
  * binary and a changed source becomes a different file rather than an overwrite.
  *
@@ -29,7 +29,7 @@ public final class FilesystemIconStore implements IconStore {
     /**
      * The versioned subdirectory the keyed entries live in. Separate from the legacy
      * {@code items/{itemId}.png} files an earlier desktop download left behind, which nothing reads
-     * any more (§12.1).
+     * any more.
      */
     public static final String ASSETS_DIRECTORY = "assets-v1";
 
@@ -126,8 +126,8 @@ public final class FilesystemIconStore implements IconStore {
         try {
             Files.deleteIfExists(temporary);
         } catch (IOException leftBehind) {
-            // An abandoned temporary file is harmless - it is never a cache entry - and cleanup may
-            // remove it later (§12.1). Failing the publication because of it would be worse.
+            // An abandoned temporary file is harmless - it is never a cache entry and no reader looks
+            // at it. Failing the publication because of it would be worse.
         }
     }
 }

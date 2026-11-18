@@ -3,7 +3,7 @@ package infra.icons;
 /**
  * What {@link IconAcquisition} established for one key. {@link Available} is the only case that
  * carries an entry, and the entry is always already committed to disk - acquisition never hands back
- * bytes it failed to persist (TARGET_ARCHITECTURE.md §12.1).
+ * bytes it failed to persist.
  */
 public sealed interface IconAcquisitionResult {
 
