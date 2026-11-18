@@ -30,11 +30,10 @@ import SyncScreen from './sync/SyncScreen.vue'
  * inputs, results and requests alone.
  *
  * Each destination is a real URL (`useHashRoute`), so Back, Forward, a bookmark and a reload all work
- * normally and each screen has its own document title. Navigating issues no request or calculation of
- * the shell's own. The screens it opens do their normal work: the shared crafting bootstrap runs on
- * first use of a crafting page, and a newly mounted screen reads its own inputs. A kept-alive screen
- * does not repeat that on return, and no calculation or synchronization operation is submitted by the
- * navigation itself.
+ * normally and each screen has its own document title. Bootstrap and screen lifecycle hooks own input
+ * reads and refreshes: the shared crafting bootstrap runs on first use, and a newly mounted screen
+ * loads its own inputs. KeepAlive preserves component state on return; each screen's activation hooks
+ * may reread visible data, request a selected detail or recalculate a changed context.
  *
  * This workspace is created per connected account (the app keys it by the connection generation), so
  * replacing or disconnecting the key discards every screen, selection, result and tracked task of the
@@ -145,8 +144,9 @@ watch(
       two independent `KeepAlive` boundaries, so each keeps its own scope, settings, search, sort and
       selection and neither is re-created by opening the other. Opening a public information page only
       deactivates the open screen (its route id no longer matches); the boundaries stay mounted so
-      returning neither resets the selection nor posts a calculation. Bank and Materials have no such
-      input, so each keeps reading its own route when opened (STORY-WEB-003).
+      returning preserves the selection. Feature activation hooks still own any data/detail rereads
+      and recalculation of changed inputs. Bank and Materials read their own route when opened
+      (STORY-WEB-003).
     -->
     <KeepAlive>
       <CraftingProfitScreen v-if="route.current.value.id === 'crafting' && craftingReady" />
