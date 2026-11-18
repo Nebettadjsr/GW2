@@ -1,5 +1,5 @@
 /**
- * Read state for one account-read route (`CURRENT_ARCHITECTURE.md` 5.12).
+ * Read state for one account-read route.
  *
  * It holds what the backend last answered and which of the four presentable situations the screen
  * is in. It decides nothing about inventory: no slot, stack, category, count or label is derived,

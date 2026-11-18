@@ -10,8 +10,9 @@ import type { SyncTaskAccepted } from '@/api/types'
  *
  * The selector options are the cheapest read that reveals whether the account's characters were ever
  * published. When they were not, the account's data is missing rather than empty, so one keyed
- * Crafting Profit data refresh is run and awaited, then the options are read once more. Everything is
- * bounded: a fixed number of task lookups and of "narrower task was running" retries, and one pass
+ * Crafting Profit data refresh is run and awaited; the phase then becomes `ready`. This does not read
+ * the options again: the caller (`AccountWorkspace`) renders the crafting screens only once ready, and
+ * those screens load their own data. Everything is bounded: a fixed number of task lookups and of "narrower task was running" retries, and one pass
  * per mount — a failure is reported with a retry button, never retried in a loop.
  */
 export const BOOTSTRAP_POLL_MS = 2_000

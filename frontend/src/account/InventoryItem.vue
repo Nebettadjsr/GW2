@@ -8,9 +8,9 @@ import ItemIcon from '@/items/ItemIcon.vue'
  * One inventory entry as the backend supplied it: its item identity, its count and its display
  * metadata.
  *
- * The backend supplies no item name (`CURRENT_ARCHITECTURE.md` 5.12), so an item is identified by
+ * The backend supplies no item name, so an item is identified by
  * its id and no name is invented or looked up. `iconUrl` is this application's own image URL for the
- * item (`TARGET_ARCHITECTURE.md` 12.1) or null when the backend has none; it is never an upstream URL
+ * item or null when the backend has none; it is never an upstream URL
  * and never a filesystem path.
  *
  * The image itself is the shared `ItemIcon`, which is the only place an item image is rendered

@@ -5,7 +5,7 @@ import '@/materials/materialProtectionState'
 import { clearDraft, draft, isAttempting, showDraft, submitDraft } from './keyDraft'
 
 /**
- * The API-key area (`TARGET_ARCHITECTURE.md` 8.2): a masked field with Connect, Replace and
+ * The API-key area: a masked field with Connect, Replace and
  * Disconnect, and the connection state in words. The key is handed to the session module and the
  * field is cleared at once; nothing here stores, logs or displays it.
  */
