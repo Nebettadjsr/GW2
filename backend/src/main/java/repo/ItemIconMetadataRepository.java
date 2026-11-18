@@ -8,8 +8,7 @@ import java.util.Optional;
 
 /**
  * The retained icon-source metadata of one item ({@code items.icon_url}), read only when the image
- * cache misses (TARGET_ARCHITECTURE.md §12.1 explicitly allows this local read and forbids it from
- * triggering GW2 JSON acquisition).
+ * cache misses (this is a local database read only; it never triggers GW2 JSON acquisition).
  *
  * <p>Deliberately not part of {@link ItemRepository}: that repository's batch read serves page data,
  * where a per-row lookup is forbidden. This one is a single-row read on a path that is already about
@@ -26,7 +25,7 @@ public class ItemIconMetadataRepository {
 
     /**
      * Same read against a caller-supplied connection, so an integration test can point it at a
-     * disposable schema (docs/TEST_STRATEGY.md §31.2).
+     * disposable schema.
      *
      * @return empty when the item is unknown or holds no metadata; never a blank string
      */

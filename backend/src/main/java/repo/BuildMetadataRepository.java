@@ -13,7 +13,7 @@ import java.time.Instant;
 import java.util.*;
 
 /**
- * Shared (not account-scoped) display metadata for build references (STORY-CHAR-009), plus the
+ * Shared (not account-scoped) display metadata for build references, plus the
  * account's stored reference sets. Every lookup is one batched statement per namespace.
  */
 public class BuildMetadataRepository {

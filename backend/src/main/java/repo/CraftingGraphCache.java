@@ -19,19 +19,18 @@ import java.util.Set;
 
 /**
  * Persistence-backed cache of the crafting graph, mapping cached JSON rows into the independent
- * {@code craft.Recipe}/{@code craft.Ingredient} domain types (STORY-DOM-017): this class - not
- * {@code craft.*} - owns both the database load and the on-disk cache (de)serialization boundary,
- * per TARGET_ARCHITECTURE.md section 10.
+ * {@code craft.Recipe}/{@code craft.Ingredient} domain types: this class - not {@code craft.*} -
+ * owns both the database load and the on-disk cache (de)serialization boundary. The persisted
+ * {@link CraftingGraphDto} shape is distinct from the in-memory {@link CraftingGraph} indexes.
  */
 public class CraftingGraphCache {
 
     private static final String CACHE_FILE = "crafting_graph_cache.json";
 
     /**
-     * Optional system property letting an in-process UI test point the cache at a fresh,
-     * per-run temp file instead of the developer's real (possibly large, stale, or absent)
-     * {@value #CACHE_FILE} in the working directory (STORY-UI-001, docs/TEST_STRATEGY.md).
-     * Unset in normal/production use, so behavior is unchanged.
+     * Optional system property letting tests (and fixture-backed runs) point the cache at a fresh,
+     * per-run temp file instead of the real (possibly large, stale, or absent) {@value #CACHE_FILE}
+     * in the working directory. Unset in normal/production use, so behavior is unchanged.
      */
     public static final String TEST_CACHE_FILE_PROPERTY = "gw2tool.test.craftingGraphCacheFile";
 

@@ -15,7 +15,7 @@ public class ItemRepository {
         /**
          * Retained upstream icon metadata ({@code items.icon_url}), null when none is stored. Carried
          * by the same batch read as the rest of the display metadata so a presentation layer can derive
-         * an icon URL per item without a second, per-row lookup (TARGET_ARCHITECTURE.md §12.1). It is a
+         * an icon URL per item without a second, per-row lookup. It is a
          * source string, not a URL type, and it stays out of every domain calculation.
          */
         public final String iconUrl;
@@ -55,7 +55,7 @@ public class ItemRepository {
     /**
      * Same query as {@link #loadItems(Set)}, but on a caller-supplied connection, so one
      * calculation can read every input it needs inside a single consistent database snapshot
-     * (TARGET_ARCHITECTURE.md §9.1: readers must not mix input generations).
+     * (readers must not mix input generations).
      */
     public Map<Integer, ItemInfo> loadItems(Connection con, Set<Integer> itemIds) throws SQLException {
         Map<Integer, ItemInfo> out = new HashMap<>();
