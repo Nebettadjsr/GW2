@@ -32,14 +32,16 @@ import java.time.temporal.IsoFields;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /**
- * Sparse operational activity history (STORY-OPS-003): one versioned CSV file per UTC day that contained an
+ * Sparse operational activity history: one versioned CSV file per UTC day that contained an
  * included request, one row per active minute and route group, created lazily and never rewritten. At most
  * {@link #MAX_DAYS} nonempty days of at most {@link #MAX_DAY_BYTES}, and all owned bytes (day files, index and
  * its replacement scratch) within {@link #TOTAL_CEILING_BYTES}; whole oldest days are evicted, never the head
@@ -87,7 +89,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     private final TreeSet<LocalDate> lossWeeks = new TreeSet<>();
     static final int MAX_LOSS_DAYS = 64;
     /** Recognized owned/legacy artifacts that could not be removed; they stay inside the byte bound. */
-    private final java.util.HashMap<Path, Long> stuck = new java.util.HashMap<>();
+    private final HashMap<Path, Long> stuck = new HashMap<>();
     private boolean metadataUncertain;
     private boolean indexDirty;
     private boolean blocked;
@@ -180,9 +182,9 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
                             || parsed.foregroundAccounts().state() != ForegroundAccounts.State.COMPLETE) {
                         lossDays.add(date); // skipped malformed rows and incomplete minutes are known loss
                     }
-                    Instant minute = rowMinute(line);
-                    RouteGroup group = rowGroup(line);
-                    if (parsed != null && minute != null && group != null) {
+                    if (parsed != null) {
+                        Instant minute = parsed.startUtc();
+                        RouteGroup group = parsed.routeGroups().get(0).group();
                         if (day.lastMinute == null || minute.isAfter(day.lastMinute)) {
                             day.lastMinute = minute;
                             day.lastGroups = EnumSet.noneOf(RouteGroup.class);
@@ -384,7 +386,7 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     /** Rewrites the small index through one fixed scratch name; its worst case is reserved in the ceiling. */
     private void writeIndex() {
         try {
-            TreeMap<LocalDate, List<String>> byDate = new TreeMap<>(java.util.Comparator.reverseOrder());
+            TreeMap<LocalDate, List<String>> byDate = new TreeMap<>(Comparator.reverseOrder());
             for (LocalDate d : truncatedDays) byDate.computeIfAbsent(d, k -> new ArrayList<>()).add("T," + d);
             for (LocalDate d : lossDays) byDate.computeIfAbsent(d, k -> new ArrayList<>()).add("L," + d);
             for (LocalDate d : prunedWeeks) byDate.computeIfAbsent(d, k -> new ArrayList<>()).add("P," + d);
@@ -435,18 +437,6 @@ public final class SparseActivityStore implements HistoryStore, OperationalPerio
     }
 
     // ---- reading rows ----------------------------------------------------------------------------------------
-
-    private static Instant rowMinute(String line) {
-        String[] f = line.split(",", -1);
-        if (f.length != FIELDS || !f[0].equals("1")) return null;
-        try { return Instant.parse(f[1]); } catch (RuntimeException e) { return null; }
-    }
-
-    private static RouteGroup rowGroup(String line) {
-        String[] f = line.split(",", -1);
-        if (f.length != FIELDS) return null;
-        try { return RouteGroup.valueOf(f[5]); } catch (RuntimeException e) { return null; }
-    }
 
     /** Parses one stored row; null when malformed. */
     private static MinuteBucket parse(String line) {
