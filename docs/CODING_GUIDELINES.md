@@ -1,9 +1,10 @@
 # Coding Guidelines
 
-Binding rules for generated/edited code across this project — the Java backend, Vue frontend,
-and GitHub workflow code alike. Sections 1–6 apply to any language used
-here; Section 7 is Java 25 specific. Goal: maintainable, clearly structured code, no spaghetti,
-no unverified "done."
+Binding implementation rules for the Java 25/Spring Boot backend, Vue 3/TypeScript frontend,
+PostgreSQL/JDBC/Flyway persistence and application support code. Build manifests and lockfiles
+own exact dependency versions; keep the existing stack. Sections 1–6 apply across languages;
+the later sections cover the stack-specific details. Agent roles and delivery rules belong
+in [AGENTS.md](../AGENTS.md), not in this document.
 
 These bias toward caution over speed. For genuinely trivial tasks (a one-line fix, a typo),
 use judgment — don't ritualize the process past the point it adds value.
@@ -38,22 +39,29 @@ issue's acceptance criteria. Resolve ordinary implementation choices with a reas
 
 ## 2. Simplicity First
 
-Minimum code that solves the problem. Nothing speculative.
+Use the smallest clear design that preserves the required behavior. Shorter code is useful
+when it removes concepts, duplication or work; compressed expressions are not an improvement.
 
 - No features beyond what was asked.
-- No abstractions for single-use code, no "flexibility" or config that wasn't requested.
-- No error handling for scenarios that can't occur.
-- If it could be a third the size, rewrite it. Ask: would a senior engineer call this
-  overcomplicated? If yes, simplify.
+- Introduce an abstraction only when it clarifies a real responsibility, reused policy or
+  external/test boundary. Avoid forwarding wrappers and speculative configuration.
+- Keep validation, overflow bounds, cancellation and failure recovery that protect actual
+  boundaries. Remove a defensive path only after establishing that it cannot occur.
+- Prefer a straightforward loop or expression over extra layers. Share genuinely identical
+  rules; do not merge code that merely looks similar but has different semantics.
+- When equally correct designs are feasible, weigh maintainability and concrete performance:
+  algorithmic complexity, repeated scans, allocations, SQL/HTTP work and resource lifetime.
+  Do not claim a speedup without evidence or add caching/concurrency without a real need.
 
 ## 3. Surgical Changes
 
-Touch only what you must. Clean up only your own mess.
+Keep each change focused on its approved goal. A simplification task may remove proven dead
+code and unnecessary structure within its section; an unrelated bug fix should stay narrow.
 
-- Don't "improve" adjacent code, comments, or formatting while you're in a file for something
-  else. Don't refactor things that aren't broken. Match existing style even if you'd do it
-  differently.
-- If you notice unrelated dead code, mention it — don't delete it unasked.
+- Avoid adjacent formatting/style rewrites. Existing working code can be simplified when
+  that is the task, but a preferred style alone is not a reason to change it.
+- Before deleting code, check callers, framework wiring, reflection/serialization and tests.
+  Report findings outside the section rather than silently widening the refactor.
 - When your own change orphans an import/variable/function, remove it. Don't remove
   pre-existing dead code unless asked.
 - Test: every changed line should trace directly to the task at hand.
@@ -73,15 +81,12 @@ Define success criteria. Loop until verified. Never mark something done without 
 
 ## 5. Structure & File Size
 
-- Prefer many small, clearly named units over a few large ones. ~500 lines per file is a
-  ceiling, not a target — if a file is foreseeably going to exceed it, split it rather than
-  cram more in.
-- Single responsibility per unit (class, module, function group). More than one reason to
-  change it → split it.
-- Organize by business domain, not purely by technical layer (`orders/pricing`, not a bare
-  `util`/`service` dumping ground).
-- No function/method longer than ~40 lines as a guideline — extract well-named helpers
-  instead (this usually removes the need for a comment, too).
+- Keep cohesive, clearly named units. Roughly 500 lines per file or 40 lines per method is
+  a review signal, not a hard limit or a reason to manufacture files/helpers. Split when
+  distinct responsibilities become clearer; keep a readable cohesive operation together.
+- Follow the existing domain/application/adapter boundaries. Prefer meaningful feature names
+  inside them over generic `util`/`service` dumping grounds; do not reorganize packages just
+  to impose a different layout.
 - Keep nesting shallow (≤2–3 levels) — guard clauses over nested conditionals.
 
 ## 6. Naming, Comments & Errors
@@ -102,48 +107,90 @@ it, Git has the history.
 more context, or deliberately propagate it. Fail fast: validate preconditions up front rather
 than letting a bad value surface deep in the call stack. Don't use a bare null/None (or
 equivalent silent "nothing here") as a "not found" signal where the language gives you an
-explicit way to say so (e.g. `Optional<T>` in Java).
+explicit way to say so (e.g. `Optional<T>` for a Java domain return). Preserve established
+SQL/JSON null and unavailable-value semantics at boundaries; do not change them through a
+mechanical null-to-Optional rewrite. Never convert unknown data into a false/zero fact.
 
 ## 6.1 Testing and quality evidence
 
-The implementing agent chooses test scope and expected results under `docs/TEST_STRATEGY.md`,
-and writes and maintains the tests and fixtures needed for its issue. Cover changed behavior,
+Follow [Test strategy](TEST_STRATEGY.md) and the issue's test-ownership assignment. Normally
+the implementing agent maintains the tests/fixtures too; an explicit independent-QA assignment
+takes precedence. Cover changed behavior,
 confirmed defects, relevant invariants, and integration boundaries without padding coverage.
 Run focused checks and builds, report exact results, and explain any changed or weakened
 assertion in the PR. The reviewer checks the test diff and acceptance evidence. Passing the
 required CI checks on the PR head remains necessary. The 90% line/branch target is a warning.
 
+For simplification, read the relevant tests before editing and protect complete observable
+outputs, errors and boundary cases. Add a missing behavior check before a risky refactor;
+do not mirror the new implementation as the oracle. Preserve existing assertions unless
+their documented behavior genuinely changed. Compare public APIs, ordering, ownership,
+numeric bounds and resource/lifecycle behavior, not just happy-path return values.
+
 ## 7. Java 25 Specific
 
-- `record` for immutable data carriers instead of manual getter/setter/equals/hashCode
-  boilerplate; `sealed` interfaces/classes for closed hierarchies, paired with exhaustive
-  pattern-matching `switch`; record patterns to destructure instead of manual getter chains.
+- Use records, sealed hierarchies and exhaustive switches where they clarify the model.
+  Preserve equality, constructor, serialization and mutability contracts; do not rewrite
+  data types merely to use newer syntax.
 - `Optional<T>` only as a return type, never as a field or parameter.
-- **Virtual threads** (`Executors.newVirtualThreadPerTaskExecutor()`) for I/O-heavy concurrent
-  work instead of hand-tuned platform-thread pools. **Structured concurrency**
-  (`StructuredTaskScope`) when subtasks should run/fail as one unit, instead of wiring
-  `CompletableFuture`s by hand. Avoid shared mutable state; where unavoidable, document why.
+- Use the existing executor/admission model unless the task requires a change. Virtual
+  threads suit blocking I/O, not faster CPU calculations; preserve cancellation, single-writer
+  limits, interruption and shutdown. See the [Java 25 virtual-thread guide](https://docs.oracle.com/en/java/javase/25/core/virtual-threads.html).
+  This build does not enable preview features; do not require
+  [`StructuredTaskScope`, a Java 25 preview API](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/StructuredTaskScope.html),
+  or enable preview as incidental cleanup.
 - Text blocks (`"""..."""`) for multi-line strings (SQL, JSON, error messages).
 - `var` only when the right-hand side makes the type unambiguous at a glance — otherwise
   write the explicit type.
 - Streams for transformation/filtering where they read cleanly; a plain loop is fine when
   it's clearer — readability beats "elegant."
 - Dependency injection instead of `new`-ing dependencies inside business logic, to keep things
-  testable.
+  testable. Keep Spring wiring at the composition/transport boundary, outside pure domain code.
+- Use the Maven wrapper and existing BOM-managed Spring/Jackson/Flyway/test dependencies.
+  HTTP Jackson and upstream JSON adapters have different roles; preserve their mappings
+  rather than changing serializers or dependency versions during cleanup.
 - No junk-drawer static utility classes for unrelated methods — put behavior where the data
   lives.
-- Tests mirror production structure: one test class per production class, test names
-  describe behavior (`returnsEmptyList_whenNoMatch`), not implementation.
+- Name tests for behavior. Group by the contract/scenario being protected; a one-to-one
+  test-class/production-class mapping is not required for cross-component behavior.
 
-## 8. Workflow Mechanics
+## 8. Vue 3 and TypeScript
 
-**Planning:** for non-trivial issues, state a short plan and verification approach in the
-issue or PR. Keep choices proportional to the issue and its dependencies.
+- Keep components focused on presentation and interaction; use existing composables for
+  shared state/lifecycle work. Extract only when it reduces duplicated logic or clarifies
+  ownership. Avoid one-use component/composable layers that merely forward props or calls.
+- Keep domain calculations and GW2 access in the backend, with the documented Ecto exception.
+  Reuse typed API models; avoid `any`, broad casts and duplicated response shapes that hide
+  invalid states. Preserve missing/unavailable values distinctly from zero/false.
+- Use computed values for derived state. Use watchers/effects for actual side effects and
+  clean them up with their owning lifecycle. Preserve account epochs, cancellation, request
+  ordering/coalescing, KeepAlive activation and reservation autosave semantics.
+- Keep templates and CSS readable. Preserve accepted desktop layout, keyboard/focus behavior,
+  stable list keys and the documented narrow-screen notice/scrolling; no mobile redesign.
+- Use the locked npm/Vite/vue-tsc/Vitest/Playwright tooling. Reuse behavior/component tests
+  and controlled browser journeys; do not introduce another store, router or test framework
+  solely to simplify a local section.
 
-**Version control:** one issue gets one branch and pull request. Commit and push reviewable
-steps on that branch. Never include scratch files, generated output, or unrelated work. The PR
-contains the exact diff under review. Changes requested are fixed on the same branch; CI and
-Codex review rerun on the new head. Required checks and review must pass before merge.
+## 9. PostgreSQL, JDBC and Flyway
 
-**Follow-up work:** record a small nonblocking correction as a linked issue. A missing
-acceptance criterion, concrete defect, or unresolved Product Owner decision holds the PR.
+- Keep SQL parameterized and resource ownership explicit with try-with-resources. Reuse the
+  scoped repository/publication boundaries; never broaden an account query during cleanup.
+- Preserve transaction ownership, original connection mode, atomic publication, last-good
+  generations and rollback/cancellation behavior. Read real PostgreSQL tests before changing
+  these paths; a mocked connection does not prove SQL semantics.
+- Avoid extra queries or loading broad data merely to shorten Java. Preserve ordering,
+  unknown/null facts and snapshot consistency. Schema changes use existing Flyway conventions.
+  PostgreSQL remains a disposable cache, without new preservation/backup machinery.
+
+## 10. Application support code
+
+- Keep Docker/Compose/Nginx configuration explicit and use the existing entry points.
+  Preserve private backend/database ports, required production settings, canonical Origin,
+  restricted DB credentials and the protected host override. Static config simplification
+  needs the relevant render/proxy checks; it does not imply a live deployment.
+- Prefer existing Node ES modules, Python standard-library helpers and small shell commands
+  to new dependencies or orchestration layers. Preserve quoting, exit status, bounded waits
+  and cleanup of owned resources. Never interpolate credentials into logs or tracked files.
+- Update existing owning developer docs only for lasting changes to behavior, structure or
+  operation. Put per-section findings, trade-offs and exact checks in the issue/PR; do not
+  add an audit report, decision file or coverage snapshot to the repository for each refactor.
