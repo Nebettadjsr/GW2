@@ -20,7 +20,7 @@ import { buildScopeOptions, defaultScopeOptionId, type ScopeOption } from './sco
 /**
  * Screen state for Crafting Profit: the selector facts, the current scope/settings selection, the
  * backend's answer for that selection, and the bounded automatic recovery that replaces a
- * provisional answer with the final one (UD-015, `TARGET_ARCHITECTURE.md` 9.1).
+ * provisional answer with the final one (UD-015, `docs/ARCHITECTURE.md` section 7).
  *
  * It decides nothing about crafting and nothing about freshness. Every displayed number, state and
  * default comes from a backend response — including the initial settings, which are read from the
@@ -294,7 +294,8 @@ export function useCraftingProfit(
 
   /**
    * The committed protection context for the verified account, or null while it is not restored.
-   * Activation is effective only with at least one committed ID; pending edits are never read.
+   * Activation is effective only with at least one committed ID or finite quantity. Every protection
+   * edit is autosaved straight into the committed state, so there is no separate pending selection.
    */
   function protectionContext(): { enabled: boolean; ids: number[]; bankIds: number[]; materialIds: number[];
     bankQuantities: Record<number, number>; materialQuantities: Record<number, number>;
