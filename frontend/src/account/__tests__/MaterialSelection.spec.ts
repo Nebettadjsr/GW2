@@ -59,7 +59,7 @@ describe('Bank and Materials selection', () => {
     await checkboxes[0]!.setValue(true)
     expect(checkboxes.map((c) => (c.element as HTMLInputElement).checked)).toEqual([true, false, false, true])
     const state = useMaterialProtection().state
-    expect(state.pending).toEqual([12134])
+    expect(state.committed).toEqual([12134])
     expect(state.committed).toEqual([12134])
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections)
       .toEqual({ bank: [], materials: [12134] })
@@ -72,11 +72,11 @@ describe('Bank and Materials selection', () => {
     expect(bank.find('[data-test="selection-state"]').exists()).toBe(false)
     await box(bank, 2).setValue(true)
     expect(useMaterialProtection().quantityFor('bank', 12134)).toBe(250)
-    expect(useMaterialProtection().pendingFor('materials')).toEqual([12134])
+    expect(useMaterialProtection().committedFor('materials')).toEqual([12134])
     await box(bank, 2).setValue(false)
     expect(useMaterialProtection().quantityFor('bank', 12134)).toBe(0)
-    expect(useMaterialProtection().pendingFor('bank')).toEqual([])
-    expect(useMaterialProtection().pendingFor('materials')).toEqual([12134])
+    expect(useMaterialProtection().committedFor('bank')).toEqual([])
+    expect(useMaterialProtection().committedFor('materials')).toEqual([12134])
     expect(state.committed).toEqual([12134])
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections)
       .toEqual({ bank: [], materials: [12134] })
@@ -129,7 +129,7 @@ describe('Bank and Materials selection', () => {
     await box(w, 2).setValue(true) // 19698
     await box(w, 1).setValue(true) // 19697 also saves immediately
     expect(state.committed).toEqual([12134, 19697, 19698])
-    expect(state.pending).toEqual([12134, 19697, 19698])
+    expect(state.committed).toEqual([12134, 19697, 19698])
 
     // Replacement: reordered positions, new counts, 12134 now three times, 19698 moved, a new item 555.
     const replacement = {
@@ -156,7 +156,7 @@ describe('Bank and Materials selection', () => {
     expect(boxes(w).map((c) => (c.element as HTMLInputElement).checked)).toEqual([false, true, true, true, true, true])
     expect(boxes(w).map((c) => c.attributes('aria-label'))).toEqual(
       ['Protect Item #555', 'Protect Item #19698', 'Protect Item #12134', 'Protect Item #12134', 'Protect Item #12134', 'Protect Item #19697'])
-    expect(state.pending).toEqual([12134, 19697, 19698])
+    expect(state.committed).toEqual([12134, 19697, 19698])
     expect(state.committed).toEqual([12134, 19697, 19698])
     expect(w.find('[data-test="selection-state"]').exists()).toBe(false)
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.materials)
@@ -166,7 +166,7 @@ describe('Bank and Materials selection', () => {
     document.dispatchEvent(new Event('visibilitychange'))
     await flushPromises()
     expect(api.materialCalls).toBe(3)
-    expect(state.pending).toEqual([12134, 19697, 19698])
+    expect(state.committed).toEqual([12134, 19697, 19698])
     expect(state.committed).toEqual([12134, 19697, 19698])
   })
 
@@ -244,12 +244,12 @@ describe('Bank and Materials selection', () => {
     connection.accountId = B
     await flushPromises()
     const state = useMaterialProtection().state
-    expect(state.pending).toEqual([])
+    expect(state.committed).toEqual([])
     expect(state.committed).toEqual([])
     expect(w.find('[data-test="selection-bar"]').exists()).toBe(true)
     late.resolve(materialStorage)
     await flushPromises()
-    expect(state.pending).toEqual([])
+    expect(state.committed).toEqual([])
     expect(boxes(w).every((c) => !(c.element as HTMLInputElement).checked)).toBe(true)
     connection.accountId = null
     await flushPromises()
@@ -278,25 +278,25 @@ describe('Selection presets', () => {
     const manual = boxes(w).findIndex((c) => c.attributes('aria-label') === 'Protect Item #19697')
     await box(w, manual).setValue(true)
     await w.find('[data-test="preset-extra"]').trigger('click')
-    expect(state.pending).toEqual([19675, 19697, 19721, 19925, 19976])
+    expect(state.committed).toEqual([19675, 19697, 19721, 19925, 19976])
     // A preset is a toggle: a second click removes only its own group and keeps the manual pick.
     await w.find('[data-test="preset-extra"]').trigger('click')
-    expect(state.pending).toEqual([19697])
+    expect(state.committed).toEqual([19697])
     await w.find('[data-test="preset-extra"]').trigger('click')
     await w.find('[data-test="preset-t1"]').trigger('click')
-    expect(state.pending).toHaveLength(13)
-    expect(state.committed).toEqual(state.pending)
-    expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.materials).toEqual(state.pending)
+    expect(state.committed).toHaveLength(13)
+    expect(state.committed).toEqual(state.committed)
+    expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.materials).toEqual(state.committed)
     expect(fetches).not.toHaveBeenCalled()
     fetches.mockRestore()
     // Manual removal of a manually picked item.
     await box(w, manual).setValue(false)
-    expect(state.pending).not.toContain(19697)
+    expect(state.committed).not.toContain(19697)
     await w.find('[data-test="preset-extra"]').trigger('click')
     await w.find('[data-test="preset-t1"]').trigger('click')
     expect(state.committed).toEqual([])
     await w.find('[data-test="preset-t6"]').trigger('click')
-    expect(state.pending).toEqual([...t6].sort((a, b) => a - b))
+    expect(state.committed).toEqual([...t6].sort((a, b) => a - b))
     expect(state.committed).toHaveLength(8)
     expect(JSON.parse(localStorage.getItem(PREFERENCE_KEY_PREFIX + A)!).selections.materials)
       .toEqual([...t6].sort((a, b) => a - b))

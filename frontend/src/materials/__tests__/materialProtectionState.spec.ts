@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick, reactive } from 'vue'
+import { createApp, defineComponent, h, nextTick, reactive, watch } from 'vue'
 import {
   PREFERENCE_KEY_PREFIX,
   canonicalIds,
@@ -10,6 +10,7 @@ import {
   type PreferenceStorage
 } from '../materialProtectionState'
 import { connectKey, connection, disconnect, installAccountSession, resetAccountSession } from '@/api/accountSession'
+import { choose } from './selectionFixture'
 import { getJson, installAccountTransport } from '@/api/http'
 
 class FakeStorage implements PreferenceStorage {
@@ -56,8 +57,7 @@ describe('partitioning, commit and restart', () => {
   it('autosaves a whole group in one write without changing other items or stores', () => {
     const m = make()
     source.id = A
-    m.setPending([2, 9], 'materials')
-    m.commit('materials')
+    choose(m, [2, 9], 'materials')
     m.togglePending(7, 'bank')
     const writes = vi.spyOn(storage, 'setItem')
     m.togglePendingGroup([2, 3, 4], 'materials')
@@ -71,38 +71,32 @@ describe('partitioning, commit and restart', () => {
     expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([7, 9])
   })
 
-  it('keeps the same item independently selected, saved and discarded in each view', () => {
+  it('keeps the same item independently selected and autosaved in each view', () => {
     const m = make()
     source.id = A
-    m.setPending([19718], 'bank')
-    m.setPending([19718, 19719], 'materials')
-    m.commit('bank')
+    m.togglePending(19718, 'bank')
     expect(m.committedFor('bank')).toEqual([19718])
     expect(m.committedFor('materials')).toEqual([])
-    expect(m.pendingFor('materials')).toEqual([19718, 19719])
-    m.discardPending('bank')
-    expect(m.pendingFor('materials')).toEqual([19718, 19719])
-    m.commit('materials')
-    m.setPending([], 'bank')
-    m.commit('bank')
-    expect(m.pendingFor('materials')).toEqual([19718, 19719])
+    m.togglePendingGroup([19718, 19719], 'materials')
+    expect(m.committedFor('bank')).toEqual([19718])
+    expect(m.committedFor('materials')).toEqual([19718, 19719])
+    m.togglePending(19718, 'bank')
+    expect(m.committedFor('materials')).toEqual([19718, 19719])
     const restored = make()
-    expect(restored.pendingFor('bank')).toEqual([])
-    expect(restored.pendingFor('materials')).toEqual([19718, 19719])
+    expect(restored.committedFor('bank')).toEqual([])
+    expect(restored.committedFor('materials')).toEqual([19718, 19719])
     expect(restored.state.committedSources).toEqual(['materials'])
   })
 
   it('stores independent values per account and restores them in a new instance', () => {
     const m = make()
     source.id = A
-    m.setPending([5, 3])
-    m.commit()
+    choose(m, [5, 3])
     m.setActivation(true)
     source.id = B
     expect(m.state.committed).toEqual([])
     expect(m.state.activation).toBe(false)
-    m.setPending([9])
-    m.commit()
+    choose(m, [9])
     source.id = null
     const reloaded = make()
     expect(reloaded.state.status).toBe('uninitialized')
@@ -119,12 +113,10 @@ describe('partitioning, commit and restart', () => {
     source.id = A
     m.togglePending(1, 'bank')
     m.togglePending(2, 'bank')
-    expect(m.dirty.value).toBe(false)
     expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([1, 2])
     m.togglePending(2, 'bank')
     m.togglePending(7, 'bank')
     expect(m.state.committed).toEqual([1, 7])
-    expect(m.dirty.value).toBe(false)
     const restored = make()
     expect(restored.committedFor('bank')).toEqual([1, 7])
     expect(restored.committedFor('materials')).toEqual([])
@@ -133,22 +125,18 @@ describe('partitioning, commit and restart', () => {
   it('clears presentation on disconnect but keeps storage; reconnect restores', () => {
     const m = make()
     source.id = A
-    m.setPending([4])
-    m.commit()
+    choose(m, [4])
     source.id = null
     expect(m.state.status).toBe('uninitialized')
     expect(m.state.committed).toEqual([])
-    expect(m.state.pending).toEqual([])
     expect(storage.data.has(PREFERENCE_KEY_PREFIX + A)).toBe(true)
     source.id = A
     expect(m.state.committed).toEqual([4])
-    expect(m.state.pending).toEqual([4])
   })
 
   it('ignores operations before an account is restored', () => {
     const m = make()
-    m.setPending([1])
-    m.commit()
+    choose(m, [1])
     m.setActivation(true)
     expect(storage.data.size).toBe(0)
     expect(m.beginRequest()).toBeNull()
@@ -159,15 +147,13 @@ describe('delayed work', () => {
   it('never shows Account A values under Account B while the replacement proof is pending', () => {
     const m = make()
     source.id = A
-    m.setPending([1, 2])
-    m.commit()
+    choose(m, [1, 2])
     source.id = null
     expect(m.state.committed).toEqual([])
     expect(m.state.status).toBe('uninitialized')
     source.id = B
     expect(m.state.committed).toEqual([])
-    m.setPending([9])
-    m.commit()
+    choose(m, [9])
     expect(JSON.parse(storage.data.get(PREFERENCE_KEY_PREFIX + A)!).protectedItemIds).toEqual([1, 2])
   })
 
@@ -181,7 +167,7 @@ describe('delayed work', () => {
     expect(m.state.committed).toEqual([])
 
     const stale = m.beginRequest()
-    m.setPending([5])
+    m.togglePending(5, 'bank')
     expect(m.reconcile(stale, { materialProtectionEnabled: false, protectedItemIds: [] })).toBe(false)
     expect(m.state.effective?.enabled).toBe(true)
 
@@ -193,11 +179,56 @@ describe('delayed work', () => {
     expect(m.reconcile(forA, settings)).toBe(false)
   })
 
+  describe('request started synchronously by a reactive consumer during an edit', () => {
+    const settings = { materialProtectionEnabled: true, protectedItemIds: [5] }
+    function observe(m: MaterialProtectionState) {
+      const tokens: ReturnType<MaterialProtectionState['beginRequest']>[] = []
+      const stop = watch(() => JSON.stringify([m.state.committedByView, m.state.quantitiesByView, m.state.bankAllocations]),
+        () => { tokens.push(m.beginRequest()) }, { flush: 'sync' })
+      return { tokens, stop }
+    }
+    const rows = [{ slot: 1, itemId: 5, count: 10, binding: null, boundTo: null }]
+    const actions: [string, (m: MaterialProtectionState) => void][] = [
+      ['togglePending', m => m.togglePending(5, 'bank')],
+      ['togglePendingGroup', m => m.togglePendingGroup([5, 6], 'materials')],
+      ['reserveQuantity', m => { m.reserveQuantity(5, 'bank', 3) }],
+      ['toggleBankStack', m => m.toggleBankStack(5, 1, rows)]
+    ]
+    for (const [name, act] of actions) {
+      it(`${name}: the latest token stays reconcilable; an earlier one is rejected`, () => {
+        const m = make()
+        source.id = A
+        const before = m.beginRequest()
+        const { tokens, stop } = observe(m)
+        act(m)
+        stop()
+        expect(tokens.length).toBeGreaterThan(0)
+        expect(m.reconcile(before, settings)).toBe(false)
+        expect(m.reconcile(tokens[tokens.length - 1]!, settings)).toBe(true)
+        expect(m.state.effective?.protectedItemIds).toEqual([5])
+        // a genuinely later edit invalidates it
+        const latest = m.beginRequest()
+        m.togglePending(77, 'bank')
+        expect(m.reconcile(latest, settings)).toBe(false)
+      })
+    }
+
+    it('pruneStaleBankHints: a request started by the pruning edit stays reconcilable', () => {
+      const m = make()
+      source.id = A
+      m.toggleBankStack(5, 1, rows)
+      const { tokens, stop } = observe(m)
+      m.pruneStaleBankHints([{ ...rows[0]!, count: 12 }])
+      stop()
+      expect(tokens.length).toBeGreaterThan(0)
+      expect(m.reconcile(tokens[tokens.length - 1]!, settings)).toBe(true)
+    })
+  })
+
   it('treats omitted protection fields as no claim and leaves the committed preference alone', () => {
     const m = make()
     source.id = A
-    m.setPending([2])
-    m.commit()
+    choose(m, [2])
     expect(m.reconcile(m.beginRequest(), {})).toBe(false)
     expect(m.reconcile(m.beginRequest(), { materialProtectionEnabled: true })).toBe(false)
     expect(m.state.effective).toBeNull()
@@ -247,8 +278,7 @@ describe('storage degradation and stored values', () => {
     source.id = A
     expect(m.state.status).toBe('ready')
     expect(m.state.diagnostic).toBe('read-failed')
-    m.setPending([6])
-    m.commit()
+    choose(m, [6])
     expect(m.state.committed).toEqual([6])
     expect(m.state.diagnostic).toBe('quota-exceeded')
   })
@@ -263,8 +293,7 @@ describe('storage degradation and stored values', () => {
   it('keeps working with unavailable storage', () => {
     const none = make(null)
     source.id = B
-    none.setPending([1])
-    none.commit()
+    choose(none, [1])
     expect(none.state.committed).toEqual([1])
     expect(none.state.diagnostic).toBe('storage-unavailable')
   })
@@ -274,19 +303,15 @@ describe('per-page committed shadow', () => {
   it('restores each account\'s latest committed values with unavailable storage', () => {
     const m = make(null)
     source.id = A
-    m.setPending([4, 2])
-    m.commit()
+    choose(m, [4, 2])
     m.setActivation(true)
-    m.setPending([99])
     source.id = B
     expect(m.state.committed).toEqual([])
     expect(m.state.activation).toBe(false)
-    m.setPending([8])
-    m.commit()
+    choose(m, [8])
     source.id = A
     expect(m.state.committed).toEqual([2, 4])
     expect(m.state.activation).toBe(true)
-    expect(m.state.pending).toEqual([2, 4])
     source.id = null
     source.id = B
     expect(m.state.committed).toEqual([8])
@@ -308,8 +333,7 @@ describe('per-page committed shadow', () => {
     source.id = A
     expect(m.state.committed).toEqual([1])
     failWrites = true
-    m.setPending([1, 7])
-    m.commit()
+    choose(m, [1, 7])
     m.setActivation(true)
     expect(m.state.diagnostic).toBe('write-failed')
     source.id = B
@@ -331,15 +355,12 @@ describe('per-page committed shadow', () => {
     }
     const m = make(flaky)
     source.id = A
-    m.setPending([3])
-    m.commit()
-    m.setPending([3, 5])
+    choose(m, [3])
     failReads = true
     source.id = null
     source.id = A
     expect(m.state.diagnostic).toBe('read-failed')
     expect(m.state.committed).toEqual([3])
-    expect(m.state.pending).toEqual([3])
   })
 
   it('shadows a preference only loaded from storage, with no local edit (A->B->A, read failure)', () => {
@@ -364,7 +385,6 @@ describe('per-page committed shadow', () => {
     source.id = A
     expect(m.state.committed).toEqual([4, 9])
     expect(m.state.activation).toBe(true)
-    expect(m.state.pending).toEqual([4, 9])
     // Missing record after storage became unavailable: still the loaded preference.
     failReads = false
     storage.data.clear()
@@ -378,8 +398,7 @@ describe('per-page committed shadow', () => {
     storage.setItem(PREFERENCE_KEY_PREFIX + A, JSON.stringify({ version: 1, protectedItemIds: [1], enabled: false }))
     const m = make({ getItem: (k) => storage.getItem(k), setItem: () => { throw new Error('full') }, removeItem: () => undefined })
     source.id = A
-    m.setPending([1, 2])
-    m.commit()
+    choose(m, [1, 2])
     source.id = null
     source.id = A
     expect(m.state.committed).toEqual([1, 2])
@@ -407,8 +426,7 @@ describe('newest-request and shared-lifetime regressions', () => {
   it('clears effective protection on a current response with missing fields, ignores a stale one', () => {
     const m = make()
     source.id = A
-    m.setPending([1])
-    m.commit()
+    choose(m, [1])
     expect(m.reconcile(m.beginRequest(), full([1]))).toBe(true)
     const stale = m.beginRequest()
     const current = m.beginRequest()
@@ -434,14 +452,11 @@ describe('newest-request and shared-lifetime regressions', () => {
     app.unmount()
     connection.accountId = A
     expect(shared.state.accountId).toBe(A)
-    shared.setPending([4])
-    shared.commit()
+    choose(shared, [4])
     connection.accountId = B
     expect(shared.state.accountId).toBe(B)
     expect(shared.state.committed).toEqual([])
-    expect(shared.state.pending).toEqual([])
-    shared.setPending([8])
-    shared.commit()
+    choose(shared, [8])
     const written = [...Object.keys(window.localStorage)].filter((k) => k.startsWith(PREFERENCE_KEY_PREFIX))
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + A)).toContain('[4]')
     expect(window.localStorage.getItem(PREFERENCE_KEY_PREFIX + B)).toContain('[8]')
@@ -482,8 +497,7 @@ describe('integration with the account session', () => {
     await first
     await nextTick()
     expect(m.state.accountId).toBe(A)
-    m.setPending([1])
-    m.commit()
+    choose(m, [1])
     const callsAfterProof = fetchCalls.length
 
     currentId = B
@@ -492,8 +506,7 @@ describe('integration with the account session', () => {
     expect(m.state.committed).toEqual([])
     await second
     expect(m.state.accountId).toBe(B)
-    m.setPending([2])
-    m.commit()
+    choose(m, [2])
     m.reconcile(m.beginRequest(), { materialProtectionEnabled: true, protectedItemIds: [2] })
     expect(fetchCalls.length).toBe(callsAfterProof + 1)
 
@@ -523,14 +536,12 @@ describe('integration with the account session', () => {
         : new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     }))
     await connectKey('KEY')
-    m.setPending([4])
-    m.commit()
-    m.setPending([4, 6])
+    choose(m, [4])
+    choose(m, [4, 6])
     await expect(getJson('/account/bank')).resolves.toEqual({ ok: 1 })
     expect(sessions).toBe(2)
     expect(m.state.accountId).toBe(A)
-    expect(m.state.committed).toEqual([4])
-    expect(m.state.pending).toEqual([4, 6])
+    expect(m.state.committed).toEqual([4, 6])
   })
 
   it('keeps the partition on explicit replacement with the same account and tolerates a missing accountId', async () => {
@@ -538,8 +549,7 @@ describe('integration with the account session', () => {
     created.push(m)
     currentId = A
     await connectKey('KEY')
-    m.setPending([4])
-    m.commit()
+    choose(m, [4])
     await connectKey('KEY')
     expect(m.state.accountId).toBe(A)
     expect(m.state.committed).toEqual([4])
