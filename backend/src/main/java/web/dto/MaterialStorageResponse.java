@@ -7,9 +7,5 @@ public record MaterialStorageResponse(Integer categoryCount, List<MaterialCatego
                                       AccountSourceFreshnessDto freshness) {
     public record MaterialCategoryDto(int category, String name, int order, List<MaterialStackDto> materials) {}
     public record MaterialStackDto(int position, int itemId, int count, String iconUrl, String rarity,
-                                  String itemName) {
-        public MaterialStackDto(int position, int itemId, int count, String iconUrl, String rarity) {
-            this(position, itemId, count, iconUrl, rarity, null);
-        }
-    }
+                                  String itemName) {}
 }
