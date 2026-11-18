@@ -20,18 +20,17 @@ import sync.tp.TpPriceFreshness;
  *  - character has discipline/rating to craft it (character_crafting vs recipes.disciplines/min_rating)
  *    (keep it enabled; it's correct and reduces noise)
  *
- * <p>The relevance definition itself lives in {@link #RELEVANT_TRADEABLE_ITEMS} and is shared by the
- * refresh selection ({@link #collect(Connection)}) and the coverage report
- * ({@link #coverage(Connection)}) so a calculation's reported price coverage can never describe a
+ * <p>The relevance definition itself lives in {@link #RELEVANT_TRADEABLE_ITEMS_TEMPLATE} and is shared by the
+ * refresh selection ({@link #collect(Connection, model.AccountScope)}) and the coverage report
+ * ({@link #coverage(Connection, model.AccountScope)}) so a calculation's reported price coverage can never describe a
  * different item set than the refresh would fetch. Because relevance
  * is derived from account and character recipe knowledge, changed account inputs change the required
  * set, which is what keeps a result provisional until the newly required ids are covered.
  *
- * <p>The definition exists in three variants that differ only in which recipes
- * count as craftable: every account's knowledge (the unscoped one), one account's knowledge,
- * and the shared crafting graph itself for the global selection that needs no account at all. The
- * item derivation, the tradeability join, the shared quote cache and the ten-minute freshness policy
- * are the same in all three.
+ * <p>The definition exists in two variants that differ only in which recipes
+ * count as craftable: one account's knowledge, and the shared crafting graph itself for the global
+ * selection that needs no account at all. The item derivation, the tradeability join, the shared
+ * quote cache and the ten-minute freshness policy are the same in both.
  */
 public final class CraftingProfitItemCollector {
 
@@ -41,7 +40,7 @@ public final class CraftingProfitItemCollector {
      * {@code tp_prices} is keyed on {@code item_id}, so this yields exactly one row per relevant
      * tradeable item.
      *
-     * <p>The quoted numbers are selected because {@link #coverage(Connection)} fingerprints them:
+     * <p>The quoted numbers are selected because {@link #coverage(Connection, model.AccountScope)} fingerprints them:
      * the aggregate counts and instants cannot distinguish one interior quote changing from nothing
      * changing, and a calculation that read a different quote is a different calculation.
      */
@@ -71,12 +70,6 @@ relevant_tradeable AS (
 )
 """;
 
-    /** Recipe knowledge across every account, the source the unscoped definition reads. */
-    private static final String ALL_ACCOUNTS_RECIPE_KNOWLEDGE = """
-  SELECT recipe_id FROM account_recipes
-  UNION
-  SELECT DISTINCT recipe_id FROM character_recipes""";
-
     /** One account's recipe knowledge; two bind parameters, both that account's GUID. */
     private static final String SCOPED_RECIPE_KNOWLEDGE = """
   SELECT recipe_id FROM account_recipes WHERE account_id = ?
@@ -90,10 +83,6 @@ relevant_tradeable AS (
      * {@code account_recipes}), so this reads no account table and needs no scope.
      */
     private static final String EVERY_SHARED_RECIPE = "  SELECT recipe_id FROM recipes";
-
-    /** The unscoped relevance definition, refused on a migrated database. */
-    static final String RELEVANT_TRADEABLE_ITEMS =
-            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(ALL_ACCOUNTS_RECIPE_KNOWLEDGE);
 
     /**
      * The same definition for one account: only this account's recipe knowledge
@@ -118,8 +107,6 @@ relevant_tradeable AS (
 SELECT item_id FROM relevant_tradeable tp
 WHERE
 """ + TpPriceFreshness.STALE_SQL_PREDICATE;
-
-    private static final String SQL = RELEVANT_TRADEABLE_ITEMS + SELECT_STALE;
 
     private static final String SCOPED_SQL = SCOPED_RELEVANT_TRADEABLE_ITEMS + SELECT_STALE;
 
@@ -153,8 +140,6 @@ SELECT COUNT(*) AS required,
              ',' ORDER BY item_id)) AS quote_version
 FROM relevant_tradeable
 """.formatted(TpPriceFreshness.TTL.toMinutes(), TpPriceFreshness.TTL.toMinutes());
-
-    private static final String COVERAGE_SQL = RELEVANT_TRADEABLE_ITEMS + COVERAGE_SELECT;
 
     private static final String SCOPED_COVERAGE_SQL = SCOPED_RELEVANT_TRADEABLE_ITEMS + COVERAGE_SELECT;
 
@@ -195,27 +180,6 @@ FROM relevant_tradeable
     }
 
     /**
-     * The unscoped selection, retained for a pre-cutover database whose recipe knowledge is not yet
-     * account-owned. On a managed (versioned) schema it refuses rather than guess an account; use
-     * {@link #collect(Connection, model.AccountScope)} for one account's demand or
-     * {@link #collectGlobal(Connection)} for the shared crafting graph.
-     */
-    public Set<Integer> collect(Connection con) throws Exception {
-        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Profit price relevance without an account scope");
-        Set<Integer> itemIds = new HashSet<>();
-
-        try (PreparedStatement ps = con.prepareStatement(SQL);
-             ResultSet rs = ps.executeQuery()) {
-
-            while (rs.next()) {
-                itemIds.add(rs.getInt(1));
-            }
-        }
-
-        return itemIds;
-    }
-
-    /**
      * The Profit-relevant item ids whose stored quote is stale or absent, over shared data only.
      *
      * <p>The global half of the split: it reads the shared crafting graph and the shared quote
@@ -234,17 +198,10 @@ FROM relevant_tradeable
         return itemIds;
     }
 
-    public Coverage coverage(Connection con) throws SQLException {
-        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "Profit price coverage without an account scope");
-        try (PreparedStatement ps = con.prepareStatement(COVERAGE_SQL)) {
-            return coverageOf(ps);
-        }
-    }
-
     /**
      * One account's Profit-relevant item ids whose stored quote is stale or absent.
      *
-     * <p>The scoped twin of {@link #collect(Connection)}: the relevance definition is the same
+     * <p>The scoped counterpart of {@link #collectGlobal(Connection)}: the relevance definition is the same
      * template, so the set a refresh fetches for this account and the set
      * {@link #coverage(Connection, model.AccountScope)} measures still cannot diverge.
      */

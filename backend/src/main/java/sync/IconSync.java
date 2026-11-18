@@ -444,24 +444,16 @@ public final class IconSync {
     }
 
     /**
-     * What one unscoped icon-metadata refresh covers on the database in front of it.
+     * What one unscoped icon-metadata refresh covers: the global selection only.
      *
-     * <p>On the versioned database the mixed selection is reduced to its global half: the shared
-     * item, recipe and material-catalog references need no account, so global icon metadata stays
-     * available with no verified credential. The three account-owned families are not read here, since
-     * this entry point carries no account scope and must not read across accounts; their items get
-     * metadata through {@link #repairMissingMetadata}, which an account refresh calls with the ids it
-     * is about to publish (including installed bag containers). An unscoped caller contributes no
-     * account reference, including when the account registry is empty.
-     *
-     * <p>On a pre-cutover database nothing changes: the one unscoped union
-     * {@link #referencedOrUnknownItemIds} has always run there keeps running, so an existing
-     * installation's bank, material and inventory items are still covered until the gate upgrades it.
+     * <p>The shared item, recipe and material-catalog references need no account, so global icon
+     * metadata stays available with no verified credential. The account-owned families are not read
+     * here, since this entry point carries no account scope and must not read across accounts; their
+     * items get metadata through {@link #repairMissingMetadata}, which an account refresh calls with
+     * the ids it is about to publish (including installed bag containers).
      */
     private static List<Integer> metadataRefreshSelection(Connection con) throws SQLException {
-        return repo.ManagedSchema.isManaged(con)
-                ? globalReferencedOrUnknownItemIds(con)
-                : referencedOrUnknownItemIds(con);
+        return globalReferencedOrUnknownItemIds(con);
     }
 
     /**
@@ -470,7 +462,7 @@ public final class IconSync {
      *
      * <p>Reads no account table, so it requires no {@code model.AccountScope} and is refused by
      * nothing - this is the selection that keeps the icon-metadata refresh usable on a migrated,
-     * empty-account database. Like the unscoped union it
+     * empty-account database. It
      * reads the referenced families directly rather than through {@code items}, so a referenced id
      * with no metadata row is still discovered, and it filters by no tradeability source.
      */
@@ -480,36 +472,6 @@ public final class IconSync {
         SELECT item_id FROM (
             SELECT item_id FROM items WHERE icon_url IS NULL
             UNION SELECT item_id FROM material_category_items
-            UNION SELECT output_item_id FROM recipes WHERE output_item_id IS NOT NULL
-            UNION SELECT item_id FROM recipe_ingredients WHERE item_id IS NOT NULL
-        ) referenced
-        ORDER BY item_id
-        """);
-    }
-
-    /**
-     * The items whose icon metadata is worth holding: everything an item-bearing view can reference,
-     * plus anything still missing metadata entirely.
-     *
-     * <p>The referenced families are read directly, <em>not</em> through the {@code items} table, so an
-     * id an account or recipe row refers to is discovered even when no metadata row was ever created
-     * for it. Nothing here filters by tradeability, so a referenced nontradeable item
-     * is covered like any other.
-     */
-    static List<Integer> referencedOrUnknownItemIds(Connection con) throws SQLException {
-
-        // Three of the seven referenced families are account-owned on a migrated database, so this
-        // selection would read across accounts there. Refused with an actionable
-        // diagnostic rather than silently widened or narrowed.
-        repo.ManagedSchema.rejectUnscopedAccountAccess(con, "icon-metadata item selection without an account scope");
-
-        return selectItemIds(con, """
-        SELECT item_id FROM (
-            SELECT item_id FROM items WHERE icon_url IS NULL
-            UNION SELECT item_id FROM account_bank WHERE item_id IS NOT NULL
-            UNION SELECT item_id FROM account_materials WHERE item_id IS NOT NULL
-            UNION SELECT item_id FROM material_category_items
-            UNION SELECT item_id FROM character_items WHERE item_id IS NOT NULL
             UNION SELECT output_item_id FROM recipes WHERE output_item_id IS NOT NULL
             UNION SELECT item_id FROM recipe_ingredients WHERE item_id IS NOT NULL
         ) referenced

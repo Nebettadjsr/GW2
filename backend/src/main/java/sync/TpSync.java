@@ -323,12 +323,11 @@ public final class TpSync {
     /**
      * The Profit price refresh: fetch the stale or missing quotes the Profit selection requires.
      *
-     * <p>Carries no account scope, so on the versioned database it asks for the global selection:
+     * <p>Carries no account scope, so it asks for the global selection:
      * the shared crafting graph and the shared quote cache, with no account row
-     * entering the demand and no account inferred. On a pre-cutover database the selection derived
-     * from the stored recipe knowledge is unchanged.
+     * entering the demand and no account inferred.
      *
-     * <p>Required-ID-only either way - both selections apply the same ten-minute freshness filter,
+     * <p>Required-ID-only - the global and scoped selections apply the same ten-minute freshness filter,
      * so this refetches nothing a previous refresh already covered, and neither variant walks the
      * Trading Post catalog.
      */
@@ -336,7 +335,7 @@ public final class TpSync {
         Set<Integer> itemIds;
         try (Connection con = Db.open()) {
             CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
-            itemIds = ManagedSchema.isManaged(con) ? collector.collectGlobal(con) : collector.collect(con);
+            itemIds = collector.collectGlobal(con);
         }
         syncTpPrices(itemIds);
     }
@@ -368,7 +367,7 @@ public final class TpSync {
         Set<Integer> itemIds;
         try (Connection con = Db.open()) {
             DiscoveryItemCollector collector = new DiscoveryItemCollector();
-            itemIds = ManagedSchema.isManaged(con) ? collector.collectGlobal(con) : collector.collect(con);
+            itemIds = collector.collectGlobal(con);
         }
         syncTpPrices(itemIds);
     }
