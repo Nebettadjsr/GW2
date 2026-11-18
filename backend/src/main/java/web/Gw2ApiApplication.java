@@ -65,7 +65,7 @@ public class Gw2ApiApplication {
     public static void main(String[] args) {
         // The startup schema gate runs before the Spring context exists, so no repository, task or
         // scheduler can reach the database before the versioned chain is validated or applied, and
-        // the process stops here when it cannot be (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.3).
+        // the process stops here when it cannot be (STORY-INFRA-004; docs/ARCHITECTURE.md, Schema lifecycle).
         infra.db.SchemaInitializer.initializeRuntimeDatabase();
 
         SpringApplication.run(Gw2ApiApplication.class, args);
@@ -140,7 +140,7 @@ public class Gw2ApiApplication {
     }
 
     /**
-     * Crafting Profit's cached-result use case (TARGET_ARCHITECTURE.md §9.1), shared rather than
+     * Crafting Profit's cached-result use case (docs/ARCHITECTURE.md, Calculation, detail and search boundaries), shared rather than
      * per-request: it holds no per-call state, and the coordinators it uses must be the shared ones
      * for their admission rules to mean anything. The per-request state stays where it was — each
      * call builds its own {@link CraftingProfitService} over its own captured session, which is what
@@ -310,7 +310,7 @@ public class Gw2ApiApplication {
     }
 
     /**
-     * Upstream validation of a caller-supplied GW2 key (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+     * Upstream validation of a caller-supplied GW2 key (STORY-API-010; docs/ARCHITECTURE.md, Account access, credentials and deletion).
      *
      * <p>The live adapter is the default. {@code gw2.account-access.test-fixtures} replaces it with
      * the offline fixture adapter so the HTTP access contract can be verified without sending a
@@ -433,7 +433,7 @@ public class Gw2ApiApplication {
     }
 
     /**
-     * The icon-delivery boundary (STORY-API-009, TARGET_ARCHITECTURE.md §12.1) over the persistent
+     * The icon-delivery boundary (STORY-API-009; docs/ARCHITECTURE.md, Runtime and source boundaries) over the persistent
      * filesystem cache at {@code ICON_CACHE_DIR} and the upstream image adapter.
      *
      * <p>Shared on purpose, unlike the calculation services: the in-process miss coordination is the
