@@ -4,12 +4,13 @@ const DUMMY_KEY = 'synthetic-read-only-smoke-key'
 const ACCOUNT_ID = '00000000-0000-4000-8000-000000000194'
 
 /** Test-only backend boundary; the real App restores and proves the retained synthetic key. */
-export function createControlledAccountSession({ calculationRoutes, searchQueries, searchResults = {}, accountReadRoutes = [] }) {
+export function createControlledAccountSession({ calculationRoutes, searchQueries, searchResults = {}, accountReadRoutes = [], publicReadRoutes = [] }) {
   const methods = new Map([
     ['/api/session', 'POST'],
     ['/api/crafting/selector-options', 'GET'],
     ['/api/crafting/ingredient-search', 'GET'],
     ...accountReadRoutes.map(path => [path, 'GET']),
+    ...publicReadRoutes.map(path => [path, 'GET']),
     ...calculationRoutes.map(path => [path, 'POST'])
   ])
   const failures = []
@@ -55,6 +56,10 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
         return reject(400, `Raw key sent in body or query: ${url.pathname}`)
       }
       const key = request.headers['x-gw2-api-key']
+      // Shared public reads (item metadata/prices) need no account proof or context, and never a key.
+      if (publicReadRoutes.includes(url.pathname)) {
+        return key === undefined ? false : reject(400, `Raw key sent on public route: ${url.pathname}`)
+      }
       if (url.pathname === '/api/session') {
         if (key !== DUMMY_KEY) return reject(401, 'Proof did not use the synthetic retained key')
         proofs += 1

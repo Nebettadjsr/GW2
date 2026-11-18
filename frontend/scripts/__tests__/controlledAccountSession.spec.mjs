@@ -34,6 +34,14 @@ describe('controlled account boundary', () => {
     expect(request('/api/sync/account/bank', 'POST').reply.status).toBe(404)
   })
 
+  it('lets listed public reads through without proof, but never with a key or another method', () => {
+    const { request } = fixture({ publicReadRoutes: ['/api/items/metadata'] })
+    expect(request('/api/items/metadata?ids=1', 'GET').handled).toBe(false)
+    expect(request('/api/items/metadata?ids=1', 'POST').reply.status).toBe(405)
+    expect(request('/api/items/metadata?ids=1', 'GET', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).reply.status).toBe(400)
+    expect(request('/api/items/prices?ids=1', 'GET').reply.status).toBe(404)
+  })
+
   it('admits protected fixtures only after the normal retained-key proof with its returned context', () => {
     const { request } = fixture()
     expect(request('/api/crafting/profit', 'POST').reply.status).toBe(401)

@@ -17,7 +17,7 @@
  *   3. one bundled neutral fallback for a null URL, a 404, a 503 and a decode failure, each
  *      requested exactly once — no retry loop;
  *   4. an image that arrives late shifts nothing, at a wide and a narrow viewport;
- *   5. an empty bank slot stays empty, and item text, counts, rarity and row/detail interaction
+ *   5. an empty bank slot stays empty, and item text, counts and row/detail interaction
  *      survive every image failure.
  *
  * Usage:  npm run build && npm run smoke:icons
@@ -31,6 +31,7 @@
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
+import { createControlledAccountSession } from './controlledAccountSession.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
 
@@ -73,6 +74,12 @@ const ITEMS = {
 
 /** How long the slow image is held back, so the reserved box is observably empty first. */
 const SLOW_IMAGE_MS = 1_200
+
+const session = createControlledAccountSession({
+  calculationRoutes: ['/api/crafting/profit', '/api/crafting/profit/resolution'],
+  searchQueries: [],
+  accountReadRoutes: ['/api/account/bank', '/api/account/materials']
+})
 
 const steps = []
 
@@ -170,11 +177,11 @@ function treeFor(recipeId) {
 const BANK = {
   slotCount: 5,
   slots: [
-    { slot: 0, itemId: ITEMS.ok.id, count: 42, iconUrl: ITEMS.ok.url, rarity: 'Basic' },
-    { slot: 1, itemId: null, count: null, iconUrl: null, rarity: null },
-    { slot: 2, itemId: ITEMS.unavailable.id, count: 7, iconUrl: ITEMS.unavailable.url, rarity: 'Rare' },
-    { slot: 3, itemId: null, count: null, iconUrl: null, rarity: null },
-    { slot: 4, itemId: ITEMS.none.id, count: 250, iconUrl: null, rarity: 'Fine' }
+    { slot: 0, itemId: ITEMS.ok.id, count: 42, iconUrl: ITEMS.ok.url },
+    { slot: 1, itemId: null, count: null, iconUrl: null },
+    { slot: 2, itemId: ITEMS.unavailable.id, count: 7, iconUrl: ITEMS.unavailable.url },
+    { slot: 3, itemId: null, count: null, iconUrl: null },
+    { slot: 4, itemId: ITEMS.none.id, count: 250, iconUrl: null }
   ]
 }
 
@@ -184,8 +191,8 @@ const MATERIALS = {
     {
       name: 'Controlled Materials',
       materials: [
-        { category: 5, itemId: ITEMS.okJpeg.id, count: 3, iconUrl: ITEMS.okJpeg.url, rarity: 'Fine' },
-        { category: 5, itemId: ITEMS.undecodable.id, count: 11, iconUrl: ITEMS.undecodable.url, rarity: null }
+        { category: 5, itemId: ITEMS.okJpeg.id, count: 3, iconUrl: ITEMS.okJpeg.url },
+        { category: 5, itemId: ITEMS.undecodable.id, count: 11, iconUrl: ITEMS.undecodable.url }
       ]
     }
   ]
@@ -236,8 +243,10 @@ function serveImage(response, pathname) {
   }
 }
 
-function answerApi({ response, url, body, sendJson }) {
+function answerApi(context) {
+  const { response, url, body, sendJson } = context
   if (/^\/api\/items\/\d+\/icon\//.test(url.pathname)) return serveImage(response, url.pathname)
+  if (session.answer(context)) return
 
   if (url.pathname === '/api/crafting/selector-options') {
     return sendJson(200, {
@@ -353,6 +362,7 @@ async function run() {
 
   const browser = await chromium.launch({ executablePath: browserPath })
   const page = await browser.newPage({ viewport: WIDE })
+  await session.install(page, stub.origin)
 
   /** Every request the browser issued, whatever its origin — the record AC 4 is asserted from. */
   const browserRequests = []
@@ -579,9 +589,9 @@ async function run() {
       elements.map((slot) => ({
         empty: slot.querySelector('[data-test="bank-empty-slot"]') !== null,
         icons: slot.querySelectorAll('[data-test="item-icon"]').length,
-        identity: slot.querySelector('[data-test="item-identity"]')?.textContent.trim() ?? null,
-        count: slot.querySelector('[data-test="item-count"]')?.textContent.trim() ?? null,
-        rarity: slot.querySelector('[data-test="item-rarity"]')?.textContent.trim() ?? null
+        // The tile carries no visible id/rarity text; the slot title is the current identity surface.
+        identity: slot.querySelector('.inventory-tile')?.getAttribute('title') ?? null,
+        count: slot.querySelector('[data-test="item-count"]')?.textContent.trim() ?? null
       }))
     )
     check(
@@ -592,9 +602,9 @@ async function run() {
       slots.filter((slot) => !slot.empty).every((slot) => slot.icons === 1 && slot.identity !== null),
       `An occupied slot lost its icon or its identity: ${JSON.stringify(slots)}`
     )
-    const unavailableSlot = slots.find((slot) => slot.identity === `#${ITEMS.unavailable.id}`)
+    const unavailableSlot = slots.find((slot) => slot.identity?.startsWith(`Item #${ITEMS.unavailable.id} `))
     check(
-      unavailableSlot.count === '× 7' && unavailableSlot.rarity === 'Rare',
+      unavailableSlot !== undefined && unavailableSlot.count === '7',
       `The slot whose image is unavailable lost its text: ${JSON.stringify(unavailableSlot)}`
     )
     record(
@@ -609,7 +619,7 @@ async function run() {
     const stacks = await page.$$eval('[data-test="material-stack"]', (elements) =>
       elements.map((stack) => ({
         state: stack.querySelector('[data-test="item-icon"]').getAttribute('data-icon-state'),
-        identity: stack.querySelector('[data-test="item-identity"]').textContent.trim(),
+        identity: stack.querySelector('.inventory-tile').getAttribute('title'),
         count: stack.querySelector('[data-test="item-count"]').textContent.trim()
       }))
     )
@@ -618,7 +628,7 @@ async function run() {
       `Materials did not show both a delivered and a failed image: ${JSON.stringify(stacks)}`
     )
     check(
-      stacks.every((stack) => stack.identity.startsWith('#') && stack.count.startsWith('×')),
+      stacks.every((stack) => stack.identity.startsWith('Item #') && /^\d+$/.test(stack.count)),
       `A material stack lost its id or count: ${JSON.stringify(stacks)}`
     )
     record('materials keep id and count whatever the image did', JSON.stringify(stacks))
@@ -632,14 +642,16 @@ async function run() {
     check(jsonFromImages.length === 0, `An image request went somewhere else: ${JSON.stringify(jsonFromImages)}`)
     check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)
     // The 503 item is shown on three surfaces during this run — a profit row, a tree node and a bank
-    // slot — and each of them asked for it exactly once. Three requests for three renderings is the
-    // opposite of a retry loop: no element ever asked twice.
+    // slot. The row and tree node share one document, where the browser may fold their identical
+    // addresses into one fetch (step 3 pinned that view at one request); the bank slot is a later
+    // remount and asks again. So two or three requests are expected; more would mean a retry loop.
     const unavailableAsked = imageRequests.get(ITEMS.unavailable.url) ?? 0
     check(
-      unavailableAsked === 3,
+      unavailableAsked >= 2 && unavailableAsked <= 3,
       `The unavailable image was requested ${unavailableAsked} times for the 3 places it appears — ` +
-        'either a rendering was added or something retried.'
+        'expected 2 or 3; more means something retried, fewer means a surface stopped asking.'
     )
+    record('synthetic account proofs, strict routes and methods', session.verify())
     record(
       'no request ever left this application',
       `${browserRequests.length} browser requests, all to ${stub.origin}; no page error`
