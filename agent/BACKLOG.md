@@ -1,6 +1,6 @@
 # Supervised work and handoffs
 
-Updated 17 November 2026. GitHub issues, PRs, reviews and CI own execution state. This file records current owner authorization and handoff constraints. The [roadmap](../docs/ROADMAP.md) owns future scope; [Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) explains the implemented process.
+Updated 18 November 2026. GitHub issues, PRs, reviews and CI own execution state. This file records current owner authorization and handoff constraints. The [roadmap](../docs/ROADMAP.md) owns future scope; [Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) explains the implemented process.
 
 ## Current owner authorization
 
@@ -20,6 +20,16 @@ On 18 November the owner revised the width behavior: show an informational notic
 keeping the desktop tool content available with horizontal scrolling. This supersedes the
 blocking guard, width-based proof/loading deferral and automatic modal closure. Keep the
 same issue/PR and independent QA ownership; no mobile tool-layout optimization is requested.
+
+The owner accepted that concrete local UI and PR #244 merged. The subsequent instruction
+to proceed continues broader coverage request #21. The next released bounded slice is
+[#245, STORY-COV-007](https://github.com/Nebettadjsr/GW2/issues/245): active shared material-catalog
+publication, rollback and retry. Independent QA owns test/fixture design and authorship;
+Claude may add only the agreed package-private public-array fetch overload/delegation.
+Use production migrations and a separate owned disposable PostgreSQL fixture. No new
+validation policy, UI, schema, live-account operation or deployment is authorized. Require
+final-head full CI, native review and independently verified focused results before merge;
+no further visual approval is needed for this backend-only slice. GitHub owns its live state.
 
 ## Confirmed earlier scope
 
