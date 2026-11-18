@@ -98,8 +98,7 @@ public class CraftingProfitApiController {
     }
 
     /**
-     * Explains how one selected recipe's output requirement is resolved in a Profit calculation
-     * 
+     * Explains how one selected recipe's output requirement is resolved in a Profit calculation.
      *
      * <p>The body is required and carries {@code recipeId} and the {@code calculation} it is
      * resolved in, the latter being this route's own table request contract, so scope kinds,

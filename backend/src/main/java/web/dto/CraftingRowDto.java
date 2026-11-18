@@ -16,8 +16,8 @@ import java.util.List;
  *
  * <p>Presentation-level text (status labels, "no TP" markers, missing-material summaries,
  * search blobs) is deliberately absent: it is a rendering rule, not domain state. The per-row
- * resolution tree is likewise not part of this contract; it is served by the separate
- * {@code /api/crafting/profit/resolution} detail route.
+ * resolution tree is likewise not part of this contract; Profit and Discovery serve it through
+ * their selected-row resolution routes.
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *
