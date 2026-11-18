@@ -77,7 +77,7 @@ async function getTextAttempt(path: string, accept: string, signal: AbortSignal 
     throw new ApiRequestError(`The backend could not be reached (${describeCause(cause)}).`, UNREACHABLE_CODE, null)
   }
   if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
-    throw new ApiRequestError('The account changed while this request was in flight.', ACCOUNT_CHANGED_CODE, null)
+    throw accountChanged('request was in flight')
   }
   if (!response.ok) {
     const error = await toRequestError(response)
@@ -89,7 +89,7 @@ async function getTextAttempt(path: string, accept: string, signal: AbortSignal 
   }
   const text = await response.text()
   if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
-    throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)
+    throw accountChanged('response was downloading')
   }
   return { text, filename: attachmentName(response.headers.get('Content-Disposition')) }
 }
@@ -107,7 +107,7 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 /**
- * The account-session hook (`TARGET_ARCHITECTURE.md` 8.2). It is installed once by the application
+ * The account-session hook (`docs/ARCHITECTURE.md`). It is installed once by the application
  * entry point, so the session lifecycle stays in one module and this transport only asks it three
  * things: headers for an account request, whether the answer still belongs to the current account,
  * and whether a refused request is worth one retry after re-proving the retained key.
@@ -128,6 +128,10 @@ export interface AccountTransport {
 export const ACCOUNT_CHANGED_CODE = 'ACCOUNT_CHANGED'
 
 let accountTransport: AccountTransport | null = null
+
+function accountChanged(stage: string): ApiRequestError {
+  return new ApiRequestError(`The account changed while this ${stage}.`, ACCOUNT_CHANGED_CODE, null)
+}
 
 export function installAccountTransport(transport: AccountTransport | null): void {
   accountTransport = transport
@@ -179,7 +183,7 @@ async function sendJsonAttempt<T>(
 
   // A late answer for a replaced or disconnected account must never reach the new one.
   if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
-    throw new ApiRequestError('The account changed while this request was in flight.', ACCOUNT_CHANGED_CODE, null)
+    throw accountChanged('request was in flight')
   }
 
   if (path.startsWith('/account/')) {
@@ -190,7 +194,7 @@ async function sendJsonAttempt<T>(
     const stateBody = await readStateBody<T>(response.clone())
     if (stateBody !== null) {
       if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
-        throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)
+        throw accountChanged('response was downloading')
       }
       return stateBody
     }
@@ -204,7 +208,7 @@ async function sendJsonAttempt<T>(
   }
   const body = (await response.json()) as T
   if (transport !== null && ticket !== null && !transport.isCurrent(ticket)) {
-    throw new ApiRequestError('The account changed while this response was downloading.', ACCOUNT_CHANGED_CODE, null)
+    throw accountChanged('response was downloading')
   }
   return body
 }
