@@ -153,20 +153,12 @@ class CraftingProfitServiceSessionTest {
             this.reads = reads;
         }
 
-        @Override public List<Recipe> loadRecipes(String discipline) {
-            reads.own("recipes:" + discipline);
-            return List.of(RECIPE);
-        }
 
         @Override public List<Recipe> loadRecipes(Connection con, model.AccountScope scope, String discipline) {
             reads.pinned("recipes:" + discipline);
             return List.of(RECIPE);
         }
 
-        @Override public List<Recipe> loadRecipesForCharacter(String charName, String discipline) {
-            reads.own("recipesForCharacter:" + charName + "/" + discipline);
-            return List.of(RECIPE);
-        }
 
         @Override public List<Recipe> loadRecipesForCharacter(Connection con, model.AccountScope scope, String charName, String discipline) {
             reads.pinned("recipesForCharacter:" + charName + "/" + discipline);
@@ -217,10 +209,6 @@ class CraftingProfitServiceSessionTest {
             this.reads = reads;
         }
 
-        @Override public List<DiscRow> loadAllCharacterCrafting() {
-            reads.own("characterCrafting");
-            return List.of(new DiscRow("Aria", "Artificer", 400, true));
-        }
 
         @Override public List<DiscRow> loadAllCharacterCrafting(Connection con, model.AccountScope scope) {
             reads.pinned("characterCrafting");
@@ -235,10 +223,6 @@ class CraftingProfitServiceSessionTest {
             this.reads = reads;
         }
 
-        @Override public CoordinatedInventory loadOwnedInventoryForCharacters(Set<String> names) {
-            reads.own("inventory");
-            return new CoordinatedInventory(Map.of(), Map.of(), Map.of());
-        }
 
         @Override public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope, Set<String> names) {
             reads.pinned("inventory");
