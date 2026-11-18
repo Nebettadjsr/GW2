@@ -278,7 +278,7 @@ export function useCraftingDiscovery(
 }
 
 /**
- * The five settings the Discovery route accepts, taken from its own echo.
+ * The four settings the Discovery route accepts, taken from its own echo.
  *
  * `allowDailyCrafts` is dropped on purpose: Discovery fixes it and does not accept it as an
  * input, so echoing it back would send the route a field it does not have. No Profit-only setting is

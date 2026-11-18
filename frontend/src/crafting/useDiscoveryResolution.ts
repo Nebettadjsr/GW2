@@ -9,7 +9,7 @@ import { useResolutionDetail, type ResolutionDetailState } from './useResolution
 
 /**
  * Crafting Discovery's selected-recipe detail: the Discovery route's request body and identity check,
- * over the shared association rules of `TARGET_ARCHITECTURE.md` 13.4 (`useResolutionDetail`).
+ * over the shared lazy association rules (`useResolutionDetail`).
  *
  * The request carries the effective one-character scope and settings the table response echoed, so
  * the detail uses the same character for eligibility and inventory.
@@ -51,7 +51,7 @@ export function useDiscoveryResolution(api: CraftingApi): DiscoveryResolutionSta
 /**
  * A stable key for the *calculation* a Discovery detail belongs to. Built from the backend's echoed
  * scope and settings only: sorting and searching are not part of it, so
- * re-ordering the list does not invalidate a detail (13.4). `allowDailyCrafts` is included
+ * re-ordering the list does not invalidate a detail. `allowDailyCrafts` is included
  * because the echo reports it, and a route that changed the value it fixes would be calculating
  * something else.
  */
