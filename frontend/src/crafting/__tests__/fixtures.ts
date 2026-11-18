@@ -723,10 +723,10 @@ export const discoveryRows: CraftingRow[] = [
 ]
 
 /**
- * The response the real backend produces for `request`: the same rows, echoing back the scope, the
- * inventory character and the settings it calculated with after applying its own Discovery defaults
- * (`DOMAIN_SPEC.md` 2.2.2). An omitted inventory character is echoed as null, which is the
- * unfiltered owned pool.
+ * The response the real backend produces for `request`: the same rows, echoing the required
+ * character/discipline scope and the settings applied with Discovery's own defaults
+ * (`DOMAIN_SPEC.md` 2.2.2). That character also supplies inventory; there is no separate
+ * inventory-character input or unfiltered owned pool.
  */
 export function echoedDiscoveryResponse(
   request: CraftingDiscoveryRequest,
