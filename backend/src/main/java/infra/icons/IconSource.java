@@ -1,7 +1,7 @@
 package infra.icons;
 
 /**
- * One accepted canonical upstream image source (TARGET_ARCHITECTURE.md §12.1).
+ * One accepted canonical upstream image source.
  *
  * <p>Only {@link IconSourcePolicy} produces instances, so holding one is itself the proof that the
  * retained metadata passed the canonical-source validation: the URL is an absolute HTTPS

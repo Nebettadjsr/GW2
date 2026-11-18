@@ -1,7 +1,7 @@
 package infra.icons;
 
 /**
- * Acquires the image bytes of one accepted canonical source (TARGET_ARCHITECTURE.md §12.1).
+ * Acquires the image bytes of one accepted canonical source.
  *
  * <p>Implementations may fetch only {@link IconSource#canonicalUrl()} - never a caller-supplied URL,
  * path or host - must not follow redirects, and must forward no API key, cookie, application

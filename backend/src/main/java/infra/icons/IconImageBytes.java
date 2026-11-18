@@ -11,7 +11,7 @@ import java.util.Locale;
 
 /**
  * Decides whether a byte array really is the complete image its extension claims
- * (TARGET_ARCHITECTURE.md §12.1: "a complete, nonempty, decodable PNG/JPEG matching the extension").
+ *.
  * An HTML error body, a truncated download and a PNG delivered under a {@code .jpg} key all fail here,
  * which is what keeps them out of the cache.
  *

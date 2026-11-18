@@ -9,7 +9,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 /**
- * The upstream image adapter (TARGET_ARCHITECTURE.md §12.1): one plain HTTPS GET of the matched
+ * The upstream image adapter: one plain HTTPS GET of the matched
  * canonical URL, under the finite bounds of {@link IconCacheBounds}, with the response validated as a
  * real image before anybody may publish it.
  *
@@ -32,12 +32,12 @@ public final class HttpIconImageFetcher implements IconImageFetcher {
      * The production client. It routes through the JVM's own configured proxy selector
      * ({@code https.proxyHost}/{@code https.proxyPort}/{@code http.nonProxyHosts}) rather than the
      * builder's default of no proxy at all, so where egress is a deployment concern it is
-     * configuration and not a code change (§15). With nothing configured the selector chooses a direct
+     * configuration and not a code change. With nothing configured the selector chooses a direct
      * connection, which is what every run so far has made.
      *
      * <p>It is also what makes an upstream image fetch externally observable: a check can route this
      * client through a counting proxy and so <em>count</em> upstream requests instead of inferring
-     * their absence from a rendered picture (§12.1's verification list).
+     * their absence from a rendered picture.
      */
     public HttpIconImageFetcher() {
         this(HttpClient.newBuilder()
@@ -47,7 +47,7 @@ public final class HttpIconImageFetcher implements IconImageFetcher {
                 .build());
     }
 
-    /** Seam for tests, which point a client at a local fixture server (TEST_STRATEGY.md §31.2). */
+    /** Seam for tests, which point a client at a local fixture server. */
     public HttpIconImageFetcher(HttpClient client) {
         this.client = client;
     }

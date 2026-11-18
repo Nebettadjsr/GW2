@@ -9,9 +9,9 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongSupplier;
 
 /**
- * Turns a cache miss into a committed cache entry, once (TARGET_ARCHITECTURE.md §12.1). Every writer -
- * the image endpoint's misses and the desktop icon sync - goes through this class, so there is one
- * key policy, one download-bounding policy and one publication protocol rather than two stores.
+ * Turns a cache miss into a committed cache entry, once. The image
+ * endpoint's misses go through this class, so there is one download-bounding policy and one
+ * publication protocol in front of the store.
  *
  * <p>What it guarantees for a key:
  * <ul>
@@ -152,7 +152,7 @@ public final class IconAcquisition {
                     store.publish(source.sourceKey(), source.extension(), bytes));
         } catch (IconStorageException notPersisted) {
             // Deliberately not returned as a successful image: an icon that could not be stored must
-            // surface as a bounded failure (§12.1).
+            // surface as a bounded failure.
             return new IconAcquisitionResult.Unavailable("the icon could not be persisted");
         }
     }
