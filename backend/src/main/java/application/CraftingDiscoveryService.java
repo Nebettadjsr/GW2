@@ -258,7 +258,7 @@ public class CraftingDiscoveryService {
         this.lastUsableRecipeIds = candidates.usableRecipeIds();
 
         CalculationInputs inputs =
-                loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
+                loadCalculationInputs(oneCraftSettings, choice.charName, candidates.allRecipes());
 
         Map<Integer, CraftResult> results = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateAllSingleCraft(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.boundInventory(),
@@ -304,7 +304,7 @@ public class CraftingDiscoveryService {
         }
 
         CalculationInputs inputs =
-                loadCalculationInputs(oneCraftSettings, characterName(choice), candidates.allRecipes());
+                loadCalculationInputs(oneCraftSettings, choice.charName, candidates.allRecipes());
 
         CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateSingleCraft(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
@@ -320,10 +320,6 @@ public class CraftingDiscoveryService {
         return CraftingResolutionDetail.ofDiscovery(
                 recipeId, selected, row, explanation, inputs.items(), inputs.tp(),
                 knownUsableRecipeIds, candidates.candidateRecipeIds());
-    }
-
-    private String characterName(DiscChoice choice) {
-        return choice.charName;
     }
 
     private void requireCharacterScope(DiscChoice choice) {

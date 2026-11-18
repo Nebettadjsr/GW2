@@ -354,11 +354,6 @@ public class CraftingProfitService {
     }
 
     /**
-     * Lazy per-recipe detail lookup (view calls this on row selection): returns the cached
-     * coordinated result for {@code recipeId}, building and caching its resolution tree on first
-     * request. Returns {@code null} if {@code recipeId} is not part of the most recent reload().
-     */
-    /**
      * The most recent reload()'s result for {@code recipeId} exactly as the planner produced it,
      * without building its resolution tree. For callers that only read the computed numbers (such
      * as the reload-summary counters logged to the console), since
@@ -370,6 +365,11 @@ public class CraftingProfitService {
         return lastResultsByRecipeId.get(recipeId);
     }
 
+    /**
+     * Lazy per-recipe detail lookup (view calls this on row selection): returns the cached
+     * coordinated result for {@code recipeId}, building and caching its resolution tree on first
+     * request. Returns {@code null} if {@code recipeId} is not part of the most recent reload().
+     */
     public CraftResult getResultByRecipeId(int recipeId) {
         CraftResult cr = lastResultsByRecipeId.get(recipeId);
         if (cr == null) return null;
