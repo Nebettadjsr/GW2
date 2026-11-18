@@ -25,8 +25,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
- * Account-keyed, credential-aware admission and execution of account refreshes (STORY-SYNC-006,
- * TARGET_ARCHITECTURE.md §7.2-7.4, §8.1, §9.1). It supersedes the process-wide
+ * Account-keyed, credential-aware admission and execution of account refreshes (STORY-SYNC-006). It supersedes the process-wide
  * {@link AccountRefreshCoordinator} for callers that hold a trusted {@link AccountContext}.
  *
  * <ul>
