@@ -182,4 +182,19 @@ class PlanStateJournalTest {
 
         assertEquals(originalBefore, snapshot(original), "mutating the copy must not touch the original");
     }
+
+    @Test
+    void consumeWithBindingKeepsCharacterBoundNonPositiveResultAndStock() {
+        PlanState state = new PlanState(Map.of(), Map.of(), Map.of("A", Map.of(1, 5)));
+        PlanState.InventoryConsumption negative = state.consumeInventoryWithBinding(1, -1, "A");
+        assertEquals(-1, negative.usedBound());
+        assertEquals(0, negative.usedSellable());
+        PlanState.InventoryConsumption zero = state.consumeInventoryWithBinding(1, 0, "A");
+        assertEquals(0, zero.usedBound());
+        assertEquals(0, zero.usedSellable());
+        PlanState.InventoryConsumption ordinary = state.consumeInventoryWithBinding(1, 2, "A");
+        assertEquals(2, ordinary.usedBound());
+        assertEquals(0, ordinary.usedSellable());
+        assertEquals(3, state.consumeInventoryWithBinding(1, 9, "A").usedBound());
+    }
 }

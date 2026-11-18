@@ -361,7 +361,7 @@ public class PlanState {
         return consumeFrom(SELLABLE, inventory, null, itemId, qtyWanted);
     }
 
-    /** Takes up to {@code wanted} from one pool, journalling the new value (absent once emptied). */
+    /** Takes up to {@code wanted} from a sellable/account-bound pool (returns 0 when nothing is taken), journalling the new value. */
     private int consumeFrom(int kind, Map<Integer, Integer> pool, String owner, int itemId, int wanted) {
         int have = pool.getOrDefault(itemId, 0);
         int used = Math.min(have, wanted);
@@ -404,10 +404,18 @@ public class PlanState {
      * single-character/legacy path and by any consumption not attributable to one character).
      */
     public InventoryConsumption consumeInventoryWithBinding(int itemId, int qtyWanted, String assignedCharacter) {
-        Map<Integer, Integer> ownerStock = assignedCharacter == null ? null
-                : characterBoundInventory.get(assignedCharacter);
-        int usedCharacterBound = ownerStock == null ? 0
-                : consumeFrom(CHARACTER_BOUND, ownerStock, assignedCharacter, itemId, qtyWanted);
+        int usedCharacterBound = 0;
+        if (assignedCharacter != null) {
+            Map<Integer, Integer> ownerStock = characterBoundInventory.get(assignedCharacter);
+            if (ownerStock != null) {
+                int have = ownerStock.getOrDefault(itemId, 0);
+                usedCharacterBound = Math.min(have, qtyWanted);
+                if (usedCharacterBound > 0) {
+                    int left = have - usedCharacterBound;
+                    setValue(CHARACTER_BOUND, itemId, assignedCharacter, left > 0 ? left : ABSENT);
+                }
+            }
+        }
 
         int usedAccountBound = consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - usedCharacterBound);
         int usedSellable = consumeInventory(itemId, qtyWanted - usedCharacterBound - usedAccountBound);
