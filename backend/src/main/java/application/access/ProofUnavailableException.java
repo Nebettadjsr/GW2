@@ -3,8 +3,8 @@ package application.access;
 import java.time.Duration;
 
 /**
- * Upstream validation could not be completed - transport failure, server error or rate limiting
- * (STORY-API-010, TARGET_ARCHITECTURE.md §8.1). Retryable: it maps to 503 with bounded guidance and
+ * Upstream validation could not be completed - transport failure, server error or rate limiting.
+ * Retryable: it maps to 503 with bounded guidance and
  * never revokes a session, so an already validated lease keeps authorizing cached reads through an
  * outage while new proof and renewal fail.
  */

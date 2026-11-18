@@ -1,7 +1,7 @@
 package application.access;
 
 /**
- * Validates one transient GW2 API key upstream (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+ * Validates one transient GW2 API key upstream.
  *
  * <p>An implementation must call {@code /v2/account} and {@code /v2/tokeninfo} with the <em>same</em>
  * key and report only what those two responses establish. The three failure modes are kept distinct

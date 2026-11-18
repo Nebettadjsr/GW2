@@ -3,8 +3,7 @@ package application.access;
 import java.util.Set;
 
 /**
- * The account-scoped operations whose grant requirements this access foundation centralizes
- * (STORY-API-010, TARGET_ARCHITECTURE.md §8.1 "Request and application scope").
+ * Account-scoped operations with their required grants and upstream endpoints.
  *
  * <p>Each operation declares the grants of the account <em>sources</em> it consumes, not the grants
  * of whichever key happened to synchronize the stored rows: a session proved with a narrow
@@ -12,9 +11,8 @@ import java.util.Set;
  * declared the same way, so a {@code /v2/tokeninfo} {@code urls} list that excludes a source's
  * upstream endpoint excludes every operation consuming that source.
  *
- * <p>Only the operations this story guards are listed. The remaining HTTP workflows are integrated
- * by their own story; adding one here is a declaration, not enforcement, which lives at the
- * boundary that resolves the request context.
+ * <p>Adding an operation here declares its requirements; the consuming boundary must enforce them
+ * when resolving the request context.
  */
 public enum AccountOperation {
 

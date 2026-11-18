@@ -1,8 +1,12 @@
 package application.access;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+
 /**
  * The account-access use case: establish, renew, resolve and revoke validated account sessions, and
- * admit keyed account operations (STORY-API-010, TARGET_ARCHITECTURE.md §8.1).
+ * admit keyed account operations.
  *
  * <p>Everything the access contract decides is decided here, once, so no route can re-decide it:
  * which responses count as identity, what a session may do, and which failures revoke it. The HTTP
@@ -26,7 +30,7 @@ public final class AccountAccessService {
 
     /** Session installation participates in the account gate, so deletion cannot miss a new session. */
     private AccountSessions.Issued install(AccountProof proved, String presentedSessionId, String assertedContext) {
-        try (var ignored = lifecycle.enter(java.util.UUID.fromString(proved.accountId()))) {
+        try (var ignored = lifecycle.enter(UUID.fromString(proved.accountId()))) {
             if (presentedSessionId != null) {
                 // Authority is rechecked after actual admission: a deletion that ran while this
                 // renewal waited has invalidated the old session, which must not install a new one.
@@ -150,8 +154,8 @@ public final class AccountAccessService {
     }
 
     /**
-     * Admits an account operation that will call GW2 with a caller-supplied transient key
-     * (TARGET_ARCHITECTURE.md §8.1: "a session is not an upstream credential").
+     * Admits an account operation that will call GW2 with a caller-supplied transient key;
+     * a session is not an upstream credential.
      *
      * <p>Revalidates the key before any upstream work: it must resolve to the session's account and
      * cover the operation's grants, and the live session must cover them too, so a narrow session
@@ -164,12 +168,12 @@ public final class AccountAccessService {
                                        AccountOperation operation)
             throws InvalidCredentialException, MalformedProofException, ProofUnavailableException,
             AccountMismatchException, InsufficientGrantsException {
-        authorizeKeyedOperations(sessionId, context, apiKey, java.util.List.of(operation));
+        authorizeKeyedOperations(sessionId, context, apiKey, List.of(operation));
     }
 
     /** Proves the key once and checks every operation against that one proof. */
     public KeyedProof authorizeKeyedOperations(String sessionId, AccountContext context, String apiKey,
-                                               java.util.Collection<AccountOperation> operations)
+                                               Collection<AccountOperation> operations)
             throws InvalidCredentialException, MalformedProofException, ProofUnavailableException,
             AccountMismatchException, InsufficientGrantsException {
         // Fail on the session before the upstream key check, as for a single operation.
@@ -186,7 +190,7 @@ public final class AccountAccessService {
      * upstream key validation is not repeated.
      */
     public void authorizeKeyedOperations(String sessionId, AccountContext context, KeyedProof proof,
-                                         java.util.Collection<AccountOperation> operations)
+                                         Collection<AccountOperation> operations)
             throws AccountMismatchException, InsufficientGrantsException {
         AccountContext live = liveContext(sessionId, context);
         if (!proof.credentialScope().accountId().equalsIgnoreCase(live.accountId())) {

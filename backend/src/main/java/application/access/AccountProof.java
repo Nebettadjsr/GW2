@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.Set;
 
 /**
- * What one successful proof of a transient GW2 key established (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1): the account's persistent GUID plus the effective limits of the key
+ * What one successful proof of a transient GW2 key established: the account's persistent GUID plus
+ * the effective limits of the key
  * that proved it. Deliberately carries no key, no key identifier and no account display name - only
  * the GUID is identity, and nothing here may become a credential.
  *
@@ -19,11 +19,8 @@ public record AccountProof(String accountId,
                            Set<String> endpointRestrictions,
                            Instant credentialExpiresAt) {
 
-    public AccountProof(String accountId, Set<AccountGrant> grants, Set<String> endpointRestrictions,
-                        Instant credentialExpiresAt) {
-        this.accountId = accountId;
-        this.grants = Set.copyOf(grants);
-        this.endpointRestrictions = Set.copyOf(endpointRestrictions);
-        this.credentialExpiresAt = credentialExpiresAt;
+    public AccountProof {
+        grants = Set.copyOf(grants);
+        endpointRestrictions = Set.copyOf(endpointRestrictions);
     }
 }

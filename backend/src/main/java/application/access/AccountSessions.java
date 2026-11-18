@@ -12,8 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The bounded, process-local store of validated account sessions (STORY-API-010,
- * TARGET_ARCHITECTURE.md §8.1, ADR-008).
+ * The bounded, process-local store of validated account sessions.
  *
  * <p>Four properties this class exists to keep:
  *
@@ -34,7 +33,7 @@ import java.util.Map;
  */
 public final class AccountSessions {
 
-    /** TARGET_ARCHITECTURE.md §8.1: 15 minutes after successful upstream validation. */
+    /** Absolute lease after successful upstream validation. */
     public static final Duration LEASE = Duration.ofMinutes(15);
 
     /** 256 bits, well above the 128-bit minimum the contract sets. */
@@ -96,7 +95,7 @@ public final class AccountSessions {
         AccountContext context = new AccountContext(proof.accountId(), proof.grants(),
                 proof.endpointRestrictions(), accessContext, expiresAt);
         purgeExpired(now);
-        byVerifier.put(verifierOf(sessionId), new SessionEntry(context, now, false));
+        byVerifier.put(verifierOf(sessionId), new SessionEntry(context, false));
         return new Issued(sessionId, context);
     }
 
@@ -136,7 +135,7 @@ public final class AccountSessions {
         for (var e : byVerifier.entrySet()) {
             SessionEntry entry = e.getValue();
             if (entry.context().accountId().equalsIgnoreCase(accountId)) {
-                e.setValue(new SessionEntry(entry.context(), entry.provedAt(), true));
+                e.setValue(new SessionEntry(entry.context(), true));
                 count++;
             }
         }
@@ -202,6 +201,5 @@ public final class AccountSessions {
                 presented.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** @param provedAt validation time, kept for diagnostics; the authority on lifetime is the expiry. */
-    private record SessionEntry(AccountContext context, Instant provedAt, boolean invalidated) {}
+    private record SessionEntry(AccountContext context, boolean invalidated) {}
 }
