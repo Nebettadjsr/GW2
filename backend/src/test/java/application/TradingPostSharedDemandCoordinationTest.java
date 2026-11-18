@@ -50,7 +50,7 @@ class TradingPostSharedDemandCoordinationTest {
         store.quotes.put(3, store.now);
         store.holdFirstFetch = true;
 
-        var profit = coordinator.requireProfitCoverage();
+        var profit = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
         assertEquals(TradingPostRefreshCoordinator.REUSE_ADMITTED, profit.reuse());
         assertTrue(store.firstFetchEntered.await(5, TimeUnit.SECONDS));
 
@@ -63,7 +63,7 @@ class TradingPostSharedDemandCoordinationTest {
         // A further account's demand adds id 5 for Profit and a manual duplicate is refused (409)
         // but still earns the running Profit task its one recheck pass.
         store.profitIds.add(5);
-        var joined = coordinator.requireProfitCoverage();
+        var joined = coordinator.require(TradingPostRefreshCoordinator.Variant.PROFIT);
         assertEquals(TradingPostRefreshCoordinator.REUSE_COALESCED_INTO_ACTIVE_RUN, joined.reuse());
         assertEquals(profit.taskId(), joined.taskId());
         var refused = assertThrows(TaskAlreadyRunningException.class,

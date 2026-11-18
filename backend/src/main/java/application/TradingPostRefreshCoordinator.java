@@ -93,11 +93,6 @@ public class TradingPostRefreshCoordinator {
     public record Admission(String taskId, String reuse) {
     }
 
-    /** Records that the Profit item set is not fully covered and makes sure a run is working on it. */
-    public Admission requireProfitCoverage() {
-        return require(Variant.PROFIT);
-    }
-
     /**
      * Records that {@code variant}'s item set is not fully covered and makes sure a run is working
      * on it. A demand raised while that variant's run is in flight earns exactly one recheck pass.

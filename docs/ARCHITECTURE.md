@@ -136,7 +136,7 @@ Applied migrations are immutable; corrections use new versions. A managed checks
 failure does not silently trigger reset. PostgreSQL transactional migrations roll back the
 failing version. The unscoped account refresh, coordinator, gateway and sync entry points are
 removed; account refresh runs only through `ScopedAccountRefreshCoordinator`. Remaining unscoped
-repository reads still refuse the managed schema (pending a later pruning slice).
+repository reads still refuse the managed schema.
 
 `repo.Db` lazily owns one HikariCP pool per process. Defaults are eight connections and a
 15-second acquisition bound, configurable through `DATABASE_POOL_SIZE` and
