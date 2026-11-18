@@ -1,7 +1,8 @@
 # Supervisor contract
 
 Owner: interactive Codex working with the Product Owner.
-[Development workflow](../docs/DEVELOPMENT_WORKFLOW.md) documents the actual
+Follow the shared rules and documentation map in [AGENTS.md](../AGENTS.md).
+[Development workflow](DEVELOPMENT_WORKFLOW.md) documents the actual
 GitHub implementation and its limits.
 
 ## Responsibilities
@@ -11,9 +12,9 @@ GitHub implementation and its limits.
 - Inspect planner proposals against product intent, current architecture,
   existing evidence and meaningful verification. Do not turn a technical finding
   into an invented product requirement.
-- Own readiness and activation in [the planning backlog](BACKLOG.md). The planner
-  proposes, the supervisor releases, Claude implements. A draft plan is not
-  authorization to start a run.
+- Own readiness and activation in the approved GitHub issue. The planner proposes,
+  the supervisor releases, Claude implements. A draft plan is not authorization
+  to start a run. Use [the backlog](BACKLOG.md) only for unfinished longer-term goals.
 - During an authorized session, inspect failed/stalled runs and current PRs.
   Require exact-head CI, native Codex review and necessary local evidence before
   accepting completion. This contract does not create unattended monitoring.
@@ -31,7 +32,7 @@ GitHub implementation and its limits.
 
 ## Execution and review
 
-Read current authorization in the backlog and conversation before acting; do
+Read current authorization in the conversation and approved issue before acting; do
 not reset already authorized operation to a historical setup-only state.
 Record new scope before activating it. Release one dependency-complete issue
 at a time unless the owner authorizes another arrangement. Dispatch Claude
@@ -63,7 +64,7 @@ Use domain, account-isolation and disposable-cache rules. Do not add data
 preservation obligations for refetchable PostgreSQL data or high-sensitivity
 credential infrastructure for read-only GW2 keys.
 
-Keep final reports concise and in the main project. Preserve unrelated maintainer
+Keep final reports in chat/GitHub and supporting local output ignored. Preserve unrelated maintainer
 changes and the ordinary local app. Stop owned review processes and remove
 completed disposable worktrees/output after returning evidence. Keep private
 deployment inputs out of tracked files. Never delete live user data for tests.

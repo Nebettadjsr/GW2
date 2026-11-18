@@ -312,8 +312,8 @@ Owner-authorized summary/period/download routes use `no-store`. The UI reads on 
 Refresh, not polling. DB size uses a five-minute cached query with available/stale/unavailable
 states. Backend p50/p95 are aggregate latency bins, not browser response or supported-user
 capacity measurements. Host CPU/RAM remains in Oracle Monitoring. Container/edge logging is
-bounded and excludes keys, query strings, headers and request bodies. Operator retrieval and
-failure handling belong in [OPERATIONS_RUNBOOK](OPERATIONS_RUNBOOK.md).
+bounded and excludes keys, query strings, headers and request bodies. Current host inputs
+and logging settings are in [Current state](CURRENT_STATE_SPEC.md).
 
 ## 10. Deferred choices and concrete limits
 
@@ -328,8 +328,8 @@ failure handling belong in [OPERATIONS_RUNBOOK](OPERATIONS_RUNBOOK.md).
   improvements and actual operations history remain relevant.
 
 Do not turn deferred choices into new infrastructure or product rules during routine work.
-Open defects belong in [KNOWN_PROBLEMS](KNOWN_PROBLEMS.md) and GitHub issues; priorities belong
-in [ROADMAP](ROADMAP.md) and the active GitHub development flow.
+Open defects belong in [KNOWN_PROBLEMS](KNOWN_PROBLEMS.md) and GitHub issues;
+the owner and approved issues determine priorities.
 
 ## 11. Historical rationale
 

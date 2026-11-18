@@ -88,13 +88,11 @@ The crafting-resolution tree explains how each requirement is supplied: from inv
 
 For more detail, see the [Crafting Guide](docs/crafting/README.md), [Crafting Glossary](docs/crafting/GLOSSARY.md) and [Domain Specification](docs/DOMAIN_SPEC.md).
 
-## Project status and roadmap
+## Project status
 
 The application is publicly available at **[gw2-crafting.de](https://gw2-crafting.de/welcome)**. The browser is its only interface. Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, Characters, beginner guides and System Status are implemented. The Java backend isolates cached game data by each verified GW2 account GUID.
 
 Frontend, backend and PostgreSQL run as separate containers on the Oracle host behind HTTPS. Development continues on meaningful test coverage, concrete defects and performance improvements. No supported-user capacity is claimed; the current backend runs as one process. See [Current State](docs/CURRENT_STATE_SPEC.md) for the deployed revision and verified limits.
-
-See the [Roadmap](docs/ROADMAP.md) for detailed priorities and progress.
 
 ## Technology stack
 
@@ -175,11 +173,9 @@ The repository also includes integration tests and browser smoke checks. See the
 - [Crafting Guide](docs/crafting/README.md) — player-focused explanation of crafting calculations and views.
 - [Crafting Glossary](docs/crafting/GLOSSARY.md) — terminology and UI labels.
 - [Crafting Status Reference](docs/CRAFTING_STATUS_LABEL_REFERENCE.md) — developer reference for crafting states and blocking reasons.
-- [Roadmap](docs/ROADMAP.md) — planned application work.
 - [Domain Specification](docs/DOMAIN_SPEC.md) — authoritative crafting and economy rules.
 - [Current State](docs/CURRENT_STATE_SPEC.md) — implemented behavior and limitations.
 - [Architecture](docs/ARCHITECTURE.md) — current structure, binding boundaries and deferred choices.
-- [Development workflow](agent/README.md) — roles, GitHub automation, review and release process.
 - [Known Problems](docs/KNOWN_PROBLEMS.md) — open defects and limitations.
 
 ## Contributing and community

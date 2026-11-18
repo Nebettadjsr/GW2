@@ -1,10 +1,10 @@
 # Repository instructions
 
+These shared instructions apply to every agent, including Claude, planners,
+supervisors, QA and reviewers. Read them before the role-specific instructions.
 GW2 develops through GitHub issues, branches, PRs, CI and native Codex review.
-Select current work from GitHub. [Development workflow](docs/DEVELOPMENT_WORKFLOW.md)
-is the detailed process reference; [agent/](agent/README.md) routes current roles.
-Historical artifacts are under [docs/archive/](docs/archive/README.md); the
-retired executable Python harness is recoverable from tag `pre-github-flow`.
+[Development workflow](agent/DEVELOPMENT_WORKFLOW.md) describes that process;
+[agent/](agent/README.md) routes current roles.
 
 ## Role routing
 
@@ -15,8 +15,9 @@ retired executable Python harness is recoverable from tag `pre-github-flow`.
 - Native Codex PR review follows the Code Review Rules below. Review is not
   a planning invocation.
 
-`docs/ROADMAP.md` owns product direction; `agent/BACKLOG.md` owns draft order,
-authorization and handoffs. GitHub issues/PRs own execution evidence.
+The owner's current request and approved GitHub issues define work.
+`agent/BACKLOG.md` is only a short reminder of unfinished longer-term goals.
+GitHub issues/PRs own execution state and evidence.
 
 ## Work contract
 
@@ -34,22 +35,41 @@ authorization and handoffs. GitHub issues/PRs own execution evidence.
 - Keep live state in GitHub. Do not edit historical status fields or recreate
   an executable file-based story/decision queue.
 
-## Authoritative documents
+## Owning documentation
+
+This is the shared, binding ownership map. Role files must reference it rather
+than maintain another copy. Read the relevant owner before changing its subject;
+update it when a delivered change affects its lasting rules or instructions.
 
 - `docs/DOMAIN_SPEC.md`: domain behavior.
 - `docs/crafting/GLOSSARY.md`: player-facing crafting terms.
 - `docs/CURRENT_STATE_SPEC.md`: observed runtime/build/deployment facts.
 - `docs/ARCHITECTURE.md`: current structure, selected boundaries and open choices.
-- `docs/ROADMAP.md`: product direction and exit criteria.
-- `docs/TEST_STRATEGY.md`, `docs/QUALITY_METRICS.md`,
-  `docs/FRONTEND_UX_GUIDELINES.md`, `docs/CODING_GUIDELINES.md`: respective
-  verification, coverage, UX and implementation conventions.
-- `docs/DEVELOPMENT_WORKFLOW.md`: implemented development process.
+- `docs/TEST_STRATEGY.md`: testing methods and coverage policy.
+- `docs/FRONTEND_UX_GUIDELINES.md`: browser UX conventions.
+- `docs/CODING_GUIDELINES.md`: implementation conventions.
+- `docs/KNOWN_PROBLEMS.md`: unresolved defects and concrete improvement opportunities.
+- `agent/DEVELOPMENT_WORKFLOW.md`: implemented agent/GitHub process.
 - `docs/archive/agent/user-decisions/` and
   `docs/archive/architecture/decisions/`: historical decision rationale.
 
 Distinguish observed facts, inferences and recommendations. Existing code proves
 current behavior, not intended behavior. Avoid duplicating authoritative rules.
+
+## Keep the repository useful
+
+- `docs/` holds application documentation; agent instructions/process belong in
+  `agent/` and the root instruction files.
+- Update an existing owning document. Create a file only when useful lasting
+  information has no suitable home; a task, test run or small decision alone
+  does not justify another document.
+- Keep test counts, coverage snapshots, release receipts, acceptance histories
+  and task reports in GitHub/CI or ignored local output. Documentation explains
+  current behavior and how to work with it.
+- Keep the backlog short: unfinished goals and issue links, without completed
+  work, authorization transcripts or a second issue tracker.
+- Remove obsolete references when files move or disappear. Do not recreate the
+  removed roadmap, metrics ledger or runbooks as replacement documents elsewhere.
 
 ## Architecture constraints
 
@@ -68,10 +88,10 @@ choice. Prefer incremental changes and clear, simple responsibility boundaries.
 
 ## Verification and repository care
 
-CI runs Maven/Vitest, type/build and workflow checks. Default CI includes isolated
-database-backed `*Test` cases; `*IT`, browser smoke and live API checks need
-explicit applicable evidence when the issue depends on them. Explain removed or
-weakened assertions. Never invent test results.
+CI runs Maven/Vitest, type/build, workflow checks and the curated controlled
+browser journeys. Default CI includes isolated database-backed `*Test` cases;
+`*IT`, live API and real-backend browser checks need their explicit setup/evidence.
+Explain removed or weakened assertions. Never invent test results.
 
 Preserve unrelated maintainer edits, keep diffs focused and stop owned processes.
 Return deliverables to the main project. Use ignored output/OS temporary storage

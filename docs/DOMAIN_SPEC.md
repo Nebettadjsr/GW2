@@ -2009,8 +2009,8 @@ each file's interval, filename, size and partial/open/closed/pruned/truncated st
 Download exactly that server-described CSV; do not ask the owner to enter raw timestamps
 or silently substitute another interval if the chosen file has expired. The normal view
 loads when opened or explicitly refreshed, not through a background polling timer.
-Retention, observation intervals and operation commands are maintained in
-`OPERATIONS_RUNBOOK.md`; changing documentation does not create a measurement programme.
+Storage limits are described in [Architecture](ARCHITECTURE.md); current host logging
+settings are in [Current state](CURRENT_STATE_SPEC.md).
 
 ---
 

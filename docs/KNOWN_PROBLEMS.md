@@ -2,7 +2,8 @@
 
 Reviewed against source on 17 November 2026. This register contains current defects, risks and concrete follow-ups. Remove resolved findings when current code and verification establish closure; GitHub retains their history. [DOMAIN_SPEC](DOMAIN_SPEC.md) owns behavior and [Architecture](ARCHITECTURE.md) owns structural constraints.
 
-There are five remaining findings. Empty legacy categories and resolved JavaFX commentary have been removed. None of these findings is an authorization to change product policy or restart the retired capacity programme.
+The findings and opportunities below do not authorize a product-policy change or restart
+the retired capacity programme. Select any improvement through a bounded approved issue.
 
 ## KP-12 Mixed inventory generations across sources
 
@@ -53,3 +54,28 @@ Evidence: `repo/CraftingGraphCache.loadForSnapshot`, `application/CraftingProfit
 **Follow-up:** retain the cheap membership check while defining an affordable policy for detecting same-ID edits. Do not claim the owner full operation has the same limitation.
 
 Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFull`).
+
+## Further performance opportunities
+
+- **Bound ordinary upstream waits and release database leases.** Authenticated
+  `Gw2ApiClient.getAuth` lacks a per-request timeout; ordinary TP refresh uses
+  `TaskDeadline.NONE`. `TpSync.syncTpPrices` keeps its connection across HTTP batches,
+  and Profit holds its pinned connection during calculation. Bound waits and narrow
+  lease ownership while preserving cancellation, publication and snapshot correctness.
+  The full-catalog deadline already exists.
+- **Reduce large-result DOM work.** `CraftingProfitTable.vue` renders every displayed row,
+  including Show all; default results remain 250. Consider windowing while preserving
+  sorting, filtering, selected detail, keyboard use and links. Transfer compression needs
+  its own evidence and does not reduce DOM work.
+- **Pause or share redundant status reads.** System Status avoids overlapping requests but
+  still polls every five seconds in hidden tabs. Profit and the shell can separately poll
+  the same task. Consider visibility pausing/coalescing without changing account epochs,
+  ordering or cancellation. Inventory refresh already pauses while hidden/inactive.
+- **Consider result reuse only after observing useful repetition.**
+  `CachedCraftingProfitService` caches inputs, not results. A safe result key would need
+  all settings, account/scope, catalog/quote generations and implementation identity,
+  with bounded lifetime and memory. No useful hit rate or speedup is established.
+
+Graph-generation reuse and narrower evaluation roots belong to KP-30 above. Actual
+measurements stay in the relevant issue/CI evidence; these are opportunities, not claims
+about production capacity or completed optimizations.

@@ -3,8 +3,8 @@
 ## Purpose and authority
 
 Source/runtime summary reconciled on 2026-11-17. [DOMAIN_SPEC](DOMAIN_SPEC.md) owns product
-rules, [ARCHITECTURE](ARCHITECTURE.md) owns boundaries and selected constraints, and
-[ROADMAP](ROADMAP.md) owns priorities. GitHub issues/PRs contain execution evidence.
+rules and [ARCHITECTURE](ARCHITECTURE.md) owns boundaries and selected constraints.
+The owner and approved GitHub issues determine priorities; PRs/CI hold execution evidence.
 A source description or past deployment check does not certify every feature or future release.
 
 ## Runtime and local development
@@ -111,59 +111,14 @@ stays in Oracle Monitoring. Docker logs default to three 10 MB files/container. 
 logs contain timestamp/method/path/status/size/time without keys or client IPs; request-bound raw
 error logs are suppressed. Edge logrotate keeps three rotations, checked daily at a 10 MB
 threshold; Certbot keeps five rotated logs plus current. These are size/count bounds, not a
-universal time-based deletion guarantee. See [OPERATIONS_RUNBOOK](OPERATIONS_RUNBOOK.md).
+universal time-based deletion guarantee.
 
 ### Verification evidence and limits
 
-STORY-COV-007 adds a package-private public-array fetch seam to `MaterialCategorySync`;
-the unchanged public entry delegates to it with `Gw2ApiClient`. Five publication cases
-run real Flyway/PostgreSQL replacement, rollback and retry with scoped account readback;
-a global-refresh case checks early failure/status/recovery. Full CI `44260769452` at
-`14a3054` passes and its downloaded JaCoCo/KPI counters establish the measured improvement
-in [Quality metrics](QUALITY_METRICS.md). This changes no SQL, payload policy, UI or deployed
-Oracle revision. [PR #246](https://github.com/Nebettadjsr/GW2/pull/246) owns final-head acceptance.
-
-STORY-COV-008 adds six independent-QA cases through existing metadata injection points,
-without production changes. Real PostgreSQL checks establish late metadata rollback in
-both connection modes, failed-batch continuation, cancellation and explicit recovery;
-gateway checks preserve the last Bank generation on interruption while allowing ordinary
-best-effort metadata failure. Independent focused QA passes 47 cases. Full
-[CI 44263087384](https://github.com/Nebettadjsr/GW2/actions/runs/44263087384) at `910cfc8`
-passes; downloaded raw counters and ten browser passes are recorded in
-[Quality metrics](QUALITY_METRICS.md). [PR #248](https://github.com/Nebettadjsr/GW2/pull/248)
-owns final acceptance. No new domain/architecture policy or Oracle deployment is implied.
-
-The owner revised #243 on 18 November: narrow tools keep their content and normal loading,
-with an informational notice and horizontally scrollable desktop canvas. This replaces the
-earlier blocking guard and forced modal closure; [DOMAIN_SPEC](DOMAIN_SPEC.md#supported-browser-viewport)
-owns current behavior. Source revision `1d017fc` implements this with ordinary route/KeepAlive
-rendering, a notice-only viewport helper and a tool-only 1024px minimum canvas. Width no longer
-gates account restoration/bootstrap or closes dialogs. The live Oracle revision is unchanged.
-The owner accepted the local result and
-[PR #244](https://github.com/Nebettadjsr/GW2/pull/244) merged; it owns the detailed evidence.
-
-The existing `npm run smoke:ci` gate runs controlled-browser journeys after the frontend build,
-using locked Chromium and seven-day `desktop-browser-journeys` artifacts. Independent QA
-verified 30 focused tests, type-check/build and all ten journeys on `1d017fc` on 18 November.
-Full [CI 44252493662](https://github.com/Nebettadjsr/GW2/actions/runs/44252493662) at that
-revision passed; its downloaded browser artifact confirms all ten journeys and zero child
-timeouts/nonzero exits. This verifies the revised notice, visible narrow tools, actual
-horizontal scrolling, retained state and normal modal behavior. QA subsequently corrected
-an immediate resize assertion to wait for notice removal, preserving the exact 1024px
-absence requirement. The PR retains final-head evidence and the owner's visual acceptance.
-Independent QA repeated the focused/build/ten-journey checks successfully on corrected test
-revision `0c24106337aecdb2f0480977aaf42be1f230b184`; production source is unchanged.
-
-Before #236 merged, independent QA passed 306 relevant backend checks, 213 focused frontend
-checks, type/build and 19 controlled visible desktop/narrow browser phases. Full frontend CI
-passed 933 tests; exact-head review and required CI were green. The hosted verifier passed
-health, public/crawler policy, authorization/Origin, DB-role and port checks. All three containers
-were healthy; PostgreSQL was unchanged. The owner confirmed deployed reservation behavior works.
-
-Earlier public-release evidence covered visible Chromium navigation across all eight destinations
-without a key, no repeated key form, browser errors, 5xx or pre-connection account calls.
-Controlled tests are not live economic-correctness measurements. No supported-user count,
-load-test result, measured hosting headroom or exhaustive multi-account validation is claimed.
+Default CI runs backend/frontend suites, isolated PostgreSQL checks and controlled browser
+journeys. Commands and scope are in [Test strategy](TEST_STRATEGY.md); exact results and
+release checks stay in GitHub/CI. Synthetic checks do not establish live upstream
+availability, exhaustive multi-account validation or production capacity.
 
 ## Current workflows
 
