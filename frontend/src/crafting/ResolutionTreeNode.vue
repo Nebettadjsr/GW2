@@ -23,7 +23,10 @@ import { wikiUrl } from './recipeLabel'
  */
 const props = defineProps<{
   node: ResolutionNode
-  /** Index path from the root, the presentation key 13.3 permits — not a persistent node ID. */
+  /**
+   * Local index path from the root (e.g. `0.1.2`), used only as this render's `v-for` key and
+   * `data-path`. It is not a persistent node identity and is never stored or sent to the backend.
+   */
   path: string
   /** Only Discovery displays recipe-knowledge state. */
   showRecipeKnowledge?: boolean
@@ -52,7 +55,7 @@ const childSummary = computed(() =>
 </script>
 
 <template>
-  <li class="node" :data-test="'tree-node'" :data-path="path">
+  <li class="node" data-test="tree-node" :data-path="path">
     <div class="node__head">
       <!--
         This node's *own* item, which is the identity the backend gave it — not the requested
@@ -171,30 +174,20 @@ const childSummary = computed(() =>
   white-space: nowrap;
 }
 
-.node__methods,
-.node__codes {
+.node__methods {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
   margin: 0;
 }
 
-/* A quiet marker for a supplied code; the word inside it is what carries the meaning. */
+/* A quiet marker for a backend-supplied source quantity. */
 .chip {
   padding: 0 var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   font-size: var(--text-sm);
-}
-
-/*
- * A code this page has no wording for is shown in full, and an unknown code can be any length. The
- * shared `.status` treatment keeps its text on one line, which is right in a table cell but would
- * make a deeply nested node wider than a narrow viewport, so inside the tree these wrap instead of
- * pushing the page sideways. Nothing is shortened or dropped to achieve it.
- */
-.chip,
-.node__codes .status {
+  /* Source chips wrap inside the tree rather than widening a deeply nested node. */
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -202,11 +195,6 @@ const childSummary = computed(() =>
 .chip--method {
   border-color: var(--color-secondary);
   color: var(--color-secondary);
-}
-
-.chip--unknown {
-  border-style: dashed;
-  color: var(--color-muted);
 }
 
 .node__crafter {
@@ -219,12 +207,6 @@ const childSummary = computed(() =>
   flex-direction: column;
   gap: 0;
   overflow-wrap: anywhere;
-  margin: 0;
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-}
-
-.node__note {
   margin: 0;
   color: var(--color-muted);
   font-size: var(--text-sm);
