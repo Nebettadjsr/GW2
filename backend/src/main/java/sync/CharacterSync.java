@@ -30,7 +30,7 @@ public final class CharacterSync {
             List<model.CharacterItemRow> items,
             List<model.CharacterBagRow> bags
     ) {
-        /** Legacy payload: no bag-manifest evidence ({@code bags == null}), never a known-empty layout. */
+        /** Deployment-key payload: no bag-manifest evidence ({@code bags == null}), never a known-empty layout. */
         CharPayload(CharacterInfo info, List<model.CharacterCraftingRow> crafting,
                     List<model.CharacterRecipeRow> recipes, List<model.CharacterItemRow> items) {
             this(info, crafting, recipes, items, null);
@@ -52,11 +52,7 @@ public final class CharacterSync {
             var craftingRows = CharacterCraftingParser.parse(CharacterParser.craftingNode(cNode));
             var recipeRows   = CharacterRecipesParser.parse(CharacterParser.recipesNode(cNode));
 
-            List<model.CharacterItemRow> itemRows = new ArrayList<>();
-            itemRows.addAll(CharacterItemsParser.parseBags(CharacterParser.bagsNode(cNode)));
-            itemRows.addAll(CharacterItemsParser.parseEquipment(CharacterParser.equipmentNode(cNode)));
-
-            payloads.add(new CharPayload(info, craftingRows, recipeRows, itemRows));
+            payloads.add(new CharPayload(info, craftingRows, recipeRows, characterItems(cNode)));
         }
 
         if (payloads.isEmpty()) return;
@@ -67,8 +63,7 @@ public final class CharacterSync {
     }
 
     /**
-     * Publishes a whole roster and the {@code CHARACTERS} completion marker in one transaction
-     * (TARGET_ARCHITECTURE.md §9.1): a concurrent calculation must never read some characters'
+     * Publishes a whole roster and the {@code CHARACTERS} completion marker in one transaction: a concurrent calculation must never read some characters'
      * refreshed rows alongside the previous run's still-current marker, and a failure part-way
      * through must leave the whole last-good generation and its marker intact rather than publishing
      * a half-replaced roster.
@@ -110,14 +105,14 @@ public final class CharacterSync {
     }
 
     /**
-     * Fetches and publishes one account's whole roster (STORY-APP-015).
+     * Fetches and publishes one account's whole roster.
      *
      * <p>Every character is fetched and parsed first, outside any transaction, exactly as the
-     * unscoped sequence above does - then the complete roster is published in one transaction.
+     * deployment-key sequence above does - then the complete roster is published in one transaction.
      *
      * <p>A validated empty roster <em>is</em> published, like every other source
-     * (TARGET_ARCHITECTURE.md §7.2 "a successful empty or unchanged source has a valid marker and
-     * advances its generation"): a key that lost its {@code characters} permission is not an empty
+     * (a successful empty or unchanged source has a valid marker and
+     * advances its generation): a key that lost its {@code characters} permission is not an empty
      * list, it is an HTTP 403 that {@link #fetchCharacterNames()} throws on, and a body that is not
      * an array is rejected by the parser. So an empty {@code /v2/characters} array means this account
      * owns no characters, and the account's character source is then legitimately empty and current.
@@ -170,9 +165,7 @@ public final class CharacterSync {
     }
 
     /**
-     * Publishes one account's roster and every character's payload as one source
-     * (TARGET_ARCHITECTURE.md §7.2 "The character source includes the roster and all character
-     * payloads as one publication").
+     * Publishes one account's roster and every character's payload as one source.
      *
      * <p>Three things the account scope changes relative to the unscoped
      * {@link #publishRoster(Connection, List, java.time.Instant)}:
@@ -489,7 +482,7 @@ public final class CharacterSync {
             // The conflict target names the unique constraint rather than the column list, because
             // the migrated constraint is UNIQUE NULLS NOT DISTINCT: inferring it from columns would
             // not express that one bag or equipment slot holds at most one row whichever of its
-            // location components are NULL (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.2).
+            // location components are NULL.
             try (PreparedStatement ps = con.prepareStatement("""
                     INSERT INTO character_items
                       (account_id, character_id, location, bag_index, slot_index, equipment_slot,
