@@ -73,10 +73,6 @@ export function useDiscoveryTableView(
     return matching.sort((left, right) => compareRows(left, right, sortKey.value, sortDirection.value))
   })
 
-  /**
-   * Read from the current rows rather than copied when the row was clicked, so a replacement
-   * calculation cannot leave an earlier answer's numbers on screen under the newer result.
-   */
   const visibleRows = computed<CraftingRow[]>(() =>
     showAll.value ? matchingRows.value : matchingRows.value.slice(0, maxDisplayed.value)
   )
@@ -87,6 +83,10 @@ export function useDiscoveryTableView(
     return true
   }
 
+  /**
+   * Read from the current rows rather than copied when the row was clicked, so a replacement
+   * calculation cannot leave an earlier answer's numbers on screen under the newer result.
+   */
   const selectedRow = computed<CraftingRow | null>(() =>
     selectedRecipeId.value === null
       ? null
