@@ -106,17 +106,6 @@ public final class Gw2ApiClient {
         return CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
     }
 
-    /** Public GET returning bytes (NO status enforcement here). */
-    public static HttpResponse<byte[]> getBytesResponse(String url) throws IOException, InterruptedException {
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Accept", "image/png,image/*;q=0.9,*/*;q=0.8")
-                .GET()
-                .build();
-
-        return CLIENT.send(req, HttpResponse.BodyHandlers.ofByteArray());
-    }
-
     // -----------------------
     // Batch logic
     // -----------------------
