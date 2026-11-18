@@ -19,7 +19,8 @@ import java.util.Set;
 
 /**
  * Independently committed, globally shared cache of slim public equipment details and itemstats rows.
- * Only ids with no stored row are requested, so a warm cache makes no upstream call.
+ * Missing or incomplete item details and missing itemstats rows are requested; a complete warm
+ * cache makes no upstream call.
  * No database connection is held during an HTTP request; each batch (at most
  * {@link SyncConstants#HTTP_IDS_BATCH} ids) is committed on its own, and a failed or malformed batch
  * never removes stored data.

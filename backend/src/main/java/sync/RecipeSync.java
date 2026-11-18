@@ -336,7 +336,8 @@ public final class RecipeSync {
      * Upserts a batch of already-parsed {@link RecipeParser.IngredientRow} values into
      * {@code recipe_ingredients}, flushing every {@link SyncConstants#DB_FLUSH_BATCH} rows.
      * Separate from the fetch so the write path is callable independently of the live GW2 API in
-     * tests. Autocommit/commit/rollback control stays with the caller.
+     * tests. Each full flush commits; the caller controls the final commit or rollback, which cannot
+     * undo earlier committed flushes.
      */
     static void upsertRecipeIngredients(Connection con, List<RecipeParser.IngredientRow> ingRows) throws SQLException {
 
