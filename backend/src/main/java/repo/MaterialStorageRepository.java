@@ -32,7 +32,7 @@ public class MaterialStorageRepository {
     }
 
     /**
-     * One account's material storage over the shared ordered catalog (STORY-APP-015).
+     * One account's material storage over the shared ordered catalog.
      *
      * <p>Two changes from the unscoped {@link #loadMaterialStorage(Connection)}. The
      * {@code account_materials} join carries the owning account, so a quantity is this account's or

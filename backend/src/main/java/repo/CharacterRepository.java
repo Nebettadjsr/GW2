@@ -44,7 +44,7 @@ public class CharacterRepository {
     }
 
     /**
-     * One account's character names, ordered by name (STORY-APP-015).
+     * One account's character names, ordered by name.
      *
      * <p>A character name is unique within an account, never globally
      * (TARGET_ARCHITECTURE.md §7.2), so this is the only form of the roster read that has a defined
@@ -72,7 +72,7 @@ public class CharacterRepository {
     }
 
     /**
-     * One account's per-character discipline ratings (STORY-APP-015).
+     * One account's per-character discipline ratings.
      *
      * <p>The join to the roster carries the account GUID in both halves, matching the composite
      * {@code (account_id, character_id)} parent key: joining on {@code character_id} alone would let

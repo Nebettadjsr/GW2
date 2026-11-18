@@ -15,7 +15,7 @@ public class InventoryRepository {
 
     /**
      * The three account-owned pools the owned quantity is summed from, each scoped by its account
-     * GUID (STORY-APP-015). {@code account_materials} has no {@code bound_to} column, so its rows
+     * GUID. {@code account_materials} has no {@code bound_to} column, so its rows
      * can only be unbound or account-bound, never soulbound - the {@code NULL} literal keeps the
      * three result shapes identical so one row loop can classify all of them.
      */
@@ -39,7 +39,7 @@ public class InventoryRepository {
     };
 
     /**
-     * One account's total owned quantity per item (STORY-APP-015), the scoped form of
+     * One account's total owned quantity per item, the scoped form of
      * {@link #loadOwnedInventory(Connection)}.
      *
      * <p>Same pool definition as the unscoped version - material storage plus bank plus every
@@ -55,8 +55,7 @@ public class InventoryRepository {
     }
 
     /**
-     * One account's owned quantity split by binding usability for {@code selectedCharacterName}
-     * (STORY-APP-015), the scoped form of
+     * One account's owned quantity split by binding usability for {@code selectedCharacterName}, the scoped form of
      * {@link #loadOwnedInventoryForCharacter(Connection, String)}.
      *
      * <p>The binding rules themselves are unchanged and stay in {@link #classifyOwnedRow}: scoping
@@ -86,7 +85,7 @@ public class InventoryRepository {
     }
 
     /**
-     * One account's three-way coordinated inventory split (STORY-APP-015), the scoped form of
+     * One account's three-way coordinated inventory split, the scoped form of
      * {@link #loadOwnedInventoryForCharacters(Connection, Set)}.
      */
     public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con,
