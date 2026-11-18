@@ -23,12 +23,9 @@ import java.util.Map;
  * UD-007 requires operations that call the GW2 API for synchronization to run as backend tasks with
  * status reporting. No duration was measured or assumed to reach that choice.
  *
- * <p>Thin by construction: it validates the request, submits
- * {@link GlobalDataRefreshService#refreshAll()} as the task body, and returns the identifier. The
- * step order (tradeable items, then global recipes, then one crafting-graph rebuild), the
- * persistence, the rebuild itself and the short-circuit on the first failing step all stay inside
- * that application service — no individual sync step and no graph rebuild is reachable from this
- * route, and none of the sequence is restated here.
+ * <p>It validates the request, submits {@link GlobalDataRefreshService#refreshAll()} as the task body
+ * and returns the identifier. The service owns material metadata, shared item/recipe synchronization,
+ * conditional graph rebuilding and failure propagation; this route exposes no individual sync step.
  *
  * <p>Status reporting is not duplicated either: {@link SyncTaskApiController} already serves every
  * operation, so this trigger adds a route but no status route.

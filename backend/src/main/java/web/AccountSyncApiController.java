@@ -30,21 +30,18 @@ import java.util.Set;
  * limits force batching and holding one HTTP request open for the whole sequence is needlessly
  * fragile. No duration was measured or assumed to reach that choice.
  *
- * <p>Thin by construction: it validates the request, submits
- * {@link AccountRefreshService#refreshAll()} as the task body, and returns the identifier. The step
- * order (account bank, account materials, account recipes, account Luck, then every character's crafting and
- * recipes), the persistence and the short-circuit on the first failing step all stay inside that
- * application service — no individual sync step is reachable from this route, and none of the
- * sequence is restated here.
+ * <p>Each route validates the request and supplies its source set to
+ * {@link ScopedAccountRefreshCoordinator}, which admits or coalesces work for the verified account.
+ * Application services own fetching, publication and each source's independent success or failure;
+ * this boundary reports admission and the task identifier without claiming refresh completion.
  */
 @RestController
 @RequestMapping("/api/sync")
 public class AccountSyncApiController {
 
     /**
-     * Admission key for account synchronization. One unfinished account sync at a time: the sequence
-     * writes account-wide data and is GW2-API rate limited, so a second concurrent run would
-     * duplicate the same work against the same rows.
+     * Reported operation name. The scoped coordinator excludes concurrent writers per verified
+     * account, so different accounts remain independent.
      */
     static final String ACCOUNT_SYNC_OPERATION = "ACCOUNT_SYNC";
     static final String PROFIT_ACCOUNT_SYNC_OPERATION = ACCOUNT_SYNC_OPERATION;
@@ -64,13 +61,13 @@ public class AccountSyncApiController {
     /** Luck's single source: the narrow recovery for a never-published Luck, needing no Bank/characters/recipes grants. */
     private static final Set<String> LUCK_SOURCES = new LinkedHashSet<>(List.of(AccountSyncStateRepository.LUCK));
 
-    /** Optional saved-equipment-tab coverage only (STORY-CHAR-005); never part of any other source set. */
+    /** Optional tab sources; neither belongs to the full or Profit source sets. */
     private static final Set<String> BUILD_TABS_SOURCES =
             new LinkedHashSet<>(List.of(AccountSyncStateRepository.CHARACTER_BUILD_TABS));
     private static final Set<String> EQUIPMENT_TABS_SOURCES =
             new LinkedHashSet<>(List.of(AccountSyncStateRepository.CHARACTER_EQUIPMENT_TABS));
 
-    /** Whether the account has a published CHARACTERS roster (the equipment-tabs parent). */
+    /** Whether this account has a published CHARACTERS roster for optional tab reads. */
     @FunctionalInterface
     interface ParentPublished {
         boolean test(model.AccountScope scope) throws Exception;

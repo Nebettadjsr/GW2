@@ -50,8 +50,8 @@ enum PriceRefreshVariant {
      * <p><b>One key per variant</b>, which is the facility's existing per-operation rule applied as
      * it already is to {@code ACCOUNT_SYNC}/{@code GLOBAL_SYNC}: a second submission of the
      * <em>same</em> variant while one is unfinished is refused, and the two variants are independent
-     * of each other and of the two sync operations. The shared-write consequences of that
-     * independence is safe because both variants upsert {@code tp_prices} keyed on {@code item_id}
+     * of each other and of the two sync operations. Shared writes are safe because both variants
+     * upsert {@code tp_prices} keyed on {@code item_id}
      * and neither deletes rows, so overlapping runs cannot lose or mix a row.
      */
     String operation() {
