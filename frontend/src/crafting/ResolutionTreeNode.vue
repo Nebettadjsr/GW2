@@ -23,7 +23,10 @@ import { wikiUrl } from './recipeLabel'
  */
 const props = defineProps<{
   node: ResolutionNode
-  /** Index path from the root, the presentation key 13.3 permits — not a persistent node ID. */
+  /**
+   * Local index path from the root (e.g. `0.1.2`), used only as this render's `v-for` key and
+   * `data-path`. It is not a persistent node identity and is never stored or sent to the backend.
+   */
   path: string
   /** Only Discovery displays recipe-knowledge state. */
   showRecipeKnowledge?: boolean
@@ -184,10 +187,7 @@ const childSummary = computed(() =>
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   font-size: var(--text-sm);
-}
-
-/* Source chips wrap inside the tree rather than widening a deeply nested node. */
-.chip {
+  /* Source chips wrap inside the tree rather than widening a deeply nested node. */
   white-space: normal;
   overflow-wrap: anywhere;
 }
