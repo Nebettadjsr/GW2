@@ -361,7 +361,7 @@ async function runViewport(browser, stub, viewport) {
     assert.deepEqual((await saved(page)).selections.bank, [])
     assert.deepEqual((await saved(page)).quantities.bank, { [ITEM]: 50 })
     await noPageOverflow(page)
-    record(`${label} restart and 200/400 stock preserve fixed250; normal click changes only its stack`)
+    record(`${label} restart and 200/400 stock preserve fixed 250; normal click changes only its stack`)
 
     // The actual third stack is essential: a .first() helper cannot detect item-wide selection.
     stock = 1000

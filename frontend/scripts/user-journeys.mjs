@@ -134,7 +134,7 @@ async function publicReading({ page, api, origin, step }) {
   assert.equal(await get(page, 'desktop-width-notice').count(), 0)
   assert.deepEqual(api.calls, [], 'Public reading proved a retained key or loaded account data')
   assert.equal(await page.evaluate(() => sessionStorage.getItem('gw2.apiKey')), KEY_A)
-  step('Home/guide/legal and canonical reload remain readable at360px with retained key and zero API calls')
+  step('Home/guide/legal and canonical reload remain readable at 360px with retained key and zero API calls')
 }
 
 async function connectionJourney({ page, api, origin, step }) {
@@ -195,7 +195,7 @@ async function recoveryJourney({ page, api, origin, step }) {
   await page.locator('.refresh-error').waitFor()
   assert.match(await page.locator('.refresh-error').innerText(), /Update failed.*showing saved data/)
   assert.equal(await get(page, 'bank-slot').first().getByTestId('item-count').innerText(), '42')
-  step('automatic stale refresh displays saved42 during controlled task and preserves42 on failure')
+  step('automatic stale refresh displays saved 42 during controlled task and preserves 42 on failure')
   await page.locator('.refresh-error a').click()
   await get(page, 'sync-trigger-ACCOUNT_SYNC').click()
   await get(page, 'sync-state-ACCOUNT_SYNC').filter({ hasText: /Completed/ }).waitFor()
@@ -204,7 +204,7 @@ async function recoveryJourney({ page, api, origin, step }) {
   assert.equal(await get(page, 'bank-slot').first().getByTestId('item-count').innerText(), '77')
   assert.equal(count(api, '/api/sync/account'), 1)
   assert.equal(await page.locator('.refresh-error').count(), 0)
-  step('real System Status recovery action and return to Bank install supplied fresh77 without removed manual controls')
+  step('real System Status recovery action and return to Bank install supplied fresh 77 without removed manual controls')
 }
 
 async function isolationJourney({ page, api, origin, step }) {
@@ -264,7 +264,7 @@ async function boundaryJourney({ page, api, origin, step }) {
     assert.equal(new URL(page.url()).hash, `#/${destination}`)
     assert.equal(api.proofs.length, proofs + 1, 'Initial narrow tools must prove their retained key normally')
   }
-  step('all seven initial1023px tools show only an advisory warning and restore/load through normal proof')
+  step('all seven initial 1023px tools show only an advisory warning and restore/load through normal proof')
   await go(page, 'bank')
   await notice(page)
   await get(page, 'bank-slots').waitFor()
@@ -317,7 +317,7 @@ async function boundaryJourney({ page, api, origin, step }) {
   assert.equal(await get(page, 'max-displayed').inputValue(), '7')
   assert.equal(api.calls.length, before, 'Widening repeated a completed calculation/proof/detail')
   assert.deepEqual(await page.evaluate(() => ({ key: sessionStorage.getItem('gw2.apiKey'), preferences: { ...localStorage } })), storage)
-  step('390/1023 retain real tool content with usable horizontal scrolling;1024 removes only the warning without duplicate work')
+  step('390/1023 retain real tool content with usable horizontal scrolling; 1024 removes only the warning without duplicate work')
   await page.setViewportSize({ width: 1023, height: 900 })
   await notice(page)
   const beforeEcto = ['/api/items/metadata', '/api/items/prices', '/api/account/luck'].map(path => count(api, path))
@@ -377,7 +377,7 @@ async function ectoResizeState({ page, api, origin, step }) {
   assert.match(await page.locator('.tp-block').first().locator('[aria-pressed="true"]').innerText(), /Buy order/)
   assert.match(await page.locator('.tp-block').last().locator('[aria-pressed="true"]').innerText(), /Listing sell/)
   assert.equal(await get(page, 'ecto-calculation').innerText(), result)
-  step('Ecto42, selected method/tool and TP settings survive width-only changes with no refetch')
+  step('Ecto 42, selected method/tool and TP settings survive width-only changes with no refetch')
   await go(page, 'bank')
   await get(page, 'bank-slots').waitFor()
   await go(page, 'ecto')
@@ -425,7 +425,7 @@ async function modalResize({ page, api, origin, step }, kind) {
   await go(page, 'home')
   await get(page, 'home-screen').waitFor()
   assert.equal(api.calls.length, beforeResize)
-  step(`${kind} stays modal/usable at390/1023; normal close then Home works, with draft/key retained and no deletion or extra requests`)
+  step(`${kind} stays modal/usable at 390/1023; normal close then Home works, with draft/key retained and no deletion or extra requests`)
 }
 
 /** Compatibility inventory entry reuses the current recovery story rather than removed buttons. */
