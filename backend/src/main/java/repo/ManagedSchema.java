@@ -7,7 +7,7 @@ import java.sql.SQLException;
 
 /**
  * Recognizes a database whose schema is owned by the versioned migration chain, and refuses the
- * legacy unscoped account paths on one (STORY-INFRA-004, TARGET_ARCHITECTURE.md §7.2-7.3).
+ * legacy unscoped account paths on one (STORY-INFRA-004, docs/ARCHITECTURE.md §4 'Schema lifecycle').
  *
  * <p>Two rules meet here. Flyway is the sole schema writer for migrated objects, so the remaining
  * {@code CREATE TABLE IF NOT EXISTS} bootstraps must not run against a managed database. And no
@@ -18,10 +18,10 @@ import java.sql.SQLException;
  * <p>On an unmigrated database nothing changes: the legacy bootstraps behave exactly as they did,
  * so the pre-cutover installation keeps working until the gate upgrades it.
  *
- * <p>Fails closed by design. The scoped account repositories that replace these paths exist as of
- * STORY-APP-015 and require an explicit {@code model.AccountScope}; what an upgraded database still
- * lacks is an HTTP boundary that resolves a session into one, so a retained unscoped entry point
- * reports account access as unavailable rather than guessing an account.
+ * <p>Fails closed by design. The scoped account repositories that replace these paths require an
+ * explicit {@code model.AccountScope}, which the HTTP access boundary resolves from an authenticated session;
+ * a retained unscoped entry point has no such scope, so it reports account access as unavailable
+ * rather than guessing an account.
  *
  * <p>Failing closed is not the same as being unusable, which is what STORY-SYNC-007 separates: a
  * workflow that read shared and account data in one statement is split in two, so its global half
@@ -78,8 +78,7 @@ public final class ManagedSchema {
                         + " this database does not have: its account tables are the legacy unscoped"
                         + " ones, with no account GUID to scope by. Start the backend so the startup"
                         + " gate applies the versioned chain (an unmanaged schema is reset first, see"
-                        + " docs/CURRENT_ARCHITECTURE.md, 'Versioned schema lifecycle and cache"
-                        + " reset'), then re-synchronize the account's sources.");
+                        + " docs/ARCHITECTURE.md, 'Schema lifecycle'), then re-synchronize the account's sources.");
     }
 
     /**
@@ -97,7 +96,6 @@ public final class ManagedSchema {
                         + " explicit model.AccountScope. The previous unscoped cache was dropped by"
                         + " the schema reset, so every account source is missing until a validated"
                         + " credential drives a fresh synchronization. See"
-                        + " docs/CURRENT_ARCHITECTURE.md, 'Versioned schema lifecycle and cache"
-                        + " reset'.");
+                        + " docs/ARCHITECTURE.md, 'Schema lifecycle'.");
     }
 }

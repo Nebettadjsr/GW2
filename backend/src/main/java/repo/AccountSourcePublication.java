@@ -11,10 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 
 /**
- * The transaction that publishes one account source (STORY-APP-015, TARGET_ARCHITECTURE.md §7.2
- * "Fetch and validate a source outside the database transaction, then publish all of its
- * replacements/upserts/stale-row removals, generation/completion marker and account sync activity
- * in one transaction").
+ * Publishes one already-fetched, validated account source in a single transaction.
  *
  * <p>The protocol lives here rather than being repeated per source so every source gets the same
  * five guarantees:
@@ -25,7 +22,7 @@ import java.time.Instant;
  *   <li><b>Writers serialize per account.</b> The transaction takes a per-account advisory lock
  *       before writing, so two publications for one account queue instead of interleaving their
  *       upserts and stale-row deletions - and two publications for <em>different</em> accounts take
- *       different keys, so neither waits for the other (§9.1 "Serialize writers per account").</li>
+ *       different keys, so neither waits for the other.</li>
  *   <li><b>Data, stale-row removal, marker and activity commit together.</b> A reader therefore
  *       cannot see refreshed rows under the previous marker, or a new marker over half-replaced
  *       rows.</li>
