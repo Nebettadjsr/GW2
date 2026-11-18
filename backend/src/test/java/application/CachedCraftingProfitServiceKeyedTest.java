@@ -92,7 +92,7 @@ class CachedCraftingProfitServiceKeyedTest {
                 AccountGrant.CHARACTERS, AccountGrant.UNLOCKS), Set.of(), "test", NOW.plus(Duration.ofHours(1)));
     }
 
-    private ProfitInputSession recordingSession() {
+    private ProfitInputSession recordingSession(AccountScope scope) {
         Connection con = (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
                 new Class<?>[]{Connection.class}, (proxy, method, args) -> {
                     if (method.getName().equals("close")) events.add("close");
@@ -103,7 +103,7 @@ class CachedCraftingProfitServiceKeyedTest {
         try {
             Constructor<ProfitInputSession> ctor = ProfitInputSession.class.getDeclaredConstructor(Connection.class, AccountScope.class);
             ctor.setAccessible(true);
-            return ctor.newInstance(con, AccountScope.of(java.util.UUID.randomUUID()));
+            return ctor.newInstance(con, scope);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
@@ -113,7 +113,7 @@ class CachedCraftingProfitServiceKeyedTest {
         return new CachedCraftingProfitService(
                 scope -> {
                     events.add("open");
-                    return recordingSession();
+                    return recordingSession(scope);
                 },
                 session -> new CraftingProfitService(null, null, null, null, null, null, null, session) {
                     @Override public ProfitData reload(DiscChoice choice, CraftingSettings settings) {

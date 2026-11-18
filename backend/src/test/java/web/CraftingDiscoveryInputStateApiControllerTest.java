@@ -180,7 +180,7 @@ class CraftingDiscoveryInputStateApiControllerTest {
         Runnable beforeCalculation = () -> { };
 
         Stub() {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null);
         }
 
         @Override public CraftingDiscoveryService forScope(model.AccountScope scope) { return this; }
