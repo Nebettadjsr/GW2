@@ -1,8 +1,7 @@
 package web.dto;
 
 /**
- * Transport request body for {@code POST /api/crafting/profit} (STORY-API-001,
- * TARGET_ARCHITECTURE.md §9).
+ * Transport request body for {@code POST /api/crafting/profit}.
  *
  * <p>Every member is optional and nullable so the request carries "not supplied" distinctly from a
  * supplied value; {@code web.CraftingProfitApiMapper} fills in the documented defaults and
@@ -29,13 +28,12 @@ public record CraftingProfitRequest(ScopeDto scope, SettingsDto settings) {
 
     /**
      * Requested calculation settings, mapping onto {@code craft.CraftingSettings}. Each omitted
-     * field defaults to the value the JavaFX Crafting Profit view opens with, so an empty request
-     * body reproduces the default page load.
+     * field has the default documented on {@code web.CraftingProfitApiMapper}, so an empty request
+     * body is the default All-scope calculation.
      *
      * <p>{@code useOwnMats}, {@code allowBuying} and {@code allowDailyCrafts} are independent:
      * owned inventory, Trading Post purchases and daily craft operations are controlled only by
      * their corresponding field. {@code allowDailyCrafts} defaults to false.
-     *
      */
     public record SettingsDto(Boolean useOwnMats,
                               Boolean allowBuying,
@@ -50,42 +48,5 @@ public record CraftingProfitRequest(ScopeDto scope, SettingsDto settings) {
                               java.util.Map<?, ?> protectedBankQuantities,
                               java.util.Map<?, ?> protectedMaterialQuantities,
                               Object protectedBankAllocations) {
-
-        /** Shape without Bank row allocations. */
-        public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,
-                           Boolean listingSell, Boolean listingBuy, Boolean allowDailyCrafts,
-                           Boolean materialProtectionEnabled, java.util.List<Integer> protectedItemIds,
-                           java.util.List<Integer> protectedBankItemIds,
-                           java.util.List<Integer> protectedMaterialItemIds,
-                           java.util.Map<?, ?> protectedBankQuantities,
-                           java.util.Map<?, ?> protectedMaterialQuantities) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
-                    protectedBankQuantities, protectedMaterialQuantities, null);
-        }
-
-        /** Legacy shape without finite reservation maps. */
-        public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,
-                           Boolean listingSell, Boolean listingBuy, Boolean allowDailyCrafts,
-                           Boolean materialProtectionEnabled, java.util.List<Integer> protectedItemIds,
-                           java.util.List<Integer> protectedBankItemIds,
-                           java.util.List<Integer> protectedMaterialItemIds) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
-                    null, null);
-        }
-
-        public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,
-                           Boolean listingSell, Boolean listingBuy, Boolean allowDailyCrafts,
-                           Boolean materialProtectionEnabled, java.util.List<Integer> protectedItemIds) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    materialProtectionEnabled, protectedItemIds, null, null, null, null);
-        }
-
-        public SettingsDto(Boolean useOwnMats, Boolean allowBuying, Integer maxBuyCopper,
-                           Boolean listingSell, Boolean listingBuy, Boolean allowDailyCrafts) {
-            this(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
-                    null, null);
-        }
     }
 }

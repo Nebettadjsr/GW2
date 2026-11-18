@@ -14,11 +14,10 @@ import java.util.List;
  * <p>When the calculation produced no result for this recipe, {@code resultAvailable} is false and
  * every result-derived field is null; the recipe itself is still reported rather than omitted.
  *
- * <p>Presentation-level text produced by the JavaFX layer (status labels, "no TP" markers,
- * missing-material summaries, search blobs) is deliberately absent: it is a rendering rule, not
- * domain state. The per-row resolution tree (TARGET_ARCHITECTURE.md §13) is likewise not part of
- * this contract - the application services build it lazily per selected row, so exposing it belongs
- * to a separate detail route.
+ * <p>Presentation-level text (status labels, "no TP" markers, missing-material summaries,
+ * search blobs) is deliberately absent: it is a rendering rule, not domain state. The per-row
+ * resolution tree is likewise not part of this contract; Profit and Discovery serve it through
+ * their selected-row resolution routes.
  *
  * <p>This type exists only at the HTTP boundary: it is not a domain, persistence or GW2 API model.
  *
@@ -45,7 +44,7 @@ import java.util.List;
  * @param missingToBuy        still-missing materials for {@code craftableCount} crafts
  * @param missingToBuyOne     still-missing materials for one further craft
  * @param iconUrl             this application's image URL for the recipe's <em>output item</em>
- *                            (TARGET_ARCHITECTURE.md §12.1) - a recipe has no icon of its own - or
+ *                            (see {@code application.icons.ItemIconUrls}) - a recipe has no icon of its own - or
  *                            null when that item's retained metadata is absent or not an accepted
  *                            source. Display metadata only: it never affects craftability, a result's
  *                            availability or any economic value

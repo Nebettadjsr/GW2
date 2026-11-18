@@ -132,7 +132,7 @@ final class CraftingRowMapper {
 
     /**
      * The item's image URL, derived from the retained source the calculation's own batch item read
-     * already carried (TARGET_ARCHITECTURE.md §12.1). Null when the item is not in that set or its
+     * already carried. Null when the item is not in that set or its
      * metadata is absent or unacceptable - no lookup, no request and no calculation happens here.
      */
     private static String iconUrl(int itemId, Map<Integer, ItemRepository.ItemInfo> items) {
