@@ -29,17 +29,16 @@ public final class AccountSync {
     }
 
     /**
-     * Fetches and publishes one account's bank (STORY-APP-015).
+     * Fetches and publishes one account's bank.
      *
      * <p>The upstream call and the parse happen first and outside any transaction, so a slow or
-     * failing GW2 API never holds a database transaction open
-     * (TARGET_ARCHITECTURE.md §7.2). Only once the whole payload is in hand does
+     * failing GW2 API never holds a database transaction open. Only once the whole payload is in hand does
      * {@link repo.AccountSourcePublication} open the transaction that replaces the rows, removes the
      * ones this run did not refresh, advances the {@code BANK} generation and records the account's
      * successful-sync activity - all or nothing.
      */
     public static void syncAccountBank(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
-        syncAccountBankImpl(scope, fetcher);
+        syncAccountBankImpl(scope, fetcher, ids -> {});
     }
 
     /** Fetch seam: an authenticated GET bound to one credential, replaceable by an offline fake. */
@@ -62,10 +61,7 @@ public final class AccountSync {
         }
     }
 
-    static void syncAccountBankImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
-        syncAccountBankImpl(scope, fetcher, ids -> {});
-    }
-
+    /** {@code metadata} repairs missing item metadata after the fetch and before the publication transaction. */
     static void syncAccountBankImpl(model.AccountScope scope, AuthFetcher fetcher, IconSync.ItemMetadataRepair metadata)
             throws Exception {
         requireCredentialOwner(scope, fetcher);
@@ -76,7 +72,7 @@ public final class AccountSync {
         }
     }
 
-    /** Publishes already-fetched bank slots; see {@link #syncAccountBank(model.AccountScope)}. */
+    /** Publishes already-fetched bank slots; see {@link #syncAccountBank(model.AccountScope, AuthFetcher)}. */
     static repo.AccountSourcePublication.Published publishBank(Connection con,
                                                                model.AccountScope scope,
                                                                List<BankSlot> rows,
@@ -85,12 +81,8 @@ public final class AccountSync {
                 (tx, owner, runTs) -> upsertScopedAccountBank(tx, owner, rows, runTs));
     }
 
-    /** Fetches and publishes one account's material storage; see {@link #syncAccountBank(model.AccountScope)}. */
+    /** Fetches and publishes one account's material storage; see {@link #syncAccountBank(model.AccountScope, AuthFetcher)}. */
     public static void syncAccountMaterials(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
-        syncAccountMaterialsImpl(scope, fetcher);
-    }
-
-    static void syncAccountMaterialsImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
         syncAccountMaterialsImpl(scope, fetcher, ids -> {});
     }
 
@@ -107,7 +99,7 @@ public final class AccountSync {
     /**
      * Publishes already-fetched material stacks. Writes no {@code account_materials_sync} row: that
      * singleton is retired as a runtime authority in favour of this account's {@code MATERIALS} row
-     * in {@code account_source_state} (TARGET_ARCHITECTURE.md §7.2).
+     * in {@code account_source_state}.
      */
     static repo.AccountSourcePublication.Published publishMaterials(Connection con,
                                                                     model.AccountScope scope,
@@ -117,12 +109,8 @@ public final class AccountSync {
                 (tx, owner, runTs) -> upsertScopedAccountMaterials(tx, owner, rows, runTs));
     }
 
-    /** Fetches and publishes one account's recipe unlocks; see {@link #syncAccountBank(model.AccountScope)}. */
+    /** Fetches and publishes one account's recipe unlocks; see {@link #syncAccountBank(model.AccountScope, AuthFetcher)}. */
     public static void syncAccountRecipes(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
-        syncAccountRecipesImpl(scope, fetcher);
-    }
-
-    static void syncAccountRecipesImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
         requireCredentialOwner(scope, fetcher);
         List<Integer> ids = parseAccountRecipeIds(fetcher.get("https://api.guildwars2.com/v2/account/recipes"));
         try (Connection con = Db.open()) {
@@ -130,7 +118,7 @@ public final class AccountSync {
         }
     }
 
-    /** Publishes already-fetched account recipe ids; see {@link #syncAccountBank(model.AccountScope)}. */
+    /** Publishes already-fetched account recipe ids; see {@link #syncAccountBank(model.AccountScope, AuthFetcher)}. */
     static repo.AccountSourcePublication.Published publishRecipes(Connection con,
                                                                   model.AccountScope scope,
                                                                   List<Integer> ids,
@@ -141,17 +129,13 @@ public final class AccountSync {
 
     /**
      * Fetches and publishes one account's consumed Luck; see
-     * {@link #syncAccountBank(model.AccountScope)}.
+     * {@link #syncAccountBank(model.AccountScope, AuthFetcher)}.
      *
      * <p>The upstream {@code /v2/account} identifier is validated against {@code scope} before
      * anything is written: a key that resolves to a different account must not write under the
      * caller's GUID, and the publication is refused rather than silently rescoped.
      */
     public static void syncAccountLuck(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
-        syncAccountLuckImpl(scope, fetcher);
-    }
-
-    static void syncAccountLuckImpl(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
         requireCredentialOwner(scope, fetcher);
         long consumedLuck = parseConsumedLuck(fetcher.get("https://api.guildwars2.com/v2/account/luck"));
         try (Connection con = Db.open()) {
@@ -159,7 +143,7 @@ public final class AccountSync {
         }
     }
 
-    /** Publishes already-fetched consumed Luck; see {@link #syncAccountLuck(model.AccountScope)}. */
+    /** Publishes already-fetched consumed Luck; see {@link #syncAccountLuck(model.AccountScope, AuthFetcher)}. */
     static repo.AccountSourcePublication.Published publishLuck(Connection con,
                                                                model.AccountScope scope,
                                                                long consumedLuck,
@@ -264,10 +248,6 @@ public final class AccountSync {
         }
     }
 
-    private static List<BankSlot> fetchBankSlots() throws Exception {
-        return parseBankSlots(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/bank"));
-    }
-
     static List<BankSlot> parseBankSlots(JsonNode root) {
         if (root == null || !root.isArray()) {
             throw new RuntimeException("Unexpected JSON (bank): not an array");
@@ -287,10 +267,6 @@ public final class AccountSync {
 
     private static boolean isInt(JsonNode n) {
         return n != null && n.isIntegralNumber() && n.canConvertToInt();
-    }
-
-    private static List<MaterialStack> fetchMaterialStacks() throws Exception {
-        return parseMaterialStacks(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/materials"));
     }
 
     static List<MaterialStack> parseMaterialStacks(JsonNode root) {
@@ -314,10 +290,6 @@ public final class AccountSync {
         return rows;
     }
 
-    private static List<Integer> fetchAccountRecipeIds() throws Exception {
-        return parseAccountRecipeIds(Gw2ApiClient.getAuth("https://api.guildwars2.com/v2/account/recipes"));
-    }
-
     static List<Integer> parseAccountRecipeIds(JsonNode root) {
         if (root == null || !root.isArray()) {
             throw new RuntimeException("Unexpected JSON (account/recipes): not an array");
@@ -334,7 +306,8 @@ public final class AccountSync {
     }
 
     /**
-     * Fetches consumed Luck for the API key's stable account ID. The GW2 endpoint requires
+     * Legacy unscoped Luck refresh using the deployment key (refused on a migrated schema by the
+     * repository/schema guards). Fetches consumed Luck for the API key's stable account ID. The GW2 endpoint requires
      * account, progression and unlocks permissions; getAuth applies the same status/error policy
      * as the existing account sync steps. An empty Luck array means zero, not unavailable data.
      */
@@ -377,6 +350,7 @@ public final class AccountSync {
         return item.path("value").longValue();
     }
 
+    /** Legacy unscoped bank refresh using the deployment key; see {@link #syncAccountBank(model.AccountScope, AuthFetcher)} for the scoped path. */
     public static void syncAccountBank() throws IOException, InterruptedException, SQLException {
         String url = "https://api.guildwars2.com/v2/account/bank";
         JsonNode root = Gw2ApiClient.getAuth(url);
@@ -474,9 +448,9 @@ public final class AccountSync {
         }
 
         try (Connection con = Db.open()) {
-            // Unlike the bank and account-recipe publications below, this one's first write is the
+            // Unlike the legacy bank and account-recipe publications, this one's first write is the
             // unscoped account_materials upsert rather than a source marker, so the migrated-schema
-            // refusal is stated here explicitly (STORY-INFRA-004).
+            // refusal is stated here explicitly.
             repo.ManagedSchema.rejectUnscopedAccountAccess(con, "account_materials without an account scope");
             MaterialStorageSchema.ensure(con);
             con.setAutoCommit(false);
