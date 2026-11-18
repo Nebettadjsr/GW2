@@ -17,9 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The part of the resolution-detail contract both routes share (STORY-API-008,
- * TARGET_ARCHITECTURE.md §10.2 and STORY-API-008): the required-input rules, the envelope literals,
- * the row
+ * The part of the resolution-detail contract both routes share (STORY-API-008): the required-input rules, the envelope literals, the row
  * projection and the recursive tree copy. What differs between Profit and Discovery - their scope,
  * settings, defaults and validation - stays in {@link CraftingProfitApiMapper} and
  * {@link CraftingDiscoveryApiMapper}, which this class does not duplicate.
@@ -29,12 +27,12 @@ import java.util.Set;
  * quantity, and infers no domain state from a price. Authoritative totals come from the resolver
  * through {@code application.CraftingResolutionDetail}. Nothing
  * here reads the database or the crafting graph, so mapping cannot introduce a second data read into
- * an operation (§13.2). It is stateless, so it is safe to share across concurrent requests.
+ * an operation. It is stateless, so it is safe to share across concurrent requests.
  */
 final class CraftingResolutionMapper {
 
     /**
-     * §13.3: this response is a fresh calculation, not retrieval of the table's historical result.
+     * This response is a fresh calculation, not retrieval of the table's historical result.
      * There is no cross-request snapshot guarantee behind it.
      */
     static final String CONSISTENCY_FRESH_CALCULATION = "FRESH_CALCULATION";
@@ -55,7 +53,7 @@ final class CraftingResolutionMapper {
 
     /**
      * The body itself: required on both detail routes, unlike the Profit table route's optional one -
-     * there is no default recipe to explain (§13.1).
+     * there is no default recipe to explain.
      *
      * @throws ApiValidationException if it is absent
      */
@@ -86,8 +84,8 @@ final class CraftingResolutionMapper {
 
     /**
      * The nested calculation: required on both detail routes, because the caller is expected to send
-     * the effective inputs the table response echoed rather than rely on defaults a second time
-     * (§13.1). Its individual members keep each table contract's own optional-with-defaults
+     * the effective inputs the table response echoed rather than rely on defaults a second time.
+     * Its individual members keep each table contract's own optional-with-defaults
      * semantics, which the route's existing mapper applies.
      *
      * @throws ApiValidationException if it is absent
@@ -101,7 +99,7 @@ final class CraftingResolutionMapper {
     }
 
     /**
-     * The one outcome of §13.4 that is not a completed 200: the recipe is valid but this operation's
+     * The one outcome that is not a completed 200: the recipe is valid but this operation's
      * own fresh candidate set does not contain it.
      *
      * @throws RecipeNotInCalculationException mapped to 404 {@code RECIPE_NOT_IN_CALCULATION}
@@ -148,7 +146,7 @@ final class CraftingResolutionMapper {
      * The resolution tree, or null when there is no result to explain - never a fabricated empty
      * tree. Item names and icon sources come only from the metadata this operation captured, and each
      * node carries its <em>own</em> item's icon: a requirement satisfied from stock, bought or crafted
-     * is still that item (TARGET_ARCHITECTURE.md §10.2), so nothing here reads the node's sourcing
+     * is still that item (not a sourcing-specific image), so nothing here reads the node's sourcing
      * or the requested recipe to decide an image.
      */
     static ResolutionNodeDto toTree(CraftingResolutionDetail detail) {

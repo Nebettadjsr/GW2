@@ -11,8 +11,8 @@ import java.util.List;
 
 /**
  * Translation between the Crafting Discovery transport DTOs and the existing application/domain
- * inputs and results (STORY-API-002, TARGET_ARCHITECTURE.md §9: "Business rules must not be
- * implemented in controllers").
+ * inputs and results (STORY-API-002: business rules are not
+ * implemented in controllers).
  *
  * <p>This class only defaults, validates and copies. It performs no recipe-eligibility check, no
  * discovery filtering, no inventory or price lookup and no crafting calculation - all of that
@@ -86,8 +86,8 @@ final class CraftingDiscoveryApiMapper {
                      CraftingDiscoveryResponse.EffectiveSettingsDto settings) {
 
         /**
-         * Always a {@code CHAR_DISCIPLINE} choice: Discovery is individual-character only, the same
-         * shape the JavaFX selector produces (CURRENT_ARCHITECTURE.md §5.2).
+         * Always a {@code CHAR_DISCIPLINE} choice: Discovery is individual-character only, the
+         * shape the web selector sends.
          */
         DiscChoice toDiscChoice() {
             return DiscChoice.charDiscipline(scope.discipline(), scope.rating(), scope.characterName());

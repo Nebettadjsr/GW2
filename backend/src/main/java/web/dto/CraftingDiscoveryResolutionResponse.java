@@ -1,8 +1,7 @@
 package web.dto;
 
 /**
- * Transport response body for {@code POST /api/crafting/discovery/resolution} (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.3's completed response envelope).
+ * Transport response body for {@code POST /api/crafting/discovery/resolution} (STORY-API-008's completed response envelope).
  *
  * <p>The same envelope as {@link CraftingProfitResolutionResponse} - identical field names, literals
  * and meanings, so a caller reads a resolution the same way on either route - differing only in the
@@ -20,12 +19,6 @@ public record CraftingDiscoveryResolutionResponse(int recipeId,
                                                  ResolutionNodeDto tree,
                                                  @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
                                         DiscoveryFreshnessDto freshness) {
-
-    public CraftingDiscoveryResolutionResponse(int recipeId, CalculationDto calculation, String consistency,
-                                               String calculatedAt, CraftingRowDto row, String treeStatus,
-                                               String treeBasis, ResolutionNodeDto tree) {
-        this(recipeId, calculation, consistency, calculatedAt, row, treeStatus, treeBasis, tree, null);
-    }
 
     /**
      * The effective inputs this calculation ran with, in the shape the Discovery table response
