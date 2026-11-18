@@ -8,7 +8,6 @@ import repo.CharacterBuildTabsRepository;
 import repo.CharacterBuildTabsRepository.Snapshot;
 import repo.Db;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
@@ -83,16 +82,7 @@ public class CharacterBuildTabsService {
                     "The verified key is restricted from an endpoint build tabs need.");
         }
         Snapshot snapshot;
-        try (Connection con = connections.open()) {
-            con.setReadOnly(true);
-            con.setAutoCommit(false);
-            con.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-            try {
-                snapshot = repository.load(con, scope, name);
-            } finally {
-                con.rollback();
-            }
-        }
+        snapshot = connections.snapshot(con -> repository.load(con, scope, name));
         if (snapshot.parent().isEmpty()) {
             return denied(State.PENDING, "PARENT_NOT_PUBLISHED",
                     "Characters have not been published for this account yet; build tabs depend on them.");

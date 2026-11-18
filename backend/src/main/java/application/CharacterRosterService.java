@@ -62,6 +62,25 @@ public class CharacterRosterService {
     @FunctionalInterface
     public interface ConnectionSource {
         Connection open() throws SQLException;
+
+        /** Runs one read on a read-only REPEATABLE READ snapshot, so related rows never mix generations. */
+        default <T> T snapshot(SnapshotRead<T> read) throws SQLException {
+            try (Connection con = open()) {
+                con.setReadOnly(true);
+                con.setAutoCommit(false);
+                con.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+                try {
+                    return read.read(con);
+                } finally {
+                    con.rollback();
+                }
+            }
+        }
+    }
+
+    @FunctionalInterface
+    public interface SnapshotRead<T> {
+        T read(Connection con) throws SQLException;
     }
 
     public CharacterRosterService(ScopedSourceGate gate, RefreshStatus coordinator,
@@ -106,16 +125,7 @@ public class CharacterRosterService {
         }
         var read = ScopedSourceGate.through(gate, scope, AccountSyncStateRepository.CHARACTERS, () -> {
             // One snapshot for the characters and their disciplines: no mixing of generations.
-            try (Connection con = connections.open()) {
-                con.setReadOnly(true);
-                con.setAutoCommit(false);
-                con.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-                try {
-                    return reader.read(con, scope);
-                } finally {
-                    con.rollback();
-                }
-            }
+            return connections.snapshot(con -> reader.read(con, scope));
         });
         if (!read.hasData()) {
             boolean refreshing = coordinator != null

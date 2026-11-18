@@ -8,7 +8,6 @@ import repo.CharacterEquipmentTabsRepository;
 import repo.CharacterEquipmentTabsRepository.Snapshot;
 import repo.Db;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
@@ -82,16 +81,7 @@ public class CharacterEquipmentTabsService {
                     "The verified key is restricted from an endpoint equipment tabs need.");
         }
         Snapshot snapshot;
-        try (Connection con = connections.open()) {
-            con.setReadOnly(true);
-            con.setAutoCommit(false);
-            con.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-            try {
-                snapshot = repository.load(con, scope, name);
-            } finally {
-                con.rollback();
-            }
-        }
+        snapshot = connections.snapshot(con -> repository.load(con, scope, name));
         if (snapshot.parent().isEmpty()) {
             return denied(State.PENDING, "PARENT_NOT_PUBLISHED",
                     "Characters have not been published for this account yet; equipment tabs depend on them.");
