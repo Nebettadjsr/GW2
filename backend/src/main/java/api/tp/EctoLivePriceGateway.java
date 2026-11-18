@@ -17,8 +17,9 @@ import java.util.stream.Collectors;
  * Live, unsynchronized GW2 Trading Post price lookup: a direct call to
  * {@code /v2/commerce/prices}, distinct from the DB-backed {@code repo.tp.TpPriceRepository} the
  * Crafting flows use. Its remaining consumer is {@code application.ItemReadService}, which serves
- * the browser's item-detail route; a fake subclass substitutes for it in application-layer tests
- * (TARGET_ARCHITECTURE.md §25).
+ * the browser's item-detail route; a fake subclass substitutes for it in application-layer tests.
+ * Unlike {@link TpPriceApi} (cached TP synchronization: 429 retry, deadline, 404 fallback), this is a
+ * single unretried request with no deadline, and skips items without both buy and sell quotes.
  */
 public class EctoLivePriceGateway {
 

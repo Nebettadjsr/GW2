@@ -12,6 +12,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Public {@code /v2/commerce/prices} transport for cached Trading Post synchronization ({@code
+ * sync.TpSync}): bounded 429 retry with backoff, optional {@link TaskDeadline}, and a 404 batch
+ * result so the caller can retry items individually. The live item-detail route uses {@link
+ * EctoLivePriceGateway} instead, with different status and retry rules.
+ */
 public final class TpPriceApi {
 
     private static final String PRODUCTION_BASE = "https://api.guildwars2.com";

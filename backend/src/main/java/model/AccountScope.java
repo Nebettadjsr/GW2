@@ -5,16 +5,14 @@ import java.util.UUID;
 
 /**
  * The explicit trusted account scope every account-owned persistence operation requires
- * (STORY-APP-015, TARGET_ARCHITECTURE.md §7.2 "All account repository operations require explicit
- * trusted scope", §8.1 "Request and application scope").
+ * (STORY-APP-015): every account repository operation requires it, never a default.
  *
  * <p>It carries exactly one thing: the verified {@code /v2/account} GUID that is the account
  * registry's primary key. Not a credential, not a session, not a grant set - those belong to the
  * access boundary that resolves a live session into a scope and passes it in. Holding only the GUID
  * is what lets persistence, publication and the calculation snapshot require scope without gaining
  * an authentication dependency, and what lets a replacement key for the same account reuse the
- * existing dataset (§7 "keyed by the stable Guild Wars 2 account identity, not by a particular API
- * key").
+ * existing dataset (data is keyed by the stable Guild Wars 2 account identity, not by an API key).
  *
  * <p>There is deliberately no no-argument factory, no "current", "configured" or "last used"
  * accessor and no mutable process-wide holder: a scope can only be constructed from an identifier a
