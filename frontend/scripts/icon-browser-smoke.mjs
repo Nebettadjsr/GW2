@@ -31,6 +31,7 @@
  *
  * Exits 0 when every step passed, 1 otherwise.
  */
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
@@ -541,25 +542,86 @@ async function run() {
     )
     // The tree is fixed by treeFor(): exact names, states and URLs in document order, including the
     // 503 node, which must settle to the failed fallback with no <img> — independent of the row's.
-    // ResolutionTreeNode renders every supplied descendant inside native <details>; opening it changes
-    // visibility and native lazy-image fetching, not Vue mounting. Nothing below the root is fetched
-    // until the group is opened and the node is in view. Open it as a user would
-    // (summary click), bring the 503 node into view, then wait for it to settle.
-    const rootToggle = page.locator('[data-test="tree-node"] > [data-test="node-children"] > summary').first()
-    await rootToggle.click()
-    await page
-      .locator('[data-test="tree-node"] .node__identity', { hasText: 'Unavailable Material' })
-      .scrollIntoViewIfNeeded()
-    await page.waitForFunction(
-      () =>
-        [...document.querySelectorAll('[data-test="tree-node"] .node__identity')].some(
-          (node) =>
-            node.querySelector('[data-test="node-name"]')?.textContent.trim() === 'Unavailable Material' &&
-            node.querySelector('[data-test="item-icon"]')?.getAttribute('data-icon-state') === 'failed'
-        ),
-      undefined,
-      { timeout: TIMEOUT_MS }
-    )
+    // ResolutionTreeNode renders every supplied descendant inside native <details>, collapsed at
+    // first; opening it changes visibility and native lazy-image fetching, not Vue mounting. Control
+    // path, each step observed rather than assumed: (a) wait until the selected recipe's whole tree is
+    // present for the selected detail; (b) click the root summary only while the group is observed
+    // closed, so a click can never close a group that is already open; (c) wait for native
+    // `details.open` and for the 503 node to be visible; (d) scroll it into view so native lazy
+    // loading starts it; (e) wait for it to settle. A failure reports which of those was not reached.
+    const TREE_ROOT = '[data-test="tree-node"]'
+    const unavailableNode = page.locator(`${TREE_ROOT} .node__identity`, { hasText: 'Unavailable Material' })
+    const treeDiagnostics = () =>
+      page.evaluate(
+        ({ url }) => {
+          const group = document.querySelector('[data-test="tree-node"] > [data-test="node-children"]')
+          const identity = [...document.querySelectorAll('[data-test="tree-node"] .node__identity')].find(
+            (node) => node.querySelector('[data-test="node-name"]')?.textContent.trim() === 'Unavailable Material'
+          )
+          const image = identity?.querySelector('img') ?? null
+          const box = identity?.getBoundingClientRect()
+          return {
+            detailName: document.querySelector('[data-test="detail-name"]')?.textContent.trim() ?? null,
+            treeNodes: document.querySelectorAll('[data-test="tree-node"]').length,
+            rootGroupPresent: group !== null,
+            rootGroupOpen: group?.open ?? null,
+            unavailableNodePresent: identity !== undefined,
+            unavailableState: identity?.querySelector('[data-test="item-icon"]')?.getAttribute('data-icon-state') ?? null,
+            unavailableVisible: box !== undefined && box.width > 0 && box.height > 0,
+            unavailableInViewport: box !== undefined && box.bottom > 0 && box.top < window.innerHeight,
+            image: image && {
+              src: image.getAttribute('src'),
+              complete: image.complete,
+              naturalWidth: image.naturalWidth,
+              loading: image.getAttribute('loading')
+            },
+            expectedUrl: url
+          }
+        },
+        { url: ITEMS.unavailable.url }
+      )
+    try {
+      await page.waitForFunction(
+        (expectedName) =>
+          document.querySelector('[data-test="detail-name"]')?.textContent.trim() === expectedName &&
+          document.querySelectorAll('[data-test="tree-node"]').length === 5 &&
+          document.querySelector('[data-test="tree-node"] > [data-test="node-children"] > summary') !== null,
+        ROWS[0].outputName,
+        { timeout: TIMEOUT_MS }
+      )
+      const rootGroup = page.locator(`${TREE_ROOT} > [data-test="node-children"]`).first()
+      if (!(await rootGroup.evaluate((group) => group.open))) {
+        await rootGroup.locator(':scope > summary').click({ timeout: TIMEOUT_MS })
+      }
+      await page.waitForFunction(
+        () => document.querySelector('[data-test="tree-node"] > [data-test="node-children"]')?.open === true,
+        undefined,
+        { timeout: TIMEOUT_MS }
+      )
+      await unavailableNode.waitFor({ state: 'visible', timeout: TIMEOUT_MS })
+      await unavailableNode.scrollIntoViewIfNeeded({ timeout: TIMEOUT_MS })
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll('[data-test="tree-node"] .node__identity')].some(
+            (node) =>
+              node.querySelector('[data-test="node-name"]')?.textContent.trim() === 'Unavailable Material' &&
+              node.querySelector('[data-test="item-icon"]')?.getAttribute('data-icon-state') === 'failed'
+          ),
+        undefined,
+        { timeout: TIMEOUT_MS }
+      )
+    } catch (error) {
+      const diagnostics = {
+        error: String(error),
+        dom: await treeDiagnostics().catch((reason) => String(reason)),
+        unavailableRequests: imageRequests.get(ITEMS.unavailable.url) ?? 0,
+        imageRequestHistory: [...imageRequests.entries()]
+      }
+      const dir = fileURLToPath(new URL('../quality-reports/', import.meta.url))
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(`${dir}icon-tree-settle-failure.json`, JSON.stringify(diagnostics, null, 2))
+      throw new Error(`The 503 tree node did not settle: ${JSON.stringify(diagnostics)}`)
+    }
     const settledTree = await page.$$eval('[data-test="tree-node"] .node__identity', (nodes) =>
       nodes.map((node) => ({
         name: node.querySelector('[data-test="node-name"]').textContent.trim(),
