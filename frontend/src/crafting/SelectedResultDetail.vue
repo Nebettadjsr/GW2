@@ -27,7 +27,7 @@ const props = withDefaults(
   /**
    * True when `row` is the one the *explanation below* was calculated from rather than the row in
    * the comparison table: the backend reported the inputs as changed since that table result, so
-   * the two would not describe the same calculation (`TARGET_ARCHITECTURE.md` 10.2, UD-015).
+   * the two would not describe the same calculation (`docs/ARCHITECTURE.md` section 7).
    */
   recalculatedForChangedInputs?: boolean
   hiddenReason: SelectionHiddenReason
@@ -72,7 +72,7 @@ const outputQuoteUnavailable = computed(() => {
 /*
  * Name the price basis used for the calculation.
  *
- * EffectiveSettings currently supplies the configured sell-price mode.
+ * EffectiveSettings echoes the sell-price mode as the boolean `listingSell`.
  * Keep the fallback deliberately generic in case there is no accepted
  * settings response yet.
  */
@@ -81,11 +81,6 @@ const calculationSellPriceLabel = computed(() => {
 
   if (settings === null) return '1 item sell price'
 
-  /*
-   * Keep this tolerant of the API's actual enum/string naming.
-   * If your type uses different values, TypeScript will point directly
-   * at this switch and it can be adjusted to the exact contract.
-   */
   return settings.listingSell ? '1 item (Listing sell)' : '1 item (Instant sell)'
 })
 
