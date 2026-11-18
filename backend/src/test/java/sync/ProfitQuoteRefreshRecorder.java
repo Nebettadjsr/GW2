@@ -68,9 +68,20 @@ public class ProfitQuoteRefreshRecorder extends TradingPostPriceRefreshGateway {
 
     @Override
     public void syncTpPricesForProfit() throws Exception {
+        refresh(null);
+    }
+
+    /** The account-scoped selection the supported keyed and key-free demands run (STORY-API-011). */
+    @Override
+    public void syncTpPricesForProfit(model.AccountScope scope) throws Exception {
+        refresh(scope);
+    }
+
+    private void refresh(model.AccountScope scope) throws Exception {
         Set<Integer> ids;
         try (Connection con = Db.open()) {
-            ids = new TreeSet<>(new CraftingProfitItemCollector().collect(con));
+            CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
+            ids = new TreeSet<>(scope == null ? collector.collect(con) : collector.collect(con, scope));
         }
         passes.add(Set.copyOf(ids));
 

@@ -25,7 +25,7 @@ class CraftingProfitKeyedAdmissionHttpTest {
 
     private MockMvc mvc(ScopedAccountRefreshCoordinator.Reason rejection) {
         CachedCraftingProfitService service = new CachedCraftingProfitService(
-                null, null, null, null, null, null, null, null, null) {
+                null, null, null, null, null, null, null, null) {
             @Override
             public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
                                         KeyedAdmission keyed) {

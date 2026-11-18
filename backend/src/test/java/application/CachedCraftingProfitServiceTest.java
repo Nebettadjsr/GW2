@@ -3,10 +3,11 @@ package application;
 import craft.CraftResult;
 import craft.CraftingSettings;
 import craft.Recipe;
+import model.AccountScope;
+import repo.AccountSourceStateRepository;
 import org.junit.jupiter.api.Test;
 import repo.AccountSyncStateRepository;
 import repo.DiscChoice;
-import sync.AccountRefreshGateway;
 import sync.TradingPostPriceRefreshGateway;
 
 import java.sql.Connection;
@@ -40,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class CachedCraftingProfitServiceTest {
 
+    private static final AccountScope SCOPE = AccountScope.of("50000000-0000-0000-0000-000000000005");
     private static final Instant NOW = Instant.parse("2026-10-12T12:00:00Z");
     private static final Instant FRESH_AT = NOW.minus(Duration.ofMinutes(3));
     private static final Instant EXPIRED_AT = NOW.minus(Duration.ofHours(4));
@@ -50,10 +52,7 @@ class CachedCraftingProfitServiceTest {
             100, "Artificer", 4, Map.of(), Map.of(), 1_234, 56, 7_890, 700, 2_800, null);
 
     private final FakeBackgroundTasks tasks = new FakeBackgroundTasks();
-    private final HeldAccountGateway accountGateway = new HeldAccountGateway();
     private final HeldPriceGateway priceGateway = new HeldPriceGateway();
-    private final AccountRefreshCoordinator accountRefresh =
-            new AccountRefreshCoordinator(new AccountRefreshService(accountGateway), tasks);
     private final TradingPostRefreshCoordinator priceRefresh =
             new TradingPostRefreshCoordinator(new TradingPostPriceRefreshService(priceGateway), tasks);
 
@@ -67,7 +66,7 @@ class CachedCraftingProfitServiceTest {
     void freshInputsProduceAFinalResultAndAdmitNoRefreshAtAll() throws Exception {
         allSourcesAt(FRESH_AT);
 
-        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(outcome.hasResult());
         assertEquals(1, outcome.data().visibleRecipes().size());
@@ -82,34 +81,25 @@ class CachedCraftingProfitServiceTest {
     }
 
     @Test
-    void expiredAccountInputsStillReturnTheOrdinaryResultBeforeAnyRefreshCompletes() throws Exception {
+    void expiredAccountInputsStillReturnTheOrdinaryResultAndAdmitNoKeylessAccountRefresh() throws Exception {
         allSourcesAt(EXPIRED_AT);
-        accountGateway.hold();
-        tasks.autoRun = true;
 
-        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(outcome.hasResult(), "expiry is not loss of the last successful data");
         assertEquals(4, outcome.data().resultsByRecipeId().get(7).craftableCount,
                 "the economic result is the ordinary one, not a degraded placeholder");
         assertTrue(outcome.freshness().provisional());
-
-        CalculationFreshness.OutstandingRefresh work = only(outcome.freshness().outstandingWork());
-        accountGateway.awaitEntered();
-        assertTrue(accountGateway.stillInFlight(),
-                "the result was answered while the refresh was still running");
-        assertEquals("RUNNING", tasks.stateOf(work.taskId()));
-
-        assertEquals(CalculationFreshness.RefreshKind.ACCOUNT, work.kind());
-        assertEquals(CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES, work.sources());
-        assertEquals(AccountRefreshCoordinator.REUSE_ADMITTED, work.reuse());
+        assertEquals(List.of(), outcome.freshness().outstandingWork());
+        assertEquals(List.of(), tasks.operations(), "a cached read with no key admits no account work");
+        CalculationFreshness.RefreshFailure failure = only(outcome.freshness().failures());
+        assertEquals(CachedCraftingProfitService.CREDENTIAL_REQUIRED, failure.code());
+        assertEquals(CalculationFreshness.RefreshKind.ACCOUNT, failure.kind());
+        assertTrue(failure.retryable());
         for (CalculationFreshness.SourceFreshness source : outcome.freshness().accountSources()) {
             assertEquals(CalculationFreshness.SourceState.STALE, source.state(), source.source());
             assertEquals(EXPIRED_AT, source.fetchedAt(), source.source());
         }
-
-        accountGateway.release();
-        tasks.joinAll();
     }
 
     @Test
@@ -120,7 +110,7 @@ class CachedCraftingProfitServiceTest {
         priceGateway.hold();
         tasks.autoRun = true;
 
-        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(outcome.hasResult());
         assertTrue(outcome.freshness().provisional());
@@ -145,32 +135,26 @@ class CachedCraftingProfitServiceTest {
     }
 
     @Test
-    void bothExpiredAdmitTwoSeparatelyIdentifiedPiecesOfWork() throws Exception {
+    void bothExpiredAdmitOnlyTheSharedQuoteRefreshAndReportTheMissingKey() throws Exception {
         allSourcesAt(EXPIRED_AT);
         coverage = uncovered();
-        accountGateway.hold();
         priceGateway.hold();
         tasks.autoRun = true;
 
-        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(outcome.hasResult());
         assertTrue(outcome.freshness().provisional());
-        accountGateway.awaitEntered();
         priceGateway.awaitEntered();
-        assertTrue(accountGateway.stillInFlight() && priceGateway.stillInFlight(),
-                "neither mechanism may have to finish before the cached result is answered");
-        assertEquals(2, outcome.freshness().outstandingWork().size());
-        assertEquals(List.of(CalculationFreshness.RefreshKind.ACCOUNT,
-                        CalculationFreshness.RefreshKind.TRADING_POST),
-                outcome.freshness().outstandingWork().stream()
-                        .map(CalculationFreshness.OutstandingRefresh::kind).toList(),
+        assertTrue(priceGateway.stillInFlight(),
+                "the quote refresh may not have to finish before the cached result is answered");
+        assertEquals(CalculationFreshness.RefreshKind.TRADING_POST,
+                only(outcome.freshness().outstandingWork()).kind(),
                 "account and price state stay distinguishable");
-        assertEquals(List.of(AccountRefreshCoordinator.OPERATION,
-                        TradingPostRefreshCoordinator.PROFIT_OPERATION), tasks.operations(),
-                "two independent operations, not one merged refresh");
+        assertEquals(CachedCraftingProfitService.CREDENTIAL_REQUIRED, only(outcome.freshness().failures()).code());
+        assertEquals(List.of(TradingPostRefreshCoordinator.PROFIT_OPERATION), tasks.operations(),
+                "no account operation without a key");
 
-        accountGateway.release();
         priceGateway.release();
         tasks.joinAll();
     }
@@ -181,7 +165,7 @@ class CachedCraftingProfitServiceTest {
         profitServices.canned = new CraftingProfitService.ProfitData(
                 List.of(), List.of(), Map.of(), Map.of(), Map.of());
 
-        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(outcome.hasResult(), "synchronized emptiness is an answer, not an absent source");
         assertEquals(0, outcome.data().visibleRecipes().size());
@@ -194,7 +178,7 @@ class CachedCraftingProfitServiceTest {
         allSourcesAt(FRESH_AT);
         versions.remove(AccountSyncStateRepository.BANK);
 
-        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(SCOPE, DiscChoice.all(), settings());
 
         assertFalse(outcome.hasResult());
         assertNull(outcome.data(), "a missing source must not be synthesized as an empty one");
@@ -205,10 +189,10 @@ class CachedCraftingProfitServiceTest {
         CalculationFreshness.SourceFreshness bank = sourceNamed(outcome, AccountSyncStateRepository.BANK);
         assertEquals(CalculationFreshness.SourceState.MISSING, bank.state());
         assertNull(bank.fetchedAt());
-        CalculationFreshness.OutstandingRefresh work = only(outcome.freshness().outstandingWork());
-        assertEquals(Set.of(AccountSyncStateRepository.BANK), work.sources(),
-                "only the source that is actually not current is refreshed");
-        assertEquals(AccountRefreshCoordinator.OPERATION, tasks.operations().get(0));
+        assertEquals(List.of(), outcome.freshness().outstandingWork());
+        assertEquals(CachedCraftingProfitService.CREDENTIAL_REQUIRED, only(outcome.freshness().failures()).code(),
+                "the missing source is reported, and with no key nothing is admitted for it");
+        assertEquals(List.of(), tasks.operations());
     }
 
     // ---------- what may and may not establish a final result ----------
@@ -216,13 +200,14 @@ class CachedCraftingProfitServiceTest {
     @Test
     void aSucceededRefreshTaskDoesNotMakeAResultFinalWhileTheMarkersAreStillStale() throws Exception {
         allSourcesAt(EXPIRED_AT);
+        coverage = uncovered();
         CachedCraftingProfitService service = service();
 
-        CachedCraftingProfitService.ProfitOutcome first = service.profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome first = service.profit(SCOPE, DiscChoice.all(), settings());
         String taskId = only(first.freshness().outstandingWork()).taskId();
         tasks.finish(taskId); // succeeded, but it refreshed nothing in this fake
 
-        CachedCraftingProfitService.ProfitOutcome second = service.profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome second = service.profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(second.freshness().provisional(),
                 "freshness comes from the captured input versions, never from a task's success");
@@ -232,19 +217,20 @@ class CachedCraftingProfitServiceTest {
 
     @Test
     void aForgottenTaskIsReportedAsBoundedRecoveryInformation() throws Exception {
-        allSourcesAt(EXPIRED_AT);
+        allSourcesAt(FRESH_AT);
+        coverage = uncovered();
         CachedCraftingProfitService service = service();
 
-        CachedCraftingProfitService.ProfitOutcome first = service.profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome first = service.profit(SCOPE, DiscChoice.all(), settings());
         String taskId = only(first.freshness().outstandingWork()).taskId();
         tasks.forget(taskId);
 
-        CachedCraftingProfitService.ProfitOutcome second = service.profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome second = service.profit(SCOPE, DiscChoice.all(), settings());
 
         CalculationFreshness.RefreshFailure failure = second.freshness().failures().stream()
                 .filter(item -> "TASK_UNKNOWN".equals(item.code()))
                 .findFirst().orElseThrow();
-        assertEquals(CalculationFreshness.RefreshKind.ACCOUNT, failure.kind());
+        assertEquals(CalculationFreshness.RefreshKind.TRADING_POST, failure.kind());
         assertTrue(failure.retryable());
         assertEquals("UNKNOWN", only(second.freshness().outstandingWork()).taskState());
     }
@@ -258,7 +244,7 @@ class CachedCraftingProfitServiceTest {
         // what this calculation actually used.
         profitServices.onReload = () -> allSourcesAt(NOW);
 
-        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome outcome = service().profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(outcome.hasResult());
         for (CalculationFreshness.SourceFreshness source : outcome.freshness().accountSources()) {
@@ -273,17 +259,17 @@ class CachedCraftingProfitServiceTest {
         allSourcesAt(FRESH_AT);
         CachedCraftingProfitService service = service();
 
-        String first = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
-        String again = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
+        String first = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
+        String again = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
         assertEquals(first, again, "the same published versions must name the same generation");
 
         versions.put(AccountSyncStateRepository.CHARACTERS, FRESH_AT.plusSeconds(1));
-        String afterAccountChange = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
+        String afterAccountChange = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
         assertNotEquals(first, afterAccountChange, "a changed account version is a new generation");
 
         coverage = new CalculationFreshness.PriceCoverage(
                 99, 99, 0, 0, FRESH_AT, FRESH_AT, true, "quotes-a");
-        String afterPriceChange = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
+        String afterPriceChange = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
         assertNotEquals(afterAccountChange, afterPriceChange,
                 "a changed required item set is a new generation too");
     }
@@ -293,13 +279,13 @@ class CachedCraftingProfitServiceTest {
         allSourcesAt(FRESH_AT);
         CachedCraftingProfitService service = service();
 
-        String before = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
+        String before = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
 
         // One required item's quote changed: refetched between the oldest and the newest instant, or
         // rewritten with new numbers under its existing one. Every aggregate the envelope reports is
         // identical, so only the quote version can tell this generation from the previous one.
         coverage = covered("quotes-b");
-        CachedCraftingProfitService.ProfitOutcome after = service.profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome after = service.profit(SCOPE, DiscChoice.all(), settings());
 
         assertEquals(covered().requiredItems(), after.freshness().tradingPost().requiredItems());
         assertEquals(covered().freshItems(), after.freshness().tradingPost().freshItems());
@@ -315,7 +301,7 @@ class CachedCraftingProfitServiceTest {
     void detailAfterAnInteriorQuoteChangeReportsChangedInputsAndCarriesItsOwnRow() throws Exception {
         allSourcesAt(FRESH_AT);
         CachedCraftingProfitService service = service();
-        String rowGeneration = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
+        String rowGeneration = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
 
         // The caller now asks why the row it is showing says what it says. Meanwhile one interior
         // quote changed, leaving every coverage aggregate and both instants exactly as they were.
@@ -325,7 +311,7 @@ class CachedCraftingProfitServiceTest {
         profitServices.cannedRow = recalculated;
 
         CachedCraftingProfitService.ResolutionOutcome outcome =
-                service.resolution(7, DiscChoice.all(), settings(), rowGeneration);
+                service.resolution(SCOPE, 7, DiscChoice.all(), settings(), rowGeneration);
 
         assertEquals(CachedCraftingProfitService.CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS,
                 outcome.consistency(),
@@ -340,8 +326,8 @@ class CachedCraftingProfitServiceTest {
         allSourcesAt(FRESH_AT);
         CachedCraftingProfitService service = service();
 
-        String first = service.profit(DiscChoice.all(), settings()).freshness().requestId();
-        String second = service.profit(DiscChoice.all(), settings()).freshness().requestId();
+        String first = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().requestId();
+        String second = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().requestId();
 
         assertNotEquals(first, second);
     }
@@ -352,10 +338,10 @@ class CachedCraftingProfitServiceTest {
     void detailExplainingTheCallersGenerationIsReportedAsAFreshCalculation() throws Exception {
         allSourcesAt(FRESH_AT);
         CachedCraftingProfitService service = service();
-        String generation = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
+        String generation = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
 
         CachedCraftingProfitService.ResolutionOutcome outcome =
-                service.resolution(7, DiscChoice.all(), settings(), generation);
+                service.resolution(SCOPE, 7, DiscChoice.all(), settings(), generation);
 
         assertTrue(outcome.hasResult());
         assertEquals(CachedCraftingProfitService.CONSISTENCY_FRESH_CALCULATION, outcome.consistency());
@@ -366,12 +352,12 @@ class CachedCraftingProfitServiceTest {
     void detailComputedFromChangedInputsIsIdentifiedAndCarriesItsOwnMatchingRow() throws Exception {
         allSourcesAt(FRESH_AT);
         CachedCraftingProfitService service = service();
-        String oldGeneration = service.profit(DiscChoice.all(), settings()).freshness().calculationId();
+        String oldGeneration = service.profit(SCOPE, DiscChoice.all(), settings()).freshness().calculationId();
 
         versions.put(AccountSyncStateRepository.MATERIALS, FRESH_AT.plusSeconds(30));
 
         CachedCraftingProfitService.ResolutionOutcome outcome =
-                service.resolution(7, DiscChoice.all(), settings(), oldGeneration);
+                service.resolution(SCOPE, 7, DiscChoice.all(), settings(), oldGeneration);
 
         assertTrue(outcome.hasResult());
         assertEquals(CachedCraftingProfitService.CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS,
@@ -387,7 +373,7 @@ class CachedCraftingProfitServiceTest {
         versions.remove(AccountSyncStateRepository.CHARACTERS);
 
         CachedCraftingProfitService.ResolutionOutcome outcome =
-                service().resolution(7, DiscChoice.all(), settings(), null);
+                service().resolution(SCOPE, 7, DiscChoice.all(), settings(), null);
 
         assertFalse(outcome.hasResult());
         assertNull(outcome.detail());
@@ -402,8 +388,8 @@ class CachedCraftingProfitServiceTest {
         allSourcesAt(FRESH_AT);
         CachedCraftingProfitService service = service();
 
-        service.profit(DiscChoice.all(), settings());
-        service.profit(DiscChoice.all(), settings());
+        service.profit(SCOPE, DiscChoice.all(), settings());
+        service.profit(SCOPE, DiscChoice.all(), settings());
 
         assertEquals(2, profitServices.created.size(), "one calculation service per request");
         assertNotEquals(profitServices.created.get(0), profitServices.created.get(1));
@@ -416,11 +402,22 @@ class CachedCraftingProfitServiceTest {
 
     private CachedCraftingProfitService service() {
         return new CachedCraftingProfitService(
-                ProfitInputSession::detached,
+                new ProfitInputSession.Factory() {
+                    @Override public ProfitInputSession open(AccountScope scope) {
+                        return ProfitInputSession.detached();
+                    }
+                },
                 profitServices,
-                (con, sources) -> Map.copyOf(versions),
+                (con, scope, sources) -> {
+                    Map<String, AccountSourceStateRepository.SourceState> states = new LinkedHashMap<>();
+                    versions.forEach((source, at) -> {
+                        if (sources.contains(source)) {
+                            states.put(source, new AccountSourceStateRepository.SourceState(source, 1L, at));
+                        }
+                    });
+                    return states;
+                },
                 con -> coverage,
-                accountRefresh,
                 priceRefresh,
                 tasks,
                 Clock.fixed(NOW, ZoneOffset.UTC),
@@ -534,22 +531,6 @@ class CachedCraftingProfitServiceTest {
         }
     }
 
-    private static final class HeldAccountGateway extends AccountRefreshGateway {
-
-        private final HeldGateway held = new HeldGateway();
-
-        void hold() { held.hold(); }
-        void awaitEntered() throws InterruptedException { held.awaitEntered(); }
-        boolean stillInFlight() { return held.stillInFlight(); }
-        void release() { held.release(); }
-
-        @Override public void syncAccountBank() throws Exception { held.block(); }
-        @Override public void syncAccountMaterials() throws Exception { held.block(); }
-        @Override public void syncAccountRecipes() throws Exception { held.block(); }
-        @Override public void syncAccountLuck() throws Exception { held.block(); }
-        @Override public void syncCharacterCraftingAndRecipes() throws Exception { held.block(); }
-    }
-
     private static final class HeldPriceGateway extends TradingPostPriceRefreshGateway {
 
         private final HeldGateway held = new HeldGateway();
@@ -560,5 +541,6 @@ class CachedCraftingProfitServiceTest {
         void release() { held.release(); }
 
         @Override public void syncTpPricesForProfit() throws Exception { held.block(); }
+        @Override public void syncTpPricesForProfit(AccountScope scope) throws Exception { held.block(); }
     }
 }

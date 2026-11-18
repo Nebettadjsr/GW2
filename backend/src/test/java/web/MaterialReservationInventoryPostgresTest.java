@@ -505,7 +505,7 @@ class MaterialReservationInventoryPostgresTest {
 
     /** Only capture/refresh infrastructure is replaced; inventory SQL, service and calculations are real. */
     private final class LocalCalculation extends CachedCraftingProfitService {
-        private LocalCalculation() { super(null, null, null, null, null, null, null, null, null); }
+        private LocalCalculation() { super(null, null, null, null, null, null, null, null); }
 
         @Override
         public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings) throws Exception {

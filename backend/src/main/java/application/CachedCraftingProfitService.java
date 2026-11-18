@@ -40,6 +40,8 @@ import java.util.function.Function;
  * came from rather than newer markers, and the account writer then never runs while this request's
  * read snapshot is open.
  *
+ * <p>Every call is account-scoped; there is no unscoped calculation path.
+ *
  * <p>The domain is untouched by all of this. It still receives ordinary calculation inputs and has
  * no clock, task handle or freshness metadata; profit mathematics, inventory ownership, fees and
  * quantities are exactly those of {@link CraftingProfitService}.
@@ -64,10 +66,8 @@ public class CachedCraftingProfitService {
 
     private final ProfitInputSession.Factory sessions;
     private final Function<ProfitInputSession, CraftingProfitService> profitServices;
-    private final CalculationInputVersions.AccountSourceVersionReader accountVersions;
     private final CalculationInputVersions.AccountSourceStateReader accountSourceStates;
     private final CalculationInputVersions.PriceCoverageReader priceCoverage;
-    private final AccountRefreshCoordinator accountRefresh;
     private final TradingPostRefreshCoordinator priceRefresh;
     private final BackgroundTasks tasks;
     private final Clock clock;
@@ -128,41 +128,22 @@ public class CachedCraftingProfitService {
         @Override public String toString() { return "KeyedAdmission[context=" + context + ", apiKey=<redacted>]"; }
     }
 
-    public CachedCraftingProfitService(ProfitInputSession.Factory sessions,
-                                       Function<ProfitInputSession, CraftingProfitService> profitServices,
-                                       CalculationInputVersions.AccountSourceVersionReader accountVersions,
-                                       CalculationInputVersions.PriceCoverageReader priceCoverage,
-                                       AccountRefreshCoordinator accountRefresh,
-                                       TradingPostRefreshCoordinator priceRefresh,
-                                       BackgroundTasks tasks,
-                                       Clock clock,
-                                       Duration accountMaxAge) {
-        this(sessions, profitServices, accountVersions,
-                new CalculationInputVersions.DatabaseAccountSourceStateReader(), priceCoverage,
-                accountRefresh, priceRefresh, tasks, clock, accountMaxAge);
-    }
-
     /**
-     * The same use case with the account-scoped marker reader stated explicitly (STORY-APP-015):
-     * {@link #profit(AccountScope, DiscChoice, CraftingSettings)} captures through it, while the
-     * unscoped entry points keep using {@code accountVersions}.
+     * The use case over one account-scoped snapshot per call: the account's markers are captured
+     * through {@code accountSourceStates} and the shared quote coverage through {@code priceCoverage}.
      */
     public CachedCraftingProfitService(ProfitInputSession.Factory sessions,
                                        Function<ProfitInputSession, CraftingProfitService> profitServices,
-                                       CalculationInputVersions.AccountSourceVersionReader accountVersions,
                                        CalculationInputVersions.AccountSourceStateReader accountSourceStates,
                                        CalculationInputVersions.PriceCoverageReader priceCoverage,
-                                       AccountRefreshCoordinator accountRefresh,
                                        TradingPostRefreshCoordinator priceRefresh,
                                        BackgroundTasks tasks,
                                        Clock clock,
                                        Duration accountMaxAge) {
         this.sessions = sessions;
         this.profitServices = profitServices;
-        this.accountVersions = accountVersions;
         this.accountSourceStates = accountSourceStates;
         this.priceCoverage = priceCoverage;
-        this.accountRefresh = accountRefresh;
         this.priceRefresh = priceRefresh;
         this.tasks = tasks;
         this.clock = clock;
@@ -195,52 +176,10 @@ public class CachedCraftingProfitService {
         }
     }
 
-    public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) throws Exception {
-        String requestId = UUID.randomUUID().toString();
-        CalculationInputVersions captured;
-        CraftingProfitService.ProfitData data = null;
-
-        try (ProfitInputSession session = sessions.open()) {
-            captured = capture(session);
-            if (captured.usable()) {
-                data = profitServices.apply(session).reload(choice, settings);
-            }
-        }
-
-        return new ProfitOutcome(data, describe(requestId, captured, data != null));
-    }
-
-    public ResolutionOutcome resolution(int recipeId,
-                                        DiscChoice choice,
-                                        CraftingSettings settings,
-                                        String basedOnCalculationId) throws Exception {
-        String requestId = UUID.randomUUID().toString();
-        CalculationInputVersions captured;
-        CraftingResolutionDetail detail = null;
-
-        try (ProfitInputSession session = sessions.open()) {
-            captured = capture(session);
-            if (captured.usable()) {
-                detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
-            }
-        }
-
-        // The row in this response was recomputed from the same captured generation as its tree, so
-        // the two are compatible by construction. What the caller cannot see for itself is whether
-        // that generation is still the one its table row came from, which is what this reports.
-        String consistency = basedOnCalculationId == null
-                || basedOnCalculationId.equals(captured.calculationId())
-                ? CONSISTENCY_FRESH_CALCULATION
-                : CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
-
-        return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null));
-    }
-
     /**
-     * One account's table calculation (STORY-APP-015), the scoped form of
-     * {@link #profit(DiscChoice, CraftingSettings)}.
+     * One account's table calculation (STORY-APP-015).
      *
-     * <p>Same three steps in the same order, with the account carried through all of them: the
+     * <p>Three steps in the same order, with the account carried through all of them: the
      * capture reads that account's markers and the calculation reads that account's rows, both from
      * the one snapshot {@code sessions.open(scope)} pinned, and the freshness envelope reports the
      * generations that capture actually saw rather than whatever has been published since.
@@ -264,12 +203,10 @@ public class CachedCraftingProfitService {
             }
         }
 
-        return new ProfitOutcome(data, describeScoped(requestId, captured, data != null, scope, keyed));
+        return new ProfitOutcome(data, describe(requestId, captured, data != null, scope, keyed));
     }
 
-    /**
-     * One account's resolution detail (STORY-APP-015), the scoped form of
-     * {@link #resolution(int, DiscChoice, CraftingSettings, String)}.
+    /** One account's resolution detail (STORY-APP-015).
      *
      * <p>The consistency verdict is scoped by construction: the captured identity includes the
      * account, so a calculation id established for a different account can never read as
@@ -307,7 +244,7 @@ public class CachedCraftingProfitService {
                 ? CONSISTENCY_FRESH_CALCULATION
                 : CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
 
-        return new ResolutionOutcome(detail, consistency, describeScoped(requestId, captured, detail != null, scope, keyed));
+        return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null, scope, keyed));
     }
 
     /**
@@ -318,14 +255,6 @@ public class CachedCraftingProfitService {
         if (keyed == null || scopedRefresh == null) return;
         keyed.proof().set(scopedRefresh.verify(keyed.context(), keyed.sessionId(), keyed.apiKey(),
                 CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES));
-    }
-
-    private CalculationInputVersions capture(ProfitInputSession session) throws SQLException {
-        Instant evaluatedAt = clock.instant();
-        Map<String, Instant> versions = accountVersions.read(
-                session.connection(), CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
-        CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection());
-        return new CalculationInputVersions(versions, coverage, accountMaxAge, evaluatedAt);
     }
 
     /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
@@ -351,9 +280,9 @@ public class CachedCraftingProfitService {
      * are admitted only through the credential-aware {@link ScopedAccountRefreshCoordinator} for a
      * keyed request; a cached read with no key admits nothing, uses no configured credential and
      * reports {@link #CREDENTIAL_REQUIRED} instead. Shared Trading Post quotes are account-free and
-     * need no key, so their refresh is admitted as for the unscoped calculation.
+     * need no key, so their refresh is admitted without one.
      */
-    private CalculationFreshness describeScoped(String requestId,
+    private CalculationFreshness describe(String requestId,
                                                 CalculationInputVersions captured,
                                                 boolean resultAvailable,
                                                 AccountScope scope,
@@ -379,7 +308,7 @@ public class CachedCraftingProfitService {
         }
         if (!captured.coverage().covered()) {
             // Trading Post quotes are shared, account-free data and need no key, so the on-demand
-            // shared refresh is admitted exactly as for the unscoped calculation.
+            // shared refresh is admitted without a key.
             TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage(scope);
             outstanding.add(new CalculationFreshness.OutstandingRefresh(
                     CalculationFreshness.RefreshKind.TRADING_POST, Set.of(), admission.taskId(),
@@ -400,59 +329,6 @@ public class CachedCraftingProfitService {
                 List.copyOf(failures),
                 captured.accountId(),
                 captured.accountGenerations());
-    }
-
-    /**
-     * Admits the work the capture showed to be outstanding and describes the captured inputs.
-     *
-     * <p>A capture whose required sources are all fresh and whose required item set is covered
-     * admits nothing at all, which is what keeps a fresh page from triggering an upstream fetch.
-     */
-    private CalculationFreshness describe(String requestId,
-                                          CalculationInputVersions captured,
-                                          boolean resultAvailable) {
-        List<CalculationFreshness.OutstandingRefresh> outstanding = new ArrayList<>();
-        List<CalculationFreshness.RefreshFailure> failures = new ArrayList<>();
-
-        Set<String> needing = captured.sourcesNeedingRefresh();
-        if (!needing.isEmpty()) {
-            AccountRefreshCoordinator.Admission admission = accountRefresh.require(needing);
-            outstanding.add(new CalculationFreshness.OutstandingRefresh(
-                    CalculationFreshness.RefreshKind.ACCOUNT,
-                    admission.sources(),
-                    admission.taskId(),
-                    stateOf(admission.taskId()),
-                    admission.reuse()));
-            accountRefresh.lastFailure().ifPresent(failures::add);
-            unknownTask(CalculationFreshness.RefreshKind.ACCOUNT, admission.taskId())
-                    .ifPresent(failures::add);
-        }
-
-        if (!captured.coverage().covered()) {
-            TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage();
-            outstanding.add(new CalculationFreshness.OutstandingRefresh(
-                    CalculationFreshness.RefreshKind.TRADING_POST,
-                    Set.of(),
-                    admission.taskId(),
-                    stateOf(admission.taskId()),
-                    admission.reuse()));
-            priceRefresh.lastFailure().ifPresent(failures::add);
-            unknownTask(CalculationFreshness.RefreshKind.TRADING_POST, admission.taskId())
-                    .ifPresent(failures::add);
-        }
-
-        boolean provisional = !resultAvailable || !captured.confirmedCurrent();
-
-        return new CalculationFreshness(
-                requestId,
-                captured.calculationId(),
-                captured.evaluatedAt(),
-                provisional,
-                resultAvailable,
-                captured.accountSources(),
-                captured.coverage(),
-                List.copyOf(outstanding),
-                List.copyOf(failures));
     }
 
     private String stateOf(String taskId) {

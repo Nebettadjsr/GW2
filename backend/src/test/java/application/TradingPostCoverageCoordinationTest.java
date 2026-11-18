@@ -3,6 +3,8 @@ package application;
 import craft.CraftResult;
 import craft.CraftingSettings;
 import craft.Recipe;
+import model.AccountScope;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,7 +12,6 @@ import repo.AccountSyncStateRepository;
 import repo.DiscChoice;
 import repo.Db;
 import repo.EnvConfig;
-import sync.AccountRefreshGateway;
 import sync.ProfitQuoteRefreshRecorder;
 import sync.tp.relevance.CraftingProfitItemCollector;
 
@@ -75,15 +76,14 @@ class TradingPostCoverageCoordinationTest {
     private static final CraftResult ROW = new CraftResult(
             10, "Artificer", 3, Map.of(), Map.of(), 1_000, 50, 4_000, 600, 1_800, null);
 
+    private static final AccountScope SCOPE = AccountScope.of("40000000-0000-0000-0000-000000000004");
+
     private final String schema = "test_tp_coordination_" + UUID.randomUUID().toString().replace("-", "");
 
     private final ProfitQuoteRefreshRecorder quotes = new ProfitQuoteRefreshRecorder();
-    private final RecordingAccountGateway accountGateway = new RecordingAccountGateway();
     private final FakeBackgroundTasks tasks = new FakeBackgroundTasks();
     private final TradingPostRefreshCoordinator priceRefresh =
             new TradingPostRefreshCoordinator(new TradingPostPriceRefreshService(quotes), tasks);
-    private final AccountRefreshCoordinator accountRefresh =
-            new AccountRefreshCoordinator(new AccountRefreshService(accountGateway), tasks);
 
     private final CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
     private CraftResult cannedRow = ROW;
@@ -99,34 +99,27 @@ class TradingPostCoverageCoordinationTest {
         try (Statement statement = admin.createStatement()) {
             statement.execute("CREATE SCHEMA " + schema);
         }
+        Flyway.configure()
+                .dataSource(EnvConfig.require("DATABASE_URL"), EnvConfig.require("DATABASE_USER"),
+                        EnvConfig.require("DATABASE_PASSWORD"))
+                .schemas(schema)
+                .defaultSchema(schema)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
         admin.setSchema(schema);
-        AccountSyncStateRepository.ensure(admin);
 
         try (Statement statement = admin.createStatement()) {
-            statement.execute("CREATE TABLE account_recipes (recipe_id int PRIMARY KEY)");
-            statement.execute("CREATE TABLE character_recipes (character_id int, recipe_id int)");
-            statement.execute("CREATE TABLE recipes (recipe_id int PRIMARY KEY, output_item_id int)");
-            statement.execute("CREATE TABLE recipe_ingredients (recipe_id int, item_id int)");
-            statement.execute("CREATE TABLE tp_tradeable_items (item_id int PRIMARY KEY)");
-            statement.execute("""
-                CREATE TABLE tp_prices (
-                    item_id         int PRIMARY KEY,
-                    buy_quantity    bigint,
-                    buy_unit_price  int,
-                    sell_quantity   bigint,
-                    sell_unit_price int,
-                    fetched_at      timestamptz
-                )
-                """);
+            statement.execute("INSERT INTO account_registry (account_id) VALUES ('" + SCOPE.id() + "')");
 
-            // Recipe 1 is unlocked on the account and recipe 2 is learned by a character, so items
-            // 10, 11, 20 and 21 are required. Recipe 3 is known to nobody yet: items 40 and 41 only
-            // become relevant when the account learns it.
-            statement.execute("INSERT INTO account_recipes VALUES (1)");
-            statement.execute("INSERT INTO character_recipes VALUES (7, 2)");
-            statement.execute("INSERT INTO recipes VALUES (1, 10), (2, 20), (3, 40)");
-            statement.execute("INSERT INTO recipe_ingredients VALUES (1, 11), (2, 21), (3, 41)");
-            statement.execute("INSERT INTO tp_tradeable_items VALUES (10), (11), (20), (21), (40), (41)");
+            // Recipes 1 and 2 are known to the account, so items 10, 11, 20 and 21 are required.
+            // Recipe 3 is known to nobody yet: items 40 and 41 only become relevant when the account
+            // learns it. The shared recipe graph is global; only the knowledge rows are account-owned.
+            statement.execute("INSERT INTO items (item_id, name) VALUES (10,'a'),(11,'b'),(20,'c'),(21,'d'),(40,'e'),(41,'f')");
+            statement.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + SCOPE.id() + "', 1), ('" + SCOPE.id() + "', 2)");
+            statement.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (1, 10), (2, 20), (3, 40)");
+            statement.execute("INSERT INTO recipe_ingredients (recipe_id, item_id) VALUES (1, 11), (2, 21), (3, 41)");
+            statement.execute("INSERT INTO tp_tradeable_items (item_id) VALUES (10), (11), (20), (21), (40), (41)");
 
             // 10 is inside the ten-minute policy; 11 is older than it; 20 has a row with no fetch
             // instant; 21 has no row at all. So {11, 20, 21} is the gap.
@@ -156,20 +149,20 @@ class TradingPostCoverageCoordinationTest {
     @Test
     void oneDemandRefreshesExactlyTheUncoveredRequiredIdsAndClosesTheGap() throws Exception {
         quotes.answersNoMarketDataFor(20);
-        assertEquals(Set.of(11, 20, 21), collector.collect(admin), "the gap before any work");
+        assertEquals(Set.of(11, 20, 21), collector.collect(admin, SCOPE), "the gap before any work");
 
-        TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage(SCOPE);
         tasks.run(admission.taskId());
 
         assertEquals(List.of(Set.of(11, 20, 21)), quotes.passes(),
                 "one pass, fetching exactly the required ids that were stale or missing");
 
-        CraftingProfitItemCollector.Coverage coverage = collector.coverage(admin);
+        CraftingProfitItemCollector.Coverage coverage = collector.coverage(admin, SCOPE);
         assertEquals(4, coverage.requiredItems());
         assertEquals(4, coverage.freshItems());
         assertEquals(0, coverage.uncoveredItems(), "nothing required may be left uncovered");
         assertTrue(coverage.covered());
-        assertEquals(Set.of(), collector.collect(admin), "and nothing is left to fetch");
+        assertEquals(Set.of(), collector.collect(admin, SCOPE), "and nothing is left to fetch");
 
         // Item 20's upstream answer was "no market data". It is covered because a successful fetch
         // established that, and its stored quote stays explicitly empty rather than becoming free.
@@ -193,7 +186,7 @@ class TradingPostCoverageCoordinationTest {
             }
         });
 
-        TradingPostRefreshCoordinator.Admission first = priceRefresh.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission first = priceRefresh.requireProfitCoverage(SCOPE);
         Thread run = new Thread(() -> tasks.run(first.taskId()), "tp-refresh");
         run.start();
         assertTrue(entered.await(10, TimeUnit.SECONDS), "the first pass never started");
@@ -203,7 +196,7 @@ class TradingPostCoverageCoordinationTest {
                 Collections.synchronizedList(new ArrayList<>());
         List<Thread> callers = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
-            Thread caller = new Thread(() -> overlapping.add(priceRefresh.requireProfitCoverage()));
+            Thread caller = new Thread(() -> overlapping.add(priceRefresh.requireProfitCoverage(SCOPE)));
             caller.start();
             callers.add(caller);
         }
@@ -220,7 +213,7 @@ class TradingPostCoverageCoordinationTest {
         // And the account learns recipe 3 meanwhile, which makes items 40 and 41 required. The pass
         // in flight selected its ids before that happened and cannot cover them.
         try (Statement statement = admin.createStatement()) {
-            statement.execute("INSERT INTO account_recipes VALUES (3)");
+            statement.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + SCOPE.id() + "', 3)");
         }
 
         release.countDown();
@@ -229,11 +222,11 @@ class TradingPostCoverageCoordinationTest {
         assertEquals(List.of(Set.of(11, 20, 21), Set.of(40, 41)), quotes.passes(),
                 "the recheck pass must select exactly the ids that became relevant during the run");
 
-        CraftingProfitItemCollector.Coverage coverage = collector.coverage(admin);
+        CraftingProfitItemCollector.Coverage coverage = collector.coverage(admin, SCOPE);
         assertEquals(6, coverage.requiredItems(), "the changed account inputs widened the set");
         assertEquals(0, coverage.uncoveredItems());
         assertTrue(coverage.covered(), "and the coordination left no part of it uncovered");
-        assertEquals(Set.of(), collector.collect(admin));
+        assertEquals(Set.of(), collector.collect(admin, SCOPE));
         assertEquals(1, tasks.admittedFor(TradingPostRefreshCoordinator.PROFIT_OPERATION),
                 "still one run, not one per demand");
         assertEquals(0, quotes.discoveryRefreshes(), "Discovery's item set is not touched");
@@ -245,7 +238,7 @@ class TradingPostCoverageCoordinationTest {
         CachedCraftingProfitService service = service();
 
         CachedCraftingProfitService.ProfitOutcome provisional =
-                service.profit(DiscChoice.all(), settings());
+                service.profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(provisional.hasResult(), "an uncovered quote set is still calculated from");
         assertTrue(provisional.freshness().provisional());
@@ -260,7 +253,7 @@ class TradingPostCoverageCoordinationTest {
         tasks.run(work.taskId());
         assertEquals(List.of(Set.of(11, 20, 21)), quotes.passes());
 
-        CachedCraftingProfitService.ProfitOutcome fin = service.profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome fin = service.profit(SCOPE, DiscChoice.all(), settings());
 
         assertTrue(fin.hasResult());
         assertFalse(fin.freshness().provisional(),
@@ -270,7 +263,7 @@ class TradingPostCoverageCoordinationTest {
         assertTrue(fin.freshness().tradingPost().covered());
         assertNotEquals(provisional.freshness().calculationId(), fin.freshness().calculationId(),
                 "the second calculation read refreshed quotes, so it is a different generation");
-        assertEquals(List.of(), accountGateway.calls, "fresh account markers admit no account work");
+        assertTrue(tasks.admittedFor(AccountRefreshCoordinator.OPERATION) == 0, "fresh account markers admit no account work");
     }
 
     @Test
@@ -279,9 +272,9 @@ class TradingPostCoverageCoordinationTest {
         CachedCraftingProfitService service = service();
 
         // Start from a confirmed-current generation, so nothing but the quote itself changes.
-        TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage();
+        TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage(SCOPE);
         tasks.run(admission.taskId());
-        CachedCraftingProfitService.ProfitOutcome table = service.profit(DiscChoice.all(), settings());
+        CachedCraftingProfitService.ProfitOutcome table = service.profit(SCOPE, DiscChoice.all(), settings());
         assertFalse(table.freshness().provisional());
         String rowGeneration = table.freshness().calculationId();
         CalculationFreshness.PriceCoverage before = table.freshness().tradingPost();
@@ -295,7 +288,7 @@ class TradingPostCoverageCoordinationTest {
                 10, "Artificer", 3, Map.of(), Map.of(), 1_000, 50, 4_200, 600, 1_900, null);
 
         CachedCraftingProfitService.ResolutionOutcome detail =
-                service.resolution(1, DiscChoice.all(), settings(), rowGeneration);
+                service.resolution(SCOPE, 1, DiscChoice.all(), settings(), rowGeneration);
 
         CalculationFreshness.PriceCoverage after = detail.freshness().tradingPost();
         assertEquals(before.requiredItems(), after.requiredItems());
@@ -338,9 +331,8 @@ class TradingPostCoverageCoordinationTest {
                                 Map.of(), Map.of());
                     }
                 },
-                new CalculationInputVersions.DatabaseAccountSourceVersionReader(),
+                new CalculationInputVersions.DatabaseAccountSourceStateReader(),
                 new CalculationInputVersions.DatabasePriceCoverageReader(),
-                accountRefresh,
                 priceRefresh,
                 tasks,
                 Clock.systemUTC(),
@@ -349,7 +341,10 @@ class TradingPostCoverageCoordinationTest {
 
     private void markAllAccountSources(Instant at) throws Exception {
         for (String source : CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES) {
-            AccountSyncStateRepository.mark(admin, source, at);
+            try (Statement statement = admin.createStatement()) {
+                statement.execute("INSERT INTO account_source_state (account_id, source, generation, completed_at) "
+                        + "VALUES ('" + SCOPE.id() + "', '" + source + "', 1, '" + at + "')");
+            }
         }
     }
 
@@ -365,19 +360,6 @@ class TradingPostCoverageCoordinationTest {
             assertTrue(rs.next(), "no stored quote for item " + itemId);
             int value = rs.getInt(1);
             return rs.wasNull() ? null : value;
-        }
-    }
-
-    /** Records account fetches; this suite expects none, because every marker it writes is fresh. */
-    private static final class RecordingAccountGateway extends AccountRefreshGateway {
-        final List<String> calls = Collections.synchronizedList(new ArrayList<>());
-
-        @Override public void syncAccountBank() { calls.add(AccountSyncStateRepository.BANK); }
-        @Override public void syncAccountMaterials() { calls.add(AccountSyncStateRepository.MATERIALS); }
-        @Override public void syncAccountRecipes() { calls.add(AccountSyncStateRepository.RECIPES); }
-        @Override public void syncAccountLuck() { calls.add(AccountSyncStateRepository.LUCK); }
-        @Override public void syncCharacterCraftingAndRecipes() {
-            calls.add(AccountSyncStateRepository.CHARACTERS);
         }
     }
 }
