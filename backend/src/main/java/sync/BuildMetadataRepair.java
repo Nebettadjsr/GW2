@@ -1,5 +1,6 @@
 package sync;
 
+import api.BatchUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import model.AccountScope;
@@ -20,7 +21,7 @@ import java.time.Duration;
 import java.util.*;
 
 /**
- * Bounded repair of the shared build-reference metadata (STORY-CHAR-009). Reads the account's already
+ * Bounded repair of the shared build-reference metadata. Reads the account's already
  * stored references, fetches only the namespace-batched ids that are missing (zero requests when warm),
  * and upserts them. Never part of an account publication transaction: every database step opens and
  * closes its own connection, so none is held during HTTP. Any ordinary failure of one namespace is
@@ -28,7 +29,6 @@ import java.util.*;
  */
 public final class BuildMetadataRepair {
 
-    static final int BATCH = 200;
     static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
     static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
@@ -116,18 +116,12 @@ public final class BuildMetadataRepair {
         }
     }
 
-    private static <T> List<List<T>> chunks(List<T> all) {
-        List<List<T>> out = new ArrayList<>();
-        for (int i = 0; i < all.size(); i += BATCH) out.add(all.subList(i, Math.min(all.size(), i + BATCH)));
-        return out;
-    }
-
     private static List<String> strings(List<Integer> ids) {
         return ids.stream().map(String::valueOf).toList();
     }
 
     private void specializations(Collection<Integer> ids) throws Exception {
-        for (List<Integer> batch : chunks(missing(BuildResourceType.SPECIALIZATIONS, ids))) {
+        for (List<Integer> batch : BatchUtils.chunk(missing(BuildResourceType.SPECIALIZATIONS, ids), SyncConstants.HTTP_IDS_BATCH)) {
             JsonNode root = source.fetch("specializations", strings(batch));
             List<SpecRow> rows = new ArrayList<>();
             Set<Integer> seen = new HashSet<>();
@@ -147,7 +141,7 @@ public final class BuildMetadataRepair {
     }
 
     private void traits(Collection<Integer> ids) throws Exception {
-        for (List<Integer> batch : chunks(missing(BuildResourceType.TRAITS, ids))) {
+        for (List<Integer> batch : BatchUtils.chunk(missing(BuildResourceType.TRAITS, ids), SyncConstants.HTTP_IDS_BATCH)) {
             JsonNode root = source.fetch("traits", strings(batch));
             List<TraitRow> rows = new ArrayList<>();
             Set<Integer> seen = new HashSet<>();
@@ -168,7 +162,7 @@ public final class BuildMetadataRepair {
     }
 
     private void named(BuildResourceType type, Collection<Integer> ids) throws Exception {
-        for (List<Integer> batch : chunks(missing(type, ids))) {
+        for (List<Integer> batch : BatchUtils.chunk(missing(type, ids), SyncConstants.HTTP_IDS_BATCH)) {
             JsonNode root = source.fetch(type.segment(), strings(batch));
             List<NamedRow> rows = new ArrayList<>();
             Set<Integer> seen = new HashSet<>();
@@ -189,7 +183,7 @@ public final class BuildMetadataRepair {
             Set<String> have = repo.presentLegends(con, ids);
             missing = ids.stream().filter(i -> !have.contains(i)).toList();
         }
-        for (List<String> batch : chunks(missing)) {
+        for (List<String> batch : BatchUtils.chunk(missing, SyncConstants.HTTP_IDS_BATCH)) {
             JsonNode root = source.fetch("legends", batch);
             List<LegendRow> rows = new ArrayList<>();
             Set<String> seen = new HashSet<>();

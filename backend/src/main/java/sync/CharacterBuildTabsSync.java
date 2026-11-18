@@ -22,8 +22,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Independently refreshed saved-build-tab coverage over the already-published {@code CHARACTERS} roster
- * (STORY-CHAR-007). Same shape as {@link CharacterEquipmentTabsSync}: capture the published roster and
+ * Independently refreshed saved-build-tab coverage over the already-published {@code CHARACTERS} roster.
+ * Same shape as {@link CharacterEquipmentTabsSync}: capture the published roster and
  * generation, fetch and validate every character outside any publication transaction, then publish rows,
  * covered generation and the {@code CHARACTER_BUILD_TABS} marker in one transaction that first re-verifies
  * the parent generation. It never fetches or advances {@code CHARACTERS} and writes no stock.
