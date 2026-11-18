@@ -4,7 +4,8 @@ import { useMaterialProtection } from '@/materials/materialProtectionState'
 
 /**
  * Crafting Profit's Material Protection switch. It reads and writes only the canonical per-account
- * preference owned by `materialProtectionState`; pending Bank/Materials edits are never shown or used.
+ * preference owned by `materialProtectionState`. Every Bank/Materials edit is autosaved there, so the
+ * count and source hints always reflect the committed state; this component keeps no separate edit state.
  * The calculation request is built from that committed state in `useCraftingProfit`.
  */
 const protection = useMaterialProtection()
