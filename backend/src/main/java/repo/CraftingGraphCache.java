@@ -19,19 +19,18 @@ import java.util.Set;
 
 /**
  * Persistence-backed cache of the crafting graph, mapping cached JSON rows into the independent
- * {@code craft.Recipe}/{@code craft.Ingredient} domain types (STORY-DOM-017): this class - not
- * {@code craft.*} - owns both the database load and the on-disk cache (de)serialization boundary,
- * per TARGET_ARCHITECTURE.md section 10.
+ * {@code craft.Recipe}/{@code craft.Ingredient} domain types: this class - not {@code craft.*} -
+ * owns both the database load and the on-disk cache (de)serialization boundary. The persisted
+ * {@link CraftingGraphDto} shape is distinct from the in-memory {@link CraftingGraph} indexes.
  */
 public class CraftingGraphCache {
 
     private static final String CACHE_FILE = "crafting_graph_cache.json";
 
     /**
-     * Optional system property letting an in-process UI test point the cache at a fresh,
-     * per-run temp file instead of the developer's real (possibly large, stale, or absent)
-     * {@value #CACHE_FILE} in the working directory (STORY-UI-001, docs/TEST_STRATEGY.md).
-     * Unset in normal/production use, so behavior is unchanged.
+     * Optional system property letting tests (and fixture-backed runs) point the cache at a fresh,
+     * per-run temp file instead of the real (possibly large, stale, or absent) {@value #CACHE_FILE}
+     * in the working directory. Unset in normal/production use, so behavior is unchanged.
      */
     public static final String TEST_CACHE_FILE_PROPERTY = "gw2tool.test.craftingGraphCacheFile";
 
@@ -87,11 +86,7 @@ public class CraftingGraphCache {
     public CraftingGraph loadForSnapshot(Connection con) throws IOException, SQLException {
         if (con == null) return load();
         List<Recipe> recipes = recipeRepo.loadAllRecipes(con);
-        Set<Integer> itemIds = new java.util.HashSet<>();
-        for (Recipe recipe : recipes) {
-            itemIds.add(recipe.outputItemId);
-            recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
-        }
+        Set<Integer> itemIds = referencedItemIds(recipes);
         Map<Integer, String> itemNames = new java.util.HashMap<>();
         itemRepo.loadItems(con, itemIds).forEach((itemId, item) -> {
             if (item.name != null) itemNames.put(itemId, item.name);
@@ -99,14 +94,19 @@ public class CraftingGraphCache {
         return new CraftingGraph(recipes, itemNames);
     }
 
-    public synchronized CraftingGraph rebuild() throws IOException, SQLException {
-        File file = new File(cacheFilePath());
-        List<Recipe> recipes = recipeRepo.loadAllRecipes();
+    private static Set<Integer> referencedItemIds(List<Recipe> recipes) {
         Set<Integer> itemIds = new java.util.HashSet<>();
         for (Recipe recipe : recipes) {
             itemIds.add(recipe.outputItemId);
             recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
         }
+        return itemIds;
+    }
+
+    public synchronized CraftingGraph rebuild() throws IOException, SQLException {
+        File file = new File(cacheFilePath());
+        List<Recipe> recipes = recipeRepo.loadAllRecipes();
+        Set<Integer> itemIds = referencedItemIds(recipes);
         Map<Integer, String> itemNames = new java.util.HashMap<>();
         itemRepo.loadItems(itemIds).forEach((itemId, item) -> {
             if (item.name != null) itemNames.put(itemId, item.name);
@@ -145,11 +145,7 @@ public class CraftingGraphCache {
                 deadline.check();
                 deadline.limitTransaction(con);
                 List<Recipe> recipes = recipeRepo.loadAllRecipes(con);
-                Set<Integer> itemIds = new java.util.HashSet<>();
-                for (Recipe recipe : recipes) {
-                    itemIds.add(recipe.outputItemId);
-                    recipe.ingredients.forEach(ingredient -> itemIds.add(ingredient.itemId));
-                }
+                Set<Integer> itemIds = referencedItemIds(recipes);
                 deadline.check();
                 deadline.limitTransaction(con);
                 Map<Integer, String> itemNames = new java.util.HashMap<>();

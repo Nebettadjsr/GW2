@@ -10,7 +10,7 @@ import java.util.Set;
 
 /**
  * Loads Trading Post price rows and maps them to the independent {@code craft.PriceQuote} domain
- * type (STORY-DOM-017, TARGET_ARCHITECTURE.md section 10): this class is the persistence-to-domain
+ * type: this class is the persistence-to-domain
  * mapping boundary, so callers - including {@code craft.*} - never see JDBC-shaped types.
  */
 public class TpPriceRepository {
@@ -37,7 +37,7 @@ public class TpPriceRepository {
      * Same query as {@link #loadTpQuotes(Set)}, but runs against a caller-supplied
      * connection instead of opening one via {@link repo.Db#open()}. Exists so repository
      * integration tests can point this query at a disposable test schema/database
-     * (docs/TEST_STRATEGY.md §31.2) without going through production connection config.
+     * without going through production connection config.
      */
     public Map<Integer, PriceQuote> loadTpQuotes(Connection con, Set<Integer> itemIds) throws SQLException {
         Map<Integer, PriceQuote> out = new HashMap<>();

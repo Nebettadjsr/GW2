@@ -14,17 +14,17 @@ import java.util.Set;
 
 /**
  * Loads recipe/ingredient rows and maps them to the independent {@code craft.Recipe}/
- * {@code craft.Ingredient} domain types (STORY-DOM-017, TARGET_ARCHITECTURE.md section 10):
+ * {@code craft.Ingredient} domain types:
  * this class is the persistence-to-domain mapping boundary, so callers - including {@code craft.*} -
  * never see JDBC-shaped types.
  *
  * Recipe-known decisions (which recipe rows/ids count as "unlocked") are delegated to
- * {@link RecipeKnowledgePolicy} (STORY-DOM-018): this class only fetches the plain unlock facts
+ * {@link RecipeKnowledgePolicy}: this class only fetches the plain unlock facts
  * (which recipe ids appear in {@code account_recipes}/{@code character_recipes}) and applies the
  * policy in Java, rather than expressing the unlock rule itself as SQL. Recipe ownership is
  * account-wide for every entry point below, including the character-scoped ones - a recipe
  * unlocked by any character on the account counts as known regardless of which character is
- * selected (DOMAIN_SPEC.md DQ-010, STORY-DOM-019); {@code charName} only selects the connection's
+ * selected (DOMAIN_SPEC.md DQ-010); {@code charName} only selects the connection's
  * eligibility filtering (crafting discipline), not recipe ownership.
  */
 public class RecipeRepository {
@@ -43,7 +43,7 @@ public class RecipeRepository {
      * Same query as {@link #loadRecipes(String)}, but runs against a caller-supplied
      * connection instead of opening one via {@link repo.Db#open()}. Exists so repository
      * integration tests can point this query at a disposable test schema/database
-     * (docs/TEST_STRATEGY.md §31.2) without going through production connection config.
+     * without going through production connection config.
      */
     public List<Recipe> loadRecipes(Connection con, String discipline) throws SQLException {
         return readKnownRecipes(con, discipline, true,
@@ -102,19 +102,7 @@ public class RecipeRepository {
                         unlockedByAnyCharacter.contains(recipeId));
                 if (!known) continue;
 
-                int outputItemId = rs.getInt("output_item_id");
-                int outputCount = rs.getInt("output_item_count");
-                int outputMinRating = rs.getInt("min_rating");
-
-                Array discsArr = rs.getArray("disciplines");
-                String disciplinesText = "";
-                if (discsArr != null) {
-                    String[] discs = (String[]) discsArr.getArray();
-                    if (discs != null && discs.length > 0) disciplinesText = String.join(", ", discs);
-                }
-
-                List<Ingredient> ings = ingredientsByRecipe.getOrDefault(recipeId, List.of());
-                out.add(new Recipe(recipeId, outputItemId, outputCount, outputMinRating, disciplinesText, ings));
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
             }
         }
 
@@ -134,7 +122,7 @@ public class RecipeRepository {
     public List<Recipe> loadRecipesForCharacter(Connection con, String charName, String discipline) throws SQLException {
         // Ownership is account-wide (DQ-010): unlocked by ANY character counts as known for the
         // selected character too. charName selects the discipline/rating eligibility filtering
-        // elsewhere; it does not narrow ownership (STORY-DOM-019).
+        // elsewhere; it does not narrow ownership.
         return readKnownRecipes(con, discipline, false,
                 loadAccountUnlockedRecipeIds(con), loadAnyCharacterUnlockedRecipeIds(con));
     }
@@ -168,30 +156,26 @@ public class RecipeRepository {
 
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
-                int outputItemId = rs.getInt("output_item_id");
-                int outputCount = rs.getInt("output_item_count");
-                int outputMinRating = rs.getInt("min_rating");
-
-                Array discsArr = rs.getArray("disciplines");
-                String disciplinesText = "";
-
-                if (discsArr != null) {
-                    String[] discs = (String[]) discsArr.getArray();
-                    if (discs != null && discs.length > 0) {
-                        disciplinesText = String.join(", ", discs);
-                    }
-                }
-
-                List<Ingredient> ings =
-                        ingredientsByRecipe.getOrDefault(recipeId, List.of());
-
-                out.add(new Recipe(recipeId, outputItemId, outputCount, outputMinRating, disciplinesText, ings));
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
             }
         }
 
         return out;
     }
 
+
+    /** Maps the current {@code recipes} row (id column already read) with its ingredients; one mapping for every read. */
+    private static Recipe mapRecipe(ResultSet rs, int recipeId, Map<Integer, List<Ingredient>> ingredientsByRecipe)
+            throws SQLException {
+        Array discsArr = rs.getArray("disciplines");
+        String disciplinesText = "";
+        if (discsArr != null) {
+            String[] discs = (String[]) discsArr.getArray();
+            if (discs != null && discs.length > 0) disciplinesText = String.join(", ", discs);
+        }
+        return new Recipe(recipeId, rs.getInt("output_item_id"), rs.getInt("output_item_count"),
+                rs.getInt("min_rating"), disciplinesText, ingredientsByRecipe.getOrDefault(recipeId, List.of()));
+    }
 
     private Map<Integer, List<Ingredient>> loadIngredientsByRecipe(Connection con) throws SQLException {
         String sql = """
@@ -224,7 +208,7 @@ public class RecipeRepository {
      * Rules:
      * - discoverable = flags is NULL OR empty array (your " {} " case)
      * - missing = recipe not known account-wide, per {@link RecipeKnowledgePolicy#isKnownAccountWide}
-     *   (STORY-DOM-019: same account-wide ownership policy used by {@link #loadRecipesForCharacter}
+     *   (same account-wide ownership policy used by {@link #loadRecipesForCharacter}
      *   and {@link #loadRecipes(Connection, String)} - a recipe already known via ANY character's
      *   unlock is not a Discovery candidate for the selected character either)
      * - discipline filter: if discipline == "All" => no filter, else must be in recipes.disciplines
@@ -291,13 +275,11 @@ public class RecipeRepository {
     }
 
     /**
-     * One account's known recipes, from either unlock source (STORY-APP-015).
+     * One account's known recipes, from either unlock source.
      *
      * <p>The scoped form of {@link #loadKnownRecipeIds()}. Both reads carry the account GUID, and
      * the account-wide ownership decision stays in {@link RecipeKnowledgePolicy} - the domain policy
-     * is unchanged and simply receives already-scoped inputs
-     * (TARGET_ARCHITECTURE.md §7.2 "Keep recipe-knowledge and other domain decisions in their
-     * existing domain policies, receiving already-scoped data").
+     * is unchanged and simply receives already-scoped inputs.
      *
      * <p>The shared crafting graph in {@code recipes}/{@code recipe_ingredients} stays global:
      * knowledge selects from it, it is never partitioned per account.
@@ -319,7 +301,7 @@ public class RecipeRepository {
      * recipe knowledge.
      *
      * <p>{@code charName} still selects discipline/rating eligibility elsewhere and does not narrow
-     * ownership (DQ-010, STORY-DOM-019): a recipe unlocked by any of this account's characters
+     * ownership (DQ-010): a recipe unlocked by any of this account's characters
      * counts as known for the selected one. What scope adds is that "any character" means any
      * character of <em>this</em> account.
      */
@@ -363,7 +345,7 @@ public class RecipeRepository {
 
     private Set<Integer> loadAccountUnlockedRecipeIds(Connection con) throws SQLException {
         // Recipe knowledge is account-owned, so reading every row of account_recipes on a migrated
-        // database would answer with another account's unlocks (STORY-INFRA-004).
+        // database would answer with another account's unlocks.
         ManagedSchema.rejectUnscopedAccountAccess(con, "account_recipes without an account scope");
         Set<Integer> ids = new HashSet<>();
         String sql = "SELECT recipe_id FROM account_recipes";
