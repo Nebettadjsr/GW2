@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * delegation, DTO copying and status codes. The grouping, the category labels and the fallback
  * label are the service's and stay covered by {@code application.MaterialStorageServiceTest}; these
  * tests only prove the boundary reports whatever grouping it was handed. Equivalence of both paths
- * on real data is covered by {@link AccountReadApiRealDbEquivalenceIT}.
+ * on real data is covered by {@code support.fixture.AccountReadHttpParityTest}.
  */
 class MaterialStorageApiControllerTest {
 
@@ -285,16 +285,11 @@ class MaterialStorageApiControllerTest {
         }
 
         @Override
-        public List<MaterialCategory> getMaterialStorage() throws SQLException {
+        public List<MaterialCategory> getMaterialStorage(model.AccountScope scope) throws SQLException {
             callCount++;
             if (sqlFailure != null) throw sqlFailure;
             if (runtimeFailure != null) throw runtimeFailure;
             return categories;
-        }
-
-        @Override
-        public List<MaterialCategory> getMaterialStorage(model.AccountScope scope) throws SQLException {
-            return getMaterialStorage();
         }
     }
 }

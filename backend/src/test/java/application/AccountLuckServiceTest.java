@@ -39,14 +39,16 @@ class AccountLuckServiceTest {
 
     @Test
     void resolvesOneAccountWithNextFiveTenAndCapTargets() throws Exception {
-        var sample = new AccountLuck("account-guid-a", 14_500, Instant.parse("2026-09-29T00:00:00Z"));
+        var scopeA = model.AccountScope.of("11111111-1111-1111-1111-111111111111");
+        var scopeB = model.AccountScope.of("22222222-2222-2222-2222-222222222222");
+        var sample = new AccountLuck(scopeA.accountId().toString(), 14_500, Instant.parse("2026-09-29T00:00:00Z"));
         var repository = new AccountLuckRepository() {
-            @Override public Optional<AccountLuck> find(String accountId) {
-                return accountId.equals(sample.accountId()) ? Optional.of(sample) : Optional.empty();
+            @Override public Optional<AccountLuck> find(model.AccountScope scope) {
+                return scope.equals(scopeA) ? Optional.of(sample) : Optional.empty();
             }
         };
         var service = new AccountLuckService(repository, MagicFindProgression.canonical());
-        var status = service.getStatus("account-guid-a").orElseThrow();
+        var status = service.getStatus(scopeA).orElseThrow();
 
         assertEquals(50, status.progress().magicFindPercent());
         assertEquals(13_790, status.progress().currentThreshold());
@@ -57,10 +59,10 @@ class AccountLuckServiceTest {
         assertEquals(MagicFindProgression.canonical().thresholdFor(55), status.targets().get(0).cumulativeLuck());
         assertEquals(60, status.targets().get(1).magicFindPercent());
         assertEquals(300, status.targets().get(2).magicFindPercent());
-        var custom = service.getStatus("account-guid-a", 51, 75).orElseThrow();
+        var custom = service.resolve(sample, 51, 75);
         assertEquals(MagicFindProgression.canonical().thresholdFor(75), custom.targets().get(1).cumulativeLuck());
         assertEquals(custom.targets().get(1).cumulativeLuck() - sample.consumedLuck(),
                 custom.targets().get(1).remainingLuck());
-        assertTrue(service.getStatus("account-guid-b").isEmpty());
+        assertTrue(service.getStatus(scopeB).isEmpty());
     }
 }

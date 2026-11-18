@@ -33,7 +33,7 @@ public record CraftingSelectorOptionsResponse(String defaultScopeKind,
 
     /**
      * One synced character discipline, as reported by
-     * {@code application.CharacterSelectionService.getCraftingCharacterOptions()}.
+     * {@code application.CharacterSelectionService.getCraftingCharacterOptions(AccountScope)}.
      *
      * <p>{@code characterName}, {@code discipline} and {@code rating} are exactly the three fields a
      * {@code CHARACTER_DISCIPLINE} scope needs. {@code active} is the service-provided fact that the

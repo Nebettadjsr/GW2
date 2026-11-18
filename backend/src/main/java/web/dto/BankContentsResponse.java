@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Transport response body for {@code GET /api/account/bank}.
  *
- * <p>Carries the account bank exactly as {@code application.BankContentsService.getBankContents()}
+ * <p>Carries the account bank exactly as {@code application.BankContentsService.getBankContents(AccountScope)}
  * reports it: every slot, in slot order, including the empty ones. Empty slots are kept rather than
  * dropped because the bank is a grid - removing them would shift every following item into the
  * wrong cell, and the caller cannot restore the layout from a compacted list.
@@ -24,7 +24,7 @@ public record BankContentsResponse(Integer slotCount, List<BankSlotDto> slots,
 
     /**
      * One account-bank slot, as reported by
-     * {@code application.BankContentsService.getBankContents()}.
+     * {@code application.BankContentsService.getBankContents(AccountScope)}.
      *
      * @param slot    the slot number the row carries; the list's order is this field's order
      * @param itemId  null for an empty slot - that is how an empty slot is represented, and no

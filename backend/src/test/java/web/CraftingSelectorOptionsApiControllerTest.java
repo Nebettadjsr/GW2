@@ -85,8 +85,6 @@ class CraftingSelectorOptionsApiControllerTest {
                 "the generic discipline entries and their order must match the established selector");
         assertEquals(1, service.craftingCallCount,
                 "the route must read through the application boundary exactly once");
-        assertEquals(0, service.namesCallCount,
-                "the Profit scope selector does not need Discovery's character-name list");
     }
 
     @Test
@@ -200,7 +198,6 @@ class CraftingSelectorOptionsApiControllerTest {
         private final SQLException sqlFailure;
         private final RuntimeException runtimeFailure;
         int craftingCallCount;
-        int namesCallCount;
 
         StubCharacterSelectionService(List<CharacterRepository.DiscRow> rows) {
             this(rows, null, null);
@@ -222,27 +219,16 @@ class CraftingSelectorOptionsApiControllerTest {
             this.runtimeFailure = runtimeFailure;
         }
 
-        @Override
-        public List<CharacterRepository.DiscRow> getCraftingCharacterOptions() throws SQLException {
-            craftingCallCount++;
-            if (sqlFailure != null) throw sqlFailure;
-            if (runtimeFailure != null) throw runtimeFailure;
-            return rows;
-        }
-
         final List<model.AccountScope> scopes = new java.util.ArrayList<>();
 
         @Override
         public List<CharacterRepository.DiscRow> getCraftingCharacterOptions(model.AccountScope scope)
                 throws SQLException {
+            craftingCallCount++;
             scopes.add(scope);
-            return getCraftingCharacterOptions();
-        }
-
-        @Override
-        public List<String> getCharacterNames() {
-            namesCallCount++;
-            return List.of();
+            if (sqlFailure != null) throw sqlFailure;
+            if (runtimeFailure != null) throw runtimeFailure;
+            return rows;
         }
     }
 }

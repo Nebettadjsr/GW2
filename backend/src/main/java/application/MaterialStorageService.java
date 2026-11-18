@@ -20,10 +20,6 @@ public class MaterialStorageService {
         public MaterialCategory(String name, List<MaterialStorageRow> materials) { this(-1, name, -1, materials); }
     }
 
-    public List<MaterialCategory> getMaterialStorage() throws SQLException {
-        return group(materialRepo.loadMaterialStorage());
-    }
-
     /**
      * One account's material storage over the shared ordered catalog (STORY-APP-015). Grouping is
      * unchanged; only which account's quantities fill the catalog positions is now explicit.

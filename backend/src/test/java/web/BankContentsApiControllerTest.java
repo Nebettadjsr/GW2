@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>The application service is replaced by a stub, so these exercise transport behavior only -
  * delegation, DTO copying and status codes. What the service itself reads stays covered by
  * {@code application.BankContentsServiceTest}, and the equivalence of both paths on real data by
- * {@link AccountReadApiRealDbEquivalenceIT}.
+ * {@code support.fixture.AccountReadHttpParityTest}.
  */
 class BankContentsApiControllerTest {
 
@@ -319,16 +319,11 @@ class BankContentsApiControllerTest {
         }
 
         @Override
-        public List<BankRepository.BankSlotRow> getBankContents() throws SQLException {
+        public List<BankRepository.BankSlotRow> getBankContents(model.AccountScope scope) throws SQLException {
             callCount++;
             if (sqlFailure != null) throw sqlFailure;
             if (runtimeFailure != null) throw runtimeFailure;
             return rows;
-        }
-
-        @Override
-        public List<BankRepository.BankSlotRow> getBankContents(model.AccountScope scope) throws SQLException {
-            return getBankContents();
         }
     }
 }

@@ -23,25 +23,12 @@ public class AccountLuckService {
         this.progression = progression;
     }
 
-    public Optional<AccountLuckStatus> getStatus(String accountId) throws SQLException {
-        return repository.find(accountId).map(this::resolve);
-    }
-
-    public Optional<AccountLuckStatus> getStatus(String accountId, int... targetPercents) throws SQLException {
-        return repository.find(accountId).map(luck -> resolve(luck, targetPercents));
-    }
-
     /**
      * One account's Luck status (STORY-APP-015). The progression itself is global and unchanged -
      * only the stored consumed-Luck row it is resolved against is scoped.
      */
     public Optional<AccountLuckStatus> getStatus(AccountScope scope) throws SQLException {
         return repository.find(scope).map(this::resolve);
-    }
-
-    /** @see #getStatus(AccountScope) */
-    public Optional<AccountLuckStatus> getStatus(AccountScope scope, int... targetPercents) throws SQLException {
-        return repository.find(scope).map(luck -> resolve(luck, targetPercents));
     }
 
     public AccountLuckStatus resolve(AccountLuck luck) {
