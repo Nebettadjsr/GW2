@@ -7,7 +7,8 @@ import type { Destination, DestinationId } from './destinations'
  *
  * Destinations are real links carrying the `href` they navigate to, so a modified click, a bookmark
  * and the browser's Back/Forward all behave normally; an ordinary left click is handled in the page
- * instead of reloading it. A link never submits a calculation or a synchronization operation.
+ * instead of reloading it. Bootstrap and screen lifecycle hooks own input loading and refreshes.
+ * KeepAlive preserves component state on return while activation hooks may read or refresh data.
  *
  * `syncActivity` is the compact activity indication section 2 allows next to the synchronization
  * destination. It only reports how many tasks this client is tracking; it is part of the link and

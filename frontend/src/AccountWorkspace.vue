@@ -30,8 +30,10 @@ import SyncScreen from './sync/SyncScreen.vue'
  * inputs, results and requests alone.
  *
  * Each destination is a real URL (`useHashRoute`), so Back, Forward, a bookmark and a reload all work
- * normally and each screen has its own document title. Navigating issues no request of the shell's
- * own: no calculation and no synchronization operation can follow from opening a destination.
+ * normally and each screen has its own document title. Bootstrap and screen lifecycle hooks own input
+ * reads and refreshes: the shared crafting bootstrap runs on first use, and a newly mounted screen
+ * loads its own inputs. KeepAlive preserves component state on return; each screen's activation hooks
+ * may reread visible data, request a selected detail or recalculate a changed context.
  *
  * This workspace is created per connected account (the app keys it by the connection generation), so
  * replacing or disconnecting the key discards every screen, selection, result and tracked task of the
@@ -142,8 +144,9 @@ watch(
       two independent `KeepAlive` boundaries, so each keeps its own scope, settings, search, sort and
       selection and neither is re-created by opening the other. Opening a public information page only
       deactivates the open screen (its route id no longer matches); the boundaries stay mounted so
-      returning neither resets the selection nor posts a calculation. Bank and Materials have no such
-      input, so each keeps reading its own route when opened (STORY-WEB-003).
+      returning preserves the selection. Feature activation hooks still own any data/detail rereads
+      and recalculation of changed inputs. Bank and Materials read their own route when opened
+      (STORY-WEB-003).
     -->
     <KeepAlive>
       <CraftingProfitScreen v-if="route.current.value.id === 'crafting' && craftingReady" />
@@ -159,9 +162,11 @@ watch(
     </KeepAlive>
 
     <!--
-      Ectoplasm Salvage is deliberately not kept alive: it has no scope, settings, search or
-      selection to preserve, and its result is a snapshot of live Trading Post prices — so opening it
-      again should calculate again rather than re-present an older snapshot as current.
+      Ectoplasm Salvage is deliberately not kept alive. Its quantity, salvage method, tool and
+      price-mode inputs survive a width-only change (the screen stays mounted, with no refetch or
+      reset), but navigating away unmounts it, so opening it again resets those inputs and
+      refetches the live Trading Post price snapshot rather than re-presenting an older one as
+      current.
     -->
     <EctoSalvageScreen v-if="route.current.value.id === 'ecto'" />
 
