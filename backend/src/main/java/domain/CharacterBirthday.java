@@ -1,5 +1,6 @@
 package domain;
 
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -20,9 +21,8 @@ public final class CharacterBirthday {
             // the interval is a whole number of seconds.
             long elapsed = Duration.between(createdAt, now).getSeconds();
             long intervals = elapsed / INTERVAL_SECONDS + 1;
-            Instant candidate = createdAt.plusSeconds(Math.multiplyExact(intervals, INTERVAL_SECONDS));
-            return candidate;
-        } catch (ArithmeticException | java.time.DateTimeException e) {
+            return createdAt.plusSeconds(Math.multiplyExact(intervals, INTERVAL_SECONDS));
+        } catch (ArithmeticException | DateTimeException e) {
             return null;
         }
     }
