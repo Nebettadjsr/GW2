@@ -40,7 +40,7 @@ export const DESTINATIONS: readonly Destination[] = [
 
 /**
  * The public information pages, linked from the footer and deliberately not from the main
- * navigation. They are readable without a session and never read account data.
+ * navigation. They are readable without a session and never start account reads.
  */
 export const INFO_DESTINATIONS: readonly Destination[] = [
   { id: 'legal', path: '#/legal', label: 'Legal notice' },

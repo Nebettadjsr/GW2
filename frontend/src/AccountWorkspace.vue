@@ -159,8 +159,9 @@ watch(
     </KeepAlive>
 
     <!--
-      Ectoplasm Salvage is deliberately not kept alive: it has no scope, settings, search or
-      selection to preserve, and its result is a snapshot of live Trading Post prices — so opening it
+      Ectoplasm Salvage is deliberately not kept alive: it does have inputs (quantity, salvage
+      method, tool and price mode), but they are meant to reset on navigation; only the viewport
+      width is retained across a width-only change. Its result is a snapshot of live Trading Post prices — so opening it
       again should calculate again rather than re-present an older snapshot as current.
     -->
     <EctoSalvageScreen v-if="route.current.value.id === 'ecto'" />

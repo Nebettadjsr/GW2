@@ -6,8 +6,9 @@ import { clearDraft, draft, isAttempting, showDraft, submitDraft } from './keyDr
 
 /**
  * The API-key area: a masked field with Connect, Replace and
- * Disconnect, and the connection state in words. The key is handed to the session module and the
- * field is cleared at once; nothing here stores, logs or displays it.
+ * Disconnect, and the connection state in words. The typed text lives in the shared key draft
+ * (`keyDraft.ts`): it is cleared once an attempt is accepted, but a refused attempt deliberately
+ * keeps it for correction, and Show key can reveal it. Nothing here stores or logs it.
  */
 const busy = ref(false)
 type HelpKind = 'create' | 'safety'

@@ -5,7 +5,7 @@
  * policy can differ from account pages. Every screen has a real URL, the browser's Back and
  * Forward buttons move between the screens that were visited, and a link or bookmark opens the screen
  * it names. No router library is added for this: the application has one flat set of destinations and
- * no nested or parameterized routes (`TARGET_ARCHITECTURE.md` 4.1 keeps framework choices minimal).
+ * no nested or parameterized routes (`ARCHITECTURE.md` keeps framework choices minimal).
  *
  * Only the *destination* is addressable. Nothing else is written to the URL and nothing is restored
  * from it, so a reload opens the named screen with no state carried over — in particular no
