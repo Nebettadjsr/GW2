@@ -56,12 +56,12 @@ public final class ProfitInputSession implements AutoCloseable {
      * One account's {@code REPEATABLE READ} snapshot across scoped rows, source markers and
      * shared inputs.
      *
-     * <p>A single transaction with the account it belongs to carried
-     * alongside: the account's rows, the account's source markers and the shared global inputs are
+     * <p>A single transaction with the account it belongs to carried alongside: the account's rows, the account's source markers and the shared global inputs are
      * all read from it, so the two invariants above hold per account and the snapshot metadata can
      * say which account and which generations it saw.
      *
-     * <p>No marker-table bootstrap: {@code account_source_state} is Flyway-owned, so a session issues no DDL at all and the transaction stays read-only from its first statement.
+     * <p>No marker-table bootstrap: {@code account_source_state} is Flyway-owned, so a session
+     * issues no DDL at all and the transaction stays read-only from its first statement.
      *
      * <p>The authorized use is recorded <em>before</em> the transaction begins, while the connection
      * is still in autocommit, for two reasons. Activity is not part of this snapshot's consistency

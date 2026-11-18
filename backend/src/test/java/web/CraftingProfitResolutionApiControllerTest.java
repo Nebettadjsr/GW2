@@ -1044,7 +1044,7 @@ class CraftingProfitResolutionApiControllerTest {
             return created.get(0);
         }
 
-                public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) {
+        public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) {
             StubProfitService call = newCall();
             call.reloadCalls++;
             return new ProfitOutcome(
@@ -1052,8 +1052,8 @@ class CraftingProfitResolutionApiControllerTest {
                     freshnessOf(call, true));
         }
 
-                public ResolutionOutcome resolution(int recipeId, DiscChoice choice, CraftingSettings settings,
-                                            String basedOnCalculationId) throws Exception {
+        public ResolutionOutcome resolution(int recipeId, DiscChoice choice, CraftingSettings settings,
+                    String basedOnCalculationId) throws Exception {
             StubProfitService call = newCall();
             call.detailCalls++;
             call.capturedRecipeId = recipeId;

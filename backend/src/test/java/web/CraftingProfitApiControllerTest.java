@@ -882,7 +882,7 @@ class CraftingProfitApiControllerTest {
             return created.get(created.size() - 1);
         }
 
-                public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) throws Exception {
+        public ProfitOutcome profit(DiscChoice choice, CraftingSettings settings) throws Exception {
             StubProfitService call = newCall();
             call.capturedChoice = choice;
             call.capturedSettings = settings;

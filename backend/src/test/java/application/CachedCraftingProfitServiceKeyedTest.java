@@ -111,7 +111,10 @@ class CachedCraftingProfitServiceKeyedTest {
 
     private CachedCraftingProfitService service() {
         return new CachedCraftingProfitService(
-                scope -> recordingSession(),
+                scope -> {
+                    events.add("open");
+                    return recordingSession();
+                },
                 session -> new CraftingProfitService(null, null, null, null, null, null, null, session) {
                     @Override public ProfitData reload(DiscChoice choice, CraftingSettings settings) {
                         events.add("calculate");
@@ -128,6 +131,7 @@ class CachedCraftingProfitServiceKeyedTest {
                     }
                 },
                 (con, scope, sources) -> {
+                    events.add("read");
                     Map<String, AccountSourceStateRepository.SourceState> states = new LinkedHashMap<>();
                     for (String s : sources) {
                         if (missing.contains(s)) continue; // the real reader omits a never-published source
@@ -207,7 +211,7 @@ class CachedCraftingProfitServiceKeyedTest {
         assertFalse(freshness.provisional());
         assertTrue(freshness.outstandingWork().isEmpty());
         assertTrue(freshness.failures().isEmpty());
-        assertEquals(List.of("verify", "calculate", "close"), events);
+        assertEquals(List.of("verify", "open", "read", "calculate", "close"), events);
     }
 
     @Test
@@ -218,8 +222,8 @@ class CachedCraftingProfitServiceKeyedTest {
 
         service().profit(scope, DiscChoice.all(), settings(), keyed(scope));
 
-        assertEquals(List.of("verify", "calculate", "close", "require"), events,
-                "verify before any input is read; admit only once the pinned snapshot is released");
+        assertEquals(List.of("verify", "open", "read", "calculate", "close", "require"), events,
+                "verify before the snapshot opens or any input is read; calculate inside it; admit only after it closed");
     }
 
     @Test
@@ -231,7 +235,7 @@ class CachedCraftingProfitServiceKeyedTest {
         var outcome = service().resolution(scope, RECIPE.recipeId, DiscChoice.all(), settings(), null, keyed(scope));
 
         assertEquals(List.of(Set.of(AccountSyncStateRepository.RECIPES)), demanded);
-        assertEquals(List.of("verify", "calculate", "close", "require"), events);
+        assertEquals(List.of("verify", "open", "read", "calculate", "close", "require"), events);
         assertTrue(outcome.freshness().provisional());
     }
 
