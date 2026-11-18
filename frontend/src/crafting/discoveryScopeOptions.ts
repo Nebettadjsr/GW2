@@ -2,9 +2,9 @@ import type { DiscoveryScopeRequest, SelectorOptions } from '@/api/types'
 
 /**
  * Crafting Discovery's character/discipline selector, built from selector facts alone
- * (`CURRENT_ARCHITECTURE.md` 5.10, `DOMAIN_SPEC.md` 2.2.2).
+ * (`DOMAIN_SPEC.md` 2.2.2).
  *
- * Discovery is individual-character only (`CURRENT_ARCHITECTURE.md` 5.2/5.6): there is no All entry,
+ * Discovery is individual-character only (`DOMAIN_SPEC.md` 2.2): there is no All entry,
  * no generic-discipline entry and no default scope, because the route has none to fall back on. Each
  * entry carries the rating the backend reported for that character's discipline — never a rating
  * invented here, and never one carried over from another entry — because that value drives the

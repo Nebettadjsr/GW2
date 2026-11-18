@@ -454,7 +454,7 @@ export function pendingFreshness(
 /**
  * The response the real backend produces for `request`: the same rows, echoing back the scope and
  * settings it calculated with after applying its own documented defaults
- * (`CURRENT_ARCHITECTURE.md` 5.5). The screen takes its control state from that echo, so a stand-in
+ * (`DOMAIN_SPEC.md` 2.2.1). The screen takes its control state from that echo, so a stand-in
  * that ignored the request would not answer like the contract it stands in for.
  */
 export function echoedProfitResponse(
@@ -723,10 +723,10 @@ export const discoveryRows: CraftingRow[] = [
 ]
 
 /**
- * The response the real backend produces for `request`: the same rows, echoing back the scope, the
- * inventory character and the settings it calculated with after applying its own Discovery defaults
- * (`CURRENT_ARCHITECTURE.md` 5.6). An omitted inventory character is echoed as null, which is the
- * unfiltered owned pool.
+ * The response the real backend produces for `request`: the same rows, echoing the required
+ * character/discipline scope and the settings applied with Discovery's own defaults
+ * (`DOMAIN_SPEC.md` 2.2.2). That character also supplies inventory; there is no separate
+ * inventory-character input or unfiltered owned pool.
  */
 export function echoedDiscoveryResponse(
   request: CraftingDiscoveryRequest,

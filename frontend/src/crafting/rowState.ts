@@ -2,7 +2,7 @@ import type { CraftingRow } from '@/api/types'
 
 /**
  * Puts a row's supplied availability/blocking state into user-oriented words
- * (`FRONTEND_UX_GUIDELINES.md` 5, `TARGET_ARCHITECTURE.md` 14).
+ * (`FRONTEND_UX_GUIDELINES.md` 5, `DOMAIN_SPEC.md` 2.1.1 and 42).
  *
  * It reads three values the backend supplied — `resultAvailable`, `blockedReason` and
  * `craftableCount` — and rewords them. It decides nothing about crafting: no state is derived from
