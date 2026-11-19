@@ -39,6 +39,8 @@ public class RecipeSimulationResult {
     private ResolvedNeed blockedAttempt;
 
     private final Map<Integer, Integer> totalMissingToBuy = new HashMap<>();
+    /** Vendor-bought units ([0]) and exact vendor cash ([1]) per item across all accepted crafts. */
+    private final Map<Integer, int[]> totalVendorPurchases = new HashMap<>();
 
     public RecipeSimulationResult(int recipeId, int outputItemId) {
         this.recipeId = recipeId;
@@ -137,6 +139,10 @@ public class RecipeSimulationResult {
 
     public void addOpportunityCost(int value) {
         opportunityCostTotal += value;
+    }
+
+    public Map<Integer, int[]> getTotalVendorPurchases() {
+        return totalVendorPurchases;
     }
 
     public Map<Integer, Integer> getTotalMissingToBuy() {

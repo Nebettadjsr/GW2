@@ -312,7 +312,7 @@ public class CachedCraftingProfitService {
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
                 evaluatedAt).withWalletTracked(wallet)
                 .withForgeCatalog(settings != null && settings.allowMysticForge
-                        ? parser.MysticForgeCatalogLoader.bundled().fingerprint() : null);
+                        ? parser.MysticForgeCatalogLoader.bundled().fingerprint() + "|" + craft.VendorAcquisitions.fingerprint() : null);
     }
 
     /**

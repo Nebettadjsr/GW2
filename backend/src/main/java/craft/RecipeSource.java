@@ -8,5 +8,7 @@ package craft;
  */
 public enum RecipeSource {
     ORDINARY,
-    MYSTIC_FORGE
+    MYSTIC_FORGE,
+    /** Verified fixed-price vendor purchase of a Forge input; synthetic, never a root, unlock or Discovery candidate. */
+    VENDOR
 }

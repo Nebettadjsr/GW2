@@ -20,6 +20,8 @@ public class Recipe {
      * expected value feeds only estimated root economics.
      */
     public final ExpectedYield expectedYield;
+    /** Fixed vendor cash (copper) per purchased batch for a {@link RecipeSource#VENDOR} acquisition; otherwise 0. */
+    public final int vendorCopper;
 
     public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText, List<Ingredient> ingredients) {
         this(recipeId, outputItemId, outputCount, minRating, disciplinesText, ingredients, List.of());
@@ -33,19 +35,31 @@ public class Recipe {
 
     public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText,
                   List<Ingredient> ingredients, List<CurrencyRequirement> currencies, RecipeSource source) {
-        this(recipeId, outputItemId, outputCount, minRating, disciplinesText, ingredients, currencies, source, null);
+        this(recipeId, outputItemId, outputCount, minRating, disciplinesText, ingredients, currencies, source, null, 0);
+    }
+
+    /**
+     * A verified vendor acquisition (see {@link VendorAcquisitions}): one purchase of {@code batch} units costs the
+     * given currency units and/or fixed copper. Never a crafting recipe: it has no ingredients, discipline or unlock.
+     */
+    public static Recipe vendor(int recipeId, int itemId, int batch, List<CurrencyRequirement> currencies, int copper) {
+        if (recipeId >= 0 || batch <= 0 || copper < 0 || (copper == 0 && currencies.isEmpty())) {
+            throw new IllegalArgumentException("invalid vendor acquisition");
+        }
+        return new Recipe(recipeId, itemId, batch, 0, "", List.of(), currencies, RecipeSource.VENDOR, null, copper);
     }
 
     /** A Mystic Forge recipe with a verified variable output; {@code outputCount} becomes the guaranteed minimum. */
     public static Recipe forgeWithExpectedYield(int recipeId, int outputItemId, ExpectedYield yield,
                                                 List<Ingredient> ingredients) {
         return new Recipe(recipeId, outputItemId, yield.min(), 0, "", ingredients, List.of(),
-                RecipeSource.MYSTIC_FORGE, yield);
+                RecipeSource.MYSTIC_FORGE, yield, 0);
     }
 
     private Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText,
                   List<Ingredient> ingredients, List<CurrencyRequirement> currencies, RecipeSource source,
-                  ExpectedYield expectedYield) {
+                  ExpectedYield expectedYield, int vendorCopper) {
+        this.vendorCopper = vendorCopper;
         if (expectedYield != null && (source != RecipeSource.MYSTIC_FORGE || outputCount != expectedYield.min())) {
             throw new IllegalArgumentException("expected yield is only for Mystic Forge recipes with outputCount == min");
         }
@@ -62,6 +76,10 @@ public class Recipe {
 
     public boolean isMysticForge() {
         return source == RecipeSource.MYSTIC_FORGE;
+    }
+
+    public boolean isVendor() {
+        return source == RecipeSource.VENDOR;
     }
 
     public boolean hasExpectedYield() {

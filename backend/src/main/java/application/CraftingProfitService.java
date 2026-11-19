@@ -233,7 +233,8 @@ public class CraftingProfitService {
             List<Recipe> forge = MysticForgeCatalogLoader.bundled().recipes();
             if (!forge.isEmpty()) {
                 visibleRecipes = concat(visibleRecipes, forge);
-                allRecipes = concat(allRecipes, forge);
+                // Vendor purchases of Forge inputs resolve nested needs only: not visible roots, never unlocks.
+                allRecipes = concat(concat(allRecipes, forge), craft.VendorAcquisitions.recipes());
                 Set<Integer> withForge = new HashSet<>(allowedRecipeIds);
                 forge.forEach(r -> withForge.add(r.recipeId));
                 allowedRecipeIds = withForge;

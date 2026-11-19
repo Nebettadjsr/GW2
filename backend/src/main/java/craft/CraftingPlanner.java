@@ -272,10 +272,12 @@ public class CraftingPlanner {
             firstCraft.accumulateBoughtItems(missingToBuyOne);
         }
 
+        Map<Integer, int[]> vendorOne = new HashMap<>();
+        if (firstCraft != null) firstCraft.accumulateVendorPurchases(vendorOne);
         Map<Integer, MaterialPurchaseCost> purchaseCosts = purchaseCosts(
-                sim.getTotalMissingToBuy(), ctx.tp, ctx.settings);
+                sim.getTotalMissingToBuy(), sim.getTotalVendorPurchases(), ctx.tp, ctx.settings);
         int totalBuyCost = sim.getBuyCostTotal();
-        Map<Integer, MaterialPurchaseCost> purchaseCostsOne = purchaseCosts(missingToBuyOne, ctx.tp, ctx.settings);
+        Map<Integer, MaterialPurchaseCost> purchaseCostsOne = purchaseCosts(missingToBuyOne, vendorOne, ctx.tp, ctx.settings);
         int buyCostOne = firstCraft == null ? 0 : firstCraft.getBuyCostCopper();
 
         int revenueOne = cost.getRevenuePerCraft();
@@ -394,10 +396,20 @@ public class CraftingPlanner {
     }
 
     private Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,
+                                                              Map<Integer, int[]> vendor,
                                                               Map<Integer, PriceQuote> tp,
                                                               CraftingSettings settings) {
         Map<Integer, MaterialPurchaseCost> costs = new HashMap<>();
         for (Map.Entry<Integer, Integer> entry : missing.entrySet()) {
+            int[] vendorBought = vendor.get(entry.getKey());
+            if (vendorBought != null && vendorBought[0] >= entry.getValue()) {
+                // Entirely vendor-bought: the exact vendor cash (null when paid only in wallet currency), never an
+                // unrelated Trading Post quote. The unit is the display average of the exact total.
+                Integer total = vendorBought[1] > 0 ? vendorBought[1] : null;
+                Integer unit = total == null ? null : (int) Math.ceil((double) total / entry.getValue());
+                costs.put(entry.getKey(), new MaterialPurchaseCost(unit, total));
+                continue;
+            }
             PriceQuote quote = tp.get(entry.getKey());
             Integer unit = quote == null ? null : settings.listingBuy ? quote.buyUnit : quote.sellUnit;
             Integer total = unit == null ? null : Math.multiplyExact(unit, entry.getValue());

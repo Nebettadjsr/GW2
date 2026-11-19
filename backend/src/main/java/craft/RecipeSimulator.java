@@ -199,6 +199,7 @@ public class RecipeSimulator {
             result.addWalletNoteUnits(root.getWalletNoteUnits());
 
             root.accumulateBoughtItems(result.getTotalMissingToBuy());
+            root.accumulateVendorPurchases(result.getTotalVendorPurchases());
 
             if (result.getCraftCount() >= MAX_CRAFTS) {
                 break;

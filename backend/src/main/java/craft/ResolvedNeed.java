@@ -26,6 +26,10 @@ public class ResolvedNeed {
     private int walletNoteUnits;
     private ResearchNoteEstimate noteEstimate;
 
+    /** Vendor batches bought here (0 when this node was not a vendor acquisition) and the units they produced. */
+    private int vendorBatches;
+    private int vendorProduced;
+
     private final List<CurrencySourcing> currencySourcing = new ArrayList<>();
 
     private AcquisitionMode mode = AcquisitionMode.BLOCKED;
@@ -165,9 +169,29 @@ public class ResolvedNeed {
         this.usesExpectedYield |= child.usesExpectedYield;
     }
 
+    public void markVendorAcquisition(int batches, int produced) {
+        this.vendorBatches = batches;
+        this.vendorProduced = produced;
+    }
+
+    public int getVendorBatches() { return vendorBatches; }
+    public int getVendorProduced() { return vendorProduced; }
+
+    /** Accumulates vendor-bought units ([0]) and their exact cash ([1]) per item over this need and its descendants. */
+    public void accumulateVendorPurchases(Map<Integer, int[]> purchases) {
+        if (vendorBatches > 0) {
+            int[] t = purchases.computeIfAbsent(itemId, k -> new int[2]);
+            t[0] = Math.addExact(t[0], vendorProduced);
+            t[1] = Math.addExact(t[1], buyCostCopper);
+        }
+        for (ResolvedNeed child : children) child.accumulateVendorPurchases(purchases);
+    }
+
     /** Accumulates every purchase represented by this resolved need and its descendants. */
     public void accumulateBoughtItems(Map<Integer, Integer> purchases) {
-        if (qtyBought > 0) purchases.merge(itemId, qtyBought, Integer::sum);
+        // A vendor purchase is whole batches: the shopping quantity is every unit bought, not only what was used here.
+        if (vendorBatches > 0) purchases.merge(itemId, vendorProduced, Integer::sum);
+        else if (qtyBought > 0) purchases.merge(itemId, qtyBought, Integer::sum);
         for (ResolvedNeed child : children) {
             child.accumulateBoughtItems(purchases);
         }

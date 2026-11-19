@@ -247,6 +247,9 @@ public class CraftingResolver {
 
             result.setQtyCrafted(reused + chosenNeed.getQtyCrafted());
             result.setQtyBought(chosenNeed.getQtyBought());
+            if (chosenNeed.getVendorBatches() > 0) {
+                result.markVendorAcquisition(chosenNeed.getVendorBatches(), chosenNeed.getVendorProduced());
+            }
             result.setQtyBlocked(chosenNeed.getQtyBlocked());
             result.setBuyCostCopper(Math.addExact(result.getBuyCostCopper(), chosenNeed.getBuyCostCopper()));
             result.setOpportunityCostCopper(Math.addExact(result.getOpportunityCostCopper(),
@@ -336,7 +339,7 @@ public class CraftingResolver {
         if (!ctx.isCoordinated()) {
             return tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, null);
         }
-        if (recipe.isMysticForge()) {
+        if (recipe.isMysticForge() || recipe.isVendor()) {
             return tryForgeCoordinated(itemId, qtyRequested, recipe, ctx, state);
         }
 
@@ -578,7 +581,17 @@ public class CraftingResolver {
                 return craftResult;
             }
 
-            craftResult.setQtyCrafted(qtySatisfied);
+            if (recipe.isVendor()) {
+                // A vendor purchase is bought stock, not a craft: whole batches, exact cash charged once to the
+                // shared budget, any surplus reusable by later steps of this plan. Rolled back with the attempt.
+                int cash = Math.multiplyExact(recipe.vendorCopper, times);
+                state.addBuyCost(cash);
+                craftResult.setBuyCostCopper(cash);
+                craftResult.setQtyBought(qtySatisfied);
+                craftResult.markVendorAcquisition(times, produced);
+            } else {
+                craftResult.setQtyCrafted(qtySatisfied);
+            }
             state.addSurplus(itemId, produced - qtySatisfied);
 
             if (tracing) {

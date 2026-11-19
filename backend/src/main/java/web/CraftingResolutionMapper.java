@@ -228,6 +228,10 @@ final class CraftingResolutionMapper {
     private static ResolutionNodeDto.ForgeStepDto forgeStep(CraftTraceNode node) {
         Integer id = node.recipeId();
         if (id == null || id >= 0) return null;
+        if (id <= -craft.VendorAcquisitions.ID_BASE) {
+            // A verified vendor purchase, not a Forge craft: whole batches bought, units produced vs used.
+            return new ResolutionNodeDto.ForgeStepDto("VENDOR", null, null, null, null, node.producedQuantity());
+        }
         if (FORGE_RECIPES_BY_ID.isEmpty()) {
             parser.MysticForgeCatalogLoader.bundled().recipes().forEach(r -> FORGE_RECIPES_BY_ID.put(r.recipeId, r));
         }

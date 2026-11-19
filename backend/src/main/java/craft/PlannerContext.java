@@ -161,6 +161,7 @@ public class PlannerContext {
      * a Mystic Forge recipe is governed only by the explicit setting (no unlock exists for it).
      */
     public boolean isRecipeAllowed(Recipe recipe) {
+        if (recipe.isVendor()) return settings.allowMysticForge && settings.allowBuying;
         return recipe.isMysticForge() ? settings.allowMysticForge : allowedRecipeIds.contains(recipe.recipeId);
     }
 
@@ -170,7 +171,7 @@ public class PlannerContext {
      */
     public boolean isPerformable(Recipe recipe) {
         return isRecipeAllowed(recipe)
-                && (!isCoordinated() || recipe.isMysticForge() || !eligibleCharactersFor(recipe).isEmpty());
+                && (!isCoordinated() || recipe.isMysticForge() || recipe.isVendor() || !eligibleCharactersFor(recipe).isEmpty());
     }
 
     public List<String> eligibleCharactersFor(Recipe recipe) {
