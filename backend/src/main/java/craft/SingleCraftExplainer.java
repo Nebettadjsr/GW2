@@ -190,17 +190,18 @@ public final class SingleCraftExplainer {
         });
 
         List<CraftTraceNode> children = new ArrayList<>();
-        int childCount = nodes.stream().mapToInt(node -> node.children().size()).max().orElse(0);
-        for (int index = 0; index < childCount; index++) {
-            Map<String, List<CraftTraceNode>> variants = new LinkedHashMap<>();
-            for (CraftTraceNode parent : nodes) {
-                if (parent.children().size() <= index) continue;
-                CraftTraceNode child = parent.children().get(index);
-                String key = child.itemId() + ":" + child.recipeId() + ":" + child.characterName();
-                variants.computeIfAbsent(key, ignored -> new ArrayList<>()).add(child);
+        // Children are aligned by identity (item, recipe, character, occurrence), not list position: an optional
+        // child (e.g. a Research Note producer needed only by a later craft) must not shift the others.
+        Map<String, List<CraftTraceNode>> variants = new LinkedHashMap<>();
+        for (CraftTraceNode parent : nodes) {
+            Map<String, Integer> seen = new java.util.HashMap<>();
+            for (CraftTraceNode child : parent.children()) {
+                String base = child.itemId() + ":" + child.recipeId() + ":" + child.characterName();
+                int occurrence = seen.merge(base, 1, Integer::sum);
+                variants.computeIfAbsent(base + "#" + occurrence, ignored -> new ArrayList<>()).add(child);
             }
-            variants.values().forEach(variant -> children.add(combineNodes(variant, ledger)));
         }
+        variants.values().forEach(variant -> children.add(combineNodes(variant, ledger)));
 
         java.util.TreeMap<Integer, CraftTraceNode.CurrencyQuantity> currencyTotals = new java.util.TreeMap<>();
         for (CraftTraceNode node : nodes) {

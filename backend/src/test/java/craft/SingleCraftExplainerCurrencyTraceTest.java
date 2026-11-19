@@ -62,4 +62,18 @@ class SingleCraftExplainerCurrencyTraceTest {
         assertEquals(Integer.valueOf(15120), producer.recipeId());
         assertEquals(4, producer.children().get(0).requestedQuantity());
     }
+
+    @Test
+    void aProducerNeededOnlyByALaterCraftDoesNotSplitTheOrdinaryIngredientNodes() {
+        Recipe prr = new Recipe(15120, 104934, 1, 0, "Artificer", List.of(ingredient(300, 4)));
+        // Wallet 45 covers craft 1 (40 Notes) entirely; craft 2 needs 35 more, which must be produced.
+        CraftTraceNode node = new SingleCraftExplainer().withWallet(Map.of(NOTE, 45)).explainCoordinatedResult(PARENT,
+                List.of(PARENT, INNER, prr), Map.of(300, 20), Map.of(), Map.of(),
+                List.of(new CharacterCraftingProfile("A", Map.of("Artificer", 500))),
+                Map.of(), OWN_ONLY, Set.of(1, 2, 15120), 2).root();
+        // The producer appears only for craft 2 yet must not shift or split the ordinary Item 200 node.
+        assertEquals(1, node.children().stream().filter(c -> c.itemId() == 200).count(), node.toString());
+        assertEquals(2, node.children().stream().filter(c -> c.itemId() == 200).findFirst().orElseThrow().requestedQuantity());
+        assertEquals(1, node.children().stream().filter(c -> c.itemId() == 104934).count(), node.toString());
+    }
 }
