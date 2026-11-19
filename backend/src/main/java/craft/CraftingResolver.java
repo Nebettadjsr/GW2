@@ -102,6 +102,7 @@ public class CraftingResolver {
         if (craftNeed.spendsUnpricedCurrency()) root.setSpendsUnpricedCurrency(true);
         craftNeed.unpricedCurrencyIds().forEach(root::addUnpricedCurrency);
         root.absorbWalletNotes(craftNeed);
+        if (craftNeed.usesExpectedYield()) root.markUsesExpectedYield();
         for (ResolvedNeed child : craftNeed.getChildren()) root.addChild(child);
         root.determineMode();
         return new ResolveResult(root);
@@ -254,6 +255,7 @@ public class CraftingResolver {
             if (chosenNeed.spendsUnpricedCurrency()) result.setSpendsUnpricedCurrency(true);
             chosenNeed.unpricedCurrencyIds().forEach(result::addUnpricedCurrency);
             result.absorbWalletNotes(chosenNeed);
+            if (chosenNeed.usesExpectedYield()) result.markUsesExpectedYield();
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(chosenNeed.getBlockedReason());
@@ -397,6 +399,7 @@ public class CraftingResolver {
         state.beginVisiting(itemId);
 
         ResolvedNeed craftResult = new ResolvedNeed(itemId, qtyRequested);
+        if (recipe.hasExpectedYield()) craftResult.markUsesExpectedYield();
         try {
             if (tracing) {
                 ResolvedNeed.NodeTrace trace = craftResult.traceForWrite();

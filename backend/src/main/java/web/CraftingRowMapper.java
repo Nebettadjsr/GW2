@@ -7,6 +7,7 @@ import craft.Recipe;
 import craft.MaterialPurchaseCost;
 import repo.ItemRepository;
 import web.dto.CraftingRowDto;
+import web.dto.ExpectedYieldDto;
 import web.dto.CurrencyCostsDto;
 import web.dto.MissingItemDto;
 import web.dto.TradingPostQuoteDto;
@@ -73,7 +74,7 @@ final class CraftingRowMapper {
                     false, null, null, null, null, null, null, null, null, null,
                     toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
                     ingredientNames(recipe, items),
-                    iconUrl(recipe.outputItemId, items), false, null);
+                    iconUrl(recipe.outputItemId, items), false, null, forgeHint(recipe, null));
         }
 
         return new CraftingRowDto(
@@ -99,7 +100,21 @@ final class CraftingRowMapper {
                 ingredientNames(recipe, items),
                 iconUrl(recipe.outputItemId, items),
                 result.unvaluedOwnedInput,
-                toCurrencyCosts(result, items, detail));
+                toCurrencyCosts(result, items, detail),
+                forgeHint(recipe, result));
+    }
+
+    private static ExpectedYieldDto forgeHint(Recipe recipe, CraftResult result) {
+        boolean estimated = result != null && result.estimated;
+        if (!recipe.isMysticForge() && !estimated) return null;
+        craft.ExpectedYield y = recipe.expectedYield;
+        return new ExpectedYieldDto(recipe.isMysticForge() ? "MYSTIC_FORGE" : null, estimated,
+                y == null ? null : y.mean().toPlainString(),
+                y == null ? null : y.min(), y == null ? null : y.max(),
+                result == null || result.expectedSellableUnitsTotal == null ? null
+                        : result.expectedSellableUnitsTotal.toPlainString(),
+                result == null || y == null ? null : result.guaranteedSellableUnitsTotal,
+                result == null ? 0 : result.reusedSeedUnits);
     }
 
     /** Labels for currencies this application recognises; any other id keeps its exact number. */

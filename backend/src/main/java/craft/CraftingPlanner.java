@@ -292,6 +292,7 @@ public class CraftingPlanner {
         // unavailable or non-positive output quote already reports (DOMAIN_SPEC.md §21), and the
         // downstream availability predicates still see exactly the figure they saw before.
         int feeOne = revenueOne > 0 ? (int) TradingPostFeePolicy.feeOn(revenueOne) : 0;
+        boolean expected = recipe.hasExpectedYield();
         // Approved exception (DOMAIN_SPEC.md 2.1.0): Notes paid from the existing wallet are valued at the
         // estimated replacement rate, aggregated and rounded up once. Produced Notes are already charged in buyCostOne.
         ResearchNoteEstimate noteEstimate = ctx.researchNoteEstimate();
@@ -308,11 +309,26 @@ public class CraftingPlanner {
         // recipe's output quantity and deducts no selling fee - for §28's craftable count. Built
         // from the two figures above rather than from a second resolver or price read.
         int realCrafts = hypothetical ? 0 : sim.getCraftCount();
-        int totalSellValue = Math.multiplyExact(revenueOne, realCrafts);
+        int reusedSeed = expected ? sim.getReusedSeedUnits() : 0;
+        java.math.BigDecimal expectedUnits = null;
+        int totalSellValue;
+        long totalFee;
+        if (expected) {
+            // One exact decimal total (crafts x mean less reused seed units), floored once to copper; the fee is
+            // charged once on that total. Fractional expectation is never converted into guaranteed stock.
+            expectedUnits = recipe.expectedYield.mean().multiply(java.math.BigDecimal.valueOf(realCrafts))
+                    .subtract(java.math.BigDecimal.valueOf(reusedSeed));
+            Integer unit = CostEvaluator.outputUnit(recipe, ctx.tp, ctx.settings);
+            totalSellValue = unit == null ? 0 : Math.toIntExact(ExpectedYield.floorCopper(expectedUnits, unit));
+            totalFee = totalSellValue > 0 ? TradingPostFeePolicy.feeOn(totalSellValue) : 0;
+        } else {
+            totalSellValue = Math.multiplyExact(revenueOne, realCrafts);
+            totalFee = (long) feeOne * realCrafts;
+        }
         // Inventory consumed can vary between executions, so total profit uses costs from the
         // accepted full plan instead of scaling the first craft's opportunity cost.
         int totalProfit = Math.toIntExact((long) totalSellValue
-                - (long) feeOne * realCrafts
+                - totalFee
                 - (hypothetical ? 0 : sim.getBuyCostTotal()) - (hypothetical ? 0 : sim.getOpportunityCostTotal())
                 - noteCostTotal);
 
@@ -335,6 +351,14 @@ public class CraftingPlanner {
                 purchaseCostsOne
         );
         result.unvaluedOwnedInput = sim.hasUnvaluedOwnedInput();
+        if (expected) {
+            result.expectedYield = recipe.expectedYield;
+            result.expectedSellableUnitsTotal = expectedUnits;
+            result.reusedSeedUnits = reusedSeed;
+            result.guaranteedSellableUnitsTotal = Math.max(0,
+                    Math.subtractExact(Math.multiplyExact(recipe.expectedYield.min(), realCrafts), reusedSeed));
+        }
+        result.estimated = expected || (firstCraft != null && firstCraft.usesExpectedYield());
         result.economicsFromHypotheticalCraft = hypothetical;
         Map<Integer, Integer> perCraft = sim.getCurrencyFirstCraft();
         if (perCraft.isEmpty() && !recipe.currencies.isEmpty()) {

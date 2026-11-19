@@ -19,6 +19,7 @@ public class ResolvedNeed {
 
     /** An owned sellable quantity here (or below) could not be valued at all (DOMAIN_SPEC.md 11.2). */
     private boolean unvaluedOwnedInput;
+    private boolean usesExpectedYield;
     private boolean spendsUnpricedCurrency;
     private final java.util.Set<Integer> unpricedCurrencyIds = new java.util.TreeSet<>();
     /** Research Notes paid from the captured wallet here (or below), valued by {@link #noteEstimate}. */
@@ -161,6 +162,7 @@ public class ResolvedNeed {
 
     public void addChild(ResolvedNeed child) {
         this.children.add(child);
+        this.usesExpectedYield |= child.usesExpectedYield;
     }
 
     /** Accumulates every purchase represented by this resolved need and its descendants. */
@@ -197,6 +199,11 @@ public class ResolvedNeed {
             mode = AcquisitionMode.BLOCKED;
         }
     }
+
+    /** True when this step or a nested one is a variable-output Forge route (estimated, never guaranteed output). */
+    public boolean usesExpectedYield() { return usesExpectedYield; }
+
+    public void markUsesExpectedYield() { this.usesExpectedYield = true; }
 
     public void addCostsFromChild(ResolvedNeed child) {
         this.buyCostCopper = Math.addExact(this.buyCostCopper, child.getBuyCostCopper());

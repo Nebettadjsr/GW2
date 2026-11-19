@@ -325,6 +325,10 @@ public class PlanState {
         if (quantity > 0) setValue(SURPLUS, itemId, null, Math.addExact(surplus.getOrDefault(itemId, 0), quantity));
     }
 
+    public int surplusOf(int itemId) {
+        return surplus.getOrDefault(itemId, 0);
+    }
+
     public int consumeSurplus(int itemId, int wanted) {
         int have = surplus.getOrDefault(itemId, 0);
         int used = Math.min(have, wanted);

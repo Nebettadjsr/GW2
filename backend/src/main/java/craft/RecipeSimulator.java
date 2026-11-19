@@ -79,6 +79,7 @@ public class RecipeSimulator {
             // these up-to-250 iterations copied the entire state before attempting
             // (STORY-PERF-001).
             int mark = state.mark();
+            int surplusBefore = state.surplusOf(recipe.outputItemId);
             Map<Integer, Integer> spentBefore = state.currencySpentSnapshot();
 
             ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, state);
@@ -161,6 +162,18 @@ public class RecipeSimulator {
             // Accepted: this batch is never revisited, so its undo information can be dropped -
             // without this the journal would grow across all 250 iterations.
             state.commitTo(mark);
+
+            // A promotion consuming its own output as a seed: units an earlier batch's guaranteed minimum left in
+            // surplus and this batch consumed are reused exactly once (never sold and consumed). Only the guaranteed
+            // minimum is credited for the next batch; fractional expected surplus is never guaranteed inventory.
+            if (recipe.hasExpectedYield() && recipe.selfSeedUnits() > 0) {
+                int consumed = Math.max(0, surplusBefore - state.surplusOf(recipe.outputItemId));
+                int reused = Math.min(consumed, result.seedCreditOutstanding());
+                result.addReusedSeedUnits(reused);
+                int credit = result.seedCreditOutstanding() - reused + recipe.expectedYield.min();
+                result.setSeedCreditOutstanding(credit);
+                state.addSurplus(recipe.outputItemId, recipe.expectedYield.min());
+            }
 
             if (result.getCraftCount() == 0) {
                 result.setFirstCraft(root);

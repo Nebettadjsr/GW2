@@ -31,6 +31,7 @@ public final class MysticForgeCatalog {
             h = 31 * h + r.recipeId;
             h = 31 * h + r.outputItemId;
             h = 31 * h + r.outputCount;
+            if (r.expectedYield != null) h = 31 * h + r.expectedYield.mean().stripTrailingZeros().hashCode() * 31L + r.expectedYield.max();
             for (Ingredient i : r.ingredients) h = 31 * h + (i.itemId * 31L + i.count);
         }
         return recipes.size() + ":" + Long.toHexString(h);

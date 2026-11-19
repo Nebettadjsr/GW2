@@ -11,6 +11,10 @@ public class RecipeSimulationResult {
     private final int outputItemId;
 
     private int craftCount;
+    /** Guaranteed-minimum output units credited as reusable self-seed stock and not yet consumed. */
+    private int seedCreditOutstanding;
+    /** Credited units a later batch consumed as its seed: removed from sellable output exactly once. */
+    private int reusedSeedUnits;
 
     private ResolvedNeed firstCraft;
     private ResolvedNeed lastCraft;
@@ -48,6 +52,11 @@ public class RecipeSimulationResult {
     public int getOutputItemId() {
         return outputItemId;
     }
+
+    int seedCreditOutstanding() { return seedCreditOutstanding; }
+    void setSeedCreditOutstanding(int units) { this.seedCreditOutstanding = units; }
+    public int getReusedSeedUnits() { return reusedSeedUnits; }
+    void addReusedSeedUnits(int units) { this.reusedSeedUnits = Math.addExact(reusedSeedUnits, units); }
 
     public int getCraftCount() {
         return craftCount;
