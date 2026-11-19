@@ -212,13 +212,12 @@ public class ApiCompatibilityChecker {
                 BASE + "/v2/commerce/prices/" + ITEM_ID);
         if (tp != null) {
             judge(run, "prices", "Trading Post price", "/v2/commerce/prices/{id}", DEFAULT_PROFILE, tp, ITEM_ID, n -> {
-                String m = missing(n, intField("id"));
-                if (m != null) return m;
-                for (String side : new String[] {"buys", "sells"}) {
-                    JsonNode s = n.get(side);
-                    if (s == null || !s.isObject()) return side;
-                    m = missing(s, intField("unit_price"), intField("quantity"));
-                    if (m != null) return side + "." + m;
+                // Reuse the production strict quote contract (positive int id, null/null no-data or two
+                // non-negative sides, long quantity) so the check cannot diverge from the real sync.
+                try {
+                    sync.TpSync.strictQuote(n);
+                } catch (IllegalStateException e) {
+                    return "quote (rejected by the production Trading Post validator)";
                 }
                 return null;
             });
@@ -291,7 +290,7 @@ public class ApiCompatibilityChecker {
         }
         for (JsonNode ing : typed) {
             String kind = ing.path("type").asText("");
-            boolean ok = (kind.equals("Item") || kind.equals("Currency")) && ing.path("id").isInt() && ing.path("count").isInt();
+            boolean ok = (kind.equals("Item") || kind.equals("Currency")) && ing.path("id").isInt() && ing.path("id").asInt() > 0 && ing.path("count").isInt();
             if (!ok) {
                 run.add(id, label, ep, PINNED_PROFILE, Status.MISMATCH, "UNSUPPORTED_INGREDIENT",
                         "An ingredient has an unsupported kind or wrong-typed id/count.");
@@ -398,14 +397,17 @@ public class ApiCompatibilityChecker {
     private static List<JsonNode> typedIngredients(JsonNode n) {
         List<JsonNode> out = new ArrayList<>();
         JsonNode ings = n.get("ingredients");
-        if (ings != null && ings.isArray() && !ings.isEmpty()) {
+        if (ings != null && !ings.isArray()) return null;
+        if (ings != null && !ings.isEmpty()) {
             ings.forEach(out::add);
             return out;
         }
         boolean any = false;
         for (String key : new String[] {"item_ingredients", "currency_ingredients"}) {
             JsonNode part = n.get(key);
-            if (part != null && part.isArray()) {
+            // A present but wrong-typed split list must not be silently ignored.
+            if (part != null && !part.isArray()) return null;
+            if (part != null) {
                 any = true;
                 String kind = key.startsWith("item") ? "Item" : "Currency";
                 for (JsonNode p : part) {

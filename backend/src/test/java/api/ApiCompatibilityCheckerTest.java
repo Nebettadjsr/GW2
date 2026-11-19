@@ -124,10 +124,39 @@ class ApiCompatibilityCheckerTest {
         assertEquals(Status.MISMATCH, probe(r, "item").status());
         assertTrue(probe(r, "item").detail().contains("name"));
         assertEquals(Status.MISMATCH, probe(r, "prices").status());
-        assertTrue(probe(r, "prices").detail().contains("buys.unit_price"));
+        assertTrue(probe(r, "prices").detail().contains("quote"));
         assertEquals(Status.MISMATCH, r.overall());
         // The healthy probes are not erased, nor do they hide the mismatch.
         assertEquals(Status.OK, probe(r, "recipe").status());
+    }
+
+    private void priceIs(String body, Status expected) {
+        ok(B + "/v2/commerce/prices/19721", body);
+        assertEquals(expected, probe(run(), "prices").status(), body);
+    }
+
+    @Test
+    void tradingPostQuoteFollowsTheProductionContract() {
+        priceIs("{\"id\":19721,\"buys\":{\"quantity\":1,\"unit_price\":-1},\"sells\":{\"quantity\":1,\"unit_price\":1}}", Status.MISMATCH);
+        priceIs("{\"id\":19721,\"buys\":{\"quantity\":1,\"unit_price\":1},\"sells\":{\"quantity\":-5,\"unit_price\":1}}", Status.MISMATCH);
+        priceIs("{\"id\":19721,\"buys\":{\"quantity\":1,\"unit_price\":1},\"sells\":{\"quantity\":1,\"unit_price\":-2}}", Status.MISMATCH);
+        priceIs("{\"id\":19721,\"buys\":{\"quantity\":-1,\"unit_price\":1},\"sells\":{\"quantity\":1,\"unit_price\":1}}", Status.MISMATCH);
+        priceIs("{\"id\":19721,\"buys\":{\"quantity\":3000000000,\"unit_price\":1},\"sells\":{\"quantity\":1,\"unit_price\":1}}", Status.OK);
+        priceIs("{\"id\":19721,\"buys\":null,\"sells\":null}", Status.OK);
+        priceIs("{\"id\":19721,\"buys\":null,\"sells\":{\"quantity\":1,\"unit_price\":1}}", Status.MISMATCH);
+        priceIs("{\"id\":19721}", Status.MISMATCH);
+        priceIs("{\"id\":19722,\"buys\":null,\"sells\":null}", Status.MISMATCH);
+    }
+
+    @Test
+    void wrongTypedSplitJadeIngredientListsAreNotSilentlyIgnored() {
+        String base = "{\"id\":13839,\"type\":\"Refinement\",\"output_item_id\":97487,\"output_item_count\":1,";
+        ok(B + "/v2/recipes/13839?v=" + PINNED, base + "\"item_ingredients\":{\"id\":1,\"count\":1},"
+                + "\"currency_ingredients\":[{\"id\":61,\"count\":30}]}");
+        assertEquals(Status.MISMATCH, probe(run(), "jade-pinned").status());
+        ok(B + "/v2/recipes/13839?v=" + PINNED, base + "\"ingredients\":[{\"type\":\"Item\",\"id\":0,\"count\":1},"
+                + "{\"type\":\"Currency\",\"id\":61,\"count\":30}]}");
+        assertEquals(Status.MISMATCH, probe(run(), "jade-pinned").status());
     }
 
     @Test
