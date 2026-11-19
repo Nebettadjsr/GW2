@@ -134,6 +134,14 @@ In that case:
 3. change the implementation,
 4. update or remove the obsolete characterization test.
 
+### Mystic Forge catalog tests
+
+The bundled `mystic-forge/catalog.json` is tested from the real generated resource (source-shaped vectors such as
+Gossamer Scrap and Wool Scrap with their lower bound, verified category mean and exact ingredient slots; absence of
+display-only/unverified random rows) and from controlled malformed JSON (strict scalar types, duplicate identity,
+unusable resource). `generate_catalog.py --check` verifies the bundled file matches the captured sources offline;
+no test calls the Wiki.
+
 ## 5. Domain Spec as Test Source
 
 [`DOMAIN_SPEC.md`](DOMAIN_SPEC.md) is the primary source of acceptance cases; each important stable

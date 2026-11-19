@@ -207,7 +207,7 @@ public class CachedCraftingProfitService {
         verifyCharacter(scope, choice);
         boolean wallet = walletAuthorized(readContext, keyed);
         try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
-            captured = capture(session, scope, wallet);
+            captured = capture(session, scope, wallet, settings);
             if (captured.usable()) {
                 data = profitServices.apply(session).reload(choice, settings);
             }
@@ -255,7 +255,7 @@ public class CachedCraftingProfitService {
         verifyCharacter(scope, choice);
         boolean wallet = walletAuthorized(readContext, keyed);
         try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
-            captured = capture(session, scope, wallet);
+            captured = capture(session, scope, wallet, settings);
             if (captured.usable()) {
                 detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
             }
@@ -289,7 +289,8 @@ public class CachedCraftingProfitService {
     }
 
     /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
-    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet)
+    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet,
+                                             CraftingSettings settings)
             throws SQLException {
         Instant evaluatedAt = clock.instant();
         session.withWalletFreshness(evaluatedAt, accountMaxAge);
@@ -307,7 +308,9 @@ public class CachedCraftingProfitService {
 
         CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
-                evaluatedAt).withWalletTracked(wallet);
+                evaluatedAt).withWalletTracked(wallet)
+                .withForgeCatalog(settings != null && settings.allowMysticForge
+                        ? parser.MysticForgeCatalogLoader.bundled().fingerprint() : null);
     }
 
     /**

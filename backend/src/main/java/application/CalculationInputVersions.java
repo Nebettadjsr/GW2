@@ -79,6 +79,18 @@ public final class CalculationInputVersions {
     private final Instant evaluatedAt;
     /** True when the request may read the wallet: the WALLET source then joins identity and freshness. */
     private boolean walletTracked;
+    /** Fingerprint of the Mystic Forge catalog this calculation used, or null when Forge recipes are off. */
+    private String forgeCatalogFingerprint;
+
+    /**
+     * Joins the bundled Forge catalog's content fingerprint to the identity of a calculation that enabled Forge
+     * recipes, so a changed catalog can never read as the same generation. Null (Forge off) leaves the identity
+     * exactly as it was.
+     */
+    public CalculationInputVersions withForgeCatalog(String fingerprint) {
+        this.forgeCatalogFingerprint = fingerprint;
+        return this;
+    }
 
     /**
      * Includes the optional wallet source in this capture's identity and freshness (only when the request is
@@ -220,6 +232,7 @@ public final class CalculationInputVersions {
                 .append("tp.oldest=").append(coverage.oldestFetchedAt()).append(';')
                 .append("tp.newest=").append(coverage.newestFetchedAt()).append(';')
                 .append("tp.quotes=").append(coverage.quoteVersion());
+        if (forgeCatalogFingerprint != null) material.append(";forge.catalog=").append(forgeCatalogFingerprint);
         return digest(material.toString());
     }
 

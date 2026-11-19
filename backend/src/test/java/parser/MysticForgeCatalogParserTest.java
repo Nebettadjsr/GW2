@@ -66,16 +66,24 @@ class MysticForgeCatalogParserTest {
         assertEquals(1, r.exclusions().size());
     }
 
+    private static String rec(int forge, int out, int qty, String ings) {
+        return "{\"forgeId\":" + forge + ",\"outputItemId\":" + out + ",\"outputCount\":" + qty
+                + ",\"page\":\"P#recipe1\",\"revision\":7,\"ingredients\":" + ings + "}";
+    }
+
+    private static MysticForgeCatalog catalog(String... recipes) throws Exception {
+        return MysticForgeCatalogLoader.fromJson(new ObjectMapper().readTree(
+                "{\"schemaVersion\":1,\"recipes\":[" + String.join(",", recipes) + "]}"));
+    }
+
     @Test
     void normalizedCatalogDropsInvalidRecipesAndFingerprintTracksContent() throws Exception {
-        MysticForgeCatalog a = MysticForgeCatalogLoader.fromJson(new ObjectMapper().readTree(
-                "{\"recipes\":[{\"forgeId\":3105801,\"outputItemId\":31058,\"outputCount\":1,\"ingredients\":[[20852,1],[19976,100]]},"
-                        + "{\"forgeId\":0,\"outputItemId\":1,\"outputCount\":1,\"ingredients\":[[1,1]]},"
-                        + "{\"forgeId\":5,\"outputItemId\":1,\"outputCount\":1,\"ingredients\":[]}]}"));
+        MysticForgeCatalog a = catalog(rec(3105801, 31058, 1, "[[20852,1],[19976,100]]"),
+                rec(0, 1, 1, "[[1,1]]"), rec(5, 1, 1, "[]"));
         assertEquals(1, a.recipes().size());
         assertEquals(-3105801, a.recipes().getFirst().recipeId);
-        MysticForgeCatalog b = MysticForgeCatalogLoader.fromJson(new ObjectMapper().readTree(
-                "{\"recipes\":[{\"forgeId\":3105801,\"outputItemId\":31058,\"outputCount\":1,\"ingredients\":[[20852,1],[19976,99]]}]}"));
+        assertEquals(2, a.coverage().excludedByReason().values().stream().mapToInt(Integer::intValue).sum());
+        MysticForgeCatalog b = catalog(rec(3105801, 31058, 1, "[[20852,1],[19976,99]]"));
         assertNotEquals(a.fingerprint(), b.fingerprint());
     }
 
