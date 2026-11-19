@@ -143,9 +143,8 @@ final class CraftingRowMapper {
                     lines.add(new CurrencyCostsDto.LineDto(line.itemId(), itemName(line.itemId(), items), line.count(),
                             line.unitPriceCopper(), line.totalCopper(), iconUrl(line.itemId(), items)));
                 }
-                Long perNote = v.priced() ? (v.batchCostCopper() + v.notesPerBatch() - 1) / v.notesPerBatch() : null;
                 variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
-                        v.notesPerBatch(), v.batchCostCopper(), perNote, per100(v),
+                        v.notesPerBatch(), v.batchCostCopper(), per100(v),
                         estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
                         List.copyOf(lines)));
             }

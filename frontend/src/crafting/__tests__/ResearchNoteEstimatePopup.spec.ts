@@ -42,12 +42,12 @@ const estimate: NoteEstimate = {
   variants: [
     {
       recipeId: 15120, outputName: 'Peer Reviewed Research', notesPerBatch: 150, batchCostCopper: 400,
-      perNoteCopperCeil: 3, per100NotesCopper: 267, basis: true,
+      per100NotesCopper: 267, basis: true,
       ingredients: [{ itemId: 1001, name: 'Vial of Powerful Blood', count: 4, unitPriceCopper: 100, totalCopper: 400, iconUrl: '/api/items/1001/icon' }]
     },
     {
       recipeId: 15131, outputName: 'Peer Reviewed Research', notesPerBatch: 150, batchCostCopper: null,
-      perNoteCopperCeil: null, per100NotesCopper: null, basis: false,
+      per100NotesCopper: null, basis: false,
       ingredients: [{ itemId: 2001, name: 'Pile of Crystalline Dust', count: 4, unitPriceCopper: null, totalCopper: null }]
     }
   ]

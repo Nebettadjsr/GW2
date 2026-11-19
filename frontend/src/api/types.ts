@@ -113,7 +113,6 @@ export interface NoteEstimateVariant {
   outputName: string | null
   notesPerBatch: number
   batchCostCopper: number | null
-  perNoteCopperCeil: number | null
   /** Backend-computed ceil(batchCost * 100 / notesPerBatch); null while not completely priced. */
   per100NotesCopper?: number | null
   basis: boolean
