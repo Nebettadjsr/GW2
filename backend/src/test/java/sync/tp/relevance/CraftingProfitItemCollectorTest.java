@@ -256,4 +256,57 @@ class CraftingProfitItemCollectorTest {
         assertEquals(Set.of(11, 20, 21, 40, 41, 50), collector.collectGlobal(con),
                 "an empty account registry neither empties nor changes the global selection");
     }
+
+    private void seedAutoLearnedRecipeWithoutUnlockRows() throws Exception {
+        try (Statement statement = con.createStatement()) {
+            statement.execute("INSERT INTO recipes (recipe_id, output_item_id, flags) VALUES (5, 52, ARRAY['AutoLearned'])");
+            statement.execute("INSERT INTO recipe_ingredients (recipe_id, item_id) VALUES (5, 53)");
+            statement.execute("INSERT INTO tp_tradeable_items (item_id) VALUES (52), (53)");
+        }
+    }
+
+    @Test
+    void anAutoLearnedRecipeWithNoUnlockRowsIsRelevantAndCountedByCoverage() throws Exception {
+        seedAutoLearnedRecipeWithoutUnlockRows();
+        CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
+
+        assertEquals(Set.of(11, 20, 21, 52, 53), collector.collect(con, SCOPE),
+                "the AutoLearned output and ingredient are requested while unquoted");
+        assertEquals(Set.of(50, 52, 53), collector.collect(con, AccountScope.of(OTHER)),
+                "AutoLearned is account-independent; another account's explicit unlock stays its own");
+        assertFalse(collector.collect(con, SCOPE).contains(50));
+        CraftingProfitItemCollector.Coverage coverage = collector.coverage(con, SCOPE);
+        assertEquals(6, coverage.requiredItems());
+        assertEquals(4, coverage.missingItems());
+        assertEquals(collector.collect(con, SCOPE).size(), coverage.uncoveredItems());
+
+        try (Statement statement = con.createStatement()) {
+            statement.execute("INSERT INTO tp_prices (item_id, fetched_at) VALUES (52, now()), (53, now())");
+            statement.execute("UPDATE tp_prices SET fetched_at = now() WHERE item_id IN (11, 20)");
+            statement.execute("INSERT INTO tp_prices (item_id, fetched_at) VALUES (21, now())");
+        }
+        CraftingProfitItemCollector.Coverage fresh = collector.coverage(con, SCOPE);
+        assertTrue(fresh.covered());
+        assertEquals(6, fresh.freshItems());
+        assertTrue(collector.collect(con, SCOPE).isEmpty());
+    }
+
+    @Test
+    void changingOnlyAnAutoLearnedExclusiveQuoteChangesTheQuoteVersion() throws Exception {
+        seedAutoLearnedRecipeWithoutUnlockRows();
+        try (Statement statement = con.createStatement()) {
+            statement.execute("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, sell_quantity, "
+                    + "sell_unit_price, fetched_at) VALUES (52, 1, 100, 1, 200, now() - interval '1 minute')");
+        }
+        CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
+        CraftingProfitItemCollector.Coverage before = collector.coverage(con, SCOPE);
+        try (Statement statement = con.createStatement()) {
+            statement.execute("UPDATE tp_prices SET sell_unit_price = 201 WHERE item_id = 52");
+        }
+        CraftingProfitItemCollector.Coverage after = collector.coverage(con, SCOPE);
+
+        assertEquals(before.requiredItems(), after.requiredItems());
+        assertEquals(before.newestFetchedAt(), after.newestFetchedAt());
+        assertNotEquals(before.quoteVersion(), after.quoteVersion());
+    }
 }

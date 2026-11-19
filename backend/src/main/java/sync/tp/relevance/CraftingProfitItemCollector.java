@@ -13,7 +13,7 @@ import sync.tp.TpPriceFreshness;
 /**
  * Collects TP-relevant item ids for CraftingProfitView:
  * only items that belong to recipes that are:
- *  - unlocked on the account (account_recipes)
+ *  - AutoLearned, or unlocked on the account (account_recipes)
  *  - learned by at least one character (character_recipes)
  *
  * Optional tightening included:
@@ -70,11 +70,16 @@ relevant_tradeable AS (
 )
 """;
 
-    /** One account's recipe knowledge; two bind parameters, both that account's GUID. */
+    /**
+     * One account's recipe knowledge: its account and character unlocks plus AutoLearned recipes, which have no
+     * unlock rows (same predicate as {@code RecipeRepository}). Two bind parameters, both that account's GUID.
+     */
     private static final String SCOPED_RECIPE_KNOWLEDGE = """
   SELECT recipe_id FROM account_recipes WHERE account_id = ?
   UNION
-  SELECT DISTINCT recipe_id FROM character_recipes WHERE account_id = ?""";
+  SELECT DISTINCT recipe_id FROM character_recipes WHERE account_id = ?
+  UNION
+  SELECT recipe_id FROM recipes WHERE 'AutoLearned' = ANY(flags)""";
 
     /**
      * The shared crafting graph itself, which is what "craftable" means with no
