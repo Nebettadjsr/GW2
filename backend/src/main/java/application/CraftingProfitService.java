@@ -398,6 +398,12 @@ public class CraftingProfitService {
         enriched.estimatedNotesCostTotalCopper = cr.estimatedNotesCostTotalCopper;
         enriched.noteEstimate = cr.noteEstimate;
         enriched.economicsFromHypotheticalCraft = cr.economicsFromHypotheticalCraft;
+        enriched.profitUnknown = cr.profitUnknown;
+        enriched.expectedYield = cr.expectedYield;
+        enriched.estimated = cr.estimated;
+        enriched.expectedSellableUnitsTotal = cr.expectedSellableUnitsTotal;
+        enriched.guaranteedSellableUnitsTotal = cr.guaranteedSellableUnitsTotal;
+        enriched.reusedSeedUnits = cr.reusedSeedUnits;
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);
         copy.put(recipeId, enriched);

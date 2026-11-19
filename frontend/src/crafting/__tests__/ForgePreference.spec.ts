@@ -123,4 +123,42 @@ describe('forge preference account-data deletion', () => {
     pref.set(true)
     expect(() => pref.forgetAccount('guid-a')).not.toThrow()
   })
+
+  it('forgetAccountKeepsFalseWhenRemoveThrowsAndReadsStillReturnTheStaleTrue', () => {
+    const key = FORGE_PREFERENCE_KEY_PREFIX + 'guid-a'
+    const stale = JSON.stringify({ version: 1, allowMysticForge: true })
+    const data = new Map<string, string>([[key, stale], [FORGE_PREFERENCE_KEY_PREFIX + 'guid-b', stale]])
+    const storage = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => { data.set(k, v) },
+      removeItem: () => { throw new Error('blocked') }
+    }
+    let account: string | null = 'guid-a'
+    const pref = createForgePreference({ storage, accountId: () => account })
+    expect(pref.current()).toBe(true)
+    pref.forgetAccount('guid-a')
+    expect(pref.current()).toBe(false)
+    // Disconnect and reconnect in the same page: still off, other account untouched.
+    account = null
+    expect(pref.current()).toBe(false)
+    account = 'guid-a'
+    expect(pref.current()).toBe(false)
+    account = 'guid-b'
+    expect(pref.current()).toBe(true)
+    // Durable record was overwritten with false where possible, so a reload does not resurrect true.
+    expect(createForgePreference({ storage, accountId: () => 'guid-a' }).current()).toBe(false)
+  })
+
+  it('forgetAccountStaysFalseWhenRemoveAndWriteBothFailWhileReadsReturnOldTrue', () => {
+    const stale = JSON.stringify({ version: 1, allowMysticForge: true })
+    const storage = {
+      getItem: () => stale,
+      setItem: () => { throw new Error('quota') },
+      removeItem: () => { throw new Error('blocked') }
+    }
+    const pref = createForgePreference({ storage, accountId: () => 'guid-a' })
+    expect(pref.current()).toBe(true)
+    pref.forgetAccount('guid-a')
+    expect(pref.current()).toBe(false)
+  })
 })

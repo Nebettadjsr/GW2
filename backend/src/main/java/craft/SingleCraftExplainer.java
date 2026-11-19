@@ -30,6 +30,13 @@ public final class SingleCraftExplainer {
 
     private final Map<Integer, Integer> vendorValues;
     private Map<Integer, Integer> wallet; // null = unknown
+    private int workLimit = PlanState.MAX_WORK_UNITS;
+
+    /** Test seam: the same per-root work limit the table's planner ran under ({@link CraftingPlanner#withWorkLimit}). */
+    SingleCraftExplainer withWorkLimit(int limit) {
+        this.workLimit = limit;
+        return this;
+    }
 
     public SingleCraftExplainer() {
         this(Map.of());
@@ -70,7 +77,7 @@ public final class SingleCraftExplainer {
         PlannerContext ctx = new PlannerContext(
                 CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues).withWallet(wallet);
 
-        return explain(recipe, ctx, new PlanState(sellableInventory, boundInventory), 1);
+        return explain(recipe, ctx, new PlanState(sellableInventory, boundInventory), 1, workLimit);
     }
 
     /**
@@ -96,7 +103,7 @@ public final class SingleCraftExplainer {
                 CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
 
         return explain(recipe, ctx,
-                new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory), 1);
+                new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory), 1, workLimit);
     }
 
     /**
@@ -119,13 +126,17 @@ public final class SingleCraftExplainer {
     ) {
         PlannerContext ctx = new PlannerContext(
                 CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
+        // The table already accepted these crafts under its per-root work limit, so the traced replay of that prefix is not
+        // re-limited (tracing explores more than the table and must never shorten what the row counted). A zero-count
+        // row replays its one attempt under the same limit so a WORK_LIMIT rejection stays blocked and finite.
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
-                Math.max(1, countedCrafts));
+                Math.max(1, countedCrafts), countedCrafts > 0 ? Integer.MAX_VALUE : workLimit);
     }
 
     private SingleCraftExplanation explain(Recipe recipe, PlannerContext ctx, PlanState initialState,
-                                           int acceptedCraftLimit) {
+                                           int acceptedCraftLimit, int limit) {
+        initialState.resetWork(limit);
         RecipeSimulator simulator = new RecipeSimulator(
                 new CraftingResolver(true), acceptedCraftLimit, true);
         RecipeSimulationResult simulation = simulator.simulateRecipe(recipe, ctx, initialState);

@@ -56,11 +56,24 @@ export function createForgePreference(options: {
      * Disconnecting alone never calls this, and the shadow is dropped even if storage cannot be written.
      */
     forgetAccount(accountId: string): void {
-      shadow.delete(accountId)
+      // Explicit false memory state: a stale durable `true` that cannot be removed must never be re-read.
+      shadow.set(accountId, false)
+      const key = FORGE_PREFERENCE_KEY_PREFIX + accountId
+      let removed = false
       try {
-        storage?.removeItem?.(FORGE_PREFERENCE_KEY_PREFIX + accountId)
+        if (storage?.removeItem) {
+          storage.removeItem(key)
+          removed = true
+        }
       } catch {
-        // Blocked storage: the memory shadow is already gone and the record is unreadable-or-default.
+        // Blocked removal: fall through to overwriting the durable record with false.
+      }
+      if (!removed) {
+        try {
+          storage?.setItem(key, JSON.stringify({ version: SCHEMA_VERSION, allowMysticForge: false }))
+        } catch {
+          // Fully blocked storage: the in-page false shadow keeps the preference off.
+        }
       }
       version.value++
     },
