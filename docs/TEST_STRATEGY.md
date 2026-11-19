@@ -140,7 +140,7 @@ The bundled `mystic-forge/catalog.json` is tested from the real generated resour
 Gossamer Scrap and Wool Scrap with their lower bound, verified category mean and exact ingredient slots; absence of
 display-only/unverified random rows) and from controlled malformed JSON (strict scalar types, duplicate identity,
 unusable resource). `generate_catalog.py --check` verifies the bundled file matches the captured sources offline;
-no test calls the Wiki.
+no test calls the Wiki. CI also runs the offline generator unit tests and the `--check` regeneration comparison.
 
 ## 5. Domain Spec as Test Source
 
@@ -565,7 +565,7 @@ and variable Forge rows with the source label and (variable only) the estimate h
 row's detail shows the backend's literal expected/net/seed facts and the expanded vendor batch with
 its currency; disabling removes Forge rows; the re-enabled per-account preference reaches the first
 request after a reload; and the ordinary Research Note estimate popup still opens and closes. The
-browser performs no Forge arithmetic. Real-backend Forge accuracy remains a separate supervised check.
+browser performs no Forge arithmetic. The journey is the controlled desktop Forge check; real-backend Forge accuracy remains a separate supervised check.
 
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to

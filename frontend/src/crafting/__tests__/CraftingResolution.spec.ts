@@ -691,7 +691,7 @@ describe('CraftingResolution', () => {
       const vendor = ready({ tree: node({ characterName: 'Alt', children: [],
         forgeStep: { ...forgeStep, source: 'VENDOR', expectedOutputPerCraft: null, expectedProducedTotal: null, batches: 1, guaranteedProducedTotal: 10, usedQuantity: 5, surplusQuantity: 5, reusedSeed: 0 } }) })
       expect(vendor.find('[data-test="node-crafter"]').exists()).toBe(false)
-      expect(vendor.find('[data-test="node-forge"]').text()).toBe('Vendor · 1 batch bought · 10 units (5 used, 5 left over)')
+      expect(vendor.find('[data-test="node-forge"]').text()).toBe('Vendor · 1 batch bought · 10 units (5 used, 5 extra batch units)')
     })
 
     it('ordinaryNodesStayUnchanged', () => {

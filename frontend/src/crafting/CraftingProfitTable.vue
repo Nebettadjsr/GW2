@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { CraftingRow } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper, formatCount, formatSignedCopper, moneyTone } from './formatCopper'
-import { isForgeRow, recipeLabel, sourceLabel } from './recipeLabel'
+import { estimatedHint, incompleteNote, isForgeRow, isWorkLimited, recipeLabel, sourceLabel } from './recipeLabel'
 import type { SortDirection, SortKey } from './useProfitTableView'
 
 /**
@@ -45,6 +45,9 @@ const displayRows = computed(() =>
     disciplines: sourceLabel(row),
     forge: isForgeRow(row),
     estimated: row.expectedYield?.estimated === true,
+    estimatedTitle: estimatedHint(row),
+    incomplete: isWorkLimited(row),
+    incompleteTitle: incompleteNote(row) ?? '',
     craftable: formatCount(row.craftableCount),
     ownMaterials: formatCopper(row.matsSellValueCopper),
     unvalued: row.unvaluedOwnedInput === true,
@@ -175,8 +178,14 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
                 v-if="row.estimated"
                 class="estimated-hint"
                 data-test="estimated-hint"
-                title="Estimated: variable Mystic Forge output; profit uses the expected yield."
+                :title="row.estimatedTitle"
               >≈ est.</span>
+              <span
+                v-if="row.incomplete"
+                class="estimated-hint"
+                data-test="incomplete-hint"
+                :title="row.incompleteTitle"
+              >Incomplete</span>
             </span>
             <span v-if="row.recipeId === selectedRecipeId" class="visually-hidden">Selected</span>
           </button>

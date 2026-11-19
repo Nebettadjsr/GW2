@@ -136,7 +136,7 @@ distribute in ascending slot order and preserve the saved item amount after rear
 Finite targets have solid yellow borders and readable notes beside their tab/category grid,
 below on narrow layouts. Backend protection applies before aggregation and preserves character
 stock. There is no Save/Discard/pending-change workflow. Exact rules are in DOMAIN_SPEC section
-9.1 and FRONTEND_UX_GUIDELINES section 2.1. Allow Mystic Forge recipes is an enabled, default-off setting; Forge recipes come from the bundled, offline-generated catalog (about 1.5k verified recipes of 2,569 source rows, including 78 verified expected-yield promotions; regeneration, exclusions and remaining TP-relevance/vendor/UI scope are in DOMAIN_SPEC "Mystic Forge recipes").
+9.1 and FRONTEND_UX_GUIDELINES section 2.1. Allow Mystic Forge recipes is an enabled, default-off setting; Forge recipes come from the bundled, offline-generated catalog (about 1.5k verified recipes of 2,569 source rows, including 78 verified expected-yield promotions; the bundled verified subset is default off, the offline tool needs no Wiki access at runtime, and the coverage resource is the source of truth; regeneration and exclusions are in DOMAIN_SPEC "Mystic Forge recipes").
 
 Bank/Materials/Characters retain last-good content while their own sources refresh.
 Automatic refresh follows backend age guidance, pauses hidden/inactive views and backs off

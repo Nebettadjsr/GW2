@@ -4,7 +4,8 @@ import type {
   CraftingProfitResolutionResponse,
   CraftingRow,
   EffectiveSettings,
-  MissingItem
+  MissingItem,
+  ResolutionNode
 } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import ResearchNoteEstimatePopup from './ResearchNoteEstimatePopup.vue'
@@ -17,7 +18,7 @@ import {
   NO_VALUE
 } from './formatCopper'
 import { keepTargetNote, RESOLUTION_SETTINGS_KEY } from './resolutionPresentation'
-import { isForgeRow, materialLabel, recipeLabel, wikiUrl, yieldSummary } from './recipeLabel'
+import { incompleteNote, isForgeRow, materialLabel, recipeLabel, wikiUrl, yieldSummary } from './recipeLabel'
 import { formatStackQuantity } from './formatStackQuantity'
 import type { SelectionHiddenReason } from './useProfitTableView'
 import type { ResolutionPhase } from './useResolutionDetail'
@@ -116,7 +117,23 @@ const noteEstimate = computed(() => {
 })
 function keepNote(itemId: number): string | null { return keepTargetNote(effectiveSettings.value, itemId) }
 
+/** Item ids the backend's own resolution tree shows as bought from a vendor (currency-paid, no Trading Post quote). */
+const vendorItemIds = computed(() => {
+  const ids = new Set<number>()
+  const walk = (n: ResolutionNode) => {
+    if (n.forgeStep?.source === 'VENDOR') ids.add(n.itemId)
+    n.children.forEach(walk)
+  }
+  const root = props.resolutionDetail?.tree
+  if (root) walk(root)
+  return ids
+})
+
 function materialQuoteText(item: MissingItem): string {
+  if (vendorItemIds.value.has(item.itemId)) {
+    if (item.purchaseUnitPriceCopper === null) return 'Bought from a vendor with currency · no Trading Post price'
+    return `Average price / item: ${formatCopper(item.purchaseUnitPriceCopper)} · Total: ${item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)} (vendor and Trading Post mix)`
+  }
   const unit = item.purchaseUnitPriceCopper === null ? 'Unavailable' : formatCopper(item.purchaseUnitPriceCopper)
   const total = item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)
   return `Price / item: ${unit} · Total: ${total}`
@@ -163,7 +180,16 @@ function materialQuoteText(item: MissingItem): string {
         </p>
 
         <p v-if="yieldSummary(row) !== null" class="meta" data-test="detail-yield">
-          ≈ Estimated: {{ yieldSummary(row) }}. Only the guaranteed minimum counts as stock.
+          <template v-if="row.expectedYield?.expectedOutputPerCraft != null || row.expectedYield?.expectedSellableUnitsTotal != null">
+            ≈ Estimated: {{ yieldSummary(row) }}. Only the guaranteed minimum counts as stock.
+          </template>
+          <template v-else>
+            Conservative minimum-yield input plan. Only the guaranteed minimum counts as stock.
+          </template>
+        </p>
+
+        <p v-if="incompleteNote(row) !== null" class="meta" data-test="detail-incomplete">
+          {{ incompleteNote(row) }}
         </p>
 
         <p v-if="wikiHref !== null" class="meta">

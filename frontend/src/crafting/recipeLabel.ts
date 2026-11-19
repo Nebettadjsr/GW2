@@ -58,6 +58,27 @@ export function yieldSummary(row: CraftingRow): string | null {
     const guaranteed = y.guaranteedSellableUnitsTotal !== null ? `, guaranteed ${y.guaranteedSellableUnitsTotal}` : ''
     parts.push(`expected ${y.expectedSellableUnitsTotal} total${guaranteed}`)
   }
-  if (parts.length === 0 && y.estimated) parts.push('uses a Mystic Forge step with a variable output')
+  if (parts.length === 0 && y.estimated) parts.push('conservative minimum-yield input plan')
   return parts.length === 0 ? null : parts.join(' · ')
+}
+
+/** Hint for an estimated row: only a variable-output root's profit uses the expected mean. */
+export function estimatedHint(row: CraftingRow): string {
+  return row.expectedYield?.expectedOutputPerCraft != null
+    ? 'Estimated: variable Mystic Forge output; profit uses the expected mean.'
+    : 'Conservative minimum-yield input plan.'
+}
+
+/** Whether the backend limited this row's calculation by its work budget. */
+export function isWorkLimited(row: CraftingRow): boolean {
+  return row.resultAvailable && row.blockedReason === 'WORK_LIMIT'
+}
+
+/** Concise explanation of a work-limited row; uses only the backend's own craft count. */
+export function incompleteNote(row: CraftingRow): string | null {
+  if (!isWorkLimited(row)) return null
+  const n = row.craftableCount ?? 0
+  return n > 0
+    ? `Incomplete calculation: at least ${n} ${n === 1 ? 'craft' : 'crafts'} calculated; this is not a proven maximum.`
+    : 'Incomplete calculation: no craft was accepted, so profit is unknown. The output quote is still the actual quote.'
 }

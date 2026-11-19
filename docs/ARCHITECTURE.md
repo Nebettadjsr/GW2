@@ -273,6 +273,11 @@ provisional `200` if usable inputs are stale and admit refresh separately. No us
 account publication yields `202` with no fabricated rows. Successful empty sources are usable;
 missing TP values retain explicit domain states instead of becoming free ingredients.
 
+Mystic Forge recipes enter through a static bundled adapter with a negative recipe-ID namespace, never the
+synchronized recipe tables. The backend alone computes exact expected output versus guaranteed/net units
+(including seed reuse), vendor acquisitions, binding, and the initial-owner index; work that was rejected or
+hit the work limit is not refunded and records no execution. The browser only presents these source facts.
+
 The application freshness envelope identifies the captured account/source/quote generations,
 coverage, task locations and retry state. A task finishing does not prove final freshness.
 The browser polls only advertised locations and recalculates with current settings. One
