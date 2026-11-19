@@ -50,6 +50,7 @@ public final class RecipeSync {
         observed.addAll(loadSkippedIds());
         if (!IdListDiff.between(observed, remoteIds).changed() && isPublicationComplete()) return false;
         Set<Integer> skippedIds = new HashSet<>();
+        boolean incompleteDetails = false;
 
         // Recipe batches commit before items/ingredients are fetched (no transaction spans HTTP),
         // so record the unfinished state first; only a full run marks it complete again.
@@ -93,13 +94,14 @@ public final class RecipeSync {
                     }
 
                     try {
-                        // Same strict typed ingredient validation as the full refresh: a recipe whose requirement is
+                        // Same strict ingredient validation as the full refresh: a recipe whose requirement is
                         // malformed (missing/nonpositive/overflowing id or count) is quarantined whole.
                         FullCatalogSupport.requireIngredients(r);
                     } catch (IllegalStateException malformed) {
                         System.out.println("Skipping recipe " + rr.recipeId() + ": malformed record");
                         remoteIds.remove(rr.recipeId());
                         skippedIds.add(rr.recipeId());
+                        incompleteDetails = true;
                         continue;
                     }
 
@@ -127,6 +129,7 @@ public final class RecipeSync {
                         System.out.println("Skipping recipe " + id + ": omitted or malformed detail record");
                         remoteIds.remove(id);
                         skippedIds.add(id);
+                        incompleteDetails = true;
                     }
                 }
 
@@ -167,7 +170,9 @@ public final class RecipeSync {
 
         syncRecipeIngredients(fetchedBatches, TaskDeadline.NONE);
         removeDeletedRecipes(remoteIds, TaskDeadline.NONE);
-        markPublication(true, TaskDeadline.NONE, skippedIds);
+        // Transient missing/malformed details must be retried even when the catalog IDs are unchanged.
+        // Only an entirely accounted-for publication may use its skipped IDs for the fast path.
+        markPublication(!incompleteDetails, TaskDeadline.NONE, skippedIds);
         return true;
     }
 

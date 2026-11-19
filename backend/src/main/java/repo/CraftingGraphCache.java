@@ -68,7 +68,8 @@ public class CraftingGraphCache {
             // A snapshot from before currency-aware recipes cannot say whether a recipe has currency costs:
             // absence is not "none". The cache is disposable, so rebuild it from the database.
             if (dto.schemaVersion != CraftingGraphDto.CURRENT_SCHEMA_VERSION || dto.recipes == null
-                    || dto.recipes.stream().anyMatch(r -> r.currencies == null)) {
+                    || dto.recipes.stream().anyMatch(r -> r.currencies == null)
+                    || !buildCacheKeyFromDb().equals(dto.cacheKey)) {
                 return rebuild();
             }
             Map<Integer, String> names = dto.itemNames;
@@ -111,6 +112,9 @@ public class CraftingGraphCache {
 
     public synchronized CraftingGraph rebuild() throws IOException, SQLException {
         File file = new File(cacheFilePath());
+        // Capture identity before data reads: a concurrent publication must not stamp older data
+        // with its newer identity. Normal invalidation still handles the warm in-memory graph.
+        String key = buildCacheKeyFromDb();
         List<Recipe> recipes = recipeRepo.loadAllRecipes();
         Set<Integer> itemIds = referencedItemIds(recipes);
         Map<Integer, String> itemNames = new java.util.HashMap<>();
@@ -121,7 +125,7 @@ public class CraftingGraphCache {
 
         CraftingGraphDto dto = toDto(graph);
         dto.schemaVersion = CraftingGraphDto.CURRENT_SCHEMA_VERSION;
-        dto.cacheKey = buildCacheKeyFromDb();
+        dto.cacheKey = key;
         dto.generatedAt = System.currentTimeMillis();
 
         writeAtomically(file.toPath(), dto);
@@ -151,6 +155,9 @@ public class CraftingGraphCache {
             try {
                 deadline.check();
                 deadline.limitTransaction(con);
+                key = "recipes=" + count(con, "recipes") + ";ingredients=" + count(con, "recipe_ingredients")
+                        + ";currencies=" + count(con, "recipe_non_item_requirements")
+                        + ";publication=" + recipeRepo.publicationKey(con);
                 List<Recipe> recipes = recipeRepo.loadAllRecipes(con);
                 Set<Integer> itemIds = referencedItemIds(recipes);
                 deadline.check();
@@ -161,8 +168,6 @@ public class CraftingGraphCache {
                 });
                 deadline.check();
                 deadline.limitTransaction(con);
-                key = "recipes=" + count(con, "recipes") + ";ingredients=" + count(con, "recipe_ingredients")
-                        + ";currencies=" + count(con, "recipe_non_item_requirements");
                 graph = new CraftingGraph(recipes, itemNames);
             } finally {
                 try { con.rollback(); } finally { con.setAutoCommit(auto); }
@@ -197,7 +202,8 @@ public class CraftingGraphCache {
         int recipeCount = recipeRepo.countRecipes();
         int ingredientCount = recipeRepo.countRecipeIngredients();
         return "recipes=" + recipeCount + ";ingredients=" + ingredientCount
-                + ";currencies=" + recipeRepo.countRecipeCurrencyRequirements();
+                + ";currencies=" + recipeRepo.countRecipeCurrencyRequirements()
+                + ";publication=" + recipeRepo.publicationKey();
     }
 
     private CraftingGraph fromDto(CraftingGraphDto dto, Map<Integer, String> itemNames) {

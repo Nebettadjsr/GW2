@@ -192,7 +192,7 @@ class SyncFetchPublicationTest {
             return json("""
                 [{"id":1,"type":"Refinement","output_item_id":20,"output_item_count":2,"min_rating":100,"time_to_craft_ms":1000,
                   "disciplines":["Weaponsmith"],"flags":["AutoLearned"],"chat_link":"[&A]",
-                  "ingredients":[{"item_id":10,"count":3},{"item_id":10,"count":4},{"item_id":11,"count":0}]},
+                  "ingredients":[{"item_id":10,"count":4}]},
                  {"id":2,"type":"Weapon","output_item_id":21,"output_item_count":1,"min_rating":0,"time_to_craft_ms":0,
                   "disciplines":[],"ingredients":[{"item_id":11,"count":1}]},
                  {"id":0}, null]
@@ -303,7 +303,7 @@ class SyncFetchPublicationTest {
         assertNull(scalar("SELECT 1 FROM recipe_ingredients WHERE recipe_id=3"));
         assertEquals("Refinement|20|2|100|1000|[&A]|{Weaponsmith}|{AutoLearned}",
                 scalar("SELECT concat_ws('|', type, output_item_id, output_item_count, min_rating, time_to_craft_ms, chat_link, disciplines, flags) FROM recipes WHERE recipe_id=1"));
-        // Item ingredients only; duplicate (recipe,item) pairs collapse to the later count
+        // Valid legacy item_id/count ingredients retain their exact quantities.
         assertEquals("1:10:4,2:11:1",
                 scalar("SELECT string_agg(recipe_id||':'||item_id||':'||count, ',' ORDER BY recipe_id) FROM recipe_ingredients"));
         assertEquals("10,11,20,21,30", scalar("SELECT string_agg(item_id::text, ',' ORDER BY item_id) FROM items"));
@@ -436,7 +436,8 @@ class SyncFetchPublicationTest {
         assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
         assertEquals("0", scalar("SELECT count(*) FROM items"));
         assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients"));
-        assertEquals("0", scalar("SELECT output_item_id FROM recipes WHERE recipe_id=1"));
+        assertNull(scalar("SELECT output_item_id FROM recipes WHERE recipe_id=1"), "invalid legacy ingredients quarantine the recipe");
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
     }
 
     private static String currencyRecipe(int id, String currencyIngredient) {
@@ -446,7 +447,7 @@ class SyncFetchPublicationTest {
     }
 
     @Test
-    void recipeSync_malformedCurrencyRequirementQuarantinesTheWholeRecipeAndValidOnePublishes() throws Exception {
+    void recipeSync_malformedTypedOrLegacyRequirementQuarantinesTheWholeRecipeAndValidOnePublishes() throws Exception {
         String[] bad = {
                 "{\"type\":\"Currency\",\"count\":30}",
                 "{\"type\":\"Currency\",\"id\":61}",
@@ -458,7 +459,21 @@ class SyncFetchPublicationTest {
                 "{\"type\":null,\"id\":61,\"count\":30}",
                 "null",
                 "7",
-                "{\"id\":61,\"count\":30}"};
+                "{\"id\":61,\"count\":30}",
+                "{\"item_id\":0,\"count\":1}",
+                "{\"item_id\":-1,\"count\":1}",
+                "{\"item_id\":null,\"count\":1}",
+                "{\"item_id\":1.5,\"count\":1}",
+                "{\"item_id\":3000000000,\"count\":1}",
+                "{\"item_id\":11,\"count\":0}",
+                "{\"item_id\":11,\"count\":-1}",
+                "{\"item_id\":11,\"count\":null}",
+                "{\"item_id\":11,\"count\":1.5}",
+                "{\"item_id\":11,\"count\":\"1\"}",
+                "{\"item_id\":11,\"count\":3000000000}",
+                "{\"item_id\":\"11\",\"count\":1}",
+                "{\"item_id\":10,\"count\":2}", // duplicates typed Item 10 already in this recipe
+                "{\"item_id\":11,\"count\":1},{\"item_id\":11,\"count\":2}"};
         StringBuilder body = new StringBuilder("[").append(currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":30}"));
         StringBuilder ids = new StringBuilder("[1");
         for (int i = 0; i < bad.length; i++) {
@@ -479,7 +494,9 @@ class SyncFetchPublicationTest {
         assertEquals("1", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=1 AND ref_id=61 AND count=30"));
         assertEquals("0", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id>=100"));
         assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id>=100"));
-        assertEquals(String.valueOf(bad.length), scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("0", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"),
+                "transient malformed details are not recorded as a completed skipped catalog");
     }
 
     @Test
@@ -509,7 +526,8 @@ class SyncFetchPublicationTest {
         assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
 
         assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"), "malformed collections never publish or clear to free");
-        assertEquals(String.valueOf(tails.length), scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("0", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
     }
 
     @Test
@@ -531,7 +549,73 @@ class SyncFetchPublicationTest {
                 "omitted/unparseable ids never remain as requirement-free recipes");
         assertEquals("0", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=300"));
         assertEquals("1", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=1 AND ref_id=61"));
-        assertEquals("2", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("0", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+
+        RecipeSync.fetcher = url -> {
+            urls.add(url);
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1,2,300]");
+            return json("[" + currencyRecipe(1, null) + "," + currencyRecipe(2, null) + ","
+                    + currencyRecipe(300, "{\"type\":\"Currency\",\"id\":61,\"count\":60}") + "]");
+        };
+        ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "same IDs retry omitted/unparseable details");
+        assertEquals("1,2,300", scalar("SELECT string_agg(recipe_id::text, ',' ORDER BY recipe_id) FROM recipes"));
+        assertEquals("60", scalar("SELECT count FROM recipe_non_item_requirements WHERE recipe_id=300 AND ref_id=61"));
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        urls.clear();
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe(), "a corrected complete publication uses the fast path again");
+        assertEquals(List.of(RecipeSync.CATALOG_URL), urls);
+    }
+
+    @Test
+    void recipeSync_malformedDetailsAreRetriedWithUnchangedCatalogIds() throws Exception {
+        RecipeSync.fetcher = url -> url.equals(RecipeSync.CATALOG_URL) ? json("[1]")
+                : json("[" + currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":0}") + "]");
+        ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+
+        RecipeSync.fetcher = url -> url.equals(RecipeSync.CATALOG_URL) ? json("[1]")
+                : json("[" + currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":30}") + "]");
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("30", scalar("SELECT count FROM recipe_non_item_requirements WHERE recipe_id=1 AND ref_id=61"));
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe());
+    }
+
+    @Test
+    void completedPublicationInvalidatesModernDiskGraphEvenWhenRowCountsStayEqual() throws Exception {
+        java.nio.file.Path file = java.nio.file.Files.createTempFile("gw2-publication-graph", ".json");
+        java.nio.file.Files.delete(file);
+        String prior = System.getProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY);
+        System.setProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY, file.toString());
+        try {
+            RecipeSync.fetcher = url -> url.equals(RecipeSync.CATALOG_URL) ? json("[1]")
+                    : json("[" + currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":30}") + "]");
+            ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+            RecipeSync.syncAllRecipesFull(api.TaskDeadline.NONE);
+            var recipes = new repo.RecipeRepository();
+            var items = new repo.ItemRepository();
+            var before = new repo.CraftingGraphCache(recipes, items).rebuild();
+            String firstPublication = recipes.publicationKey();
+            assertEquals(List.of(new craft.CurrencyRequirement(61, 30)), before.getRecipes().get(0).currencies);
+
+            RecipeSync.fetcher = url -> url.equals(RecipeSync.CATALOG_URL) ? json("[1]")
+                    : json("[" + currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":60}") + "]");
+            RecipeSync.syncAllRecipesFull(api.TaskDeadline.NONE);
+
+            assertEquals(1, recipes.countRecipes());
+            assertEquals(1, recipes.countRecipeIngredients());
+            assertEquals(1, recipes.countRecipeCurrencyRequirements());
+            assertFalse(firstPublication.equals(recipes.publicationKey()));
+            assertEquals(List.of(new craft.CurrencyRequirement(61, 60)),
+                    new repo.CraftingGraphCache(recipes, items).load().getRecipes().get(0).currencies);
+        } finally {
+            if (prior == null) System.clearProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY);
+            else System.setProperty(repo.CraftingGraphCache.TEST_CACHE_FILE_PROPERTY, prior);
+            java.nio.file.Files.deleteIfExists(file);
+        }
     }
 
     @Test

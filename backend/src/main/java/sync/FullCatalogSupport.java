@@ -90,21 +90,14 @@ public final class FullCatalogSupport {
     }
 
     /**
-     * Strict typed ingredient boundary shared by the full refresh and the scheduled safe sync. Pinned schema
+     * Strict ingredient boundary shared by the full refresh and the scheduled safe sync. Pinned schema
      * {type: Item|Currency, id, count}; legacy {item_id, count} stays valid. Identity is the (kind, id) pair, so an
      * Item and a Currency with equal numbers never collide and an unsupported kind is rejected, not dropped.
      */
     static boolean validIngredients(JsonNode ing) {
-        return validIngredients(ing, false);
-    }
-
-    private static boolean validIngredients(JsonNode ing, boolean typedOnly) {
         if (!ing.isArray()) return false;
         Set<String> identities = new HashSet<>();
         for (JsonNode i : ing) {
-            // Only a genuine legacy {item_id,count} object (no "type" member) keeps the safe path's tolerance;
-            // null, non-object, null-typed and other untyped shapes are validated (and so quarantined).
-            if (typedOnly && i.isObject() && !i.has("type") && i.has("item_id")) continue;
             String kind;
             String idField;
             if (i.isObject() && i.has("type")) {
@@ -122,15 +115,14 @@ public final class FullCatalogSupport {
     }
 
     /**
-     * Safe-sync guard: throws when any typed (Item/Currency/...) ingredient of the recipe is malformed so the whole
-     * recipe is quarantined and never published without a dropped requirement. Untyped legacy entries keep the
-     * safe path's historical tolerance.
+     * Safe-sync guard: malformed typed or legacy ingredients quarantine the whole recipe rather than
+     * dropping a requirement. Valid legacy item_id/count records remain supported.
      */
     public static void requireIngredients(JsonNode recipe) {
         JsonNode ing = recipe.get("ingredients");
         // A missing, null or non-array collection is malformed (supported details always carry an array); only an
         // explicit [] is a valid, distinct "no requirements" value.
-        if (ing == null || !ing.isArray() || !validIngredients(ing, true))
+        if (ing == null || !validIngredients(ing))
             throw new IllegalStateException("recipes detail batch contains a malformed record");
     }
 

@@ -342,6 +342,20 @@ public class RecipeRepository {
         return ids;
     }
 
+    /** Existing publication marker identifies content changes even when all recipe row counts stay equal. */
+    public String publicationKey() throws SQLException {
+        try (Connection con = Db.open()) {
+            return publicationKey(con);
+        }
+    }
+
+    public String publicationKey(Connection con) throws SQLException {
+        try (var ps = con.prepareStatement("SELECT complete, updated_at FROM recipe_catalog_publication WHERE singleton = TRUE");
+             var rs = ps.executeQuery()) {
+            return rs.next() ? rs.getBoolean(1) + ":" + rs.getTimestamp(2).toInstant() : "unpublished";
+        }
+    }
+
     public int countRecipes() throws SQLException {
         String sql = "SELECT COUNT(*) FROM recipes";
         try (Connection conn = repo.Db.open();

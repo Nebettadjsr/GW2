@@ -35,6 +35,7 @@ class CraftingGraphCacheSearchTest {
             @Override public int countRecipes() { return recipes.size(); }
             @Override public int countRecipeIngredients() { return 1; }
             @Override public int countRecipeCurrencyRequirements() { return 0; }
+            @Override public String publicationKey() { return "test-publication"; }
         };
         ItemRepository itemRepo = new ItemRepository() {
             @Override public Map<Integer, ItemInfo> loadItems(java.util.Set<Integer> ids) {
@@ -63,6 +64,7 @@ class CraftingGraphCacheSearchTest {
             @Override public int countRecipes() { return dbRecipes.size(); }
             @Override public int countRecipeIngredients() { return 1; }
             @Override public int countRecipeCurrencyRequirements() { return 1; }
+            @Override public String publicationKey() { return "test-publication"; }
         };
         ItemRepository itemRepo = new ItemRepository() {
             @Override public Map<Integer, ItemInfo> loadItems(java.util.Set<Integer> ids) {
@@ -88,7 +90,7 @@ class CraftingGraphCacheSearchTest {
 
         assertEquals(List.of(new craft.CurrencyRequirement(61, 30)), graph.getRecipes().get(0).currencies);
         // The rewritten file is now the current schema and is read back with its currency requirement.
-        CraftingGraph reread = cacheOver(file, List.of()).load();
+        CraftingGraph reread = cacheOver(file, List.of(withNotes)).load();
         assertEquals(List.of(new craft.CurrencyRequirement(61, 30)), reread.getRecipes().get(0).currencies);
         Files.deleteIfExists(file);
     }
@@ -99,8 +101,8 @@ class CraftingGraphCacheSearchTest {
         Files.delete(file);
         Recipe plain = recipe(1, 20, 10);
         cacheOver(file, List.of(plain)).rebuild();
-        // A fresh cache instance over an empty database must trust the valid current-schema file.
-        CraftingGraph graph = cacheOver(file, List.of()).load();
+        // A fresh cache instance may reuse a current-schema file from the same source publication.
+        CraftingGraph graph = cacheOver(file, List.of(plain)).load();
         assertEquals(1, graph.getRecipes().size());
         assertEquals(List.of(), graph.getRecipes().get(0).currencies);
         Files.deleteIfExists(file);

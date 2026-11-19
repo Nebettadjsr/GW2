@@ -15,13 +15,13 @@ the retired capacity programme. Select any improvement through a bounded approve
 
 Evidence: `application/ScopedAccountRefreshCoordinator.java`, `application/AccountRefreshService.java`, `application/ProfitInputSession.java`, `sync/AccountSync.java` and `repo/AccountSourcePublication.java`. Existing single-writer and repeatable-read tests verify those protections; they do not prove a coherent upstream instant.
 
-## KP-16 File graph cache validation and corruption recovery
+## KP-16 File graph cache corruption recovery
 
-**Observed:** `repo.CraftingGraphCache.load()` reuses its in-memory graph, and otherwise reads an existing file without validating the stored source key or age. Invalid JSON is not automatically rebuilt. Rebuilds are synchronized and written through a temporary file with atomic replacement where supported. Snapshot-bound Profit reads use `loadForSnapshot(connection)` and bypass this file.
+**Observed:** `repo.CraftingGraphCache.load()` reuses its in-memory graph until invalidation. Cold disk loads validate schema, row counts and the recipe publication marker, including same-count currency changes. Invalid JSON is not automatically rebuilt. Rebuilds are synchronized and written through a temporary file with atomic replacement where supported. Snapshot-bound Profit reads use `loadForSnapshot(connection)` and bypass this file.
 
-**Risk:** consumers of the shared file can repeatedly fail on corrupt derived data or retain a graph from a different source until invalidation/rebuild. This is not a claim that every Profit request reparses that file.
+**Risk:** consumers of the shared file can repeatedly fail on corrupt derived data. This is not a claim that every Profit request reparses that file.
 
-**Follow-up:** validate source identity and recover by rebuilding disposable derived data. Preserve synchronized publication and the existing pinned-snapshot path.
+**Follow-up:** recover from corrupt files by rebuilding disposable derived data. Preserve source validation, synchronized publication and the existing pinned-snapshot path.
 
 Evidence: `repo/CraftingGraphCache.java`, especially `load`, `loadForSnapshot`, `rebuild` and `invalidate`.
 
