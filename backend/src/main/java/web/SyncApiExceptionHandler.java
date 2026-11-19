@@ -33,6 +33,7 @@ import java.util.logging.Logger;
         AccountSyncApiController.class,
         GlobalSyncApiController.class,
         FullCatalogAdminApiController.class,
+        ApiCompatibilityApiController.class,
         PriceRefreshApiController.class,
         SyncTaskApiController.class})
 public class SyncApiExceptionHandler {

@@ -218,6 +218,12 @@ public class Gw2ApiApplication {
         return new application.FullCatalogAdministrationService(graphCache);
     }
 
+    /** Owner API compatibility check (STORY-OPS-008); calls ArenaNet only when an owner starts a check. */
+    @Bean
+    public application.ApiCompatibilityService apiCompatibilityService(BackgroundTaskService tasks) {
+        return new application.ApiCompatibilityService(tasks, api.ApiCompatibilityChecker::live, java.time.Clock.systemUTC());
+    }
+
     /**
      * The Trading Post price-refresh use case (STORY-API-005), shared for the same reason as the two
      * above: it keeps no per-call state, holding only its {@code sync.TradingPostPriceRefreshGateway}

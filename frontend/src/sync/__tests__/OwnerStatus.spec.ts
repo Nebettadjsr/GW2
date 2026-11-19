@@ -30,6 +30,10 @@ beforeEach(() => {
   connection.phase = 'connected'
   connection.generation = 1
   vi.spyOn(systemApi, 'readStatus').mockResolvedValue({ globalHealth: 'OK', priceHealth: 'RUNNING' })
+  vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValue({
+    stale: false,
+    result: { state: 'NOT_CHECKED', checkedAt: null, durationMs: 0, overall: null, recipeProfile: null, versions: [], newerVersions: [], probes: [] }
+  })
 })
 afterEach(() => {
   connection.phase = 'disconnected'
@@ -61,6 +65,9 @@ describe('System Status owner projection', () => {
     expect(wrapper.find('[data-test="price-cache-health"]').text()).toBe('Running')
     expect(has(wrapper, 'sync-trigger-ACCOUNT_SYNC')).toBe(true)
     expect(has(wrapper, 'owner-admin')).toBe(false)
+    expect(has(wrapper, 'api-compat')).toBe(false)
+    expect(has(wrapper, 'api-compat-check')).toBe(false)
+    expect(systemApi.readApiCompatibility).not.toHaveBeenCalled()
     OWNER_TRIGGERS.forEach((key) => expect(has(wrapper, `sync-trigger-${key}`)).toBe(false))
     expect(has(wrapper, 'owner-status-unavailable')).toBe(false)
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
@@ -78,6 +85,7 @@ describe('System Status owner projection', () => {
     pending.resolve(DETAILS)
     await settle()
     expect(has(wrapper, 'owner-admin')).toBe(true)
+    expect(has(wrapper, 'api-compat-check')).toBe(true)
     OWNER_TRIGGERS.forEach((key) => expect(has(wrapper, `sync-trigger-${key}`)).toBe(true))
     expect(wrapper.find('[data-test="global-last-failure"]').text()).toBe('upstream 503')
     wrapper.unmount()

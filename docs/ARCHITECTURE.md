@@ -197,6 +197,15 @@ GUID. Blank grants nobody; malformed values fail startup. Detailed system/catalo
 global mutations and their task observations are authorized on the backend before accessing
 privileged data. Generic health contains no hidden owner payload.
 
+`GET /api/system/api-compatibility` (cached result only) and `POST /api/system/api-compatibility/check`
+are owner-authorized before any read or work; the POST also requires a same Origin and is admitted
+once at a time through the administrative task executor (a duplicate is 409). The checker
+(`api.ApiCompatibilityChecker`) makes at most seven fixed public ArenaNet requests under a two-minute
+bound, compares consumed fields/types and the real `RecipeParser`, reads `/v2.json?v=latest` against
+an explicit reviewed version baseline, and classifies probes OK/ATTENTION/UNAVAILABLE/MISMATCH. Only the
+latest result lives in process memory (not-checked after restart; stale after 24 hours); no scheduler,
+history, account endpoint, mutation or automatic API-version migration exists.
+
 `DELETE /api/account/data` takes the process-local per-GUID lifecycle gate, refuses unfinished
 refresh work, drains admitted requests and deletes that registry row transactionally under the
 account writer lock. Cascades remove account rows, not shared game metadata. Only after commit
