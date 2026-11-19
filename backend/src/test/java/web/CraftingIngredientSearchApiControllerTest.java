@@ -60,11 +60,35 @@ class CraftingIngredientSearchApiControllerTest {
         }
     }
 
+    @Test
+    void forgeRecipesJoinIngredientAndParentSearchWithStableNegativeIdsOverHttp() throws Exception {
+        CraftingGraph graph = new CraftingGraph(List.of(recipe(2, 200, 100), recipe(9, 300, 200)),
+                Map.of(100, "Cabbage", 200, "Intermediate", 300, "Finished", 700, "Forge Output", 800, "Forge Parent"));
+        Recipe forge = Recipe.forgeWithExpectedYield(-3105801, 700, new craft.ExpectedYield(
+                new java.math.BigDecimal("2.5"), 1, 4), List.of(new Ingredient(200, 3)));
+        Recipe forgeParent = new Recipe(-3105802, 800, 1, 0, "", List.of(new Ingredient(700, 1)), List.of(),
+                craft.RecipeSource.MYSTIC_FORGE);
+        CraftingGraphCache cache = new CraftingGraphCache(new RecipeRepository()) {
+            @Override public CraftingGraph load() { return graph; }
+        };
+        MockMvc forgeMvc = MockMvcBuilders.standaloneSetup(
+                        new CraftingIngredientSearchApiController(cache, () -> List.of(forge, forgeParent)))
+                .defaultRequest(AuthorizedRequests.defaultRequest()).build();
+
+        // Cabbage -> ordinary 2 -> Intermediate -> ordinary 9 and Forge -3105801 -> Forge Output -> Forge parent -3105802.
+        forgeMvc.perform(get("/api/crafting/ingredient-search").param("query", "cabbage"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"recipeIds\":[-3105802,-3105801,2,9]}", true));
+        // Without the Forge catalog the ordinary result is unchanged.
+        mvc(graph).perform(get("/api/crafting/ingredient-search").param("query", "cabbage"))
+                .andExpect(content().json("{\"recipeIds\":[2,9]}", true));
+    }
+
     private static MockMvc mvc(CraftingGraph graph) {
         CraftingGraphCache cache = new CraftingGraphCache(new RecipeRepository()) {
             @Override public CraftingGraph load() { return graph; }
         };
-        return MockMvcBuilders.standaloneSetup(new CraftingIngredientSearchApiController(cache))
+        return MockMvcBuilders.standaloneSetup(new CraftingIngredientSearchApiController(cache, List::of))
                 .defaultRequest(AuthorizedRequests.defaultRequest()).build();
     }
 

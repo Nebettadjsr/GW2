@@ -218,7 +218,27 @@ final class CraftingResolutionMapper {
                 node.currencies().stream().map(q -> new ResolutionNodeDto.CurrencyQuantityDto(
                         q.currencyId(), CraftingRowMapper.currencyName(q.currencyId()), q.quantity(), q.fromWallet(),
                         q.fromProduced(), q.crafted(), q.missing(), q.walletBalance(),
-                        CurrencyIcons.urlFor(q.currencyId()))).toList());
+                        CurrencyIcons.urlFor(q.currencyId()))).toList(),
+                forgeStep(node));
+    }
+
+    private static final Map<Integer, craft.Recipe> FORGE_RECIPES_BY_ID = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Forge recipe ids are the catalog's stable negatives; an ordinary or absent recipe has no Forge step. */
+    private static ResolutionNodeDto.ForgeStepDto forgeStep(CraftTraceNode node) {
+        Integer id = node.recipeId();
+        if (id == null || id >= 0) return null;
+        if (FORGE_RECIPES_BY_ID.isEmpty()) {
+            parser.MysticForgeCatalogLoader.bundled().recipes().forEach(r -> FORGE_RECIPES_BY_ID.put(r.recipeId, r));
+        }
+        craft.Recipe recipe = FORGE_RECIPES_BY_ID.get(id);
+        if (recipe == null) return null;
+        craft.ExpectedYield y = recipe.expectedYield;
+        if (y == null) return new ResolutionNodeDto.ForgeStepDto("MYSTIC_FORGE", null, null, null, null,
+                node.producedQuantity());
+        return new ResolutionNodeDto.ForgeStepDto("MYSTIC_FORGE", y.mean().toPlainString(), y.min(), y.max(),
+                y.mean().multiply(java.math.BigDecimal.valueOf(node.craftCount())).toPlainString(),
+                node.producedQuantity());
     }
 
     /** Display projection only: whole-copper HALF_UP average of the node total; null if undefined. */

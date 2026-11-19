@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { CraftingRow } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper, formatCount, formatSignedCopper, moneyTone } from './formatCopper'
-import { recipeLabel } from './recipeLabel'
+import { isForgeRow, recipeLabel, sourceLabel } from './recipeLabel'
 import type { SortDirection, SortKey } from './useProfitTableView'
 
 /**
@@ -42,7 +42,9 @@ const displayRows = computed(() =>
     outputItemId: row.outputItemId,
     iconUrl: row.iconUrl,
     name: recipeLabel(row),
-    disciplines: row.disciplines,
+    disciplines: sourceLabel(row),
+    forge: isForgeRow(row),
+    estimated: row.expectedYield?.estimated === true,
     craftable: formatCount(row.craftableCount),
     ownMaterials: formatCopper(row.matsSellValueCopper),
     unvalued: row.unvaluedOwnedInput === true,
@@ -167,7 +169,14 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
             <ItemIcon :icon-url="row.iconUrl" :item-id="row.outputItemId" loading="lazy" />
             <span class="recipe-text">
               <span class="recipe-name">{{ row.name }}</span>
-              <span class="recipe-ids">recipe {{ row.recipeId }}</span>
+              <span v-if="row.forge" class="recipe-ids" data-test="forge-source">Mystic Forge</span>
+              <span v-else class="recipe-ids">recipe {{ row.recipeId }}</span>
+              <span
+                v-if="row.estimated"
+                class="estimated-hint"
+                data-test="estimated-hint"
+                title="Estimated: variable Mystic Forge output; profit uses the expected yield."
+              >≈ est.</span>
             </span>
             <span v-if="row.recipeId === selectedRecipeId" class="visually-hidden">Selected</span>
           </button>
@@ -315,6 +324,12 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
 
 .recipe-name {
   font-weight: 600;
+}
+
+.estimated-hint {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  margin-left: 0.25rem;
 }
 
 .recipe-ids {

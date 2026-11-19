@@ -34,3 +34,30 @@ export function wikiUrl(itemName: string | null): string | null {
   if (name === '') return null
   return `${WIKI_ARTICLE_BASE}${encodeURIComponent(name)}`
 }
+
+/** Whether the backend marked this row's recipe as a Mystic Forge recipe (its ids are negative, not game ids). */
+export function isForgeRow(row: CraftingRow): boolean {
+  return row.expectedYield?.source === 'MYSTIC_FORGE'
+}
+
+/** Source text: "Mystic Forge" instead of a blank discipline for Forge rows; normal labels unchanged. */
+export function sourceLabel(row: CraftingRow): string {
+  return isForgeRow(row) ? 'Mystic Forge' : row.disciplines
+}
+
+/** Concise, backend-only explanation of a variable/estimated result, or null for exact rows. */
+export function yieldSummary(row: CraftingRow): string | null {
+  const y = row.expectedYield
+  if (y === null || y === undefined) return null
+  const parts: string[] = []
+  if (y.expectedOutputPerCraft !== null) {
+    const range = y.minOutput !== null && y.maxOutput !== null ? ` (min ${y.minOutput}, max ${y.maxOutput})` : ''
+    parts.push(`expected ${y.expectedOutputPerCraft} per craft${range}`)
+  }
+  if (y.expectedSellableUnitsTotal !== null) {
+    const guaranteed = y.guaranteedSellableUnitsTotal !== null ? `, guaranteed ${y.guaranteedSellableUnitsTotal}` : ''
+    parts.push(`expected ${y.expectedSellableUnitsTotal} total${guaranteed}`)
+  }
+  if (parts.length === 0 && y.estimated) parts.push('uses a Mystic Forge step with a variable output')
+  return parts.length === 0 ? null : parts.join(' · ')
+}

@@ -17,7 +17,7 @@ import {
   NO_VALUE
 } from './formatCopper'
 import { keepTargetNote, RESOLUTION_SETTINGS_KEY } from './resolutionPresentation'
-import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
+import { isForgeRow, materialLabel, recipeLabel, wikiUrl, yieldSummary } from './recipeLabel'
 import { formatStackQuantity } from './formatStackQuantity'
 import type { SelectionHiddenReason } from './useProfitTableView'
 import type { ResolutionPhase } from './useResolutionDetail'
@@ -147,7 +147,12 @@ function materialQuoteText(item: MissingItem): string {
         </div>
 
         <p class="meta" data-test="detail-identity">
-          {{ row.disciplines }} · minimum rating {{ row.minRating }}
+          <template v-if="isForgeRow(row)">Mystic Forge</template>
+          <template v-else>{{ row.disciplines }} · minimum rating {{ row.minRating }}</template>
+        </p>
+
+        <p v-if="yieldSummary(row) !== null" class="meta" data-test="detail-yield">
+          ≈ Estimated: {{ yieldSummary(row) }}. Only the guaranteed minimum counts as stock.
         </p>
 
         <p v-if="wikiHref !== null" class="meta">

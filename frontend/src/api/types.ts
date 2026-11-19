@@ -79,6 +79,24 @@ export interface CraftingRow {
   unvaluedOwnedInput?: boolean
   /** Exact unpriced currency spending; absent/null for item-only recipes. */
   currencyCosts?: CurrencyCosts | null
+  /** Mystic Forge source / estimated-economics metadata; absent for ordinary rows. Backend values only. */
+  expectedYield?: ExpectedYield | null
+}
+
+/**
+ * Backend-computed Forge hint. `expectedOutputPerCraft` is an exact decimal mean (string); `minOutput` is the
+ * only guaranteed quantity and min/max are bounds, not a mean. `estimated` also marks a parent whose route merely
+ * uses such a step. Never recompute or scale these on the client.
+ */
+export interface ExpectedYield {
+  source: string | null
+  estimated: boolean
+  expectedOutputPerCraft: string | null
+  minOutput: number | null
+  maxOutput: number | null
+  expectedSellableUnitsTotal: string | null
+  guaranteedSellableUnitsTotal: number | null
+  reusedSeedUnits: number
 }
 
 export interface CurrencyCost {
@@ -345,6 +363,15 @@ export interface ResolutionNode {
    * Currency ids are not item ids. Absent or empty for item-only requirements.
    */
   currencies?: ResolutionCurrency[]
+  /** Present only when the selected recipe is a Mystic Forge recipe; quantities above stay the guaranteed minimum. */
+  forgeStep?: {
+    source: string
+    expectedOutputPerCraft: string | null
+    minOutput: number | null
+    maxOutput: number | null
+    expectedProducedTotal: string | null
+    guaranteedProducedTotal: number
+  } | null
 }
 
 export interface ResolutionCurrency {
