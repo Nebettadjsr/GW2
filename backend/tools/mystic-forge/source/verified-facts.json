@@ -1,0 +1,31 @@
+{
+  "source": "https://wiki.guildwars2.com/wiki/Mystic_Forge/Material_Promotion",
+  "revision": 3203734,
+  "checkedDate": "2026-11-19",
+  "license": "GW2 Wiki contributors, GFDL 1.3; game data remains ArenaNet's",
+  "promotionMeans": {
+    "commonLowerTiers": "86.34",
+    "commonTierFiveToSix": "18.92",
+    "fineLowerTiers": "18.51",
+    "fineTierFiveToSix": "6.91"
+  },
+  "meanScope": "Apply only to the respective verified category and tier. No dust, clover or generic-random mean is inferred from these values.",
+  "vendors": [
+    { "itemId": 20796, "name": "Philosopher's Stone", "quantity": 10, "currencyId": 23, "currencyUnits": 1, "source": "https://wiki.guildwars2.com/wiki/Philosopher%27s_Stone" },
+    { "itemId": 20799, "name": "Mystic Crystal", "quantity": 5, "currencyId": 23, "currencyUnits": 3, "source": "https://wiki.guildwars2.com/wiki/Mystic_Crystal" },
+    { "itemId": 20852, "name": "Eldritch Scroll", "quantity": 1, "currencyId": 23, "currencyUnits": 50, "source": "https://wiki.guildwars2.com/wiki/Eldritch_Scroll" },
+    { "itemId": 19663, "name": "Bottle of Elonian Wine", "quantity": 1, "copper": 2504, "source": "https://wiki.guildwars2.com/wiki/Bottle_of_Elonian_Wine" }
+  ],
+  "currency": { "id": 23, "name": "Spirit Shard", "source": "https://api.guildwars2.com/v2/currencies/23" },
+  "capture": {
+    "recipeRows": 2569,
+    "canonicalShapeRows": 2122,
+    "canonicalRowsWithMissingIngredientId": 13,
+    "parentPages": 1859,
+    "parentsWithRecipeTemplates": 1817,
+    "parentsWithoutRandomMentions": 1666,
+    "rawRecipesSha256": "aa6878280db245625110d2b19df80598dc194b65c20449a7e0bbedadb65cb807",
+    "pageTemplatesSha256": "6e6d81f63b86e53adf72a743a4c30503b5cfa6b75778a7c9a2bbda3ee2332797"
+  },
+  "proofSemantics": "Template text contains only Recipe facts extracted from comment-stripped source with balanced template capture; randomMentioned is a conservative page-wide review signal, not a yield classifier. Match source templates to SMW slots/quantities; unknown or ambiguous matches stay unsupported. Empty source fields, duplicate slot indices or nonpositive ingredient IDs are not valid facts."
+}
