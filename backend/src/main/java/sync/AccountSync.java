@@ -161,7 +161,7 @@ public final class AccountSync {
         Map<Integer, Long> out = new java.util.LinkedHashMap<>();
         for (JsonNode e : root) {
             if (!e.isObject() || !e.path("id").isInt() || e.path("id").asInt() <= 0
-                    || !e.path("value").canConvertToLong() || e.path("value").asLong() < 0
+                    || !e.path("value").isIntegralNumber() || !e.path("value").canConvertToLong() || e.path("value").asLong() < 0
                     || out.put(e.get("id").asInt(), e.get("value").asLong()) != null) {
                 throw new RuntimeException("Unexpected JSON (wallet): malformed entry; nothing published");
             }
