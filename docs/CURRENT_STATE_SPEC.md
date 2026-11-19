@@ -2,7 +2,7 @@
 
 ## Purpose and authority
 
-Source/runtime summary reconciled on 2026-11-17. [DOMAIN_SPEC](DOMAIN_SPEC.md) owns product
+Source/runtime summary; deployment facts last checked on 2026-11-19. [DOMAIN_SPEC](DOMAIN_SPEC.md) owns product
 rules and [ARCHITECTURE](ARCHITECTURE.md) owns boundaries and selected constraints.
 The owner and approved GitHub issues determine priorities; PRs/CI hold execution evidence.
 A source description or past deployment check does not certify every feature or future release.
@@ -42,10 +42,10 @@ Both Compose files explicitly forward it. Restart the backend after changing own
 
 ## Public Oracle deployment
 
-The live application is **`a2490cda6f988b0769468fe4dcf80359d4678fef`**, published after the
-owner's approval in the visible Oracle terminal on 2026-11-16 from
-[#236](https://github.com/Nebettadjsr/GW2/pull/236). Its tree exactly matches reviewed/CI
-candidate `61a10cfa1686f7763696c9a725cf809a0792644c`.
+The live application is **`d086ea59cc4677f2e7652d2f960fb3076481b356`**, published with the
+owner's approval in the visible Oracle terminal on 2026-11-19. Its tree exactly matches
+reviewed/CI candidate `d313b7524ab24e15c29888cb51bf158edcdb3307` from
+[#369](https://github.com/Nebettadjsr/GW2/pull/369).
 Later documentation-only changes do not imply another application deployment.
 
 | Runtime fact | Last verified deployment |
@@ -55,7 +55,7 @@ Later documentation-only changes do not imply another application deployment.
 | Address | `130.61.78.114` |
 | Stack | Docker 29.9.3 / Compose 5.7.1; frontend/backend/PostgreSQL 17. |
 | Published port | Frontend `127.0.0.1:8088`; backend and DB publish none. |
-| Active release | `/opt/gw2/current` → `/opt/gw2/releases/a2490cda6f988b0769468fe4dcf80359d4678fef` |
+| Active release | `/opt/gw2/current` → `/opt/gw2/releases/d086ea59cc4677f2e7652d2f960fb3076481b356` |
 | Update effect | Backend/frontend replaced and healthy; PostgreSQL container unchanged. |
 
 ### Required host configuration
