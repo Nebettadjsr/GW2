@@ -77,6 +77,52 @@ class CurrencyCostRowMappingTest {
         assertEquals(1, c.costs().size());
         assertEquals(0, c.costs().get(0).perCraft());
         assertEquals(30 * (r.craftableCount - 1), c.costs().get(0).total());
+        assertEquals(List.of(61), c.unpricedCurrencyIds(), "later nested consumption retains its exclusion identity");
+    }
+
+    private static CraftingRowDto mixedCurrencyRow(int walletNotes, boolean producerInputsOwned) {
+        Recipe mixed = new Recipe(13839, 97487, 1, 400, "Artificer", List.of(new Ingredient(97102, 4)),
+                List.of(new CurrencyRequirement(61, 30), new CurrencyRequirement(50, 1)));
+        Recipe producer = new Recipe(15120, 104934, 1, 0, "Artificer", List.of(new Ingredient(1001, 4)));
+        Map<Integer, PriceQuote> prices = Map.of(97487, new PriceQuote(100_000, 120_000),
+                97102, new PriceQuote(1, 2), 1001, new PriceQuote(100, 100));
+        Map<Integer, Integer> stock = producerInputsOwned ? Map.of(97102, 40, 1001, 4) : Map.of(97102, 40);
+        CraftResult result = new CraftingPlanner().withWallet(Map.of(61, walletNotes, 50, 1))
+                .evaluateAll(List.of(mixed, producer), stock, Map.of(), prices, OWN, Set.of(13839, 15120)).get(13839);
+        return CraftingRowMapper.toRow(mixed, result, Map.of(), prices, true);
+    }
+
+    @Test
+    void mixedCurrencyMarginNamesOnlyTheUnpricedCurrencyWhenWalletNotesAreEstimated() {
+        CraftingRowDto row = mixedCurrencyRow(30, false);
+        assertEquals(1, row.craftableCount());
+        assertEquals(List.of(50), row.currencyCosts().unpricedCurrencyIds());
+        assertTrue(row.currencyCosts().goldMarginIsConditional());
+        assertEquals(80, row.currencyCosts().estimate().totalCopper());
+        assertEquals(84_916, row.profitCopper(), "only the 4c material and 80c Note estimate are deducted from 85,000c");
+    }
+
+    @Test
+    void mixedCurrencyMarginDoesNotNameNotesAlreadyChargedByAProductionBatch() {
+        CraftingRowDto row = mixedCurrencyRow(0, true);
+        assertEquals(1, row.craftableCount());
+        assertEquals(List.of(50), row.currencyCosts().unpricedCurrencyIds());
+        assertTrue(row.currencyCosts().goldMarginIsConditional());
+        assertNull(row.currencyCosts().estimate(), "newly produced Notes get no second wallet estimate");
+        assertEquals(84_596, row.profitCopper(), "the full 400c production batch is charged once, plus 4c ordinary material");
+    }
+
+    @Test
+    void mixedHypotheticalMarginStillNamesTheUnpricedNoteRemainderDespiteAPartialEstimate() {
+        CraftingRowDto row = mixedCurrencyRow(10, false);
+        assertEquals(0, row.craftableCount());
+        assertTrue(row.currencyCosts().economicsFromHypotheticalCraft());
+        assertEquals(List.of(50, 61), row.currencyCosts().unpricedCurrencyIds());
+        assertTrue(row.currencyCosts().goldMarginIsConditional());
+        assertEquals(10, row.currencyCosts().estimate().perCraftNotes());
+        assertEquals(27, row.currencyCosts().estimate().perCraftCopper());
+        assertEquals(84_969, row.profitCopper());
+        assertEquals(0, row.totalProfitCopper(), "no hypothetical cost or profit becomes a real total");
     }
 
     /** Approved estimate: rows carry only the compact amounts; the selected detail adds both actual recipes. */

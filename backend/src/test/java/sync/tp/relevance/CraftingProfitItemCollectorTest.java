@@ -330,5 +330,16 @@ class CraftingProfitItemCollectorTest {
                     + "sell_unit_price, fetched_at) VALUES (54, 1, 100, 1, 200, now())");
         }
         assertNotEquals(before.quoteVersion(), collector.coverage(con, SCOPE).quoteVersion());
+        CraftingProfitItemCollector.Coverage priced = collector.coverage(con, SCOPE);
+        try (Statement statement = con.createStatement()) {
+            statement.execute("UPDATE tp_prices SET sell_unit_price = 201 WHERE item_id = 54");
+        }
+        CraftingProfitItemCollector.Coverage changed = collector.coverage(con, SCOPE);
+        assertEquals(priced.requiredItems(), changed.requiredItems());
+        assertEquals(priced.freshItems(), changed.freshItems());
+        assertEquals(priced.missingItems(), changed.missingItems());
+        assertEquals(priced.oldestFetchedAt(), changed.oldestFetchedAt());
+        assertEquals(priced.newestFetchedAt(), changed.newestFetchedAt());
+        assertNotEquals(priced.quoteVersion(), changed.quoteVersion(), "a valuation-only quote change alters the fingerprint");
     }
 }
