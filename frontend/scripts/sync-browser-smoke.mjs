@@ -1,14 +1,18 @@
 /**
- * Real-browser check for the synchronization area (STORY-WEB-002 semantics, STORY-WEB-004 structure).
+ * Real-browser check for System Status synchronization (task tracking and owner-only catalog refreshes).
  *
- * Runs the built frontend against a *controlled* API boundary: `scripts/stubOrigin.mjs` serves
- * `dist/` and this script answers the two admin trigger routes and the shared status route itself, with
- * scripted task lifecycles. Nothing real is synchronized — no GW2 API call, no database write and no
- * user data is touched — so this establishes browser interaction and task-state presentation, and
- * nothing about a real synchronization or about performance (TEST_STRATEGY / TARGET_ARCHITECTURE 33).
+ * Runs the built frontend against a *controlled* API boundary: `scripts/stubOrigin.mjs` serves `dist/`
+ * and this script answers the trigger, status and task routes itself, with scripted task lifecycles.
+ * The real App restores and proves a synthetic retained key through `controlledAccountSession.mjs`,
+ * which also blocks any off-origin request and rejects unexpected routes, methods and raw keys. Nothing
+ * real is synchronized: no GW2 API call, database write or user data is touched, so this establishes
+ * browser interaction and task-state presentation, and nothing about a real synchronization or about
+ * performance.
  *
- * The complementary `smoke:browser` check is the one that talks to the real backend; it covers the
- * read-only Crafting Profit path, where a live call mutates nothing.
+ * Current contracts covered: the account refresh (`POST /api/sync/account`) and one owner-only full
+ * catalog refresh (`POST /api/sync/full/recipes`) are tracked through the shared
+ * `/api/sync/tasks/<id>` route; owner capability is discovered only from `/api/system/status/details`
+ * (200 = owner controls, 403 = ordinary account with no owner control and no owner request).
  *
  * Usage:  npm run build && npm run smoke:sync
  * Environment:
@@ -21,6 +25,7 @@
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
+import { createControlledAccountSession } from './controlledAccountSession.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
 
@@ -28,18 +33,31 @@ const PORT = Number(process.env.GW2_SYNC_SMOKE_PORT ?? 5174)
 const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 30_000)
 const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
 
-/**
- * The state each operation's task reports, one entry per status lookup; the last entry repeats.
- */
+/** The state each operation's task reports, one entry per status lookup; the last entry repeats. */
 const TASK_SCRIPTS = {
   ACCOUNT_SYNC: ['PENDING', 'RUNNING', 'SUCCEEDED'],
-  GLOBAL_SYNC: ['PENDING', 'FAILED']
+  FULL_RECIPE_CATALOG: ['PENDING', 'FAILED']
 }
+const TRIGGERS = {
+  '/api/sync/account': { operation: 'ACCOUNT_SYNC', taskId: 'account-sync-1' },
+  '/api/sync/full/recipes': { operation: 'FULL_RECIPE_CATALOG', taskId: 'full-recipes-1' }
+}
+const TASK_PATHS = Object.values(TRIGGERS).map(({ taskId }) => `/api/sync/tasks/${taskId}`)
 
 const TASK_FAILURE = {
   error: 'SYNC_FAILED',
   message: 'Synchronization failed; steps that had already completed were not rolled back'
 }
+
+const session = createControlledAccountSession({
+  calculationRoutes: ['/api/crafting/profit', '/api/sync/full/recipes'],
+  keyedRoutes: ['/api/sync/account'],
+  searchQueries: [],
+  accountReadRoutes: [
+    '/api/system/status', '/api/system/status/details',
+    '/api/system/operations/summary', '/api/system/operations/periods', ...TASK_PATHS
+  ]
+})
 
 const steps = []
 
@@ -54,33 +72,24 @@ function check(condition, message) {
 
 /** taskId -> { operation, lookups } */
 const tasks = new Map()
+/** Phase switch: the owner-details discovery answers 200 first, then a non-owner 403. */
+let ownerDiscovery = 'owner'
 
-function sendJson(response, status, body) {
-  response.writeHead(status, { 'Content-Type': 'application/json' })
-  response.end(JSON.stringify(body))
-}
-
-function acceptTask(response, operation) {
-  const taskId = `${operation.toLowerCase()}-${tasks.size + 1}`
+function acceptTask(sendJson, response, { operation, taskId }) {
   tasks.set(taskId, { operation, lookups: 0 })
   const statusUrl = `/api/sync/tasks/${taskId}`
   response.setHeader('Location', statusUrl)
-  sendJson(response, 202, { taskId, operation, statusUrl })
+  sendJson(202, { taskId, operation, statusUrl })
 }
 
-function answerStatus(response, taskId) {
+function answerStatus(sendJson, taskId) {
   const task = tasks.get(taskId)
-  if (task === undefined) return sendJson(response, 404, { error: 'TASK_NOT_FOUND', message: `No task ${taskId}.` })
-
+  if (task === undefined) return sendJson(404, { error: 'TASK_NOT_FOUND', message: `No task ${taskId}.` })
   const script = TASK_SCRIPTS[task.operation]
-  if (script === null) {
-    return sendJson(response, 404, { error: 'TASK_NOT_FOUND', message: `No task ${taskId} is known.` })
-  }
-
   const state = script[Math.min(task.lookups, script.length - 1)]
   task.lookups += 1
   const isTerminal = state === 'SUCCEEDED' || state === 'FAILED'
-  sendJson(response, 200, {
+  sendJson(200, {
     taskId,
     operation: task.operation,
     state,
@@ -91,54 +100,51 @@ function answerStatus(response, taskId) {
   })
 }
 
-function answerApi({ request, response, url, body }) {
-  if (request.method === 'POST' && url.pathname === '/api/sync/account') return acceptTask(response, 'ACCOUNT_SYNC')
-  if (request.method === 'POST' && url.pathname === '/api/sync/global') return acceptTask(response, 'GLOBAL_SYNC')
-  if (request.method === 'GET' && url.pathname === '/api/system/status') return sendJson(response, 200, {
-    running: false,
-    lastCheckedAt: null,
-    lastChangedAt: null,
-    lastRecipeSyncAt: null,
-    lastGraphRebuildAt: null,
-    lastFailure: null,
-    accountLastRefreshedAt: null,
-    accountRefreshScope: null,
-    cachedPriceItems: 0,
-    stalePriceItems: 0,
-    newestPriceFetchedAt: null,
-    priceCacheError: null
-  })
-  if (request.method === 'GET' && url.pathname.startsWith('/api/sync/tasks/')) {
-    return answerStatus(response, url.pathname.slice('/api/sync/tasks/'.length))
+const OWNER_DETAILS = {
+  running: false, lastCheckedAt: null, lastChangedAt: null, lastRecipeSyncAt: null, lastGraphRebuildAt: null,
+  lastFailure: null, cachedPriceItems: 0, stalePriceItems: 0, newestPriceFetchedAt: null, priceCacheError: null,
+  items: null, recipes: null, tradingPostPrices: null,
+  accounts: { state: 'AVAILABLE', totalAccounts: 3, activeLast60Minutes: 1 }
+}
+
+const OWNER_ACTIVITY = {
+  generatedAt: '2026-09-25T10:00:00Z',
+  foregroundAccounts: { state: 'UNAVAILABLE', exactCount: null, lowerBound: null },
+  databaseSize: { state: 'UNAVAILABLE', bytes: null, measuredAt: null },
+  historyAvailable: false, retentionTruncated: false, minutes: [], latestMinute: null,
+  oracleConsole: { configured: false, url: null }
+}
+
+function answerApi(context) {
+  if (session.answer(context)) return
+  const { request, response, url, sendJson } = context
+  if (request.method === 'POST' && url.pathname in TRIGGERS) return acceptTask(sendJson, response, TRIGGERS[url.pathname])
+  if (url.pathname === '/api/system/status') {
+    return sendJson(200, { globalHealth: 'OK', priceHealth: 'NOT_RUN', accountLastRefreshedAt: null, accountRefreshScope: null })
   }
+  if (url.pathname === '/api/system/status/details') {
+    return ownerDiscovery === 'owner'
+      ? sendJson(200, OWNER_DETAILS)
+      : sendJson(403, { error: 'FORBIDDEN', message: 'Not an owner account.' })
+  }
+  if (url.pathname === '/api/system/operations/summary') return sendJson(200, OWNER_ACTIVITY)
+  if (url.pathname === '/api/system/operations/periods') return sendJson(200, { available: false, periods: [] })
+  if (url.pathname.startsWith('/api/sync/tasks/')) return answerStatus(sendJson, url.pathname.slice('/api/sync/tasks/'.length))
 
   // Crafting Profit is the area navigated to and back from below; it is answered so the check runs
   // on a page without unrelated errors. These two bodies are not what this check is about.
   if (url.pathname === '/api/crafting/selector-options') {
-    return sendJson(response, 200, {
-      defaultScopeKind: 'ALL',
-      disciplines: ['Chef'],
-      characterOptionCount: 0,
-      characterOptions: []
-    })
+    return sendJson(200, { defaultScopeKind: 'ALL', disciplines: ['Chef'], characterOptionCount: 0, characterOptions: [] })
   }
   if (url.pathname === '/api/crafting/profit') {
-    return sendJson(response, 200, {
+    return sendJson(200, {
       scope: { kind: 'ALL', discipline: null, characterName: null, rating: 0 },
-      settings: {
-        useOwnMats: true,
-        allowBuying: false,
-        maxBuyCopper: 10000,
-        listingSell: false,
-        listingBuy: false,
-        allowDailyCrafts: true,
-      },
+      settings: { useOwnMats: true, allowBuying: false, maxBuyCopper: 10000, listingSell: false, listingBuy: false, allowDailyCrafts: true },
       rowCount: 0,
       rows: []
     })
   }
-
-  sendJson(response, 404, { error: 'NOT_FOUND', message: url.pathname })
+  sendJson(404, { error: 'NOT_FOUND', message: url.pathname })
 }
 
 function stateSelector(operation) {
@@ -170,17 +176,13 @@ async function run() {
 
   const browser = await chromium.launch({ executablePath: browserPath })
   const page = await browser.newPage()
+  await session.install(page, stub.origin)
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(String(error)))
-  const browserCalls = []
-  page.on('response', (response) => browserCalls.push(new URL(response.url()).pathname))
 
   try {
     // Opened by its own URL, which is also the check that the synchronization area is addressable.
-    await page.goto(`${stub.origin}/#/synchronization`, {
-      waitUntil: 'networkidle',
-      timeout: TIMEOUT_MS
-    })
+    await page.goto(`${stub.origin}/#/synchronization`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
     // Proof the page came from this script's server. Without it, a foreign origin answering here
     // would be driven instead — and its trigger routes could start a real synchronization.
     check(
@@ -189,31 +191,36 @@ async function run() {
         'browser may have been pointed at a real backend — stop whatever else is listening there.'
     )
     await page.waitForSelector('[data-test="account-status"]', { timeout: TIMEOUT_MS })
-    check((await page.$('[data-test="price-cache-status"]')) !== null, 'The shared price-cache card was missing.')
+    await page.waitForSelector('[data-test="owner-admin"]', { timeout: TIMEOUT_MS })
     check((await page.$('[data-test="sync-trigger-PRICE_REFRESH_PROFIT"]')) === null, 'A Profit-only price refresh action remained.')
-    check((await page.$('[data-test="sync-trigger-PRICE_REFRESH_DISCOVERY"]')) === null, 'A Discovery-only price refresh action remained.')
+    check((await page.$('[data-test="sync-trigger-GLOBAL_SYNC"]')) === null, 'A retired global synchronization action remained.')
+    for (const key of ['FULL_ITEM_CATALOG', 'FULL_RECIPE_CATALOG', 'FULL_TP_CATALOG']) {
+      check((await page.$(`[data-test="sync-trigger-${key}"]`)) !== null, `Owner control ${key} was missing.`)
+    }
     check(
-      apiRequestsTo('/api/sync').length === 0 && apiRequestsTo('/api/prices').length === 0,
+      apiRequestsTo('/api/sync').filter((request) => request.method === 'POST').length === 0 &&
+        apiRequestsTo('/api/prices').length === 0,
       'Loading the page issued a synchronization request.'
     )
     check(
       (await page.title()) === 'System Status · GW2 Crafting Tool · Unofficial fan project',
       `The document title did not name the open area: ${await page.title()}`
     )
-    record('System Status opened with health cards and no price-refresh buttons')
+    record('System Status opened for an owner with the account card and the three catalog controls, nothing submitted')
 
-    for (const operation of ['ACCOUNT_SYNC', 'GLOBAL_SYNC']) {
+    for (const operation of ['ACCOUNT_SYNC', 'FULL_RECIPE_CATALOG']) {
       await page.click(`[data-test="sync-trigger-${operation}"]`)
     }
-    const disabled = await page.$eval('[data-test="sync-trigger-ACCOUNT_SYNC"]', (button) => button.disabled)
-    check(disabled, 'The account trigger stayed enabled while its task was unfinished.')
-    record('two useful admin actions submitted, each button disabled while unfinished')
+    // Submission is asynchronous; the button must become (and, below, stay) disabled while unfinished.
+    await page.waitForFunction(
+      () => document.querySelector('[data-test="sync-trigger-ACCOUNT_SYNC"]')?.disabled === true,
+      undefined, { timeout: TIMEOUT_MS }
+    ).catch(() => { throw new Error('The account trigger stayed enabled while its task was unfinished.') })
+    record('account and owner recipe refresh submitted, the account button disabled while unfinished')
 
     // While the account task is still unfinished: leaving the area and returning must keep it.
     await page.click('[data-test="nav-crafting"]')
-    await page.waitForSelector('[data-test="profit-table"], [data-test="empty"]', {
-      timeout: TIMEOUT_MS
-    })
+    await page.waitForSelector('[data-test="profit-table"], [data-test="empty"], [data-test="calculate"]', { timeout: TIMEOUT_MS })
     check(
       (await page.$('[data-test="account-status"]')) === null,
       'The System Status cards are still on the Crafting Profit page.'
@@ -229,23 +236,23 @@ async function run() {
     )
     const trackedAfterReturn = await textOf(page, '[data-test="sync-diagnostics-ACCOUNT_SYNC"]')
     check(
-      trackedAfterReturn.includes('account_sync-1'),
+      trackedAfterReturn.includes('account-sync-1'),
       `The tracked task was lost by navigating: ${trackedAfterReturn}`
     )
     record('tracking survived leaving and returning', `activity indication read "${activity}"`)
 
     await waitForState(page, 'ACCOUNT_SYNC', 'Completed')
-    record('account task tracked to completion', `${tasks.get('account_sync-1').lookups} status lookups`)
+    record('account task tracked to completion', `${tasks.get('account-sync-1').lookups} status lookups`)
 
-    await waitForState(page, 'GLOBAL_SYNC', 'Failed')
-    const failureText = await textOf(page, '[data-test="sync-task-failure-GLOBAL_SYNC"]')
+    await waitForState(page, 'FULL_RECIPE_CATALOG', 'Failed')
+    const failureText = await textOf(page, '[data-test="sync-task-failure-FULL_RECIPE_CATALOG"]')
     check(failureText.includes('SYNC_FAILED'), `Failure text lacks the backend code: ${failureText}`)
     check(failureText.includes('were not rolled back'), `Failure text lacks the no-rollback wording: ${failureText}`)
     check(
       failureText.indexOf('were not rolled back') < failureText.indexOf('SYNC_FAILED'),
       `The backend code is presented ahead of the meaningful failure text: ${failureText}`
     )
-    record('failed task reported from an HTTP 200 status', failureText)
+    record('failed owner task reported from an HTTP 200 status', failureText)
 
     const lookupsWhenTerminal = apiRequestsTo('/api/sync/tasks/').length
     await page.waitForTimeout(6_000)
@@ -255,27 +262,37 @@ async function run() {
     )
     record('polling stopped', `${lookupsWhenTerminal} status lookups in total, none afterwards`)
 
-    const triggers = requests.filter(
-      (request) =>
-        request.method === 'POST' &&
-        request.path.startsWith('/api/sync/')
-    )
-    check(triggers.length === 2, `Expected exactly two admin triggers, saw ${triggers.length}.`)
+    const triggers = requests.filter((request) => request.method === 'POST' && request.path.startsWith('/api/sync/'))
+    check(triggers.length === 2, `Expected exactly two triggers, saw ${triggers.length}.`)
     const asText = triggers.map((trigger) => `${trigger.path} ${trigger.body}`).join(' | ')
     check(asText.includes('/api/sync/account {}'), `Account trigger body was not empty: ${asText}`)
-    check(asText.includes('/api/sync/global {}'), `Global trigger body was not empty: ${asText}`)
-    record('each admin action sent exactly once, with the documented body', asText)
+    check(asText.includes('/api/sync/full/recipes {}'), `Recipe trigger body was not empty: ${asText}`)
+    record('each action sent exactly once, with the documented empty body', asText)
 
-    const foreignCalls = browserCalls.filter((path) => path !== '/' && !path.startsWith('/api/') && !path.startsWith('/assets/'))
-    check(foreignCalls.length === 0, `Calls outside the backend API and page assets: ${foreignCalls.join(', ')}`)
+    // A non-owner account: the backend denies owner discovery, so no owner control is offered or sent.
+    ownerDiscovery = 'denied'
+    const syncPosts = () => requests.filter((request) => request.method === 'POST' && request.path.startsWith('/api/sync/')).length
+    const postsBeforeReload = syncPosts()
+    await page.reload({ waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+    await page.waitForSelector('[data-test="account-status"]', { timeout: TIMEOUT_MS })
+    await page.waitForSelector('[data-test="shared-service-line"]', { timeout: TIMEOUT_MS })
+    check((await page.$('[data-test="owner-admin"]')) === null, 'A non-owner account was shown owner administration.')
+    check((await page.$('[data-test="sync-trigger-FULL_RECIPE_CATALOG"]')) === null, 'A non-owner account was offered a catalog refresh.')
+    check((await page.$('[data-test="sync-trigger-ACCOUNT_SYNC"]')) !== null, 'The ordinary account refresh disappeared for a non-owner.')
+    check(
+      syncPosts() === postsBeforeReload,
+      'Opening the page as a non-owner submitted a synchronization request.'
+    )
+    record('non-owner reload shows the account refresh and shared status line, with no owner control')
+
     check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)
-    record('no page errors and no non-backend calls')
+    record('synthetic account proofs, strict routes and methods, no off-origin request', session.verify())
 
     console.log(`\nSynchronization browser check PASSED (${steps.length} steps).`)
     console.log('Every backend answer was produced by this script; no real synchronization ran.')
   } finally {
     await browser.close()
-    stub.close()
+    await stub.close()
   }
 }
 

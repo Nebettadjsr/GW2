@@ -4,7 +4,9 @@
  *
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): this script
  * answers every route the areas read, so no real backend, no database and no GW2 API is involved
- * and no synchronization can be started. It therefore evidences structure, layout and interaction —
+ * and no synchronization can be started. The real App restores and proves a synthetic retained key
+ * through `controlledAccountSession.mjs`, which also rejects unexpected routes/methods/raw keys and
+ * blocks off-origin requests; Home is public and must read nothing. It therefore evidences structure, layout and interaction —
  * never real data, and never page-load performance (TARGET_ARCHITECTURE 33).
  *
  * Usage:  npm run build && npm run smoke:layout
@@ -18,6 +20,7 @@
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
+import { createControlledAccountSession } from './controlledAccountSession.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
 
@@ -38,6 +41,16 @@ const VIEWPORTS = [
  * so a destination added without an entry here fails instead of quietly going unchecked.
  */
 const AREAS = [
+  // Public Home is its own document (`/welcome`): it has its own heading and title, no account read and
+  // no hash route, and it is the one destination whose link is not a `#/…` fragment.
+  {
+    id: 'home',
+    heading: 'Welcome to GW2 Crafting Tool',
+    title: 'GW2 Crafting Tool · Gold & Beginner Tips · Unofficial fan project',
+    url: '/welcome',
+    href: '/welcome',
+    ready: '[data-test="home-screen"]'
+  },
   { id: 'crafting', heading: 'Crafting Profit', ready: '[data-test="profit-table"]' },
   { id: 'discovery', heading: 'Crafting Discovery', ready: '[data-test="discovery-table"]' },
   // The structured salvage calculation needs the TP quotes and the Luck section needs the account
@@ -49,18 +62,18 @@ const AREAS = [
     heading: 'Ecto Salvage',
     ready: '[data-test="ecto-result"]:has([data-test="ecto-account-luck"])'
   },
-  // `SyncScreen.vue` has no single controls container; its content is the three status cards, and a
-  // card is on screen before the status answer is. The readiness selector therefore names the
-  // health badge in the state the supplied status produces (the hook and the tone class
-  // `SyncScreen.spec.ts` asserts), so a page still showing "Loading status…" or "Status
-  // unavailable" fails the wait instead of being measured as ready.
+  // `SyncScreen.vue` shows the account card before the status answer arrives. The readiness selector
+  // therefore names the shared price-health badge in the state the supplied status produces, so a
+  // page still showing "Loading status…" or "Status unavailable" fails the wait instead of being
+  // measured as ready.
   {
     id: 'synchronization',
     heading: 'System Status',
-    ready: '[data-test="price-cache-status"] [data-test="price-cache-health"].status--success'
+    ready: '[data-test="price-cache-health"].status--success'
   },
   { id: 'bank', heading: 'Bank', ready: '[data-test="bank-slots"]' },
-  { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' }
+  { id: 'materials', heading: 'Materials', ready: '[data-test="material-category"]' },
+  { id: 'characters', heading: 'Characters', ready: '[data-test="roster-item"]' }
 ]
 
 /** Resolved by id, never by index, so reordering or extending `AREAS` cannot silently retarget a step. */
@@ -330,8 +343,7 @@ function bankSlots() {
       slot: index,
       itemId: isEmpty ? null : 24_295 + index,
       count: isEmpty ? null : 250,
-      iconUrl: null,
-      rarity: isEmpty ? null : 'Rare'
+      iconUrl: null
     }
   })
 }
@@ -409,22 +421,44 @@ function accountLuck() {
  */
 function systemStatus() {
   return {
-    running: false,
-    lastCheckedAt: '2026-09-29T08:10:00Z',
-    lastChangedAt: '2026-09-28T19:45:00Z',
-    lastRecipeSyncAt: '2026-09-28T19:30:00Z',
-    lastGraphRebuildAt: '2026-09-28T19:40:00Z',
-    lastFailure: null,
+    globalHealth: 'OK',
+    priceHealth: 'OK',
     accountLastRefreshedAt: '2026-09-29T07:55:00Z',
-    accountRefreshScope: 'Characters, bank and material storage',
-    cachedPriceItems: 48_213,
-    stalePriceItems: 117,
-    newestPriceFetchedAt: '2026-09-29T08:05:00Z',
-    priceCacheError: null
+    accountRefreshScope: 'Characters, bank and material storage'
   }
 }
 
-function answerApi({ url, sendJson }) {
+/** One roster character, so the Characters area renders its list rather than an empty notice. */
+function characterRoster() {
+  return {
+    state: 'AVAILABLE',
+    characterCount: 1,
+    characters: [{
+      name: 'A Long Character Name', profession: 'Guardian', race: 'Human', gender: 'Female', level: 80,
+      createdAt: '2020-01-01T00:00:00Z',
+      craftingDisciplines: [{ discipline: 'Chef', rating: 500, active: true }]
+    }]
+  }
+}
+
+const session = createControlledAccountSession({
+  calculationRoutes: ['/api/crafting/profit', '/api/crafting/discovery'],
+  searchQueries: [],
+  accountReadRoutes: [
+    '/api/system/status', '/api/system/status/details', '/api/account/luck',
+    '/api/account/bank', '/api/account/materials', '/api/account/characters'
+  ],
+  publicReadRoutes: ['/api/items/metadata', '/api/items/prices'],
+  publicDocumentPaths: ['/welcome']
+})
+
+function answerApi(context) {
+  if (session.answer(context)) return
+  const { url, sendJson } = context
+  if (url.pathname === '/api/system/status/details') {
+    return sendJson(403, { error: 'FORBIDDEN', message: 'Not an owner account.' })
+  }
+  if (url.pathname === '/api/account/characters') return sendJson(200, characterRoster())
   if (url.pathname === '/api/system/status') {
     return sendJson(200, systemStatus())
   }
@@ -497,13 +531,13 @@ function answerApi({ url, sendJson }) {
         {
           name: 'Basic Crafting Materials',
           materials: [
-            { category: 5, itemId: 19_697, count: 250, iconUrl: null, rarity: 'Basic' },
-            { category: 5, itemId: 19_699, count: 41, iconUrl: null, rarity: null }
+            { category: 5, itemId: 19_697, count: 250, iconUrl: null },
+            { category: 5, itemId: 19_699, count: 41, iconUrl: null }
           ]
         },
         {
           name: 'Category 38',
-          materials: [{ category: 38, itemId: 46_731, count: 7, iconUrl: null, rarity: null }]
+          materials: [{ category: 38, itemId: 46_731, count: 7, iconUrl: null }]
         }
       ]
     })
@@ -525,7 +559,11 @@ async function pageOverflow(page) {
  * URL — and would leave the previous page's focus and state in place.
  */
 async function openArea(page, origin, area) {
-  await page.goto(`${origin}/#/${area.id}`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+  await page.goto(`${origin}${area.url ?? `/#/${area.id}`}`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+  // A fragment-only goto resolves at once while the new area is still reading in the *old* document;
+  // letting it finish keeps those reads from landing after the reload has started its own proof.
+  await page.waitForSelector(area.ready, { timeout: TIMEOUT_MS })
+  await page.waitForLoadState('networkidle', { timeout: TIMEOUT_MS })
   await page.reload({ waitUntil: 'networkidle', timeout: TIMEOUT_MS })
   await page.waitForSelector(area.ready, { timeout: TIMEOUT_MS })
 }
@@ -733,6 +771,7 @@ async function run() {
 
   const browser = await chromium.launch({ executablePath: browserPath })
   const page = await browser.newPage({ viewport: VIEWPORTS[0] })
+  await session.install(page, stub.origin)
   const pageErrors = []
   page.on('pageerror', (error) => pageErrors.push(String(error)))
   const browserCalls = []
@@ -743,7 +782,7 @@ async function run() {
     // every comparison below agree with the wrong thing.
     record('every controlled row is a valid CraftingRow answer', checkRowContract(profitRows()))
 
-    await page.goto(`${stub.origin}/`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+    await page.goto(`${stub.origin}/welcome`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
     check(
       stub.servedCount() > 0,
       `The page at ${stub.origin} was not served by this script — stop whatever else is listening ` +
@@ -785,7 +824,7 @@ async function run() {
           `${area.id} at ${viewport.name}: the page heading did not read "${area.heading}".`
         )
         check(
-          (await page.title()) === `${area.heading} · GW2 Crafting Tool · Unofficial fan project`,
+          (await page.title()) === (area.title ?? `${area.heading} · GW2 Crafting Tool · Unofficial fan project`),
           `${area.id}: the document title did not name the area (${await page.title()}).`
         )
         const current = await page.$eval('[aria-current="page"]', (link) => ({
@@ -793,7 +832,7 @@ async function run() {
           href: link.getAttribute('href')
         }))
         check(
-          current.test === `nav-${area.id}` && current.href === `#/${area.id}`,
+          current.test === `nav-${area.id}` && current.href === (area.href ?? `#/${area.id}`),
           `${area.id}: the marked destination was ${current.test} (${current.href}).`
         )
 
@@ -1008,19 +1047,23 @@ async function run() {
     await page.emulateMedia({ reducedMotion: null })
     record('reduced-motion preference respected', `${durations.length} controls at 0s`)
 
-    // 11. Nothing in any of the above submitted a synchronization or called another host.
+    // 11. Nothing in any of the above submitted a synchronization or called another host (the session
+    // helper also aborts and records any off-origin request, and rejects unlisted routes and methods).
     check(
       stub.requestsTo('/api/sync').length === 0 && stub.requestsTo('/api/prices').length === 0,
       `Navigating submitted a synchronization request: ${JSON.stringify(stub.requestsTo('/api'))}`
     )
     const foreignCalls = browserCalls.filter(
-      (path) => path !== '/' && !path.startsWith('/api/') && !path.startsWith('/assets/')
+      (path) => path !== '/' && path !== '/welcome' && !path.startsWith('/api/') && !path.startsWith('/assets/')
     )
     check(foreignCalls.length === 0, `Calls outside the backend API and page assets: ${foreignCalls.join(', ')}`)
     check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)
+    const unexpectedWrites = stub.requests.filter((request) => request.method !== 'GET' && request.path !== '/api/session' &&
+      !['/api/crafting/profit', '/api/crafting/discovery'].includes(request.path))
+    check(unexpectedWrites.length === 0, `Unexpected non-read requests: ${JSON.stringify(unexpectedWrites)}`)
     record(
       'no synchronization, no foreign call, no page error',
-      `${stub.requests.length} API requests, all reads`
+      `${stub.requests.length} API requests; ${session.verify()}`
     )
 
     console.log(`\nLayout and accessibility browser check PASSED (${steps.length} steps).`)

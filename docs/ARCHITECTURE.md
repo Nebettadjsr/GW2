@@ -78,7 +78,9 @@ recalculates locally. This exception does not extend to crafting or character at
 All GW2 API and asset access goes through the backend. Item and build-reference images use
 backend-relative URLs and a validated filesystem cache, HTTP caching and stable fallbacks.
 Image bytes do not belong in PostgreSQL. Local guide screenshots and profession artwork are
-frontend assets; guide images use compressed WebP and responsive variants.
+frontend assets; guide images use compressed WebP and responsive variants. Regenerate them
+from the ignored `frontend/screenshots/` sources with `node scripts/prepare-guide-images.mjs [cwebp]`
+from `frontend/` (requires the `cwebp` CLI; writes `src/home/images`).
 
 Public Home has a separate HTML entry at `/welcome`; tool pages and information pages use the
 shared application entry. Public pages do not restore a retained key or request account data.

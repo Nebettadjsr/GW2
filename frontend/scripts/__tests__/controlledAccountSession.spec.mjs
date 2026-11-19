@@ -34,6 +34,34 @@ describe('controlled account boundary', () => {
     expect(request('/api/sync/account/bank', 'POST').reply.status).toBe(404)
   })
 
+  it('lets listed public reads through without proof, but never with a key or another method', () => {
+    const { request } = fixture({ publicReadRoutes: ['/api/items/metadata'] })
+    expect(request('/api/items/metadata?ids=1', 'GET').handled).toBe(false)
+    expect(request('/api/items/metadata?ids=1', 'POST').reply.status).toBe(405)
+    expect(request('/api/items/metadata?ids=1', 'GET', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).reply.status).toBe(400)
+    expect(request('/api/items/prices?ids=1', 'GET').reply.status).toBe(404)
+  })
+
+  it('rejects an account context on public reads, current or stale, while contextless reads pass', () => {
+    const { request } = fixture({ publicReadRoutes: ['/api/items/metadata', '/api/items/prices'] })
+    expect(request('/api/items/prices?ids=1', 'GET').handled).toBe(false)
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    expect(request('/api/items/metadata?ids=1', 'GET', { 'x-account-context': 'smoke-context-1' }).reply.status).toBe(400)
+    expect(request('/api/items/prices?ids=1', 'GET', { 'x-account-context': 'stale-context' }).reply.status).toBe(400)
+    expect(request('/api/items/metadata?ids=1', 'GET').handled).toBe(false)
+  })
+
+  it('requires the retained key header on keyed refreshes and forbids it on every other protected route', () => {
+    const { request } = fixture({ keyedRoutes: ['/api/sync/account'], calculationRoutes: ['/api/crafting/profit'] })
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    const context = { 'x-account-context': 'smoke-context-1' }
+    expect(request('/api/sync/account', 'POST', context).reply.status).toBe(400)
+    expect(request('/api/sync/account', 'POST', { ...context, 'x-gw2-api-key': 'another-key' }).reply.status).toBe(400)
+    expect(request('/api/sync/account', 'POST', { ...context, 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).handled).toBe(false)
+    expect(request('/api/sync/account', 'GET', { ...context, 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).reply.status).toBe(405)
+    expect(request('/api/crafting/profit', 'POST', { ...context, 'x-gw2-api-key': 'synthetic-read-only-smoke-key' }).reply.status).toBe(400)
+  })
+
   it('admits protected fixtures only after the normal retained-key proof with its returned context', () => {
     const { request } = fixture()
     expect(request('/api/crafting/profit', 'POST').reply.status).toBe(401)
@@ -68,7 +96,7 @@ describe('controlled account boundary', () => {
       mainFrame: () => frame,
       route: async (_, handler) => { routeRequest = handler }
     }, 'http://127.0.0.1:5176')
-    const document = () => onRequest({ isNavigationRequest: () => true, frame: () => frame })
+    const document = () => onRequest({ isNavigationRequest: () => true, frame: () => frame, url: () => 'http://127.0.0.1:5176/' })
     document()
     request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
     expect(session.verify()).toContain('1 proofs')
@@ -77,6 +105,27 @@ describe('controlled account boundary', () => {
     let aborted = false
     await routeRequest({ request: () => ({ url: () => 'https://api.guildwars2.com/v2/account' }), abort: () => { aborted = true } })
     expect(aborted).toBe(true)
+    expect(() => session.verify()).toThrow('Controlled session boundary violations')
+  })
+
+  it('counts a public document without a proof and fails any API call it makes, then resumes normal proof for the next document', async () => {
+    const { session, request } = fixture({ publicDocumentPaths: ['/welcome'], publicReadRoutes: ['/api/items/metadata'] })
+    let onRequest
+    const frame = {}
+    await session.install({
+      addInitScript: async () => undefined,
+      on: (_, handler) => { onRequest = handler },
+      mainFrame: () => frame,
+      route: async () => undefined
+    }, 'http://127.0.0.1:5176')
+    const document = path => onRequest({ isNavigationRequest: () => true, frame: () => frame, url: () => `http://127.0.0.1:5176${path}` })
+    document('/welcome')
+    document('/')
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    expect(session.verify()).toBe('1 proofs before protected reads over 1 document loads; 1 public document loads with zero API calls; 0 cached search lookups')
+    // Even an allow-listed public read is a failure while a public document is current.
+    document('/welcome')
+    expect(request('/api/items/metadata?ids=1', 'GET').reply.status).toBe(403)
     expect(() => session.verify()).toThrow('Controlled session boundary violations')
   })
 })

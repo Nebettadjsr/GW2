@@ -5,6 +5,7 @@
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
+import { createControlledAccountSession } from './controlledAccountSession.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
 
@@ -32,7 +33,14 @@ function requestedIds(url) {
   return (url.searchParams.get('ids') ?? '').split(',').map(Number)
 }
 
-function answerApi({ url, sendJson }) {
+const session = createControlledAccountSession({
+  calculationRoutes: [], searchQueries: [],
+  accountReadRoutes: ['/api/account/luck'], publicReadRoutes: ['/api/items/metadata', '/api/items/prices']
+})
+
+function answerApi(context) {
+  if (session.answer(context)) return
+  const { url, sendJson } = context
   if (url.pathname === '/api/items/metadata') {
     return sendJson(200, {
       items: requestedIds(url).map((itemId) => ({
@@ -89,6 +97,7 @@ async function run() {
   const origin = await startStubOrigin({ port: PORT, distDir: DIST_DIR, answerApi })
   const browser = await chromium.launch({ executablePath: browserPath })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  await session.install(page, origin.origin)
   const pageErrors = []
   const browserRequests = []
   page.on('pageerror', (error) => pageErrors.push(String(error)))
@@ -192,6 +201,7 @@ async function run() {
     check(browserRequests.every((request) => request.startsWith(origin.origin)), 'The browser left the stub origin.')
     record('minimum desktop table keyboard access and same-origin requests')
 
+    record(session.verify())
     console.log('\nEcto browser smoke PASSED (' + steps.length + ' steps).')
   } finally {
     await browser.close()
