@@ -369,8 +369,18 @@ export interface ResolutionNode {
     expectedOutputPerCraft: string | null
     minOutput: number | null
     maxOutput: number | null
-    expectedProducedTotal: string | null
+    /** Executions actually accepted (vendor: whole batches bought). */
+    batches: number
+    /** Everything the guaranteed-minimum executions physically produced. */
+    grossProduced: number
+    /** Units a later batch consumed as its own seed: neither sold nor stock. */
+    reusedSeed: number
+    /** grossProduced - reusedSeed: the only quantity that can become inventory. */
     guaranteedProducedTotal: number
+    /** mean x batches - reusedSeed (exact decimal); null unless a verified variable yield. */
+    expectedProducedTotal: string | null
+    usedQuantity: number
+    surplusQuantity: number
   } | null
 }
 

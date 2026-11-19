@@ -671,4 +671,31 @@ describe('CraftingResolution', () => {
       expect(region.findAll('[data-test="node-children"]')[0]?.find('summary').text()).toBe('2 ingredient requirements')
     })
   })
+
+  describe('Forge source facts', () => {
+    const forgeStep = {
+      source: 'MYSTIC_FORGE', expectedOutputPerCraft: '18.92', minOutput: 10, maxOutput: 40, batches: 2,
+      grossProduced: 20, reusedSeed: 1, guaranteedProducedTotal: 19, expectedProducedTotal: '36.84',
+      usedQuantity: 19, surplusQuantity: 0
+    }
+
+    it('rendersOneCompactBackendLineWithoutClientArithmetic', () => {
+      const line = ready({ tree: node({ characterName: 'Alt', forgeStep, children: [] }) })
+        .find('[data-test="node-forge"]').text()
+      expect(line).toBe('Mystic Forge · 2 batches · expected 18.92 per batch (range 10–40) · ≈ 36.84 expected, 19 guaranteed net · 1 reused as seed')
+    })
+
+    it('namesCarriedOwnerWithoutCraftedByAndVendorHasNoCrafter', () => {
+      const forge = ready({ tree: node({ characterName: 'Alt', forgeStep: { ...forgeStep, expectedOutputPerCraft: null, expectedProducedTotal: null, reusedSeed: 0 }, children: [] }) })
+      expect(forge.find('[data-test="node-crafter"]').text()).toBe("Using Alt's carried items")
+      const vendor = ready({ tree: node({ characterName: 'Alt', children: [],
+        forgeStep: { ...forgeStep, source: 'VENDOR', expectedOutputPerCraft: null, expectedProducedTotal: null, batches: 1, guaranteedProducedTotal: 10, usedQuantity: 5, surplusQuantity: 5, reusedSeed: 0 } }) })
+      expect(vendor.find('[data-test="node-crafter"]').exists()).toBe(false)
+      expect(vendor.find('[data-test="node-forge"]').text()).toBe('Vendor · 1 batch bought · 10 units (5 used, 5 left over)')
+    })
+
+    it('ordinaryNodesStayUnchanged', () => {
+      expect(ready({ tree: craftedTree }).find('[data-test="node-forge"]').exists()).toBe(false)
+    })
+  })
 })

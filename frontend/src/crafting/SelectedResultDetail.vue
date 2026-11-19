@@ -58,7 +58,18 @@ const totalsLabel = computed(() => {
 const outputItemCount = computed(() => {
   const row = props.row
   if (row === null || row.craftableCount === null) return null
+  // A variable Forge output's sellable net comes from the backend; outputCount x crafts would claim the gross.
+  if (row.expectedYield?.expectedSellableUnitsTotal != null && row.expectedYield.guaranteedSellableUnitsTotal != null) {
+    return row.expectedYield.guaranteedSellableUnitsTotal
+  }
   return row.craftableCount * row.outputCount
+})
+
+/** Backend expected sellable summary for a variable Forge output; null for every ordinary result. */
+const expectedSellableNote = computed(() => {
+  const y = props.row?.expectedYield
+  if (!y || y.expectedSellableUnitsTotal == null) return null
+  return `≈ ${y.expectedSellableUnitsTotal} expected (estimate; ${y.guaranteedSellableUnitsTotal ?? 0} guaranteed)`
 })
 
 const missingForAllCrafts = computed<MissingItem[] | null>(
@@ -234,6 +245,7 @@ function materialQuoteText(item: MissingItem): string {
           </dt>
           <dd class="numeric calculation__info">
             {{ formatCount(outputItemCount) }}
+            <span v-if="expectedSellableNote !== null" class="meta" data-test="expected-sellable">{{ expectedSellableNote }}</span>
           </dd>
 
           <!-- Revenue -->

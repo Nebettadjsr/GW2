@@ -104,7 +104,8 @@ public record ResolutionNodeDto(int itemId,
      * {@code producedQuantity}.
      */
     public record ForgeStepDto(String source, String expectedOutputPerCraft, Integer minOutput, Integer maxOutput,
-                               String expectedProducedTotal, int guaranteedProducedTotal) { }
+                               int batches, int grossProduced, int reusedSeed, int guaranteedProducedTotal,
+                               String expectedProducedTotal, int usedQuantity, int surplusQuantity) { }
 
     /** Item-only node (no currency requirement). */
     public ResolutionNodeDto(int itemId, String itemName, int requestedQuantity, int inventoryQuantity,

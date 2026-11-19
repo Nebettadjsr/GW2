@@ -140,7 +140,8 @@ public final class SingleCraftExplainer {
             List<CraftTraceNode> roots = accepted.stream()
                     .map(craft -> toNode(craft, BlockedReason.NONE, recipesById, ledger))
                     .toList();
-            return explanationOf(recipe, combineNodes(roots, ledger),
+            return explanationOf(recipe,
+                    withRootSeedReuse(combineNodes(roots, ledger), simulation.getReusedSeedUnits()),
                     Math.multiplyExact(recipe.outputCount, simulation.getCraftCount()));
         }
 
@@ -224,7 +225,7 @@ public final class SingleCraftExplainer {
                 sumIfAllKnown(nodes, CraftTraceNode::cashCostCopper),
                 sumIfAllKnown(nodes, CraftTraceNode::opportunityCostCopper),
                 combinedEffective(nodes, ledger),
-                children, currencies);
+                children, currencies, combineSource(nodes));
         long units = 0;
         ResearchNoteEstimate estimate = null;
         for (CraftTraceNode node : nodes) {
@@ -299,7 +300,9 @@ public final class SingleCraftExplainer {
 
         // An attempted craft that was rejected and rolled back contributed no units here, so its
         // execution count stays out of the explanation; its identity and requirements remain.
-        boolean crafted = need.getQtyCrafted() > 0 && craftTrace != null;
+        boolean vendorBought = need.getVendorBatches() > 0;
+        // A completed vendor purchase is an execution too (real batches and units), though it is never "crafted".
+        boolean crafted = (need.getQtyCrafted() > 0 || vendorBought) && craftTrace != null;
 
         List<BlockedReason> blockedReasons = blockedReasonsOf(need, craftAttempt, rejectionReason);
         boolean complete = need.isFullySatisfied();
@@ -345,12 +348,84 @@ public final class SingleCraftExplainer {
                 complete ? need.getOpportunityCostCopper() : null,
                 complete ? effectiveOrNull(need) : null,
                 children,
-                currencies
+                currencies,
+                crafted ? sourceFacts(need, craftTrace, selected) : null
         );
         if (need.getWalletNoteUnits() > 0 && need.getNoteEstimate() != null) {
             ledger.entries.put(node, new NoteLedger.Entry(need.getWalletNoteUnits(), need.getNoteEstimate()));
         }
         return node;
+    }
+
+    /** Source facts of an executed Mystic Forge or vendor step, from what the resolver actually accepted. */
+    private static CraftTraceNode.SourceFacts sourceFacts(ResolvedNeed need, ResolvedNeed.NodeTrace craftTrace,
+                                                          Recipe selected) {
+        if (selected == null || !(selected.isMysticForge() || selected.isVendor())) return null;
+        int batches = craftTrace.getCraftCount();
+        int net = craftTrace.getProducedQuantity();
+        int used = selected.isVendor() ? need.getQtyBought() : need.getQtyCrafted();
+        if (selected.isVendor()) {
+            return new CraftTraceNode.SourceFacts(CraftTraceNode.SourceFacts.VENDOR, null, null, null,
+                    batches, net, 0, net, null, Math.min(used, net), Math.max(0, net - used));
+        }
+        ExpectedYield y = selected.expectedYield;
+        if (y == null) {
+            return new CraftTraceNode.SourceFacts(CraftTraceNode.SourceFacts.MYSTIC_FORGE, null, null, null,
+                    batches, net, 0, net, null, Math.min(used, net), Math.max(0, net - used));
+        }
+        int gross = need.getYieldProducedGross() > 0 ? need.getYieldProducedGross() : Math.multiplyExact(batches, y.min());
+        int reused = need.getYieldReusedSeed();
+        return yieldFacts(y, batches, gross, reused, Math.min(used, gross - reused));
+    }
+
+    private static CraftTraceNode.SourceFacts yieldFacts(ExpectedYield y, int batches, int gross, int reused, int used) {
+        int net = gross - reused;
+        java.math.BigDecimal expectedNet = y.mean().multiply(java.math.BigDecimal.valueOf(batches))
+                .subtract(java.math.BigDecimal.valueOf(reused));
+        return new CraftTraceNode.SourceFacts(CraftTraceNode.SourceFacts.MYSTIC_FORGE, y.mean(), y.min(), y.max(),
+                batches, gross, reused, net, expectedNet, used, Math.max(0, net - used));
+    }
+
+    /** Sums per-batch source facts of aligned accepted nodes; null unless every node carries the same kind. */
+    private static CraftTraceNode.SourceFacts combineSource(List<CraftTraceNode> nodes) {
+        CraftTraceNode.SourceFacts first = nodes.get(0).source();
+        if (first == null) return null;
+        int batches = 0, gross = 0, reused = 0, net = 0, used = 0, surplus = 0;
+        java.math.BigDecimal expected = first.expectedNet() == null ? null : java.math.BigDecimal.ZERO;
+        for (CraftTraceNode n : nodes) {
+            CraftTraceNode.SourceFacts f = n.source();
+            if (f == null || !f.kind().equals(first.kind())) return null;
+            batches = Math.addExact(batches, f.batches());
+            gross = Math.addExact(gross, f.grossProduced());
+            reused = Math.addExact(reused, f.reusedSeed());
+            net = Math.addExact(net, f.guaranteedNet());
+            used = Math.addExact(used, f.used());
+            surplus = Math.addExact(surplus, f.surplus());
+            if (expected != null) expected = f.expectedNet() == null ? null : expected.add(f.expectedNet());
+        }
+        return new CraftTraceNode.SourceFacts(first.kind(), first.expectedPerBatch(), first.min(), first.max(),
+                batches, gross, reused, net, expected, used, surplus);
+    }
+
+    /**
+     * The aggregate root simulation reuses a self-seed between accepted root batches, which no single batch trace
+     * knows: remove those units from sellable output exactly once and recompute the expected net from them.
+     */
+    private static CraftTraceNode withRootSeedReuse(CraftTraceNode root, int reusedBetweenBatches) {
+        CraftTraceNode.SourceFacts f = root.source();
+        if (f == null || reusedBetweenBatches <= 0 || f.expectedPerBatch() == null) return root;
+        int reused = Math.addExact(f.reusedSeed(), reusedBetweenBatches);
+        int net = f.grossProduced() - reused;
+        CraftTraceNode.SourceFacts adjusted = new CraftTraceNode.SourceFacts(f.kind(), f.expectedPerBatch(), f.min(),
+                f.max(), f.batches(), f.grossProduced(), reused, net,
+                f.expectedPerBatch().multiply(java.math.BigDecimal.valueOf(f.batches()))
+                        .subtract(java.math.BigDecimal.valueOf(reused)),
+                Math.min(f.used(), net), Math.max(0, net - Math.min(f.used(), net)));
+        return new CraftTraceNode(root.itemId(), root.requestedQuantity(), root.inventoryQuantity(),
+                root.craftedQuantity(), root.boughtQuantity(), root.missingQuantity(), root.recipeId(),
+                root.craftCount(), root.producedQuantity(), root.characterName(), root.methods(), root.states(),
+                root.blockedReasons(), root.cashCostCopper(), root.opportunityCostCopper(),
+                root.effectiveCostCopper(), root.children(), root.currencies(), adjusted);
     }
 
     private static int ceilDiv(int a, int b) {

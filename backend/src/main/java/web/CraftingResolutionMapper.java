@@ -222,27 +222,14 @@ final class CraftingResolutionMapper {
                 forgeStep(node));
     }
 
-    private static final Map<Integer, craft.Recipe> FORGE_RECIPES_BY_ID = new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Forge recipe ids are the catalog's stable negatives; an ordinary or absent recipe has no Forge step. */
+    /** Projects the facts the resolver accepted; nothing is looked up or re-derived here. */
     private static ResolutionNodeDto.ForgeStepDto forgeStep(CraftTraceNode node) {
-        Integer id = node.recipeId();
-        if (id == null || id >= 0) return null;
-        if (id <= -craft.VendorAcquisitions.ID_BASE) {
-            // A verified vendor purchase, not a Forge craft: whole batches bought, units produced vs used.
-            return new ResolutionNodeDto.ForgeStepDto("VENDOR", null, null, null, null, node.producedQuantity());
-        }
-        if (FORGE_RECIPES_BY_ID.isEmpty()) {
-            parser.MysticForgeCatalogLoader.bundled().recipes().forEach(r -> FORGE_RECIPES_BY_ID.put(r.recipeId, r));
-        }
-        craft.Recipe recipe = FORGE_RECIPES_BY_ID.get(id);
-        if (recipe == null) return null;
-        craft.ExpectedYield y = recipe.expectedYield;
-        if (y == null) return new ResolutionNodeDto.ForgeStepDto("MYSTIC_FORGE", null, null, null, null,
-                node.producedQuantity());
-        return new ResolutionNodeDto.ForgeStepDto("MYSTIC_FORGE", y.mean().toPlainString(), y.min(), y.max(),
-                y.mean().multiply(java.math.BigDecimal.valueOf(node.craftCount())).toPlainString(),
-                node.producedQuantity());
+        CraftTraceNode.SourceFacts f = node.source();
+        if (f == null) return null;
+        return new ResolutionNodeDto.ForgeStepDto(f.kind(),
+                f.expectedPerBatch() == null ? null : f.expectedPerBatch().toPlainString(), f.min(), f.max(),
+                f.batches(), f.grossProduced(), f.reusedSeed(), f.guaranteedNet(),
+                f.expectedNet() == null ? null : f.expectedNet().toPlainString(), f.used(), f.surplus());
     }
 
     /** Display projection only: whole-copper HALF_UP average of the node total; null if undefined. */
