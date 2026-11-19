@@ -219,4 +219,38 @@ class CraftingPlannerCurrencyRequirementTest {
         assertEquals(Map.of(300, 1), r.missingToBuyOne, "cheaper item-only craft still beats the 100c purchase");
         assertTrue(r.currencyTotal.isEmpty());
     }
+
+    // ---- Budget feasibility participates in route choice (review thread PRRT_kwDORMMX6s65cJ1_) ----
+
+    private static CraftResult budgeted(int maxBuy, int notes) {
+        Recipe viaNotes = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(900, 1000), 200, quote(100, 100), 300, quote(50, 50));
+        CraftingSettings s = new CraftingSettings(true, true, maxBuy, false, false, true);
+        return run(List.of(PARENT, viaNotes), Map.of(), tp, s, Map.of(NOTE, notes));
+    }
+
+    @Test
+    void purchaseOverBudgetFallsBackToTheFeasibleNoteCraftFromTheFirstExecution() {
+        CraftResult r = budgeted(60, 300);
+        assertEquals(1, r.craftableCount, "100c purchase exceeds 60c, the 50c + notes craft fits");
+        assertEquals(Map.of(NOTE, 30), r.currencyTotal);
+    }
+
+    @Test
+    void purchaseOverBudgetAfterPartialSpendKeepsAcceptedPrefixAndRollsBackTheFailedAttempt() {
+        // Craft 1 buys (100c, fully valued, affordable). Craft 2 would total 200c > 160c, so it crafts with notes
+        // (150c total). Craft 3 fits neither route and must leave no notes or budget behind.
+        CraftResult r = budgeted(160, 300);
+        assertEquals(2, r.craftableCount);
+        assertEquals(Map.of(NOTE, 30), r.currencyTotal, "only the accepted note craft is consumed");
+        assertEquals(150, r.buyCostCopper);
+    }
+
+    @Test
+    void affordablePurchaseStaysPreferredOverTheNoteCraft() {
+        CraftResult r = budgeted(1000, 300);
+        assertTrue(r.currencyTotal.isEmpty() || r.craftableCount > 5, "within budget the valued purchase is used first");
+        assertEquals(Map.of(200, 1), r.missingToBuyOne);
+    }
 }

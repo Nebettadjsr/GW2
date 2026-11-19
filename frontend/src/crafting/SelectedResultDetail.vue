@@ -246,6 +246,17 @@ function materialQuoteText(item: MissingItem): string {
             </span>
           </dd>
 
+          <template v-for="cost in row.currencyCosts?.costs ?? []" :key="cost.currencyId">
+            <dt data-test="detail-currency-label">
+              {{ cost.name }}
+            </dt>
+            <dd class="numeric">
+              <span class="calc-negative" data-test="detail-currency-cost">
+                {{ formatCount(row.currencyCosts?.economicsFromHypotheticalCraft ? cost.perCraft : cost.total) }}
+              </span>
+            </dd>
+          </template>
+
           <dt>
             Bought materials
           </dt>
@@ -266,6 +277,13 @@ function materialQuoteText(item: MissingItem): string {
               data-test="detail-total-profit-fee-note"
             >
               after 15% TP fees
+            </span>
+            <span
+              v-if="row.currencyCosts && row.currencyCosts.costs.length"
+              class="value-note"
+              data-test="detail-currency-exclusion"
+            >
+              Excluding costs for other currencies
             </span>
           </dt>
 
@@ -288,36 +306,20 @@ function materialQuoteText(item: MissingItem): string {
           rather than free. This profit is not reliable.
         </p>
 
-        <section
-          v-if="row.currencyCosts && row.currencyCosts.costs.length"
+        <p
+          v-if="row.currencyCosts && row.currencyCosts.costs.length && row.currencyCosts.walletState !== 'KNOWN'"
           class="value-note"
-          data-test="detail-currency-costs"
+          data-test="detail-wallet-unknown"
         >
-          <h4>Currency costs (not priced in gold)</h4>
-          <ul>
-            <li
-              v-for="cost in row.currencyCosts.costs"
-              :key="cost.currencyId"
-              data-test="detail-currency-cost"
-            >
-              {{ cost.name }}: {{ cost.perCraft }} per craft, {{ cost.total }} in total
-              <span v-if="cost.breakEvenCopperPerUnit != null" data-test="detail-currency-breakeven">
-                — break-even at {{ formatCopper(cost.breakEvenCopperPerUnit) }} per unit
-              </span>
-            </li>
-          </ul>
-          <p data-test="detail-currency-margin-note">
-            The gold margin shown is before these currency costs, so it is conditional, not a
-            guaranteed profit.
-          </p>
-          <p v-if="row.currencyCosts.walletState !== 'KNOWN'" data-test="detail-wallet-unknown">
-            Wallet balance unavailable (no wallet permission, never refreshed or stale), so the
-            craftable count cannot be confirmed.
-          </p>
-          <p v-if="row.currencyCosts.economicsFromHypotheticalCraft" data-test="detail-hypothetical">
-            No craft is currently possible; figures describe one hypothetical craft.
-          </p>
-        </section>
+          Wallet balance unavailable; craftable count unconfirmed.
+        </p>
+        <p
+          v-if="row.currencyCosts && row.currencyCosts.economicsFromHypotheticalCraft"
+          class="value-note"
+          data-test="detail-hypothetical"
+        >
+          No craft is currently possible; figures describe one hypothetical craft.
+        </p>
 
         <!-- TP prices -->
         <div

@@ -48,10 +48,18 @@ const unitText = computed(() => {
   return props.node.effectiveUnitCostApproximate && props.node.effectiveUnitCostCopper !== null ? `≈ ${text}` : text
 })
 
+const currencies = computed(() => props.node.currencies ?? [])
 const childCount = computed(() => props.node.children.length)
-const childSummary = computed(() =>
-  childCount.value === 1 ? '1 ingredient requirement' : `${childCount.value} ingredient requirements`
-)
+const childSummary = computed(() => {
+  const parts: string[] = []
+  if (childCount.value > 0) {
+    parts.push(childCount.value === 1 ? '1 ingredient requirement' : `${childCount.value} ingredient requirements`)
+  }
+  if (currencies.value.length > 0) {
+    parts.push(currencies.value.length === 1 ? '1 currency requirement' : `${currencies.value.length} currency requirements`)
+  }
+  return parts.join(' + ')
+})
 </script>
 
 <template>
@@ -112,9 +120,18 @@ const childSummary = computed(() =>
         {{ node.requestedQuantity === 1 ? 'item' : 'items' }}: <span class="node__value-amount">{{ formatCopper(node.effectiveCostCopper) }}</span></span>
     </p>
 
-    <details v-if="childCount > 0" class="node__children" data-test="node-children">
+    <details v-if="childCount > 0 || currencies.length > 0" class="node__children" data-test="node-children">
       <summary>{{ childSummary }}</summary>
       <ul class="node__list">
+        <!-- Currency units are supplied by the backend for this node's craft; a currency is not an item: no icon or wiki item link. -->
+        <li v-for="currency in currencies" :key="`currency-${currency.currencyId}`" class="node node--currency"
+          data-test="tree-currency">
+          <div class="node__head">
+            <span class="node__identity"><span class="node__name" data-test="currency-name">{{ currency.name }}</span>
+              <span class="meta">currency</span></span>
+            <span class="node__needed numeric" data-test="currency-quantity">{{ currency.quantity }} needed</span>
+          </div>
+        </li>
         <ResolutionTreeNode
           v-for="(child, index) in node.children"
           :key="`${path}.${index}`"

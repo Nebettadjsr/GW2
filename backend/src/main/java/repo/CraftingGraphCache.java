@@ -65,6 +65,12 @@ public class CraftingGraphCache {
             if (!file.exists()) return rebuild();
 
             CraftingGraphDto dto = mapper.readValue(file, CraftingGraphDto.class);
+            // A snapshot from before currency-aware recipes cannot say whether a recipe has currency costs:
+            // absence is not "none". The cache is disposable, so rebuild it from the database.
+            if (dto.schemaVersion != CraftingGraphDto.CURRENT_SCHEMA_VERSION || dto.recipes == null
+                    || dto.recipes.stream().anyMatch(r -> r.currencies == null)) {
+                return rebuild();
+            }
             Map<Integer, String> names = dto.itemNames;
             if (names == null || names.isEmpty()) {
                 names = loadItemNames(dto.recipes);
@@ -114,6 +120,7 @@ public class CraftingGraphCache {
         CraftingGraph graph = new CraftingGraph(recipes, itemNames);
 
         CraftingGraphDto dto = toDto(graph);
+        dto.schemaVersion = CraftingGraphDto.CURRENT_SCHEMA_VERSION;
         dto.cacheKey = buildCacheKeyFromDb();
         dto.generatedAt = System.currentTimeMillis();
 
@@ -163,6 +170,7 @@ public class CraftingGraphCache {
         }
         deadline.check();
         CraftingGraphDto dto = toDto(graph);
+        dto.schemaVersion = CraftingGraphDto.CURRENT_SCHEMA_VERSION;
         dto.cacheKey = key;
         dto.generatedAt = System.currentTimeMillis();
         writeAtomically(file.toPath(), dto);
@@ -206,10 +214,8 @@ public class CraftingGraphCache {
             }
 
             List<craft.CurrencyRequirement> currencies = new ArrayList<>();
-            if (r.currencies != null) {
-                for (CraftingGraphDto.IngredientDto cur : r.currencies) {
-                    currencies.add(new craft.CurrencyRequirement(cur.itemId, cur.count));
-                }
+            for (CraftingGraphDto.IngredientDto cur : r.currencies) {
+                currencies.add(new craft.CurrencyRequirement(cur.itemId, cur.count));
             }
 
             recipes.add(new Recipe(

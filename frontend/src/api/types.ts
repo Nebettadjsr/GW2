@@ -86,8 +86,8 @@ export interface CurrencyCost {
   name: string
   perCraft: number
   total: number
-  /** Gold per unit at which the craft breaks even; only for one unpriced currency and a positive margin. */
-  breakEvenCopperPerUnit: number | null
+  /** Backend field retained for compatibility; the UI no longer explains break-even valuation. */
+  breakEvenCopperPerUnit?: number | null
 }
 
 export interface CurrencyCosts {
@@ -306,6 +306,17 @@ export interface ResolutionNode {
   iconUrl: string | null
   /** Discovery only: present only for a crafted recipe proven known or eligible to discover. */
   recipeKnowledge?: 'KNOWN' | 'TO_DISCOVER' | null
+  /**
+   * Exact currency units this node's own craft path consumes (or would, when blocked), as the backend counted them.
+   * Currency ids are not item ids. Absent or empty for item-only requirements.
+   */
+  currencies?: ResolutionCurrency[]
+}
+
+export interface ResolutionCurrency {
+  currencyId: number
+  name: string
+  quantity: number
 }
 
 /** The effective inputs a resolution response echoes back, in the table response's own shape. */

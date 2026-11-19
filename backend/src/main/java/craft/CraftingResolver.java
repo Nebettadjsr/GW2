@@ -224,7 +224,7 @@ public class CraftingResolver {
         }
 
         // 4) Choose better candidate
-        CandidateEval chosen = chooseBetterCandidate(buyEval, craftEval);
+        CandidateEval chosen = chooseBetterCandidate(buyEval, craftEval, ctx);
 
         if (chosen != null) {
             if (chosen.isStateCandidate()) {
@@ -602,7 +602,7 @@ public class CraftingResolver {
         return candidate.getQtySatisfied() > currentBest.getQtySatisfied();
     }
 
-    private CandidateEval chooseBetterCandidate(CandidateEval buyEval, CandidateEval craftEval) {
+    private CandidateEval chooseBetterCandidate(CandidateEval buyEval, CandidateEval craftEval, PlannerContext ctx) {
         boolean buyValid = buyEval != null
                 && buyEval.need != null
                 && buyEval.need.getQtyBlocked() == 0;
@@ -613,7 +613,7 @@ public class CraftingResolver {
 
         if (buyValid && craftValid) {
             // An unpriced-currency craft is not proven cheaper than a fully priced purchase: buying wins.
-            if (craftEval.need.spendsUnpricedCurrency()) return buyEval;
+            if (craftEval.need.spendsUnpricedCurrency()) return ctx.preferCurrencyCraft ? craftEval : buyEval;
             // DOMAIN_SPEC.md section 22: choose the lowest total effective economic cost
             // (cash + opportunity cost), not the lowest immediate cash cost.
             return craftEval.need.effectiveCostCopper() <= buyEval.need.effectiveCostCopper()

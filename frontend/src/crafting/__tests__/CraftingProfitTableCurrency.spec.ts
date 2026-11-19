@@ -9,19 +9,24 @@ describe('CraftingProfitTable currency rows', () => {
       props: { rows: rows as never, sortKey: 'profitCopper', sortDirection: 'desc', selectedRecipeId: null }
     })
 
-  it('marks unpriced currency spending and never shows an unconditional green profit', () => {
-    const row = {
-      ...profitableRow,
-      currencyCosts: {
-        walletState: 'UNKNOWN',
-        goldMarginIsConditional: true,
-        economicsFromHypotheticalCraft: false,
-        costs: [{ currencyId: 61, name: 'Research Note', perCraft: 30, total: 300, breakEvenCopperPerUnit: null }]
-      }
+  it('marks the total with a small star, no "+ Research Notes" text, and keeps normal profit colors', () => {
+    const currencyCosts = {
+      walletState: 'UNKNOWN',
+      goldMarginIsConditional: true,
+      economicsFromHypotheticalCraft: false,
+      costs: [{ currencyId: 61, name: 'Research Note', perCraft: 30, total: 300 }]
     }
-    const wrapper = mountRows([row])
-    expect(wrapper.find('[data-test="currency-conditional"]').text()).toContain('Research Note')
-    expect(wrapper.find('[data-test="profit-per-craft"] .money--gain').exists()).toBe(false)
+    const gain = mountRows([{ ...profitableRow, totalProfitCopper: 5000, profitCopper: 500, currencyCosts }])
+    const star = gain.find('[data-test="currency-conditional"]')
+    expect(star.text()).toBe('*')
+    expect(star.attributes('title')).toContain('Research Note')
+    expect(gain.text()).not.toContain('Research Note(s)')
+    expect(gain.text()).not.toContain('+ Research')
+    expect(gain.find('[data-test="total-profit"] .money--gain').exists()).toBe(true)
+
+    const loss = mountRows([{ ...profitableRow, totalProfitCopper: -5000, profitCopper: -500, currencyCosts }])
+    expect(loss.find('[data-test="total-profit"] .money--loss').exists()).toBe(true)
+    expect(loss.find('[data-test="currency-conditional"]').exists()).toBe(true)
   })
 
   it('keeps item-only rows unchanged', () => {

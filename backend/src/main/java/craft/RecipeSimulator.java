@@ -84,6 +84,23 @@ public class RecipeSimulator {
             ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, state);
             ResolvedNeed root = rr.getRoot();
 
+            // A fully priced purchase may satisfy the batch yet exceed the cumulative buy budget while a
+            // currency-consuming craft of the same requirement is feasible: retry preferring that craft.
+            if (budgetExceeded(ctx, result, rr) && root.getQtySatisfied() >= root.getQtyRequested()
+                    && !ctx.preferCurrencyCraft) {
+                state.rollbackTo(mark);
+                ResolveResult retry = resolver.resolveOneCraft(recipe, ctx.withCurrencyCraftPreferred(), state);
+                if (retry.getRoot().getQtySatisfied() >= retry.getRoot().getQtyRequested()
+                        && !budgetExceeded(ctx, result, retry)) {
+                    rr = retry;
+                    root = rr.getRoot();
+                } else {
+                    state.rollbackTo(mark);
+                    rr = resolver.resolveOneCraft(recipe, ctx, state);
+                    root = rr.getRoot();
+                }
+            }
+
             if (root.getQtySatisfied() < root.getQtyRequested()) {
                 state.rollbackTo(mark);
                 result.setBlockedReason(root.getBlockedReason());
@@ -148,6 +165,11 @@ public class RecipeSimulator {
                 break;
             }
         }
+    }
+
+    private static boolean budgetExceeded(PlannerContext ctx, RecipeSimulationResult result, ResolveResult rr) {
+        return ctx.settings.maxBuyCopper > 0
+                && (long) result.getBuyCostTotal() + rr.getBuyCostCopper() > ctx.settings.maxBuyCopper;
     }
 
     /**

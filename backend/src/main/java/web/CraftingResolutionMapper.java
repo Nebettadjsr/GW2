@@ -193,7 +193,9 @@ final class CraftingResolutionMapper {
                 isApproximate(node.effectiveCostCopper(), node.requestedQuantity()),
                 children,
                 iconUrl(node.itemId(), items),
-                recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds));
+                recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds),
+                node.currencies().stream().map(q -> new ResolutionNodeDto.CurrencyQuantityDto(
+                        q.currencyId(), CraftingRowMapper.currencyName(q.currencyId()), q.quantity())).toList());
     }
 
     /** Display projection only: whole-copper HALF_UP average of the node total; null if undefined. */

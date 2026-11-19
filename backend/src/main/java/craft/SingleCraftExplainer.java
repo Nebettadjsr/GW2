@@ -130,10 +130,14 @@ public final class SingleCraftExplainer {
                 new CraftingResolver(true), acceptedCraftLimit, true);
         RecipeSimulationResult simulation = simulator.simulateRecipe(recipe, ctx, initialState);
 
+        Map<Integer, Recipe> recipesById = new java.util.HashMap<>();
+        ctx.recipesByOutput.values().forEach(list -> list.forEach(r -> recipesById.put(r.recipeId, r)));
+        recipesById.put(recipe.recipeId, recipe);
+
         List<ResolvedNeed> accepted = simulation.getAcceptedCrafts();
         if (!accepted.isEmpty()) {
             List<CraftTraceNode> roots = accepted.stream()
-                    .map(craft -> toNode(craft, BlockedReason.NONE))
+                    .map(craft -> toNode(craft, BlockedReason.NONE, recipesById))
                     .toList();
             return explanationOf(recipe, combineNodes(roots),
                     Math.multiplyExact(recipe.outputCount, simulation.getCraftCount()));
@@ -143,7 +147,7 @@ public final class SingleCraftExplainer {
         // (ARCHITECTURE.md section 7), unlike the absence of a result.
         ResolvedNeed rejected = simulation.getBlockedAttempt();
         if (rejected != null) {
-            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason()), recipe.outputCount);
+            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason(), recipesById), recipe.outputCount);
         }
 
         return SingleCraftExplanation.unavailable(
@@ -191,6 +195,15 @@ public final class SingleCraftExplainer {
             variants.values().forEach(variant -> children.add(combineNodes(variant)));
         }
 
+        java.util.TreeMap<Integer, Integer> currencyTotals = new java.util.TreeMap<>();
+        for (CraftTraceNode node : nodes) {
+            for (CraftTraceNode.CurrencyQuantity q : node.currencies()) {
+                currencyTotals.merge(q.currencyId(), q.quantity(), Math::addExact);
+            }
+        }
+        List<CraftTraceNode.CurrencyQuantity> currencies = currencyTotals.entrySet().stream()
+                .map(e -> new CraftTraceNode.CurrencyQuantity(e.getKey(), e.getValue())).toList();
+
         return new CraftTraceNode(
                 first.itemId(), requested, inventory, crafted, bought, missing,
                 first.recipeId(), craftCount, produced,
@@ -199,7 +212,7 @@ public final class SingleCraftExplainer {
                 sumIfAllKnown(nodes, CraftTraceNode::cashCostCopper),
                 sumIfAllKnown(nodes, CraftTraceNode::opportunityCostCopper),
                 sumIfAllKnown(nodes, CraftTraceNode::effectiveCostCopper),
-                children);
+                children, currencies);
     }
 
     private Integer sumIfAllKnown(List<CraftTraceNode> nodes,
@@ -221,7 +234,7 @@ public final class SingleCraftExplainer {
      *                        but could not be afforded. {@link BlockedReason#NONE} everywhere else,
      *                        including for every child.
      */
-    private CraftTraceNode toNode(ResolvedNeed need, BlockedReason rejectionReason) {
+    private CraftTraceNode toNode(ResolvedNeed need, BlockedReason rejectionReason, Map<Integer, Recipe> recipesById) {
         ResolvedNeed.NodeTrace trace = need.getTrace();
         ResolvedNeed craftAttempt = trace == null ? null : trace.getCraftAttempt();
 
@@ -234,7 +247,7 @@ public final class SingleCraftExplainer {
             // Repeated items in different branches stay separate occurrences: each child is mapped
             // where it occurs, and a cycle ends in the resolver's finite CYCLE_DETECTED node.
             for (ResolvedNeed child : craftAttempt.getChildren()) {
-                children.add(toNode(child, BlockedReason.NONE));
+                children.add(toNode(child, BlockedReason.NONE, recipesById));
             }
         }
 
@@ -244,6 +257,20 @@ public final class SingleCraftExplainer {
 
         List<BlockedReason> blockedReasons = blockedReasonsOf(need, craftAttempt, rejectionReason);
         boolean complete = need.isFullySatisfied();
+
+        // Currency units of this node's own craft path, from the recipe the resolver selected: the executions it
+        // performed, or one attempt's worth (output-covering crafts) for a rejected/blocked attempt.
+        Integer selectedRecipeId = craftTrace == null ? null : craftTrace.getSelectedRecipeId();
+        Recipe selected = selectedRecipeId == null ? null : recipesById.get(selectedRecipeId);
+        List<CraftTraceNode.CurrencyQuantity> currencies = List.of();
+        if (selected != null && !selected.currencies.isEmpty()) {
+            int executions = crafted ? craftTrace.getCraftCount()
+                    : Math.max(1, ceilDiv(need.getQtyRequested(), Math.max(1, selected.outputCount)));
+            currencies = selected.currencies.stream()
+                    .map(c -> new CraftTraceNode.CurrencyQuantity(c.currencyId(),
+                            Math.toIntExact((long) c.count() * executions)))
+                    .toList();
+        }
 
         return new CraftTraceNode(
                 need.getItemId(),
@@ -262,8 +289,13 @@ public final class SingleCraftExplainer {
                 complete ? need.getBuyCostCopper() : null,
                 complete ? need.getOpportunityCostCopper() : null,
                 complete ? effectiveOrNull(need) : null,
-                children
+                children,
+                currencies
         );
+    }
+
+    private static int ceilDiv(int a, int b) {
+        return (int) (((long) a + b - 1) / b);
     }
 
     /** The effective cost, or null when cash plus opportunity cost is outside the int range. */

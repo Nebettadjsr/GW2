@@ -98,6 +98,10 @@ final class CraftingRowMapper {
             61, "Research Note", 50, "Festival Token", 78, "Fine Rift Essence",
             79, "Rare Rift Essence", 80, "Masterwork Rift Essence");
 
+    static String currencyName(int currencyId) {
+        return CURRENCY_NAMES.getOrDefault(currencyId, "Currency " + currencyId);
+    }
+
     /**
      * Copies the domain's exact currency spending. The only derived figure is the single-unpriced-currency
      * break-even (known gold margin / per-craft units); it is withheld for several currencies and for a margin

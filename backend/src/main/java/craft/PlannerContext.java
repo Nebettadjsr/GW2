@@ -24,6 +24,13 @@ public class PlannerContext {
     public final Map<Integer, Integer> wallet;
     public final WalletMode walletMode;
 
+    /**
+     * Budget-retry mode: when both a purchase and a currency-consuming craft are feasible for a requirement, the
+     * craft wins instead of the fully priced purchase. {@link RecipeSimulator} uses it only after the purchase route
+     * exceeded the cumulative {@code maxBuyCopper}.
+     */
+    public final boolean preferCurrencyCraft;
+
     /** Vendor sell value by item id (DOMAIN_SPEC.md 11.2); empty when unknown. Values <= 0 mean none. */
     public final Map<Integer, Integer> vendorValues;
 
@@ -59,7 +66,7 @@ public class PlannerContext {
                           Set<Integer> allowedRecipeIds,
                           List<CharacterCraftingProfile> coordinatedRoster) {
         this(recipesByOutput, tp, settings, allowedRecipeIds, coordinatedRoster,
-                new ConcurrentHashMap<>(), Map.of(), null, WalletMode.ENFORCED);
+                new ConcurrentHashMap<>(), Map.of(), null, WalletMode.ENFORCED, false);
     }
 
     private PlannerContext(Map<Integer, List<Recipe>> recipesByOutput,
@@ -70,7 +77,9 @@ public class PlannerContext {
                            Map<Integer, List<String>> eligibleCharactersByRecipeId,
                            Map<Integer, Integer> vendorValues,
                            Map<Integer, Integer> wallet,
-                           WalletMode walletMode) {
+                           WalletMode walletMode,
+                           boolean preferCurrencyCraft) {
+        this.preferCurrencyCraft = preferCurrencyCraft;
         this.vendorValues = vendorValues;
         this.wallet = wallet;
         this.walletMode = walletMode;
@@ -91,26 +100,32 @@ public class PlannerContext {
         CraftingSettings noBuySettings = settings.withBuyingDisabled();
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, preferCurrencyCraft);
     }
 
     /** This context with vendor sell values for the untradeable-material fallback; shares the memo tables. */
     public PlannerContext withVendorValues(Map<Integer, Integer> vendorValues) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, preferCurrencyCraft);
     }
 
     /** This context with the account wallet ({@code null} = unknown); shares the memo tables. */
     public PlannerContext withWallet(Map<Integer, Integer> wallet) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
                 coordinatedRoster, eligibleCharactersByRecipeId, vendorValues,
-                wallet == null ? null : Map.copyOf(wallet), walletMode);
+                wallet == null ? null : Map.copyOf(wallet), walletMode, preferCurrencyCraft);
     }
 
     /** Hypothetical single-craft economics: currency is still tallied but never limits the craft. */
     public PlannerContext withWalletIgnored() {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, WalletMode.IGNORED);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, WalletMode.IGNORED, preferCurrencyCraft);
+    }
+
+    /** This context preferring feasible currency crafts over purchases (budget retry); shares the memo tables. */
+    public PlannerContext withCurrencyCraftPreferred() {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, true);
     }
 
     public boolean isCoordinated() {

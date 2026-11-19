@@ -595,4 +595,47 @@ describe('CraftingResolution', () => {
       expect(failed.find('[data-test="resolution-row"]').exists()).toBe(false)
     })
   })
+
+  describe('currency requirements (issue 372)', () => {
+    const notes = (quantity: number) => [{ currencyId: 61, name: 'Research Note', quantity }]
+    const currencyTree = node({
+      itemId: 97487,
+      itemName: 'Piece of Dragon Jade',
+      currencies: notes(300),
+      children: [
+        node({ itemId: 97102, itemName: 'Chunk of Pure Jade', requestedQuantity: 40 }),
+        node({
+          itemId: 500,
+          itemName: 'Blocked Intermediate',
+          blockedReasons: ['INSUFFICIENT_CURRENCY'],
+          currencies: notes(30),
+          children: []
+        })
+      ]
+    })
+
+    it('showsBackendCurrencyQuantitiesAtTheirOwnNodesWithoutItemIdentity', () => {
+      const region = ready({ tree: currencyTree })
+      const rows = region.findAll('[data-test="tree-currency"]')
+      expect(rows.map((r) => r.find('[data-test="currency-quantity"]').text())).toEqual(['300 needed', '30 needed'])
+      expect(rows.map((r) => r.find('[data-test="currency-name"]').text())).toEqual(['Research Note', 'Research Note'])
+      // The root's currency row sits in the root's group, the blocked node's in its own (nested) group.
+      expect(nodeAt(region, '0').element.querySelectorAll(':scope > [data-test="node-children"] > ul > [data-test="tree-currency"]'))
+        .toHaveLength(1)
+      expect(nodeAt(region, '0.1').element.querySelectorAll(':scope > [data-test="node-children"] > ul > [data-test="tree-currency"]'))
+        .toHaveLength(1)
+      for (const row of rows) {
+        expect(row.find('[data-test="node-wiki"]').exists()).toBe(false)
+        expect(row.find('img').exists()).toBe(false)
+        expect(row.find('a').exists()).toBe(false)
+      }
+      expect(nodePaths(region)).toEqual(['0', '0.0', '0.1'])
+    })
+
+    it('leavesItemOnlyTreesAsTheyWere', () => {
+      const region = ready({ tree: craftedTree })
+      expect(region.findAll('[data-test="tree-currency"]')).toHaveLength(0)
+      expect(region.findAll('[data-test="node-children"]')[0]?.find('summary').text()).toBe('2 ingredient requirements')
+    })
+  })
 })

@@ -6,6 +6,10 @@ import java.util.Map;
 /** JSON transport shape for {@link CraftingGraphCache}'s on-disk crafting graph cache. */
 public class CraftingGraphDto {
 
+    /** Cache layout version; a snapshot written before currency requirements existed lacks it and is rebuilt. */
+    public static final int CURRENT_SCHEMA_VERSION = 2;
+
+    public int schemaVersion;
     public String cacheKey;
     public long generatedAt;
     public List<RecipeDto> recipes;
