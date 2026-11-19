@@ -70,9 +70,13 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
         return reject(400, `Raw key sent in body or query: ${url.pathname}`)
       }
       const key = request.headers['x-gw2-api-key']
-      // Shared public reads (item metadata/prices) need no account proof or context, and never a key.
+      // Shared public reads (item metadata/prices) need no account proof, and never a key or context.
       if (publicReadRoutes.includes(url.pathname)) {
-        return key === undefined ? false : reject(400, `Raw key sent on public route: ${url.pathname}`)
+        if (key !== undefined) return reject(400, `Raw key sent on public route: ${url.pathname}`)
+        if (request.headers['x-account-context'] !== undefined) {
+          return reject(400, `Account context sent on public route: ${url.pathname}`)
+        }
+        return false
       }
       if (url.pathname === '/api/session') {
         if (key !== DUMMY_KEY) return reject(401, 'Proof did not use the synthetic retained key')

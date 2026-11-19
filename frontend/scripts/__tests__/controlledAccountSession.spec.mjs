@@ -42,6 +42,15 @@ describe('controlled account boundary', () => {
     expect(request('/api/items/prices?ids=1', 'GET').reply.status).toBe(404)
   })
 
+  it('rejects an account context on public reads, current or stale, while contextless reads pass', () => {
+    const { request } = fixture({ publicReadRoutes: ['/api/items/metadata', '/api/items/prices'] })
+    expect(request('/api/items/prices?ids=1', 'GET').handled).toBe(false)
+    request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
+    expect(request('/api/items/metadata?ids=1', 'GET', { 'x-account-context': 'smoke-context-1' }).reply.status).toBe(400)
+    expect(request('/api/items/prices?ids=1', 'GET', { 'x-account-context': 'stale-context' }).reply.status).toBe(400)
+    expect(request('/api/items/metadata?ids=1', 'GET').handled).toBe(false)
+  })
+
   it('requires the retained key header on keyed refreshes and forbids it on every other protected route', () => {
     const { request } = fixture({ keyedRoutes: ['/api/sync/account'], calculationRoutes: ['/api/crafting/profit'] })
     request('/api/session', 'POST', { 'x-gw2-api-key': 'synthetic-read-only-smoke-key' })
