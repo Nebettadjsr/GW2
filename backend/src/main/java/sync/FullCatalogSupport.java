@@ -128,7 +128,9 @@ public final class FullCatalogSupport {
      */
     public static void requireIngredients(JsonNode recipe) {
         JsonNode ing = recipe.get("ingredients");
-        if (ing != null && !ing.isNull() && !validIngredients(ing, true))
+        // A missing, null or non-array collection is malformed (supported details always carry an array); only an
+        // explicit [] is a valid, distinct "no requirements" value.
+        if (ing == null || !ing.isArray() || !validIngredients(ing, true))
             throw new IllegalStateException("recipes detail batch contains a malformed record");
     }
 

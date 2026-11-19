@@ -483,6 +483,36 @@ class SyncFetchPublicationTest {
     }
 
     @Test
+    void recipeSync_missingNullOrNonArrayIngredientCollectionQuarantinesSeededCurrencyRecipe() throws Exception {
+        String head = "{\"id\":%d,\"type\":\"Refinement\",\"output_item_id\":20,\"output_item_count\":1,\"min_rating\":0,"
+                + "\"time_to_craft_ms\":1000,\"disciplines\":[\"Chef\"],\"flags\":[],\"chat_link\":\"[&A]\"%s}";
+        String[] tails = {"", ",\"ingredients\":null", ",\"ingredients\":7", ",\"ingredients\":{\"type\":\"Currency\",\"id\":61,\"count\":30}"};
+        for (int i = 0; i < tails.length; i++) {
+            int id = 400 + i;
+            exec("INSERT INTO recipes (recipe_id, type) VALUES (" + id + ", 'Old')");
+            exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (" + id + ", 'Currency', 61, 30)");
+        }
+        StringBuilder body = new StringBuilder("[").append(currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":30}"));
+        StringBuilder ids = new StringBuilder("[1");
+        for (int i = 0; i < tails.length; i++) {
+            body.append(',').append(String.format(head, 400 + i, tails[i]));
+            ids.append(',').append(400 + i);
+        }
+        String detail = body.append(']').toString();
+        RecipeSync.fetcher = url -> {
+            if (url.equals(RecipeSync.CATALOG_URL)) return json(ids.append(']').toString());
+            if (url.contains("/v2/recipes?ids=")) return json(detail);
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+
+        assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"), "malformed collections never publish or clear to free");
+        assertEquals(String.valueOf(tails.length), scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+    }
+
+    @Test
     void recipeSync_omittedOrUnparseableDetailRecordsAreQuarantinedNotClearedToFree() throws Exception {
         exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");
         exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (300, 'Currency', 61, 30)");
