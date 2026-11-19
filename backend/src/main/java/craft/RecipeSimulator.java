@@ -185,6 +185,7 @@ public class RecipeSimulator {
                 result.setCurrencyFirstCraft(difference(state.currencySpentSnapshot(), spentBefore));
             }
 
+            if (root.usesExpectedYield()) result.markUsesExpectedYield();
             if (captureAcceptedCrafts) result.addAcceptedCraft(root);
 
             result.setLastCraft(root);

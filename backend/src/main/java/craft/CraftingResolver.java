@@ -127,16 +127,68 @@ public class CraftingResolver {
             String parentDiscipline,
             String assignedCharacter
                                    ) {
+        Recipe promotion = state.isVisiting(itemId) ? null : seedPromotion(itemId, ctx);
+        if (promotion == null || !allowDirectBuy) {
+            return resolveNeedCore(itemId, qtyRequested, ctx, state, allowDirectBuy, parentDiscipline,
+                    assignedCharacter, false);
+        }
+        // A self-seeded variable Forge route may need the only owned unit as ITS seed. The greedy owned-first
+        // route is tried first; the seed-preserving route (owned stock left for the promotion) competes with it
+        // under the ordinary satisfied / cash / effective-cost selection. Each attempt is rolled back.
+        int mark = state.mark();
+        ResolvedNeed greedy = resolveNeedCore(itemId, qtyRequested, ctx, state, allowDirectBuy, parentDiscipline,
+                assignedCharacter, false);
+        PlanState.Delta greedyEffect = state.captureDelta(mark);
+        state.rollbackTo(mark);
+        ResolvedNeed preserving = resolveNeedCore(itemId, qtyRequested, ctx, state, allowDirectBuy, parentDiscipline,
+                assignedCharacter, true);
+        if (isBetterCraftAttempt(preserving, greedy, ctx.minimizeBuyCost) && !sameCost(preserving, greedy)) {
+            return preserving;
+        }
+        state.rollbackTo(mark);
+        state.applyDelta(greedyEffect);
+        return greedy;
+    }
+
+    private static boolean sameCost(ResolvedNeed a, ResolvedNeed b) {
+        return a.isFullySatisfied() == b.isFullySatisfied() && a.getBuyCostCopper() == b.getBuyCostCopper()
+                && a.effectiveCostCopper() == b.effectiveCostCopper()
+                && a.getQtySatisfied() == b.getQtySatisfied();
+    }
+
+    /** The self-seeded variable Forge promotion for {@code itemId} that really gains units per batch, or null. */
+    private static Recipe seedPromotion(int itemId, PlannerContext ctx) {
+        for (Recipe r : ctx.recipesByOutput.getOrDefault(itemId, List.of())) {
+            if (isPromotion(r) && ctx.isPerformable(r)) return r;
+        }
+        return null;
+    }
+
+    /** A guaranteed-gain self-seeded variable route: each batch's minimum exceeds the seed it consumes. */
+    static boolean isPromotion(Recipe r) {
+        return r.isMysticForge() && r.hasExpectedYield() && r.selfSeedUnits() > 0 && r.outputCount > r.selfSeedUnits();
+    }
+
+    private ResolvedNeed resolveNeedCore(
+            int itemId,
+            int qtyRequested,
+            PlannerContext ctx,
+            PlanState state,
+            boolean allowDirectBuy,
+            String parentDiscipline,
+            String assignedCharacter,
+            boolean preserveSeed
+                                   ) {
         ResolvedNeed result = new ResolvedNeed(itemId, qtyRequested);
 
-        int reused = state.consumeSurplus(itemId, qtyRequested);
+        int reused = preserveSeed ? 0 : state.consumeSurplus(itemId, qtyRequested);
         result.setQtyCrafted(reused);
         int remaining = qtyRequested - reused;
 
         // 1) Use owned inventory first, if enabled
         // Material Protection: pre-existing owned copies of a protected item ID are unavailable in
         // every pool and at every depth; surplus produced in this plan (above) stays reusable.
-        if (ctx.settings.useOwnMats && !ctx.settings.isProtected(itemId)) {
+        if (!preserveSeed && ctx.settings.useOwnMats && !ctx.settings.isProtected(itemId)) {
             // DOMAIN_SPEC.md section 11.1 / DQ-007: account-bound/soulbound-usable owned
             // quantity is consumed before ordinary tradable owned quantity and never charged
             // TP opportunity cost, since it cannot be sold on the Trading Post either way.
@@ -259,6 +311,10 @@ public class CraftingResolver {
             chosenNeed.unpricedCurrencyIds().forEach(result::addUnpricedCurrency);
             result.absorbWalletNotes(chosenNeed);
             if (chosenNeed.usesExpectedYield()) result.markUsesExpectedYield();
+            if (chosenNeed.getYieldBatches() > 0) {
+                result.markYieldAccounting(chosenNeed.getYieldBatches(), chosenNeed.getYieldProducedGross(),
+                        chosenNeed.getYieldReusedSeed());
+            }
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(chosenNeed.getBlockedReason());
@@ -441,7 +497,19 @@ public class CraftingResolver {
                 trace.setAssignedCharacter(assignedCharacter);
             }
 
-            int timesNeeded = ceilDiv(qtyRequested, recipe.outputCount);
+            // A guaranteed-gain self-seeded promotion runs its batches sequentially: only the FIRST batch's seed
+            // comes from outside; each later batch consumes units the previous batch's guaranteed minimum produced.
+            // Net guaranteed output of t batches = t*min - (t-1)*seed; fractional mean is never stock.
+            boolean promotion = isPromotion(recipe);
+            int seedUnits = promotion ? recipe.selfSeedUnits() : 0;
+            int timesNeeded;
+            if (promotion) {
+                int gain = recipe.outputCount - seedUnits;
+                timesNeeded = qtyRequested <= recipe.outputCount ? 1
+                        : 1 + ceilDiv(qtyRequested - recipe.outputCount, gain);
+            } else {
+                timesNeeded = ceilDiv(qtyRequested, recipe.outputCount);
+            }
             int times = timesNeeded;
 
             // At most one daily craft operation is available in this planning state.
@@ -460,6 +528,8 @@ public class CraftingResolver {
             }
 
             int produced = Math.multiplyExact(times, recipe.outputCount);
+            int reusedSeed = promotion ? Math.multiplyExact(times - 1, seedUnits) : 0;
+            produced = produced - reusedSeed; // physical net: reused seed units are not stock for anyone else
             int qtySatisfied = Math.min(produced, qtyRequested);
 
             // Currency is spent from one account-wide wallet pool shared by nested and repeated crafts.
@@ -548,7 +618,7 @@ public class CraftingResolver {
             for (Ingredient ing : recipe.ingredients) {
                 // Validate the multiplication and the accumulated per-item demand before anything
                 // is consumed, priced, bought or descended into; an excess ends this attempt now.
-                long childDemand = (long) ing.count * times;
+                long childDemand = promotion && ing.itemId == itemId ? ing.count : (long) ing.count * times;
                 if (!state.reserveDemand(ing.itemId, childDemand)) {
                     return limitBlocked(craftResult, qtyRequested, BlockedReason.MATERIAL_LIMIT);
                 }
@@ -591,6 +661,9 @@ public class CraftingResolver {
                 craftResult.markVendorAcquisition(times, produced);
             } else {
                 craftResult.setQtyCrafted(qtySatisfied);
+            }
+            if (recipe.hasExpectedYield()) {
+                craftResult.markYieldAccounting(times, Math.addExact(produced, reusedSeed), reusedSeed);
             }
             state.addSurplus(itemId, produced - qtySatisfied);
 

@@ -360,7 +360,8 @@ public class CraftingPlanner {
             result.guaranteedSellableUnitsTotal = Math.max(0,
                     Math.subtractExact(Math.multiplyExact(recipe.expectedYield.min(), realCrafts), reusedSeed));
         }
-        result.estimated = expected || (firstCraft != null && firstCraft.usesExpectedYield());
+        result.estimated = expected || (!hypothetical && sim.usesExpectedYield())
+                || (hypothetical && firstCraft != null && firstCraft.usesExpectedYield());
         result.economicsFromHypotheticalCraft = hypothetical;
         Map<Integer, Integer> perCraft = sim.getCurrencyFirstCraft();
         if (perCraft.isEmpty() && !recipe.currencies.isEmpty()) {

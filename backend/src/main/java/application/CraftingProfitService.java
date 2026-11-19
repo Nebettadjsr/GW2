@@ -270,7 +270,8 @@ public class CraftingProfitService {
         Map<Integer, Integer> sellableInv = Map.of();
         Map<Integer, Integer> accountBoundInv = Map.of();
         Map<String, Map<Integer, Integer>> characterBoundInv = Map.of();
-        if (settings.useOwnMats && !roster.isEmpty()) {
+        // Enabled Forge needs no crafting character: shared Bank/Materials stock stays available with an empty roster.
+        if (settings.useOwnMats && (!roster.isEmpty() || settings.allowMysticForge)) {
             Set<String> names = roster.stream().map(CharacterCraftingProfile::name).collect(Collectors.toSet());
             InventoryRepository.CoordinatedInventory inv = loadOwnedInventory(con, names, settings);
             sellableInv = inv.sellable();

@@ -174,6 +174,25 @@ public class ResolvedNeed {
         this.vendorProduced = produced;
     }
 
+    private int yieldBatches;
+    private int yieldProducedGross;
+    private int yieldReusedSeed;
+
+    /**
+     * Guaranteed (minimum-yield) physical accounting of a variable Forge step: {@code batches} sequential crafts
+     * produced {@code gross} units, of which {@code reusedSeed} were consumed again by a later batch of the same step.
+     * Net = gross - reusedSeed. Never includes fractional expected output.
+     */
+    public void markYieldAccounting(int batches, int gross, int reusedSeed) {
+        this.yieldBatches = batches;
+        this.yieldProducedGross = gross;
+        this.yieldReusedSeed = reusedSeed;
+    }
+    public int getYieldBatches() { return yieldBatches; }
+    public int getYieldProducedGross() { return yieldProducedGross; }
+    public int getYieldReusedSeed() { return yieldReusedSeed; }
+    public int getYieldProducedNet() { return yieldProducedGross - yieldReusedSeed; }
+
     public int getVendorBatches() { return vendorBatches; }
     public int getVendorProduced() { return vendorProduced; }
 
