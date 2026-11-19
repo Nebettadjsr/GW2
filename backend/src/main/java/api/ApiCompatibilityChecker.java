@@ -359,7 +359,7 @@ public class ApiCompatibilityChecker {
         String m = missing(n, intField("id"), textField("name"), textField("type"), textField("rarity"));
         if (m != null) return m;
         JsonNode vv = n.get("vendor_value");
-        if (vv != null && !vv.isNull() && !(vv.isIntegralNumber() && vv.asInt() >= 0)) return "vendor_value";
+        if (vv != null && !vv.isNull() && !(vv.isIntegralNumber() && vv.canConvertToInt() && vv.asInt() >= 0)) return "vendor_value";
         JsonNode icon = n.get("icon");
         if (icon != null && !icon.isNull() && !icon.isTextual()) return "icon";
         JsonNode flags = n.get("flags");
@@ -442,7 +442,7 @@ public class ApiCompatibilityChecker {
 
     // ---- tiny field-contract helpers ----
     private record Field(String name, java.util.function.Predicate<JsonNode> ok) {}
-    private static Field intField(String n) { return new Field(n, JsonNode::isIntegralNumber); }
+    private static Field intField(String n) { return new Field(n, x -> x.isIntegralNumber() && x.canConvertToInt()); }
     private static Field textField(String n) { return new Field(n, x -> x.isTextual() && !x.asText().isBlank()); }
     private static Field arrayField(String n) { return new Field(n, JsonNode::isArray); }
 

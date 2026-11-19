@@ -228,7 +228,7 @@ class ApiCompatibilityCheckerTest {
         assertEquals(Status.OK, probe(run(), "item").status());
         ok(B + "/v2/items/19721", base + ",\"vendor_value\":null,\"icon\":null,\"flags\":null}");
         assertEquals(Status.OK, probe(run(), "item").status());
-        for (String bad : new String[] {",\"vendor_value\":\"7\"", ",\"vendor_value\":-1", ",\"icon\":5",
+        for (String bad : new String[] {",\"vendor_value\":\"7\"", ",\"vendor_value\":-1", ",\"vendor_value\":4294967296", ",\"vendor_value\":-4294967296", ",\"icon\":5",
                 ",\"flags\":\"NoSell\"", ",\"flags\":[\"NoSell\",3]"}) {
             ok(B + "/v2/items/19721", base + bad + "}");
             var p = probe(run(), "item");

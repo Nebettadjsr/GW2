@@ -206,7 +206,7 @@ unsuccessful latest attempt rather than keeping an older success. The checker
 whole-check bound checked between requests; each request is itself bounded by the 1 MiB byte limit
 (accumulation is cancelled while reading) and a wall-clock per-request limit that also covers a stalled
 body (`api.PublicApiTransport`). Item fields, the ordinary recipe (production full-refresh validator)
-and the Jade canary identity/Research Notes currency 61 are verified, not just their type, compares consumed fields/types and the real `RecipeParser`, reads `/v2.json?v=latest` against
+and the Jade canary identity/Research Notes currency 61 are verified, not just their type. The checker compares consumed fields/types and the real `RecipeParser`, reads `/v2.json?v=latest` against
 an explicit reviewed version baseline, and classifies probes OK/ATTENTION/UNAVAILABLE/MISMATCH. Only the
 latest result lives in process memory (not-checked after restart; stale after 24 hours); no scheduler,
 history, account endpoint, mutation or automatic API-version migration exists.
