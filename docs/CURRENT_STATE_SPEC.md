@@ -42,11 +42,11 @@ Both Compose files explicitly forward it. Restart the backend after changing own
 
 ## Public Oracle deployment
 
-The live application is **`d086ea59cc4677f2e7652d2f960fb3076481b356`**, published with the
-owner's approval in the visible Oracle terminal on 2026-11-19. Its tree exactly matches
-reviewed/CI candidate `d313b7524ab24e15c29888cb51bf158edcdb3307` from
-[#369](https://github.com/Nebettadjsr/GW2/pull/369).
-Later documentation-only changes do not imply another application deployment.
+The active source revision is identified by `/opt/gw2/current` and the release's
+`SOURCE_REVISION` file. The merged PR records the reviewed candidate, matching merged
+tree, owner's publication authorization and observed release checks. Check those live
+references when identifying a deployment; a newer Git commit, including documentation-only
+changes, does not imply another application deployment.
 
 | Runtime fact | Last verified deployment |
 | --- | --- |
@@ -55,7 +55,7 @@ Later documentation-only changes do not imply another application deployment.
 | Address | `130.61.78.114` |
 | Stack | Docker 29.9.3 / Compose 5.7.1; frontend/backend/PostgreSQL 17. |
 | Published port | Frontend `127.0.0.1:8088`; backend and DB publish none. |
-| Active release | `/opt/gw2/current` → `/opt/gw2/releases/d086ea59cc4677f2e7652d2f960fb3076481b356` |
+| Active release | `/opt/gw2/current` → `/opt/gw2/releases/<source commit SHA>`; `SOURCE_REVISION` records that SHA. |
 | Update effect | Backend/frontend replaced and healthy; PostgreSQL container unchanged. |
 
 ### Required host configuration
