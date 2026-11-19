@@ -20,8 +20,6 @@ public record CurrencyCostsDto(String walletState,
     /**
      * @param perCraft  exact units one craft consumes (including nested crafts)
      * @param total     exact units the counted crafts consume
-     * @param breakEvenCopperPerUnit known gold margin per craft divided by {@code perCraft}, only when this is the
-     *                  single unpriced currency and the margin is positive; otherwise null
      */
-    public record CurrencyCostDto(int currencyId, String name, int perCraft, int total, Integer breakEvenCopperPerUnit) {}
+    public record CurrencyCostDto(int currencyId, String name, int perCraft, int total) {}
 }

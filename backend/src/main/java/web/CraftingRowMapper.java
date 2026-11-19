@@ -103,9 +103,7 @@ final class CraftingRowMapper {
     }
 
     /**
-     * Copies the domain's exact currency spending. The only derived figure is the single-unpriced-currency
-     * break-even (known gold margin / per-craft units); it is withheld for several currencies and for a margin
-     * that is not positive, because no nonnegative currency value can then make the craft profitable.
+     * Copies the domain's exact currency spending; no valuation or break-even figure is derived (deferred).
      */
     private static CurrencyCostsDto toCurrencyCosts(CraftResult result) {
         Map<Integer, Integer> first = result.currencyPerCraft == null ? Map.of() : result.currencyPerCraft;
@@ -114,14 +112,11 @@ final class CraftingRowMapper {
         java.util.TreeSet<Integer> ids = new java.util.TreeSet<>(first.keySet());
         ids.addAll(total.keySet());
         if (ids.isEmpty()) return null;
-        boolean single = ids.size() == 1;
         List<CurrencyCostsDto.CurrencyCostDto> costs = new ArrayList<>();
         for (int id : ids) {
             int perCraft = first.getOrDefault(id, 0);
-            // Break-even basis is always the first craft's gold margin over the first craft's units.
-            Integer breakEven = single && perCraft > 0 && result.profitCopper > 0 ? result.profitCopper / perCraft : null;
             costs.add(new CurrencyCostsDto.CurrencyCostDto(id,
-                    CURRENCY_NAMES.getOrDefault(id, "Currency " + id), perCraft, total.getOrDefault(id, 0), breakEven));
+                    CURRENCY_NAMES.getOrDefault(id, "Currency " + id), perCraft, total.getOrDefault(id, 0)));
         }
         return new CurrencyCostsDto(result.walletState, true, result.economicsFromHypotheticalCraft, costs);
     }

@@ -86,8 +86,6 @@ export interface CurrencyCost {
   name: string
   perCraft: number
   total: number
-  /** Backend field retained for compatibility; the UI no longer explains break-even valuation. */
-  breakEvenCopperPerUnit?: number | null
 }
 
 export interface CurrencyCosts {

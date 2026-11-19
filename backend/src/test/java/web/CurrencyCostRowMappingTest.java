@@ -33,7 +33,7 @@ class CurrencyCostRowMappingTest {
     }
 
     @Test
-    void knownWalletShowsAllCurrencySpendingAndBreakEven() throws Exception {
+    void knownWalletShowsAllCurrencySpendingOnly() throws Exception {
         CraftingRowDto row = row(Map.of(97487, new PriceQuote(100_000, 120_000), 97102, new PriceQuote(1, 2)),
                 Map.of(61, 309));
         assertEquals(10, row.craftableCount());
@@ -47,11 +47,10 @@ class CurrencyCostRowMappingTest {
         assertEquals(30, c.costs().get(0).perCraft());
         assertEquals(300, c.costs().get(0).total());
         assertTrue(row.profitCopper() > 0);
-        assertEquals(row.profitCopper() / 30, c.costs().get(0).breakEvenCopperPerUnit());
     }
 
     @Test
-    void unknownWalletKeepsRecipeAndQuoteVisibleWithoutBreakEvenInventedFromZero() throws Exception {
+    void unknownWalletKeepsRecipeAndQuoteVisibleWithoutInventedValue() throws Exception {
         CraftingRowDto row = row(Map.of(97487, new PriceQuote(100_000, 120_000), 97102, new PriceQuote(1, 2)), null);
         assertEquals(0, row.craftableCount());
         assertEquals("UNKNOWN", row.currencyCosts().walletState());
@@ -59,15 +58,9 @@ class CurrencyCostRowMappingTest {
         assertEquals(30, row.currencyCosts().costs().get(0).perCraft());
     }
 
-    @Test
-    void nonPositiveMarginNeverShowsBreakEven() throws Exception {
-        CraftingRowDto row = row(Map.of(97487, new PriceQuote(1, 2), 97102, new PriceQuote(500, 600)), Map.of(61, 309));
-        assertNull(row.currencyCosts().costs().get(0).breakEvenCopperPerUnit());
-    }
-
     /** PR #375 P1: the first craft consumes an owned intermediate, later crafts need Notes. */
     @Test
-    void currencyConsumedOnlyAfterFirstCraftIsStillShownWithTotalAndNoFirstCraftBreakEven() throws Exception {
+    void currencyConsumedOnlyAfterFirstCraftIsStillShownWithTotal() throws Exception {
         Recipe top = new Recipe(1, 1000, 1, 0, "Artificer", List.of(new Ingredient(2000, 1)));
         Recipe inter = new Recipe(2, 2000, 1, 0, "Artificer", List.of(new Ingredient(3000, 1)),
                 List.of(new CurrencyRequirement(61, 30)));
@@ -83,6 +76,5 @@ class CurrencyCostRowMappingTest {
         assertEquals(1, c.costs().size());
         assertEquals(0, c.costs().get(0).perCraft());
         assertEquals(30 * (r.craftableCount - 1), c.costs().get(0).total());
-        assertNull(c.costs().get(0).breakEvenCopperPerUnit());
     }
 }
