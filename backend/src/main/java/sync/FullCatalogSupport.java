@@ -102,10 +102,12 @@ public final class FullCatalogSupport {
         if (!ing.isArray()) return false;
         Set<String> identities = new HashSet<>();
         for (JsonNode i : ing) {
-            if (typedOnly && !(i.isObject() && i.hasNonNull("type"))) continue; // tolerated legacy shape
+            // Only a genuine legacy {item_id,count} object (no "type" member) keeps the safe path's tolerance;
+            // null, non-object, null-typed and other untyped shapes are validated (and so quarantined).
+            if (typedOnly && i.isObject() && !i.has("type") && i.has("item_id")) continue;
             String kind;
             String idField;
-            if (i.isObject() && i.hasNonNull("type")) {
+            if (i.isObject() && i.has("type")) {
                 kind = i.get("type").isTextual() ? i.get("type").asText() : "";
                 idField = "id";
                 if (!"Item".equals(kind) && !"Currency".equals(kind) && !KNOWN_UNSUPPORTED_KINDS.contains(kind)) return false;

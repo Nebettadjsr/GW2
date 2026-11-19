@@ -192,7 +192,7 @@ class SyncFetchPublicationTest {
             return json("""
                 [{"id":1,"type":"Refinement","output_item_id":20,"output_item_count":2,"min_rating":100,"time_to_craft_ms":1000,
                   "disciplines":["Weaponsmith"],"flags":["AutoLearned"],"chat_link":"[&A]",
-                  "ingredients":[{"item_id":10,"count":3},{"item_id":10,"count":4},{"currency_id":1,"count":9},{"item_id":11,"count":0}]},
+                  "ingredients":[{"item_id":10,"count":3},{"item_id":10,"count":4},{"item_id":11,"count":0}]},
                  {"id":2,"type":"Weapon","output_item_id":21,"output_item_count":1,"min_rating":0,"time_to_craft_ms":0,
                   "disciplines":[],"ingredients":[{"item_id":11,"count":1}]},
                  {"id":0}, null]
@@ -454,7 +454,11 @@ class SyncFetchPublicationTest {
                 "{\"type\":\"Currency\",\"id\":61,\"count\":-3}",
                 "{\"type\":\"Currency\",\"id\":0,\"count\":3}",
                 "{\"type\":\"Currency\",\"id\":61,\"count\":3000000000}",
-                "{\"type\":\"Currency\",\"id\":3000000000,\"count\":3}"};
+                "{\"type\":\"Currency\",\"id\":3000000000,\"count\":3}",
+                "{\"type\":null,\"id\":61,\"count\":30}",
+                "null",
+                "7",
+                "{\"id\":61,\"count\":30}"};
         StringBuilder body = new StringBuilder("[").append(currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":30}"));
         StringBuilder ids = new StringBuilder("[1");
         for (int i = 0; i < bad.length; i++) {
