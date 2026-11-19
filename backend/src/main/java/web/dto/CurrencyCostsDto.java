@@ -32,7 +32,7 @@ public record CurrencyCostsDto(String walletState,
                                   Integer basisRecipeId, List<VariantDto> variants) {}
 
     public record VariantDto(int recipeId, String outputName, int notesPerBatch, Long batchCostCopper,
-                             Long perNoteCopperCeil, boolean basis, List<LineDto> ingredients) {}
+                             Long perNoteCopperCeil, Long per100NotesCopper, boolean basis, List<LineDto> ingredients) {}
 
     public record LineDto(int itemId, String name, int count, Integer unitPriceCopper, Long totalCopper,
                           String iconUrl) {}

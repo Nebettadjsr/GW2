@@ -42,12 +42,12 @@ const estimate: NoteEstimate = {
   variants: [
     {
       recipeId: 15120, outputName: 'Peer Reviewed Research', notesPerBatch: 150, batchCostCopper: 400,
-      perNoteCopperCeil: 3, basis: true,
-      ingredients: [{ itemId: 1001, name: 'Vial of Powerful Blood', count: 4, unitPriceCopper: 100, totalCopper: 400 }]
+      perNoteCopperCeil: 3, per100NotesCopper: 267, basis: true,
+      ingredients: [{ itemId: 1001, name: 'Vial of Powerful Blood', count: 4, unitPriceCopper: 100, totalCopper: 400, iconUrl: '/api/items/1001/icon' }]
     },
     {
       recipeId: 15131, outputName: 'Peer Reviewed Research', notesPerBatch: 150, batchCostCopper: null,
-      perNoteCopperCeil: null, basis: false,
+      perNoteCopperCeil: null, per100NotesCopper: null, basis: false,
       ingredients: [{ itemId: 2001, name: 'Pile of Crystalline Dust', count: 4, unitPriceCopper: null, totalCopper: null }]
     }
   ]
@@ -77,8 +77,15 @@ describe('ResearchNoteEstimatePopup', () => {
 
     await trigger.trigger('click')
     expect(dialog.open).toBe(true)
-    expect(wrapper.find('[data-test="note-estimate-variant-15120"]').text()).toContain('4 ×')
-    expect(wrapper.find('[data-test="note-estimate-variant-15120"]').text()).toContain('Cost per 150-Note batch')
+    const card = wrapper.find('[data-test="note-estimate-variant-15120"]')
+    const cells = card.findAll('[data-test="note-estimate-line"] td').map((td) => td.text())
+    expect(cells).toEqual(['4', '', 'Vial of Powerful Blood', '4s 0c'])
+    expect(card.find('img').attributes('src')).toBe('/api/items/1001/icon')
+    expect(card.find('[data-test="note-estimate-cost"]').text()).toBe('4s 0c')
+    expect(card.find('[data-test="note-estimate-per100"]').text()).toBe('2s 67c')
+    expect(card.text()).toContain('Total (150 Research Notes)')
+    expect(wrapper.findAll('.note-estimate__card')).toHaveLength(2)
+    expect(wrapper.find('[data-test="note-estimate-variant-15131"] [data-test="note-estimate-per100"]').text()).toBe('Unavailable')
     expect(wrapper.findAll('[data-test="note-estimate-basis"]')).toHaveLength(1)
     expect(wrapper.find('[data-test="note-estimate-variant-15120"] [data-test="note-estimate-basis"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="note-estimate-variant-15131"] [data-test="note-estimate-unavailable"]').exists()).toBe(true)
@@ -116,20 +123,22 @@ describe('Research Note estimate in the overview', () => {
     estimate
   }
 
-  it('detail row shows quantity, deduction and only a compact hint; the comparison stays in the popup', () => {
+  it('detail shows quantity and, on a second row, the deduction beside the Estimated value button; the comparison stays in the popup', () => {
     const wrapper = mount(SelectedResultDetail, {
       props: {
         row: { ...profitableRow, currencyCosts }, hiddenReason: null, settings: null, placeholder: '',
         resolutionPhase: 'idle', resolutionDetail: null, resolutionFailure: null, resolutionRecipeId: null
       }
     })
-    const labels = wrapper.findAll('.calculation dt').map((dt) => dt.text())
+    const labels = wrapper.findAll('.calculation > dt').map((dt) => dt.text())
     const own = labels.findIndex((t) => t.startsWith('Own materials'))
-    expect(labels[own + 1]).toBe('Research Note')
-    expect(labels[own + 2]).toMatch(/^Bought materials/)
+    expect(labels[own + 1]).toBe('Research Notes')
+    expect(labels[own + 2]).toMatch(/^Estimated value/)
+    expect(wrapper.find('.calculation__sub [data-test="note-estimate-trigger"]').text()).toBe('Estimated value')
+    expect(labels[own + 3]).toMatch(/^Bought materials/)
     expect(wrapper.find('[data-test="detail-currency-cost"]').text()).toBe('90')
-    expect(wrapper.find('[data-test="detail-note-estimate-cost"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="note-estimate-trigger"]').text()).toBe('Estimated')
+    expect(wrapper.find('[data-test="detail-note-estimate-cost"]').text()).toBe('2s 40c')
+    expect(wrapper.find('[data-test="note-estimate-trigger"]').text()).toBe('Estimated value')
     expect(wrapper.find('[data-test="detail-currency-exclusion"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('+ Research')
   })

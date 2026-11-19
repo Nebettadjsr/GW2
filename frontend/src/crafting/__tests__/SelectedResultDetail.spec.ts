@@ -432,7 +432,7 @@ describe('currency costs (issue 372)', () => {
     const wrapper = detailOf(jade)
     const labels = wrapper.findAll('.calculation dt').map((dt) => dt.text())
     const own = labels.findIndex((t) => t.startsWith('Own materials'))
-    const note = labels.findIndex((t) => t === 'Research Note')
+    const note = labels.findIndex((t) => t === 'Research Notes')
     const bought = labels.findIndex((t) => t.startsWith('Bought materials'))
     expect(own).toBeGreaterThanOrEqual(0)
     expect(note).toBe(own + 1)

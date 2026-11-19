@@ -264,19 +264,23 @@ function materialQuoteText(item: MissingItem): string {
 
           <template v-for="cost in row.currencyCosts?.costs ?? []" :key="cost.currencyId">
             <dt data-test="detail-currency-label">
-              {{ cost.name }}
+              {{ cost.currencyId === 61 ? 'Research Notes' : cost.name }}
             </dt>
             <dd class="numeric">
               <span class="calc-negative" data-test="detail-currency-cost">
                 {{ formatCount(row.currencyCosts?.economicsFromHypotheticalCraft ? cost.perCraft : cost.total) }}
               </span>
-              <template v-if="cost.currencyId === 61 && row.currencyCosts?.estimate">
-                <span class="calc-negative" data-test="detail-note-estimate-cost">
-                  ({{ formatCopper(row.currencyCosts.economicsFromHypotheticalCraft ? row.currencyCosts.estimate.perCraftCopper : row.currencyCosts.estimate.totalCopper) }})
-                </span>
-                <ResearchNoteEstimatePopup :estimate="noteEstimate ?? row.currencyCosts.estimate" />
-              </template>
             </dd>
+            <template v-if="cost.currencyId === 61 && row.currencyCosts?.estimate">
+              <dt class="calculation__sub" data-test="detail-note-estimate-label">
+                <ResearchNoteEstimatePopup :estimate="noteEstimate ?? row.currencyCosts.estimate" />
+              </dt>
+              <dd class="numeric">
+                <span class="calc-negative" data-test="detail-note-estimate-cost">
+                  {{ formatCopper(row.currencyCosts.economicsFromHypotheticalCraft ? row.currencyCosts.estimate.perCraftCopper : row.currencyCosts.estimate.totalCopper) }}
+                </span>
+              </dd>
+            </template>
           </template>
 
           <dt>
@@ -517,6 +521,12 @@ function materialQuoteText(item: MissingItem): string {
 
 .calculation dd {
   white-space: nowrap;
+}
+
+/* Second row of a currency: small, slightly indented beneath its label. */
+.calculation dt.calculation__sub {
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
 }
 
 /*

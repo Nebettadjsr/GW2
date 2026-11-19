@@ -100,6 +100,9 @@ class CurrencyCostRowMappingTest {
         assertTrue(de.variants().get(0).basis());
         assertEquals(400L, de.variants().get(0).batchCostCopper());
         assertEquals(3L, de.variants().get(0).perNoteCopperCeil());
+        // 400 * 100 / 150 = 266.67 -> 267; the rounded per-Note rate times 100 (300) would be wrong.
+        assertEquals(267L, de.variants().get(0).per100NotesCopper());
+        assertNull(de.variants().get(1).per100NotesCopper());
         assertNull(de.variants().get(1).batchCostCopper());
         assertEquals(false, table.currencyCosts().goldMarginIsConditional());
     }

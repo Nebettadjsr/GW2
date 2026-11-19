@@ -145,7 +145,7 @@ final class CraftingRowMapper {
                 }
                 Long perNote = v.priced() ? (v.batchCostCopper() + v.notesPerBatch() - 1) / v.notesPerBatch() : null;
                 variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
-                        v.notesPerBatch(), v.batchCostCopper(), perNote,
+                        v.notesPerBatch(), v.batchCostCopper(), perNote, per100(v),
                         estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
                         List.copyOf(lines)));
             }
@@ -153,6 +153,20 @@ final class CraftingRowMapper {
         return new CurrencyCostsDto.NoteEstimateDto(result.estimatedNotesPerCraft, result.estimatedNotesTotal,
                 result.estimatedNotesCostPerCraftCopper, result.estimatedNotesCostTotalCopper,
                 estimate.basisRecipeId(), List.copyOf(variants));
+    }
+
+    /** Backend-owned display amount: ceil(batchCost * 100 / notesPerBatch), exact; null when unpriced or unrepresentable. */
+    private static Long per100(craft.ResearchNoteEstimate.Variant v) {
+        if (!v.priced() || v.notesPerBatch() <= 0) return null;
+        try {
+            java.math.BigInteger[] qr = java.math.BigInteger.valueOf(v.batchCostCopper())
+                    .multiply(java.math.BigInteger.valueOf(100))
+                    .divideAndRemainder(java.math.BigInteger.valueOf(v.notesPerBatch()));
+            java.math.BigInteger up = qr[1].signum() > 0 ? qr[0].add(java.math.BigInteger.ONE) : qr[0];
+            return up.longValueExact();
+        } catch (ArithmeticException e) {
+            return null;
+        }
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */
