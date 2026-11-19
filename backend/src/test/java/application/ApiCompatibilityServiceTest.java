@@ -76,4 +76,53 @@ class ApiCompatibilityServiceTest {
         assertEquals(ApiCompatibilityResult.State.RUNNING, service.read().result().state());
         assertThrows(BackgroundTasks.OperationAlreadyRunning.class, service::start);
     }
+
+    @Test
+    void assertionErrorFromCheckerOrSupplierFailsTheRealTaskAndReleasesAdmission() {
+        var clock = Clock.fixed(Instant.parse("2026-11-19T11:00:00Z"), ZoneOffset.UTC);
+        PublicApiTransport transport = url -> new PublicApiTransport.Response(200, "{}");
+        var calls = new AtomicInteger();
+        try (var facility = new web.task.BackgroundTaskService(Runnable::run)) {
+            var ids = new java.util.ArrayList<String>();
+            var real = new web.BackgroundTaskServiceTasks(facility);
+            BackgroundTasks tasks = new BackgroundTasks() {
+                @Override public String submit(String o, Work w) { throw new UnsupportedOperationException(); }
+                @Override public String submitAdministrative(String o, Work w) {
+                    String id = real.submitAdministrative(o, w);
+                    ids.add(id);
+                    return id;
+                }
+                @Override public Optional<Status> find(String id) { return real.find(id); }
+            };
+            var service = new ApiCompatibilityService(tasks, () -> {
+                int n = calls.incrementAndGet();
+                if (n == 1) throw new AssertionError("SECRET-SUPPLIER-DETAIL");
+                if (n == 2) return new ApiCompatibilityChecker(transport, clock, System::nanoTime) {
+                    @Override public ApiCompatibilityResult check() { throw new AssertionError("SECRET-CHECKER-DETAIL"); }
+                };
+                return new ApiCompatibilityChecker(transport, clock, System::nanoTime) {
+                    @Override public ApiCompatibilityResult check() { return okResult(); }
+                };
+            }, clock);
+
+            for (int attempt = 0; attempt < 2; attempt++) {
+                service.start();
+                var view = service.read();
+                assertEquals(ApiCompatibilityResult.State.COMPLETE, view.result().state());
+                assertEquals(ApiCompatibilityResult.Status.UNAVAILABLE, view.result().overall());
+                assertEquals("CHECK_FAILED", view.result().probes().get(0).code());
+                assertFalse(view.result().toString().contains("SECRET"));
+            }
+            // Both tasks reached a terminal FAILED state in the real facility.
+            for (String id : ids) {
+                var status = tasks.find(id).orElseThrow();
+                assertEquals("FAILED", status.state());
+                assertTrue(status.terminal());
+            }
+            assertEquals(2, ids.size());
+            // Operation key released: a later check is accepted and succeeds.
+            assertDoesNotThrow(service::start);
+            assertEquals(ApiCompatibilityResult.Status.OK, service.read().result().overall());
+        }
+    }
 }

@@ -60,13 +60,22 @@ public class ApiCompatibilityService {
                 running = false;
                 runningTaskId = null;
             }
-            throw e;
+            if (e instanceof VirtualMachineError) throw e;
+            // The shared task facility only records Exception; adapt an Error (without its text or
+            // cause) so the task reaches FAILED and releases operation admission.
+            if (e instanceof Error) throw new CheckFailedException();
+            throw (RuntimeException) e;
         }
         synchronized (this) {
             latest = result;
             running = false;
             runningTaskId = null;
         }
+    }
+
+    /** Sanitized stand-in for a checker/supplier Error, which the task facility would not terminate. */
+    static final class CheckFailedException extends RuntimeException {
+        CheckFailedException() { super("API compatibility check failed", null, false, false); }
     }
 
     /** Cache-only read. */
