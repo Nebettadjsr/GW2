@@ -114,3 +114,13 @@ const lastChecked = computed(() => {
     </dl>
   </article>
 </template>
+
+<style scoped>
+/* Mirrors the sibling catalog cards (OwnerCatalogControl); parent scoped styles do not reach this component. */
+.status-card { min-width: 0; display: flex; flex-direction: column; }
+.status-card__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.status-card__heading h3 { margin: 0; font-size: var(--text-md, 1rem); }
+.status-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-3); row-gap: var(--space-1, 0.25rem); margin: var(--space-3) 0 0; }
+.status-facts dt { color: var(--color-muted); }
+.status-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+</style>
