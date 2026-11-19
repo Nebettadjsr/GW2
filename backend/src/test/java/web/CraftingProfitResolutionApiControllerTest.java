@@ -54,7 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * HTTP contract tests for the Crafting Profit resolution-detail route (STORY-API-008,
- * ARCHITECTURE.md section 7, TEST_STRATEGY.md §11): required inputs, the effective
+ * ARCHITECTURE.md section 7, TEST_STRATEGY.md): required inputs, the effective
  * inputs echoed back, the complete envelope and recursive node shape, the §13.4 outcomes, and
  * request isolation at the boundary.
  *

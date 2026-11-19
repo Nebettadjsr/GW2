@@ -159,8 +159,8 @@ class Gw2ApiApplicationBootTest {
 
     /**
      * STORY-API-008: the two resolution-detail operations must be reachable at exactly the paths
-     * ARCHITECTURE.md section 7 fixes, in the real context rather than only in a standalone
-     * MockMvc setup. Still no call is made, so no connection is opened.
+     * the Profit/Discovery controllers and the browser client use, in the real context rather than
+     * only in a standalone MockMvc setup. Still no call is made, so no connection is opened.
      */
     @Test
     void theResolutionDetailRoutesAreMappedAtTheirDecidedPaths() {
