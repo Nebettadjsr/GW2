@@ -117,5 +117,66 @@ class Pins(unittest.TestCase):
             self.assertEqual(os.listdir(d), ["a"])
 
 
+class Refresh(unittest.TestCase):
+    """Offline refresh: injected fetch, patched capture/replace; a failed listing never captures or writes."""
+
+    def run_refresh(self, listing_pages):
+        calls = {"capture": 0, "replace": 0}
+        it = iter(listing_pages)
+        orig = (g.capture_pages, g.stage_and_replace, g.build)
+        def cap(titles, fetch=None, pause=None):
+            calls["capture"] += 1
+            return {t: {"revision": 1, "templates": [], "randomMentioned": False} for t in titles}
+        def rep(items):
+            calls["replace"] += 1
+        g.capture_pages, g.stage_and_replace = cap, rep
+        g.build = lambda *a, **k: ({}, None)
+        try:
+            with open(os.path.join(g.SRC, "verified-facts.json"), "rb"):
+                pass
+            try:
+                g.refresh(fetch=lambda params: next(it), pause=lambda s: None)
+                err = None
+            except SystemExit as e:
+                err = e
+        finally:
+            g.capture_pages, g.stage_and_replace, g.build = orig
+        return calls, err
+
+    @staticmethod
+    def page(keys, nxt=...):
+        j = {"query": {"results": {k: {} for k in keys}}}
+        if nxt is not ...:
+            j["query-continue-offset"] = nxt
+        return j
+
+    def assert_aborted(self, pages):
+        calls, err = self.run_refresh(pages)
+        self.assertIsNotNone(err)
+        self.assertEqual(calls, {"capture": 0, "replace": 0})
+
+    def test_valid_multipage_listing_is_captured_and_replaced_once(self):
+        calls, err = self.run_refresh([self.page(["A#r1", "B#r1"], 2), self.page(["C#r1"])])
+        self.assertIsNone(err)
+        self.assertEqual(calls, {"capture": 1, "replace": 1})
+
+    def test_duplicate_row_across_pages_aborts(self):
+        self.assert_aborted([self.page(["A#r1", "B#r1"], 2), self.page(["B#r1", "C#r1"])])
+
+    def test_repeated_or_backwards_continuation_aborts(self):
+        self.assert_aborted([self.page(["A#r1"], 0)])
+        self.assert_aborted([self.page(["A#r1"], 5), self.page(["B#r1"], 5)])
+        self.assert_aborted([self.page(["A#r1"], 5), self.page(["B#r1"], 3)])
+
+    def test_bool_negative_or_non_integer_continuation_aborts(self):
+        for bad in (True, -1, "50", 1.5, None):
+            self.assert_aborted([self.page(["A#r1"], bad)])
+
+    def test_empty_or_short_continuation_data_aborts(self):
+        self.assert_aborted([self.page([])])
+        self.assert_aborted([self.page(["A#r1"], 1), self.page([])])
+        self.assert_aborted([{"query": {}}])
+
+
 if __name__ == "__main__":
     unittest.main()

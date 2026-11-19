@@ -126,12 +126,10 @@ public final class SingleCraftExplainer {
     ) {
         PlannerContext ctx = new PlannerContext(
                 CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
-        // The table already accepted these crafts under its per-root work limit, so the traced replay of that prefix is not
-        // re-limited (tracing explores more than the table and must never shorten what the row counted). A zero-count
-        // row replays its one attempt under the same limit so a WORK_LIMIT rejection stays blocked and finite.
+        // Same deterministic per-root work policy as the table row being explained (no budget bypass when tracing).
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
-                Math.max(1, countedCrafts), countedCrafts > 0 ? Integer.MAX_VALUE : workLimit);
+                Math.max(1, countedCrafts), workLimit);
     }
 
     private SingleCraftExplanation explain(Recipe recipe, PlannerContext ctx, PlanState initialState,

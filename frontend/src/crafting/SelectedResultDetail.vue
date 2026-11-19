@@ -132,7 +132,7 @@ const vendorItemIds = computed(() => {
 function materialQuoteText(item: MissingItem): string {
   if (vendorItemIds.value.has(item.itemId)) {
     if (item.purchaseUnitPriceCopper === null) return 'Bought from a vendor with currency · no Trading Post price'
-    return `Average price / item: ${formatCopper(item.purchaseUnitPriceCopper)} · Total: ${item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)} (vendor and Trading Post mix)`
+    return `Average price / item: ${formatCopper(item.purchaseUnitPriceCopper)} · Total: ${item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)} (vendor purchases included)`
   }
   const unit = item.purchaseUnitPriceCopper === null ? 'Unavailable' : formatCopper(item.purchaseUnitPriceCopper)
   const total = item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)

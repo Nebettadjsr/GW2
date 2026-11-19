@@ -53,7 +53,7 @@ export function createForgePreference(options: {
   return {
     /**
      * Account-data deletion: removes only this GUID's stored record and memory shadow (other accounts are kept).
-     * Disconnecting alone never calls this, and the shadow is dropped even if storage cannot be written.
+     * Disconnecting alone never calls this, and the in-memory shadow is retained as explicit false even if storage cannot be written.
      */
     forgetAccount(accountId: string): void {
       // Explicit false memory state: a stale durable `true` that cannot be removed must never be re-read.

@@ -43,8 +43,8 @@ class SingleCraftExplainerWorkLimitTest {
     }
 
     private CraftResult table(int limit) {
-        return new CraftingPlanner().withWorkLimit(limit).evaluateAllCoordinated(recipes, Map.of(LEAF, LEAF_STOCK),
-                Map.of(), Map.of(), roster, tp, settings, Set.of(top.recipeId)).get(top.recipeId);
+        return new CraftingPlanner().withWorkLimit(limit).evaluateOneCoordinated(top, recipes, Map.of(LEAF, LEAF_STOCK),
+                Map.of(), Map.of(), roster, tp, settings, allowed);
     }
 
     private SingleCraftExplanation explain(int limit, int counted) {
@@ -58,10 +58,10 @@ class SingleCraftExplainerWorkLimitTest {
 
     @Test
     void acceptedPrefixIsExplainedExactlyAndNeverExtendedByTheWorkLimit() {
-        int limit = 20;
+        int limit = 60;
         CraftResult t = table(limit);
         assertEquals(BlockedReason.WORK_LIMIT, t.blockedReason);
-        assertEquals(10, t.craftableCount, "the limited table accepts a strict, positive prefix");
+        assertEquals(4, t.craftableCount, "the limited table accepts a strict, positive prefix");
 
         SingleCraftExplanation ex = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> explain(limit, t.craftableCount));
         assertTrue(ex.available());
@@ -80,7 +80,7 @@ class SingleCraftExplainerWorkLimitTest {
 
     @Test
     void zeroAcceptedLimitedAttemptStaysBlockedWithTheWorkLimitReasonAndAFiniteTree() {
-        int limit = 1;
+        int limit = 10;
         CraftResult t = table(limit);
         assertEquals(BlockedReason.WORK_LIMIT, t.blockedReason);
         assertEquals(0, t.craftableCount);

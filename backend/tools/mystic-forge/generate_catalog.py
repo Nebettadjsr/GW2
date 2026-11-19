@@ -354,20 +354,31 @@ def capture_pages(titles, fetch=fetch_json, pause=time.sleep):
     return pages
 
 
-def refresh():
+def collect_listing(fetch=fetch_json, pause=time.sleep):
+    """Page through the SMW listing; any malformed, overlapping or non-advancing page aborts before anything is captured."""
     results, offset = {}, 0
     while True:
-        j = fetch_json({"action": "ask", "format": "json", "query": SMW_QUERY + "|offset=%d" % offset})
-        part = j.get("query", {}).get("results")
-        if not isinstance(part, dict) or (not part and offset == 0):
-            raise SystemExit("refresh aborted: empty/invalid listing")
+        j = fetch({"action": "ask", "format": "json", "query": SMW_QUERY + "|offset=%d" % offset})
+        part = j.get("query", {}).get("results") if isinstance(j, dict) else None
+        if not isinstance(part, dict) or not part:
+            raise SystemExit("refresh aborted: empty/invalid listing page at offset %d" % offset)
+        dup = sorted(set(results) & set(part))
+        if dup:
+            raise SystemExit("refresh aborted: listing pages overlap on %d row(s), e.g. %r" % (len(dup), dup[0]))
         results.update(part)
         if "query-continue-offset" not in j:
-            break
-        offset = j["query-continue-offset"]
-        time.sleep(1)
+            return results
+        nxt = j["query-continue-offset"]
+        if isinstance(nxt, bool) or not isinstance(nxt, int) or nxt < 0 or nxt <= offset:
+            raise SystemExit("refresh aborted: continuation offset %r does not advance from %d" % (nxt, offset))
+        offset = nxt
+        pause(1)
+
+
+def refresh(fetch=fetch_json, pause=time.sleep):
+    results = collect_listing(fetch, pause)
     titles = sorted({k.split("#")[0] for k in results})
-    pages = capture_pages(titles)
+    pages = capture_pages(titles, fetch, pause)
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     raw_bytes = gzip.compress(json.dumps({"query": {"results": results}}).encode(), mtime=0)
     tpl_bytes = gzip.compress(json.dumps(
