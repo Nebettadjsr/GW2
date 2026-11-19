@@ -259,6 +259,22 @@ class FullCatalogSyncTest {
     }
 
     @Test
+    void fullRecipes_mixedShadowFieldsPublishCanonicalIdentityAndInvalidCanonicalIdIsRejected() throws Exception {
+        String mixed = typedRecipe(7, 97487,
+                "[{\"type\":\"Item\",\"id\":10,\"item_id\":0,\"count\":3},"
+                        + "{\"type\":\"Currency\",\"id\":61,\"item_id\":20,\"count\":30}]");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[7]") : json("[" + mixed + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("10:3", scalar("SELECT string_agg(item_id||':'||count, ',') FROM recipe_ingredients WHERE recipe_id=7"));
+        assertEquals("61:30", scalar("SELECT string_agg(ref_id||':'||count, ',') FROM recipe_non_item_requirements WHERE recipe_id=7"));
+
+        String bad = typedRecipe(8, 97487, "[{\"type\":\"Item\",\"id\":0,\"item_id\":10,\"count\":1}]");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[8]") : json("[" + bad + "]");
+        assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+    }
+
+    @Test
     void fullRecipes_arbitraryUnknownRequirementKindStillRejected() throws Exception {
         String bad = typedRecipe(5, 10, "[{\"type\":\"Mystery\",\"id\":1,\"count\":1}]");
         RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[5]") : json("[" + bad + "]");

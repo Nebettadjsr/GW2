@@ -531,6 +531,29 @@ class SyncFetchPublicationTest {
     }
 
     @Test
+    void recipeSync_mixedShadowFieldsPublishCanonicalTypedIdentityAndInvalidCanonicalIdIsNotRescued() throws Exception {
+        exec("INSERT INTO items (item_id, name) VALUES (10, 'Old item')");
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");
+        exec("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (300, 10, 99)");
+        exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (300, 'Currency', 61, 99)");
+        String mixed = "{\"type\":\"Item\",\"id\":10,\"item_id\":0,\"count\":3},"
+                + "{\"type\":\"Currency\",\"id\":61,\"item_id\":20,\"count\":30}";
+        String invalid = "{\"id\":301,\"type\":\"Refinement\",\"output_item_id\":20,\"output_item_count\":1,"
+                + "\"min_rating\":0,\"time_to_craft_ms\":1000,\"disciplines\":[],\"flags\":[],\"chat_link\":\"[&A]\","
+                + "\"ingredients\":[{\"type\":\"Item\",\"id\":0,\"item_id\":10,\"count\":1}]}";
+        String detail = "[" + currencyRecipe(300, mixed).replace("{\"type\":\"Item\",\"id\":10,\"count\":1},", "") + "," + invalid + "]";
+        RecipeSync.fetcher = url -> json(url.equals(RecipeSync.CATALOG_URL) ? "[300,301]" : detail);
+        ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+
+        assertEquals("10:3", scalar("SELECT string_agg(item_id||':'||count, ',') FROM recipe_ingredients WHERE recipe_id=300"));
+        assertEquals("61:30", scalar("SELECT string_agg(ref_id||':'||count, ',') FROM recipe_non_item_requirements WHERE recipe_id=300"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipes WHERE recipe_id=301"), "invalid canonical id is quarantined");
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id=301"));
+    }
+
+    @Test
     void recipeSync_emptyItemRequirementsAreQuarantinedAndRetriedWithTheSameCatalog() throws Exception {
         exec("INSERT INTO items (item_id, name) VALUES (10, 'Old item')");
         exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");

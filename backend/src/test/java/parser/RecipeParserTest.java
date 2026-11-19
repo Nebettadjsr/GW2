@@ -77,4 +77,23 @@ class RecipeParserTest {
     void legacyPayloadHasNoNonItemRequirements() throws Exception {
         assertEquals(List.of(), RecipeParser.parseNonItemRequirements(loadFixture("/parser/recipe_7319.json")));
     }
+
+    @Test
+    void typedEntriesReadOnlyCanonicalIdAndLegacyEntriesReadOnlyItemId() throws Exception {
+        JsonNode recipe = MAPPER.readTree("""
+            {"id":5,"ingredients":[
+              {"type":"Item","id":10,"item_id":0,"count":1},
+              {"type":"Item","id":11,"item_id":999,"count":2},
+              {"type":"Currency","id":61,"item_id":12,"count":30},
+              {"item_id":13,"id":888,"count":3},
+              {"item_id":0,"id":14,"count":4},
+              {"type":"Item","id":0,"item_id":15,"count":5},
+              {"type":"Item","item_id":16,"count":6}]}
+            """);
+
+        assertEquals(List.of(new RecipeParser.IngredientRow(5, 10, 1), new RecipeParser.IngredientRow(5, 11, 2),
+                new RecipeParser.IngredientRow(5, 13, 3)), RecipeParser.parseIngredients(recipe));
+        assertEquals(List.of(new RecipeParser.RequirementRow(5, "Currency", 61, 30)),
+                RecipeParser.parseNonItemRequirements(recipe));
+    }
 }

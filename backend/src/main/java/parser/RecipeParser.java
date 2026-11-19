@@ -85,9 +85,10 @@ public final class RecipeParser {
 
         for (JsonNode ing : ingredients) {
 
-            String kind = ing.path("type").asText("Item");
-            if (!"Item".equals(kind)) continue;
-            int itemId = ing.path("item_id").asInt(ing.path("id").asInt(0));
+            // Same identity rule as the sync validator: typed entries use only "id", legacy ones only "item_id".
+            boolean typed = ing.has("type");
+            if (typed && !"Item".equals(ing.get("type").asText())) continue;
+            int itemId = ing.path(typed ? "id" : "item_id").asInt(0);
             int count = ing.path("count").asInt(0);
 
             if (itemId <= 0 || count <= 0) continue;
