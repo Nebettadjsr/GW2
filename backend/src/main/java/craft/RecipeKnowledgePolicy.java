@@ -6,7 +6,7 @@ package craft;
  * considered to know it - recipe *ownership* is a single account-wide fact, the same for every
  * caller and every character. This class expresses that "is this recipe known" decision as a pure
  * function of unlock facts supplied by persistence (ARCHITECTURE.md section 7's mapping
- * boundary) - it has no JDBC/SQL/repository/transport dependency (ARCHITECTURE.md section 4).
+ * boundary) - it has no JDBC/SQL/repository/transport dependency (ARCHITECTURE.md section 2).
  *
  * Ownership is independent of whether the selected character is currently eligible to craft or
  * discover the recipe (crafting discipline, minimum rating, discoverability flags); callers apply

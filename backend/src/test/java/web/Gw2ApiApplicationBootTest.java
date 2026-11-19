@@ -40,8 +40,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Deliberately does not call the endpoints - that would need the real database. Transport
  * behavior is covered by {@link CraftingProfitApiControllerTest} and
  * {@link CraftingDiscoveryApiControllerTest}, scoped parity by {@code support.fixture.*HttpParityTest}. The
- * service factory and the cached use case are never invoked here, so no connection is opened. The narrowly scoped
- * account-Luck schema initialization is disabled for this wiring-only test; normal startup runs it.
+ * service factory and the cached use case are never invoked here, so no connection is opened. The versioned schema
+ * gate lives in {@code Gw2ApiApplication.main}, which this Spring-context wiring test does not call, so
+ * no schema is initialized here (managed startup runs it before the context exists).
  *
  * <p>STORY-API-003 added the account synchronization trigger, the shared task-status route and the task
  * facility they use, STORY-API-004 the global one and STORY-API-005 the price-refresh one; this test
