@@ -127,7 +127,8 @@ public final class FullCatalogSupport {
     }
 
     /**
-     * Full-operation only: a recipe needs a positive id, text type, and either a positive item output
+     * Full-refresh validation, also used to classify safe-sync unsupported records: a recipe needs
+     * a positive id, text type, and either a positive item output
      * with a positive count or (guild upgrade recipes) a positive {@code output_upgrade_id};
      * non-negative rating and craft time; typed optional fields; and well-formed, distinct,
      * positive-quantity ingredients (a missing array is only legitimate for a guild upgrade recipe).

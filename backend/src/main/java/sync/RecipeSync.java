@@ -92,6 +92,13 @@ public final class RecipeSync {
                     var rr = RecipeParser.parseRecipe(r);
                     if (rr == null || !requested.contains(rr.recipeId()) || duplicateIds.contains(rr.recipeId())) continue;
                     if (RecipeParser.hasUnsupportedRequirement(r)) {
+                        // Only a strictly valid known unsupported record may complete the skipped set. Unknown
+                        // kinds or malformed records must be retried even when the catalog's ids stay unchanged.
+                        try {
+                            FullCatalogSupport.requireRecipe(r);
+                        } catch (IllegalStateException malformed) {
+                            incompleteDetails = true;
+                        }
                         // Unsupported ingredient type: never publish a recipe with a silently dropped requirement.
                         System.out.println("Skipping recipe " + rr.recipeId() + ": unsupported ingredient type");
                         // Also drop any legacy cached row for it (removeDeletedRecipes below): otherwise its

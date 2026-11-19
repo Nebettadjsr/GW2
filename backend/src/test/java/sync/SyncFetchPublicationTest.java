@@ -554,6 +554,52 @@ class SyncFetchPublicationTest {
     }
 
     @Test
+    void recipeSync_unknownAndMixedKindsRemainRetryableWhileKnownGuildSkipsBecomeComplete() throws Exception {
+        exec("INSERT INTO items (item_id, name) VALUES (10, 'Old item')");
+        for (int id = 300; id <= 302; id++) {
+            exec("INSERT INTO recipes (recipe_id, type) VALUES (" + id + ", 'Old')");
+            exec("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (" + id + ", 10, 99)");
+            exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (" + id + ", 'Currency', 61, 30)");
+        }
+        String catalog = "[1,13324,300,301,302]";
+        String guild = "{\"type\":\"GuildUpgrade\",\"id\":721,\"count\":8}";
+        String unknown = "{\"type\":\"Mystery\",\"id\":61,\"count\":30}";
+        String prefix = "[" + currencyRecipe(1, null) + "," + currencyRecipe(13324, guild);
+        String malformed = prefix + "," + currencyRecipe(300, unknown)
+                + "," + currencyRecipe(301, guild + "," + unknown)
+                + "," + currencyRecipe(302, "{\"type\":5,\"id\":61,\"count\":30}") + "]";
+        int[] detailRequests = {0};
+        RecipeSync.fetcher = url -> {
+            if (url.equals(RecipeSync.CATALOG_URL)) return json(catalog);
+            detailRequests[0]++;
+            return json(malformed);
+        };
+        ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id>=300"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id>=300"));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("0", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+
+        String corrected = prefix + "," + java.util.stream.IntStream.rangeClosed(300, 302)
+                .mapToObj(id -> currencyRecipe(id, "{\"type\":\"Currency\",\"id\":61,\"count\":60}"))
+                .collect(java.util.stream.Collectors.joining(",")) + "]";
+        RecipeSync.fetcher = url -> {
+            if (url.equals(RecipeSync.CATALOG_URL)) return json(catalog);
+            detailRequests[0]++;
+            return json(corrected);
+        };
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "unknown kinds must not establish a permanent skip");
+        assertEquals("3", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id>=300 AND item_id=10 AND count=1"));
+        assertEquals("3", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id>=300 AND ref_id=61 AND count=60"));
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("{13324}", scalar("SELECT skipped_recipe_ids::text FROM recipe_catalog_publication"));
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals(2, detailRequests[0], "only the now-complete known Guild skip participates in the fast path");
+    }
+
+    @Test
     void recipeSync_emptyItemRequirementsAreQuarantinedAndRetriedWithTheSameCatalog() throws Exception {
         exec("INSERT INTO items (item_id, name) VALUES (10, 'Old item')");
         exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");
