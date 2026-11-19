@@ -104,6 +104,10 @@ public class ResolvedNeed {
         return (long) buyCostCopper + opportunityCostCopper + walletNoteCostCopper();
     }
 
+    public ResearchNoteEstimate getNoteEstimate() {
+        return noteEstimate;
+    }
+
     public int getWalletNoteUnits() {
         return walletNoteUnits;
     }

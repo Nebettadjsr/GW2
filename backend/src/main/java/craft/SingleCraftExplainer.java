@@ -136,10 +136,11 @@ public final class SingleCraftExplainer {
 
         List<ResolvedNeed> accepted = simulation.getAcceptedCrafts();
         if (!accepted.isEmpty()) {
+            NoteLedger ledger = new NoteLedger();
             List<CraftTraceNode> roots = accepted.stream()
-                    .map(craft -> toNode(craft, BlockedReason.NONE, recipesById))
+                    .map(craft -> toNode(craft, BlockedReason.NONE, recipesById, ledger))
                     .toList();
-            return explanationOf(recipe, combineNodes(roots),
+            return explanationOf(recipe, combineNodes(roots, ledger),
                     Math.multiplyExact(recipe.outputCount, simulation.getCraftCount()));
         }
 
@@ -147,7 +148,7 @@ public final class SingleCraftExplainer {
         // (ARCHITECTURE.md section 7), unlike the absence of a result.
         ResolvedNeed rejected = simulation.getBlockedAttempt();
         if (rejected != null) {
-            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason(), recipesById), recipe.outputCount);
+            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason(), recipesById, new NoteLedger()), recipe.outputCount);
         }
 
         return SingleCraftExplanation.unavailable(
@@ -159,7 +160,13 @@ public final class SingleCraftExplainer {
                 recipe.recipeId, recipe.outputItemId, outputQuantity, true, root);
     }
 
-    private CraftTraceNode combineNodes(List<CraftTraceNode> nodes) {
+    /** Per-call exact wallet-Note units of each mapped node, so combined nodes round the aggregate once. */
+    private static final class NoteLedger {
+        record Entry(long units, ResearchNoteEstimate estimate) { }
+        final Map<CraftTraceNode, Entry> entries = new java.util.IdentityHashMap<>();
+    }
+
+    private CraftTraceNode combineNodes(List<CraftTraceNode> nodes, NoteLedger ledger) {
         CraftTraceNode first = nodes.get(0);
         int requested = nodes.stream().mapToInt(CraftTraceNode::requestedQuantity).sum();
         int inventory = nodes.stream().mapToInt(CraftTraceNode::inventoryQuantity).sum();
@@ -192,7 +199,7 @@ public final class SingleCraftExplainer {
                 String key = child.itemId() + ":" + child.recipeId() + ":" + child.characterName();
                 variants.computeIfAbsent(key, ignored -> new ArrayList<>()).add(child);
             }
-            variants.values().forEach(variant -> children.add(combineNodes(variant)));
+            variants.values().forEach(variant -> children.add(combineNodes(variant, ledger)));
         }
 
         java.util.TreeMap<Integer, CraftTraceNode.CurrencyQuantity> currencyTotals = new java.util.TreeMap<>();
@@ -208,15 +215,48 @@ public final class SingleCraftExplainer {
         }
         List<CraftTraceNode.CurrencyQuantity> currencies = List.copyOf(currencyTotals.values());
 
-        return new CraftTraceNode(
+        CraftTraceNode combined = new CraftTraceNode(
                 first.itemId(), requested, inventory, crafted, bought, missing,
                 first.recipeId(), craftCount, produced,
                 characters.isEmpty() ? null : String.join(", ", characters),
                 List.copyOf(methods), List.copyOf(states), List.copyOf(reasons),
                 sumIfAllKnown(nodes, CraftTraceNode::cashCostCopper),
                 sumIfAllKnown(nodes, CraftTraceNode::opportunityCostCopper),
-                sumIfAllKnown(nodes, CraftTraceNode::effectiveCostCopper),
+                combinedEffective(nodes, ledger),
                 children, currencies);
+        long units = 0;
+        ResearchNoteEstimate estimate = null;
+        for (CraftTraceNode node : nodes) {
+            NoteLedger.Entry e = ledger.entries.get(node);
+            if (e == null) continue;
+            units = Math.addExact(units, e.units());
+            if (e.estimate() != null) estimate = e.estimate();
+        }
+        if (units > 0) ledger.entries.put(combined, new NoteLedger.Entry(units, estimate));
+        return combined;
+    }
+
+    /**
+     * Sum of the nodes' effective costs with the estimated wallet-Note value re-rounded once over the combined
+     * Note quantity, instead of adding each execution's separately rounded-up Note cost.
+     */
+    private Integer combinedEffective(List<CraftTraceNode> nodes, NoteLedger ledger) {
+        long total = 0;
+        long units = 0;
+        ResearchNoteEstimate estimate = null;
+        for (CraftTraceNode node : nodes) {
+            Integer amount = node.effectiveCostCopper();
+            if (amount == null) return null;
+            total += amount;
+            NoteLedger.Entry e = ledger.entries.get(node);
+            if (e != null && e.estimate() != null && e.units() > 0) {
+                total -= e.estimate().costCopper(e.units());
+                units += e.units();
+                estimate = e.estimate();
+            }
+        }
+        if (estimate != null) total += estimate.costCopper(units);
+        return total < Integer.MIN_VALUE || total > Integer.MAX_VALUE ? null : (int) total;
     }
 
     private Integer sumIfAllKnown(List<CraftTraceNode> nodes,
@@ -238,7 +278,8 @@ public final class SingleCraftExplainer {
      *                        but could not be afforded. {@link BlockedReason#NONE} everywhere else,
      *                        including for every child.
      */
-    private CraftTraceNode toNode(ResolvedNeed need, BlockedReason rejectionReason, Map<Integer, Recipe> recipesById) {
+    private CraftTraceNode toNode(ResolvedNeed need, BlockedReason rejectionReason, Map<Integer, Recipe> recipesById,
+                                  NoteLedger ledger) {
         ResolvedNeed.NodeTrace trace = need.getTrace();
         ResolvedNeed craftAttempt = trace == null ? null : trace.getCraftAttempt();
 
@@ -251,7 +292,7 @@ public final class SingleCraftExplainer {
             // Repeated items in different branches stay separate occurrences: each child is mapped
             // where it occurs, and a cycle ends in the resolver's finite CYCLE_DETECTED node.
             for (ResolvedNeed child : craftAttempt.getChildren()) {
-                children.add(toNode(child, BlockedReason.NONE, recipesById));
+                children.add(toNode(child, BlockedReason.NONE, recipesById, ledger));
             }
         }
 
@@ -285,7 +326,7 @@ public final class SingleCraftExplainer {
             }).toList();
         }
 
-        return new CraftTraceNode(
+        CraftTraceNode node = new CraftTraceNode(
                 need.getItemId(),
                 need.getQtyRequested(),
                 need.getQtyFromInventory(),
@@ -305,6 +346,10 @@ public final class SingleCraftExplainer {
                 children,
                 currencies
         );
+        if (need.getWalletNoteUnits() > 0 && need.getNoteEstimate() != null) {
+            ledger.entries.put(node, new NoteLedger.Entry(need.getWalletNoteUnits(), need.getNoteEstimate()));
+        }
+        return node;
     }
 
     private static int ceilDiv(int a, int b) {

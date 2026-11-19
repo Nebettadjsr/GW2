@@ -123,8 +123,24 @@ public class RecipeSimulator {
                 break;
             }
 
+            long noteCostTotal;
+            try {
+                // The estimated wallet-Note value is part of the cumulative profit: rounded up once over the
+                // cumulative Note quantity, so a craft that would push it out of range is rejected alone.
+                long cumulativeNotes = Math.addExact(result.getWalletNoteUnitsTotal(), (long) root.getWalletNoteUnits());
+                ResearchNoteEstimate noteEstimate = ctx.researchNoteEstimate();
+                noteCostTotal = cumulativeNotes > 0 && noteEstimate.available()
+                        ? noteEstimate.costCopper(cumulativeNotes) : 0;
+            } catch (ArithmeticException outOfRange) {
+                state.rollbackTo(mark);
+                result.setBlockedReason(BlockedReason.VALUE_RANGE);
+                result.setBlockedAttempt(root);
+                break;
+            }
+
             if (!aggregatesRepresentable(recipe, ctx, result.getCraftCount() + 1,
-                    nextBuyTotal, Math.addExact(result.getOpportunityCostTotal(), rr.getOpportunityCostCopper()))) {
+                    nextBuyTotal, Math.addExact(result.getOpportunityCostTotal(), rr.getOpportunityCostCopper())
+                            + noteCostTotal)) {
                 // Keep the batches already accepted; only this one would push a revenue/profit
                 // aggregate outside the supported range.
                 state.rollbackTo(mark);

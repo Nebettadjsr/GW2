@@ -88,6 +88,21 @@ const calculationSellPriceLabel = computed(() => {
 /** Confirmed effective settings: the detail's own calculation when present, else the table's echo. */
 const effectiveSettings = computed(() => props.resolutionDetail?.calculation?.settings ?? props.settings)
 provide(RESOLUTION_SETTINGS_KEY, effectiveSettings)
+
+/**
+ * The estimate the popup explains. Table rows carry only compact amounts; both producer variants come with the
+ * detail response's own row, so for the same recipe and same amounts the detail's variants are used.
+ */
+const noteEstimate = computed(() => {
+  const own = props.row?.currencyCosts?.estimate ?? null
+  if (own === null || own.variants.length > 0) return own
+  const fromDetail = props.resolutionDetail?.row?.currencyCosts?.estimate ?? null
+  if (fromDetail === null || fromDetail.variants.length === 0) return own
+  const sameRecipe = props.resolutionDetail?.row?.recipeId === props.row?.recipeId
+  const sameAmounts = fromDetail.totalNotes === own.totalNotes && fromDetail.totalCopper === own.totalCopper
+    && fromDetail.perCraftCopper === own.perCraftCopper && fromDetail.basisRecipeId === own.basisRecipeId
+  return sameRecipe && sameAmounts ? { ...own, variants: fromDetail.variants } : own
+})
 function keepNote(itemId: number): string | null { return keepTargetNote(effectiveSettings.value, itemId) }
 
 function materialQuoteText(item: MissingItem): string {
@@ -259,7 +274,7 @@ function materialQuoteText(item: MissingItem): string {
                 <span class="calc-negative" data-test="detail-note-estimate-cost">
                   ({{ formatCopper(row.currencyCosts.economicsFromHypotheticalCraft ? row.currencyCosts.estimate.perCraftCopper : row.currencyCosts.estimate.totalCopper) }})
                 </span>
-                <ResearchNoteEstimatePopup :estimate="row.currencyCosts.estimate" />
+                <ResearchNoteEstimatePopup :estimate="noteEstimate ?? row.currencyCosts.estimate" />
               </template>
             </dd>
           </template>

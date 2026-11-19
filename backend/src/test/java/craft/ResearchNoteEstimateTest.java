@@ -182,4 +182,38 @@ class ResearchNoteEstimateTest {
                 OWN_ONLY, Set.of(15120, 15131));
         assertTrue(ctx.researchNoteEstimate() == ctx.withWallet(Map.of()).withWalletIgnored().researchNoteEstimate());
     }
+
+    @Test
+    void anOverflowingBatchYieldIsNeverPricedAsANegativeRate() {
+        Recipe huge = new Recipe(15120, PRR, 20_000_000, 0, "Artificer", List.of(ingredient(1001, 4)));
+        ResearchNoteEstimate estimate = ResearchNoteEstimate.compute(
+                Map.of(PRR, List.of(huge)), tp(quote(100, 100), null), OWN_ONLY);
+        assertFalse(estimate.available(), "yield 150 * 20,000,000 does not fit an int");
+        assertNull(estimate.variants().get(0).batchCostCopper());
+        assertTrue(estimate.variants().get(0).notesPerBatch() > 0);
+    }
+
+    @Test
+    void theTraceRoundsTheCombinedNoteQuantityOnceLikeTheTable() {
+        Map<Integer, PriceQuote> prices = tp(quote(100, 100), null);
+        List<Recipe> recipes = List.of(ONE_NOTE, PRR_A, PRR_B);
+        Set<Integer> allowed = Set.of(13841, 15120, 15131);
+        var roster = List.of(new CharacterCraftingProfile("A", Map.of("Artificer", 500)));
+        CraftTraceNode one = new SingleCraftExplainer().withWallet(Map.of(NOTE, 7)).explainCoordinatedResult(ONE_NOTE,
+                recipes, Map.of(97102, 100), Map.of(), Map.of(), roster, prices, OWN_ONLY, allowed, 1).root();
+        CraftTraceNode seven = new SingleCraftExplainer().withWallet(Map.of(NOTE, 7)).explainCoordinatedResult(ONE_NOTE,
+                recipes, Map.of(97102, 100), Map.of(), Map.of(), roster, prices, OWN_ONLY, allowed, 7).root();
+        // Per craft: other = e1 - ceil(400/150)=3. Seven crafts: 7 * other + ceil(7*400/150)=19, not 7 * e1.
+        assertEquals(7 * (one.effectiveCostCopper() - 3) + 19, seven.effectiveCostCopper());
+    }
+
+    @Test
+    void anOutOfRangeCumulativeNoteValueRejectsOnlyTheOverflowingCraft() {
+        // 4 x 500,000,000 = 2,000,000,000c per 150 Notes: 30 Notes = 400,000,000c per craft; the sixth craft passes int range.
+        CraftResult r = run(CONSUMER, tp(quote(500_000_000, 500_000_000), null), Map.of(NOTE, 900),
+                Map.of(97102, 100), OWN_ONLY);
+        assertEquals(5, r.craftableCount, "the accepted prefix is kept");
+        assertEquals(2_000_000_000, r.estimatedNotesCostTotalCopper);
+        assertEquals(BlockedReason.VALUE_RANGE, r.blockedReason);
+    }
 }

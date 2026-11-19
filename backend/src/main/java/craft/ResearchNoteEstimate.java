@@ -75,7 +75,9 @@ public record ResearchNoteEstimate(List<Variant> variants, Integer basisRecipeId
                 if (total > Integer.MAX_VALUE) complete = false;
             }
         }
-        int notes = recipe.outputCount > 0 ? production.yield() * recipe.outputCount : production.yield();
+        long exactNotes = recipe.outputCount > 0 ? (long) production.yield() * recipe.outputCount : production.yield();
+        if (exactNotes <= 0 || exactNotes > Integer.MAX_VALUE) complete = false;
+        int notes = exactNotes <= 0 || exactNotes > Integer.MAX_VALUE ? Math.max(1, production.yield()) : (int) exactNotes;
         return new Variant(recipe.recipeId, recipe.outputItemId, recipe.outputCount, notes, List.copyOf(lines),
                 complete ? total : null);
     }

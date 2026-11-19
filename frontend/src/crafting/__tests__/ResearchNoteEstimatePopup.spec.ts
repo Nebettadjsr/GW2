@@ -120,6 +120,21 @@ describe('Research Note estimate in the overview', () => {
     expect(wrapper.text()).not.toContain('+ Research')
   })
 
+  it('fresh-calculation detail: compact table row still shows both variants taken from the detail response row', async () => {
+    const compact = { ...currencyCosts, estimate: { ...estimate, variants: [] } }
+    const detailRow = { ...profitableRow, currencyCosts }
+    const wrapper = mount(SelectedResultDetail, {
+      props: {
+        row: { ...profitableRow, currencyCosts: compact }, hiddenReason: null, settings: null, placeholder: '',
+        resolutionPhase: 'ready',
+        resolutionDetail: { consistency: 'FRESH_CALCULATION', row: detailRow } as never,
+        resolutionFailure: null, resolutionRecipeId: profitableRow.recipeId
+      }
+    })
+    await wrapper.find('[data-test="note-estimate-trigger"]').trigger('click')
+    expect(wrapper.findAll('[data-test^="note-estimate-variant-"]').length).toBe(2)
+  })
+
   it('table keeps normal colors with only a small marker', () => {
     const wrapper = mount(CraftingProfitTable, {
       props: {
