@@ -122,7 +122,7 @@ public class PlannerContext {
                 coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, WalletMode.IGNORED, preferCurrencyCraft);
     }
 
-    /** This context preferring feasible currency crafts over purchases (budget retry); shares the memo tables. */
+    /** Prefer currency crafts over fully valued routes during a budget retry; shares the memo tables. */
     public PlannerContext withCurrencyCraftPreferred() {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
                 coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, true);

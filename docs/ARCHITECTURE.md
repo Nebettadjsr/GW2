@@ -280,6 +280,8 @@ five-minute recovery budget spans all tasks, polling and recalculation, includin
 Failure/deadline keeps the last usable result, ends the animation and offers retry. Context,
 generation and request guards reject late table/detail answers. Detail supplies its own matching
 row if inputs changed; an unchanged completed detail can be reused on return navigation.
+The tracked wallet's discrete freshness state joins calculation identity because expiry withholds
+its balance even without a new publication. Identity remains stable within each usability state.
 
 The existing UD-013–015 responsiveness requirement is at most seven seconds for the complete
 usable cached Profit page, including an expired-input provisional result. Refresh and its later

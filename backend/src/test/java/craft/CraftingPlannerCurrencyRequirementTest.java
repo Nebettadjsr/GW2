@@ -253,4 +253,46 @@ class CraftingPlannerCurrencyRequirementTest {
         assertTrue(r.currencyTotal.isEmpty() || r.craftableCount > 5, "within budget the valued purchase is used first");
         assertEquals(Map.of(200, 1), r.missingToBuyOne);
     }
+
+    private static CraftResult alternativeCrafts(int budget, boolean currencyFirst) {
+        Recipe notes = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Recipe valued = new Recipe(3, 200, 1, 0, "Artificer", List.of(ingredient(400, 1)));
+        List<Recipe> recipes = currencyFirst ? List.of(PARENT, notes, valued) : List.of(PARENT, valued, notes);
+        return run(recipes, Map.of(), Map.of(100, quote(900, 1000), 300, quote(10, 10), 400, quote(100, 100)),
+                new CraftingSettings(true, true, budget, false, false, true), Map.of(NOTE, 30));
+    }
+
+    @Test
+    void overBudgetValuedCraftFallsBackToCurrencyAlternativeInEitherRecipeOrder() {
+        for (boolean currencyFirst : new boolean[]{true, false}) {
+            CraftResult r = alternativeCrafts(50, currencyFirst);
+            assertEquals(1, r.craftableCount, "100c valued route exceeds budget; 10c plus Notes fits");
+            assertEquals(10, r.buyCostCopper);
+            assertEquals(Map.of(NOTE, 30), r.currencyTotal);
+            assertEquals(Map.of(300, 1), r.missingToBuyOne);
+        }
+    }
+
+    @Test
+    void alternativeCraftBudgetRetryKeepsAcceptedPrefixAndExactWalletSpend() {
+        for (boolean currencyFirst : new boolean[]{true, false}) {
+            CraftResult r = alternativeCrafts(120, currencyFirst);
+            assertEquals(2, r.craftableCount);
+            assertEquals(110, r.buyCostCopper, "100c first craft then 10c plus Notes; failed third craft rolls back");
+            assertEquals(Map.of(NOTE, 30), r.currencyTotal);
+            assertEquals(Map.of(400, 1), r.missingToBuyOne, "affordable first craft retains the valued route");
+        }
+    }
+
+    @Test
+    void affordableValuedCraftStillWinsOverCurrencyAlternative() {
+        for (boolean currencyFirst : new boolean[]{true, false}) {
+            CraftResult r = alternativeCrafts(100, currencyFirst);
+            assertEquals(1, r.craftableCount);
+            assertEquals(100, r.buyCostCopper);
+            assertTrue(r.currencyTotal.isEmpty());
+            assertEquals(Map.of(400, 1), r.missingToBuyOne);
+        }
+    }
 }

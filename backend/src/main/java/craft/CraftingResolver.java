@@ -346,7 +346,7 @@ public class CraftingResolver {
             return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED, recipe, null);
         }
 
-        // A single candidate is always "best" (isBetterCraftAttempt(attempt, null) is always
+        // A single candidate is always "best" (isBetterCraftAttempt with no current best is always
         // true), so the speculative trial-copy-then-copyFrom dance below is unnecessary and,
         // being on the hot recursive path, materially expensive (STORY-PERF-001) - apply directly.
         if (eligible.size() == 1) {
@@ -362,7 +362,7 @@ public class CraftingResolver {
 
         for (String character : eligible) {
             ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, character);
-            if (isBetterCraftAttempt(attempt, best)) {
+            if (isBetterCraftAttempt(attempt, best, ctx.preferCurrencyCraft)) {
                 best = attempt;
                 bestEffect = state.captureDelta(mark);
             }
@@ -582,7 +582,7 @@ public class CraftingResolver {
             boolean preferDiscipline = best != null && attempt.isFullySatisfied()
                     && best.isFullySatisfied() && matches != bestMatches
                     && attempt.spendsUnpricedCurrency() == best.spendsUnpricedCurrency();
-            if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best)) {
+            if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best, ctx.preferCurrencyCraft)) {
                 best = attempt;
                 bestMatches = matches;
                 effect = state.captureDelta(mark);
@@ -625,11 +625,12 @@ public class CraftingResolver {
     /**
      * Compares two candidate character assignments for the same craft step: fully satisfied
      * beats partially satisfied, and among fully-satisfied candidates the lowest total effective
-     * economic cost wins (DOMAIN_SPEC.md section 22), otherwise the least-blocked candidate wins.
+     * economic cost wins within the preferred valuation class (DOMAIN_SPEC.md section 22), otherwise
+     * the least-blocked candidate wins. Budget retries prefer currency-bearing routes.
      * Soulbound ingredients never carry an opportunity-cost difference between characters, so
      * this reduces to "prefer whichever eligible character can actually supply this step."
      */
-    private boolean isBetterCraftAttempt(ResolvedNeed candidate, ResolvedNeed currentBest) {
+    private boolean isBetterCraftAttempt(ResolvedNeed candidate, ResolvedNeed currentBest, boolean preferCurrencyCraft) {
         if (currentBest == null) return true;
 
         boolean candidateSatisfied = candidate.isFullySatisfied();
@@ -640,10 +641,10 @@ public class CraftingResolver {
         }
 
         if (candidateSatisfied) {
-            // A route with unpriced currency has only a partial copper cost: a fully valued route wins outright,
-            // and the copper figures are compared only between routes of the same valuation class.
+            // Normally prefer fully valued routes. A budget retry must also consider currency-bearing
+            // crafting alternatives, not only direct purchases; the simulator still checks total affordability.
             if (candidate.spendsUnpricedCurrency() != currentBest.spendsUnpricedCurrency()) {
-                return !candidate.spendsUnpricedCurrency();
+                return candidate.spendsUnpricedCurrency() == preferCurrencyCraft;
             }
             return candidate.effectiveCostCopper() <= currentBest.effectiveCostCopper();
         }

@@ -183,8 +183,8 @@ public final class CalculationInputVersions {
     /**
      * Stable identity of this input generation: the required sources' completion instants, the
      * required item set's coverage boundaries and the version of the relevant quotes themselves.
-     * Two captures that saw the same published versions produce the same value, and any change to an
-     * account version, to the required item set or to <em>any</em> relevant quote produces a
+     * Two captures with the same published versions and tracked wallet usability produce the same value.
+     * Any change to an account version, wallet usability, the required item set or <em>any</em> relevant quote produces a
      * different one — which is what lets a detail response be recognised as explaining a different
      * generation than a row.
      *
@@ -207,6 +207,11 @@ public final class CalculationInputVersions {
         for (String source : orderedSources(walletTracked)) {
             material.append(source).append('=').append(accountVersions.get(source))
                     .append('#').append(accountGenerations.get(source)).append(';');
+            // An expired wallet is withheld, unlike stale item sources: expiry can change affordability
+            // without a publication. Name that discrete state, not the continuously moving clock.
+            if (AccountSyncStateRepository.WALLET.equals(source)) {
+                material.append("wallet.state=").append(stateOf(accountVersions.get(source))).append(';');
+            }
         }
         material.append("tp.required=").append(coverage.requiredItems()).append(';')
                 .append("tp.fresh=").append(coverage.freshItems()).append(';')
