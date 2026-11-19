@@ -11,7 +11,9 @@ public enum BuildResourceType {
     SPECIALIZATIONS("specializations", "build_specializations", "specialization_id"),
     TRAITS("traits", "build_traits", "trait_id"),
     SKILLS("skills", "build_skills", "skill_id"),
-    PETS("pets", "build_pets", "pet_id");
+    PETS("pets", "build_pets", "pet_id"),
+    /** Wallet currencies (display icon only); the id is a currency id, never an item id. */
+    CURRENCIES("currencies", "wallet_currencies", "currency_id");
 
     private final String segment;
     private final String table;

@@ -104,6 +104,7 @@ public class CraftingResolver {
         root.setBuyCostCopper(craftNeed.getBuyCostCopper());
         root.setOpportunityCostCopper(craftNeed.getOpportunityCostCopper());
         if (craftNeed.hasUnvaluedOwnedInput()) root.setUnvaluedOwnedInput(true);
+        if (craftNeed.spendsUnpricedCurrency()) root.setSpendsUnpricedCurrency(true);
         for (ResolvedNeed child : craftNeed.getChildren()) root.addChild(child);
         root.determineMode();
         return new ResolveResult(root);
@@ -432,12 +433,60 @@ public class CraftingResolver {
                 // A fully published wallet without this currency's row is a known zero; only a null wallet is unknown.
                 Integer balance = ctx.wallet == null ? null : ctx.wallet.getOrDefault(currency.currencyId(), 0);
                 boolean enforce = ctx.walletMode == PlannerContext.WalletMode.ENFORCED;
-                if (!state.spendCurrency(currency.currencyId(), needed, balance, enforce)) {
+                int currencyId = currency.currencyId();
+                CurrencyProduction production = enforce && ctx.recipesByOutput.containsKey(
+                        CurrencyProduction.forCurrency(currencyId).map(CurrencyProduction::itemId).orElse(-1))
+                        ? CurrencyProduction.forCurrency(currencyId).orElse(null) : null;
+
+                // Owned wallet units are used first, then units an earlier batch of this plan left over, then new
+                // production batches. An unknown wallet contributes nothing: it is neither zero nor unlimited.
+                long spent = state.currencySpent(currencyId);
+                long ownedLeft = balance == null ? 0 : Math.max(0, balance - spent);
+                long producedLeft = state.currencyProduced(currencyId) - Math.max(0, spent - (balance == null ? 0 : balance));
+                long fromWallet = enforce ? Math.min(needed, ownedLeft) : needed;
+                long fromProduced = enforce ? Math.min(needed - fromWallet, Math.max(0, producedLeft)) : 0;
+                long toProduce = needed - fromWallet - fromProduced;
+                long craftedUnits = 0;
+                boolean producerBlocked = false;
+                BlockedReason producerReason = BlockedReason.NONE;
+
+                if (toProduce > 0 && production != null) {
+                    long batches = (toProduce + production.yield() - 1) / production.yield();
+                    if (batches > Integer.MAX_VALUE) throw new ArithmeticException("currency batches out of range");
+                    int batchCount = (int) batches;
+                    if (!state.reserveDemand(production.itemId(), batchCount)) {
+                        return limitBlocked(craftResult, qtyRequested, BlockedReason.MATERIAL_LIMIT);
+                    }
+                    ResolvedNeed producer = resolveNeed(production.itemId(), batchCount, ctx, state, false,
+                            recipe.disciplinesText, assignedCharacter);
+                    craftResult.addChild(producer);
+                    if (producer.isFullySatisfied()) {
+                        craftResult.addCostsFromChild(producer);
+                        state.creditCurrency(currencyId, Math.multiplyExact((long) batchCount, production.yield()));
+                        craftedUnits = toProduce;
+                    } else {
+                        producerBlocked = true;
+                        producerReason = producer.getBlockedReason();
+                    }
+                }
+
+                long covered = fromWallet + fromProduced + craftedUnits;
+                craftResult.addCurrencySourcing(new ResolvedNeed.CurrencySourcing(currencyId,
+                        Math.toIntExact(needed), Math.toIntExact(fromWallet), Math.toIntExact(fromProduced),
+                        Math.toIntExact(craftedUnits), Math.toIntExact(needed - covered), balance));
+
+                if (producerBlocked || covered < needed) {
+                    if (producerReason == BlockedReason.MATERIAL_LIMIT || producerReason == BlockedReason.VALUE_RANGE) {
+                        return limitBlocked(craftResult, qtyRequested, producerReason);
+                    }
                     return limitBlocked(craftResult, qtyRequested,
                             ctx.wallet == null
                                     ? BlockedReason.WALLET_UNAVAILABLE : BlockedReason.INSUFFICIENT_CURRENCY);
                 }
-                craftResult.setSpendsUnpricedCurrency(true);
+                // The shared pool tally is total consumption whatever its source (actual wallet/credit demand).
+                state.spendCurrency(currencyId, needed, null, false);
+                // Only wallet units keep a deferred (unpriced) valuation; crafted units are charged by their batches.
+                if (fromWallet > 0) craftResult.setSpendsUnpricedCurrency(true);
             }
 
             boolean allChildrenSatisfied = true;

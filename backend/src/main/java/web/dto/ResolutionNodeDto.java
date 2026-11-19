@@ -95,5 +95,11 @@ public record ResolutionNodeDto(int itemId,
     }
 
     /** Exact units of one currency (its own namespace, never an item id) for this node's craft path. */
-    public record CurrencyQuantityDto(int currencyId, String name, int quantity) {}
+    public record CurrencyQuantityDto(int currencyId, String name, int quantity, int fromWallet, int fromProduced,
+                                      int crafted, int missing, Integer walletBalance, String iconUrl) {
+        /** Quantity only, with no recorded sourcing. */
+        public CurrencyQuantityDto(int currencyId, String name, int quantity) {
+            this(currencyId, name, quantity, 0, 0, 0, 0, null, null);
+        }
+    }
 }

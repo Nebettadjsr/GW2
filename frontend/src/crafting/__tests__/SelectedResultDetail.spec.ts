@@ -459,6 +459,16 @@ describe('currency costs (issue 372)', () => {
     expect(wrapper.find('[data-test="detail-hypothetical"]').exists()).toBe(true)
   })
 
+  it('keeps the quantity but drops the exclusion and wallet-unknown notes when crafted batches paid every unit', () => {
+    const wrapper = detailOf({
+      ...jade,
+      currencyCosts: { ...jade.currencyCosts, walletState: 'UNKNOWN', goldMarginIsConditional: false }
+    })
+    expect(wrapper.find('[data-test="detail-currency-cost"]').text()).toBe('300')
+    expect(wrapper.find('[data-test="detail-currency-exclusion"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="detail-wallet-unknown"]').exists()).toBe(false)
+  })
+
   it('renders no currency row or exclusion for item-only rows', () => {
     const wrapper = detailOf(profitableRow)
     expect(wrapper.find('[data-test="detail-currency-cost"]').exists()).toBe(false)

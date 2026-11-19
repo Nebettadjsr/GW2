@@ -195,7 +195,9 @@ final class CraftingResolutionMapper {
                 iconUrl(node.itemId(), items),
                 recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds),
                 node.currencies().stream().map(q -> new ResolutionNodeDto.CurrencyQuantityDto(
-                        q.currencyId(), CraftingRowMapper.currencyName(q.currencyId()), q.quantity())).toList());
+                        q.currencyId(), CraftingRowMapper.currencyName(q.currencyId()), q.quantity(), q.fromWallet(),
+                        q.fromProduced(), q.crafted(), q.missing(), q.walletBalance(),
+                        CurrencyIcons.urlFor(q.currencyId()))).toList());
     }
 
     /** Display projection only: whole-copper HALF_UP average of the node total; null if undefined. */

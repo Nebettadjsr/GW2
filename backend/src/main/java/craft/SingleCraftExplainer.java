@@ -195,14 +195,18 @@ public final class SingleCraftExplainer {
             variants.values().forEach(variant -> children.add(combineNodes(variant)));
         }
 
-        java.util.TreeMap<Integer, Integer> currencyTotals = new java.util.TreeMap<>();
+        java.util.TreeMap<Integer, CraftTraceNode.CurrencyQuantity> currencyTotals = new java.util.TreeMap<>();
         for (CraftTraceNode node : nodes) {
             for (CraftTraceNode.CurrencyQuantity q : node.currencies()) {
-                currencyTotals.merge(q.currencyId(), q.quantity(), Math::addExact);
+                currencyTotals.merge(q.currencyId(), q, (a, b) -> new CraftTraceNode.CurrencyQuantity(
+                        a.currencyId(), Math.addExact(a.quantity(), b.quantity()),
+                        Math.addExact(a.fromWallet(), b.fromWallet()),
+                        Math.addExact(a.fromProduced(), b.fromProduced()),
+                        Math.addExact(a.crafted(), b.crafted()), Math.addExact(a.missing(), b.missing()),
+                        a.walletBalance()));
             }
         }
-        List<CraftTraceNode.CurrencyQuantity> currencies = currencyTotals.entrySet().stream()
-                .map(e -> new CraftTraceNode.CurrencyQuantity(e.getKey(), e.getValue())).toList();
+        List<CraftTraceNode.CurrencyQuantity> currencies = List.copyOf(currencyTotals.values());
 
         return new CraftTraceNode(
                 first.itemId(), requested, inventory, crafted, bought, missing,
@@ -266,10 +270,19 @@ public final class SingleCraftExplainer {
         if (selected != null && !selected.currencies.isEmpty()) {
             int executions = crafted ? craftTrace.getCraftCount()
                     : Math.max(1, ceilDiv(need.getQtyRequested(), Math.max(1, selected.outputCount)));
-            currencies = selected.currencies.stream()
-                    .map(c -> new CraftTraceNode.CurrencyQuantity(c.currencyId(),
-                            Math.toIntExact((long) c.count() * executions)))
-                    .toList();
+            Map<Integer, ResolvedNeed.CurrencySourcing> sourcing = new java.util.HashMap<>();
+            for (ResolvedNeed.CurrencySourcing s : (craftAttempt != null ? craftAttempt : need).getCurrencySourcing()) {
+                sourcing.put(s.currencyId(), s);
+            }
+            currencies = selected.currencies.stream().map(c -> {
+                ResolvedNeed.CurrencySourcing s = sourcing.get(c.currencyId());
+                if (s == null) {
+                    return new CraftTraceNode.CurrencyQuantity(c.currencyId(),
+                            Math.toIntExact((long) c.count() * executions));
+                }
+                return new CraftTraceNode.CurrencyQuantity(c.currencyId(), s.needed(), s.fromWallet(),
+                        s.fromProduced(), s.crafted(), s.missing(), s.walletBalance());
+            }).toList();
         }
 
         return new CraftTraceNode(

@@ -45,6 +45,8 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
   (for example 30 per Piece of Dragon Jade). Currencies are listed separately and not priced in gold, so the
   gold margin shown is *conditional* (the total profit carries a small `*`; the detail says "Excluding costs for other currencies"), not a guaranteed profit. An unavailable wallet means the
   craftable count is unknown; an empty published wallet means none can be afforded.
+  Missing Research Notes are crafted automatically as **Peer Reviewed Research** (each credits exactly 150 Notes); the
+  tree shows each currency with its icon, wiki link, "needed" count, "From wallet"/"From earlier batch"/"Crafted"/"Missing" quantities and the captured wallet balance. When every Note is crafted the margin is no longer starred.
 - **Coordinated plan** — a Crafting Profit plan spanning multiple characters, where different steps
   may be assigned to different eligible characters (§2.2.1).
 - **Transferable intermediate** — a crafted intermediate item that is not soulbound, and can

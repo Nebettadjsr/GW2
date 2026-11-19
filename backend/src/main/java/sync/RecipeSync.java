@@ -75,10 +75,13 @@ public final class RecipeSync {
                 List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
                 List<RecipeParser.RequirementRow> requirementRows = new ArrayList<>();
 
+                Set<Integer> requested = new HashSet<>(batch);
+                Set<Integer> accountedIds = new HashSet<>();
                 for (JsonNode r : root) {
 
                     var rr = RecipeParser.parseRecipe(r);
-                    if (rr == null) continue;
+                    if (rr == null || !requested.contains(rr.recipeId())) continue;
+                    accountedIds.add(rr.recipeId());
                     if (RecipeParser.hasUnsupportedRequirement(r)) {
                         // Unsupported ingredient type: never publish a recipe with a silently dropped requirement.
                         System.out.println("Skipping recipe " + rr.recipeId() + ": unsupported ingredient type");
@@ -113,6 +116,20 @@ public final class RecipeSync {
                             neededItemIds.add(ing.itemId());
                 }
 
+                // Requested ids the successful response omitted or returned unparseable have no proven
+                // requirement set: quarantine them whole (no stored recipe, no cleared-then-free row) and
+                // never clear requirements on their behalf.
+                List<Integer> provenIds = new ArrayList<>(batch.size());
+                for (Integer id : batch) {
+                    if (accountedIds.contains(id)) {
+                        provenIds.add(id);
+                    } else {
+                        System.out.println("Skipping recipe " + id + ": omitted or malformed detail record");
+                        remoteIds.remove(id);
+                        skippedIds.add(id);
+                    }
+                }
+
                 con.setAutoCommit(false);
 
                 try {
@@ -127,7 +144,7 @@ public final class RecipeSync {
 
                     upsertRecipes(con, rows, runTs);
                     con.commit();
-                    fetchedBatches.add(new RecipeBatch(List.copyOf(batch), List.copyOf(ingredientRows), List.copyOf(requirementRows)));
+                    fetchedBatches.add(new RecipeBatch(List.copyOf(provenIds), List.copyOf(ingredientRows), List.copyOf(requirementRows)));
 
                 } catch (Exception ex) {
                     con.rollback();

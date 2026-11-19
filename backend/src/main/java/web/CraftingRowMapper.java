@@ -94,9 +94,7 @@ final class CraftingRowMapper {
     }
 
     /** Labels for currencies this application recognises; any other id keeps its exact number. */
-    private static final Map<Integer, String> CURRENCY_NAMES = Map.of(
-            61, "Research Note", 50, "Festival Token", 78, "Fine Rift Essence",
-            79, "Rare Rift Essence", 80, "Masterwork Rift Essence");
+    private static final Map<Integer, String> CURRENCY_NAMES = craft.KnownCurrencies.names();
 
     static String currencyName(int currencyId) {
         return CURRENCY_NAMES.getOrDefault(currencyId, "Currency " + currencyId);
@@ -118,7 +116,7 @@ final class CraftingRowMapper {
             costs.add(new CurrencyCostsDto.CurrencyCostDto(id,
                     CURRENCY_NAMES.getOrDefault(id, "Currency " + id), perCraft, total.getOrDefault(id, 0)));
         }
-        return new CurrencyCostsDto(result.walletState, true, result.economicsFromHypotheticalCraft, costs);
+        return new CurrencyCostsDto(result.walletState, result.unpricedCurrency, result.economicsFromHypotheticalCraft, costs);
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */

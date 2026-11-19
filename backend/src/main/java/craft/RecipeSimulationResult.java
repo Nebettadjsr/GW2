@@ -19,6 +19,7 @@ public class RecipeSimulationResult {
     private int buyCostTotal;
     private int opportunityCostTotal;
     private boolean unvaluedOwnedInput;
+    private boolean unpricedCurrency;
     private Map<Integer, Integer> currencyTotal = Map.of();
     private Map<Integer, Integer> currencyFirstCraft = Map.of();
 
@@ -90,6 +91,15 @@ public class RecipeSimulationResult {
 
     public boolean hasUnvaluedOwnedInput() {
         return unvaluedOwnedInput;
+    }
+
+    /** True when an accepted craft paid any currency from the wallet (deferred, unpriced valuation). */
+    public boolean spendsUnpricedCurrency() {
+        return unpricedCurrency;
+    }
+
+    public void markUnpricedCurrency() {
+        unpricedCurrency = true;
     }
 
     public void markUnvaluedOwnedInput() {

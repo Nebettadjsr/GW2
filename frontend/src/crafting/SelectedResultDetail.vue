@@ -279,7 +279,7 @@ function materialQuoteText(item: MissingItem): string {
               after 15% TP fees
             </span>
             <span
-              v-if="row.currencyCosts && row.currencyCosts.costs.length"
+              v-if="row.currencyCosts && row.currencyCosts.costs.length && row.currencyCosts.goldMarginIsConditional"
               class="value-note"
               data-test="detail-currency-exclusion"
             >
@@ -307,7 +307,7 @@ function materialQuoteText(item: MissingItem): string {
         </p>
 
         <p
-          v-if="row.currencyCosts && row.currencyCosts.costs.length && row.currencyCosts.walletState !== 'KNOWN'"
+          v-if="row.currencyCosts && row.currencyCosts.costs.length && row.currencyCosts.goldMarginIsConditional && row.currencyCosts.walletState !== 'KNOWN'"
           class="value-note"
           data-test="detail-wallet-unknown"
         >

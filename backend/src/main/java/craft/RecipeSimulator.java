@@ -158,6 +158,7 @@ public class RecipeSimulator {
             result.addBuyCost(rr.getBuyCostCopper());
             result.addOpportunityCost(rr.getOpportunityCostCopper());
             if (rr.hasUnvaluedOwnedInput()) result.markUnvaluedOwnedInput();
+            if (root.spendsUnpricedCurrency()) result.markUnpricedCurrency();
 
             root.accumulateBoughtItems(result.getTotalMissingToBuy());
 

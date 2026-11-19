@@ -21,6 +21,8 @@ public class ResolvedNeed {
     private boolean unvaluedOwnedInput;
     private boolean spendsUnpricedCurrency;
 
+    private final List<CurrencySourcing> currencySourcing = new ArrayList<>();
+
     private AcquisitionMode mode = AcquisitionMode.BLOCKED;
     private BlockedReason blockedReason = BlockedReason.NONE;
 
@@ -184,6 +186,28 @@ public class ResolvedNeed {
 
     public void setSpendsUnpricedCurrency(boolean spends) {
         this.spendsUnpricedCurrency = spends;
+    }
+
+    /**
+     * How this craft step's currency requirements were sourced, per currency (empty when it needs none).
+     * Quantities only; never a gold valuation.
+     *
+     * @param needed         units the executions of this step consume
+     * @param fromWallet     units paid from the account wallet's captured balance (owned, deferred valuation)
+     * @param fromProduced   units reused from surplus an earlier production batch of the same plan credited
+     * @param crafted        units newly credited by this step's production batches and consumed here
+     * @param missing        units that no source could provide (the step is then blocked)
+     * @param walletBalance  captured balance before this plan spent anything, or null when unknown
+     */
+    public record CurrencySourcing(int currencyId, int needed, int fromWallet, int fromProduced, int crafted,
+                                   int missing, Integer walletBalance) {}
+
+    public List<CurrencySourcing> getCurrencySourcing() {
+        return currencySourcing;
+    }
+
+    public void addCurrencySourcing(CurrencySourcing sourcing) {
+        currencySourcing.add(sourcing);
     }
 
     public boolean hasUnvaluedOwnedInput() {

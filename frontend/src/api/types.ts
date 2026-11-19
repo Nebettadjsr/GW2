@@ -315,6 +315,18 @@ export interface ResolutionCurrency {
   currencyId: number
   name: string
   quantity: number
+  /** Units paid from the account wallet's captured balance (owned; value deferred). Absent from older backends. */
+  fromWallet?: number
+  /** Units reused from surplus an earlier production batch of the same plan credited. */
+  fromProduced?: number
+  /** Units newly produced for this step by crafted batches (shown as that item's own child requirement). */
+  crafted?: number
+  /** Units no source could provide. */
+  missing?: number
+  /** Captured wallet balance before the plan spent anything; null when unknown (never zero or unlimited). */
+  walletBalance?: number | null
+  /** Same-origin application icon URL of this currency, or null. */
+  iconUrl?: string | null
 }
 
 /** The effective inputs a resolution response echoes back, in the table response's own shape. */

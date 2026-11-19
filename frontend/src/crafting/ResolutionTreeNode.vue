@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue'
-import type { ResolutionNode } from '@/api/types'
+import type { ResolutionCurrency, ResolutionNode } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper } from './formatCopper'
 import {
@@ -49,6 +49,21 @@ const unitText = computed(() => {
 })
 
 const currencies = computed(() => props.node.currencies ?? [])
+
+/** Backend-counted currency sourcing, only presented: no arithmetic beyond selecting non-zero quantities. */
+function currencySources(currency: ResolutionCurrency) {
+  return [
+    { label: 'From wallet', quantity: currency.fromWallet ?? 0, key: 'wallet' },
+    { label: 'From earlier batch', quantity: currency.fromProduced ?? 0, key: 'produced' },
+    { label: 'Crafted', quantity: currency.crafted ?? 0, key: 'crafted' },
+    { label: 'Missing', quantity: currency.missing ?? 0, key: 'missing' }
+  ].filter((source) => source.quantity > 0)
+}
+
+/** An unknown name stays the exact id label and gets no guessed wiki page. */
+function currencyWiki(currency: ResolutionCurrency): string | null {
+  return currency.name === `Currency ${currency.currencyId}` ? null : wikiUrl(currency.name)
+}
 const childCount = computed(() => props.node.children.length)
 const childSummary = computed(() => {
   const parts: string[] = []
@@ -123,14 +138,31 @@ const childSummary = computed(() => {
     <details v-if="childCount > 0 || currencies.length > 0" class="node__children" data-test="node-children">
       <summary>{{ childSummary }}</summary>
       <ul class="node__list">
-        <!-- Currency units are supplied by the backend for this node's craft; a currency is not an item: no icon or wiki item link. -->
+        <!--
+          Currency units and their sourcing are supplied by the backend for this node's craft; a currency is
+          not an item: its own icon route and wiki name, never an item id, link or calculation here.
+        -->
         <li v-for="currency in currencies" :key="`currency-${currency.currencyId}`" class="node node--currency"
           data-test="tree-currency">
           <div class="node__head">
-            <span class="node__identity"><span class="node__name" data-test="currency-name">{{ currency.name }}</span>
-              <span class="meta">currency</span></span>
+            <span class="node__identity">
+              <ItemIcon :icon-url="currency.iconUrl ?? null" :item-id="null" loading="lazy" />
+              <a v-if="currencyWiki(currency) !== null" class="node__name" :href="currencyWiki(currency) ?? undefined"
+                target="_blank" rel="noopener noreferrer" data-test="currency-wiki"><span data-test="currency-name">{{ currency.name }}</span></a>
+              <span v-else class="node__name" data-test="currency-name">{{ currency.name }}</span>
+            </span>
             <span class="node__needed numeric" data-test="currency-quantity">{{ currency.quantity }} needed</span>
           </div>
+          <p v-if="currencySources(currency).length > 0" class="node__methods" data-test="currency-sources">
+            <span v-for="source in currencySources(currency)" :key="source.key" class="chip chip--method"
+              :class="{ 'chip--missing': source.key === 'missing' }" data-test="currency-source">
+              {{ source.label }} ×{{ source.quantity }}
+            </span>
+          </p>
+          <p v-if="currency.walletBalance !== undefined" class="meta node__wallet" data-test="currency-wallet">
+            <template v-if="currency.walletBalance === null">Wallet balance unknown</template>
+            <template v-else>Wallet balance when calculated: {{ currency.walletBalance }}</template>
+          </p>
         </li>
         <ResolutionTreeNode
           v-for="(child, index) in node.children"
@@ -213,6 +245,13 @@ const childSummary = computed(() => {
   border-color: var(--color-secondary);
   color: var(--color-secondary);
 }
+
+.chip--missing {
+  border-color: var(--color-danger, currentColor);
+  color: var(--color-danger, inherit);
+}
+
+.node__wallet { margin: 0; font-size: var(--text-sm); }
 
 .node__crafter {
   margin: 0;

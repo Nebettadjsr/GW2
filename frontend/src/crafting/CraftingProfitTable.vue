@@ -47,7 +47,8 @@ const displayRows = computed(() =>
     ownMaterials: formatCopper(row.matsSellValueCopper),
     unvalued: row.unvaluedOwnedInput === true,
     profit: formatSignedCopper(row.profitCopper),
-    conditionalCurrencies: (row.currencyCosts?.costs ?? []).map((c) => c.name),
+    // Only while a consumed currency still has no gold value (wallet-owned units): crafted units are charged in the costs.
+    conditionalCurrencies: row.currencyCosts?.goldMarginIsConditional === true ? row.currencyCosts.costs.map((c) => c.name) : [],
     profitTone: moneyTone(row.profitCopper),
     sellValue: formatCopper(row.totalSellValueCopper),
     total: formatSignedCopper(row.totalProfitCopper),

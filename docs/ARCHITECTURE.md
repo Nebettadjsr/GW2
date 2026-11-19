@@ -321,6 +321,8 @@ environment file for the exact origin and separate restricted application DB rol
 [#228](https://github.com/Nebettadjsr/GW2/issues/228) is resolved, do not omit that override or
 claim standalone production portability. CURRENT_STATE_SPEC owns host paths and verified flags.
 
+Wallet currency display metadata (`wallet_currencies`, public `/v2/currencies?ids=all`, refreshed with global data; failure never blocks the recipe refresh) feeds the same-origin currency icon route `/api/resources/currencies/{id}/icon/...` through the existing resource icon cache; the browser never calls ArenaNet.
+
 Database, downloaded icons and operational history use separate named cache volumes. The
 derived graph file is in the backend writable data directory and can rebuild after recreation.
 Build/runtime secrets are excluded from Git and frontend build inputs. `VITE_OPERATOR_*` and

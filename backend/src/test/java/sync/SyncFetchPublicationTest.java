@@ -479,6 +479,28 @@ class SyncFetchPublicationTest {
     }
 
     @Test
+    void recipeSync_omittedOrUnparseableDetailRecordsAreQuarantinedNotClearedToFree() throws Exception {
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");
+        exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (300, 'Currency', 61, 30)");
+        String detail = "[" + currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":30}")
+                + ",{\"id\":\"bad\"}]";
+        RecipeSync.fetcher = url -> {
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1,2,300]");
+            if (url.contains("/v2/recipes?ids=")) return json(detail);
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+
+        assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"),
+                "omitted/unparseable ids never remain as requirement-free recipes");
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=300"));
+        assertEquals("1", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=1 AND ref_id=61"));
+        assertEquals("2", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+    }
+
+    @Test
     void tpSync_malformedSinglePayloadIsSkippedForBothFallbackModes() throws Exception {
         tp(b -> new TpPriceApi.BatchResult(404, null, Set.of()), id -> json("{\"text\":\"missing id\"}"));
         TpSync.syncTpPrices(Set.of(1));

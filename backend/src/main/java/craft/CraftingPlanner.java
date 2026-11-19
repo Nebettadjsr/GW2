@@ -337,6 +337,7 @@ public class CraftingPlanner {
         result.currencyTotal = hypothetical ? Map.of() : sim.getCurrencyTotal();
         if (!result.currencyPerCraft.isEmpty() || !result.currencyTotal.isEmpty()) {
             result.walletState = ctx.wallet == null ? "UNKNOWN" : "KNOWN";
+            result.unpricedCurrency = sim.spendsUnpricedCurrency() || sim.getCraftCount() == 0;
         }
         return result;
     }

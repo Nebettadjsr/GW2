@@ -7,7 +7,7 @@ import java.util.List;
  *
  * @param walletState        {@code KNOWN} (balance available), {@code UNKNOWN} (no permission, never refreshed
  *                           or failed: neither zero nor unlimited)
- * @param goldMarginIsConditional always true here: {@code profitCopper} is the known gold margin after
+ * @param goldMarginIsConditional true while a consumed currency stays unpriced; {@code profitCopper} is then the known gold margin after
  *                           Trading Post fees and known material costs, <em>before</em> the unpriced currencies
  * @param economicsFromHypotheticalCraft the wallet blocked every real craft, so the per-craft figures describe
  *                           one hypothetical craft (the output quote and material costs stay valid)

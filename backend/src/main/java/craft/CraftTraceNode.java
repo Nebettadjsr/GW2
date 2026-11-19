@@ -63,8 +63,19 @@ public record CraftTraceNode(
         List<CurrencyQuantity> currencies
 ) {
 
-    /** Exact units of one currency (never an item id) this requirement's craft path consumes or would consume. */
-    public record CurrencyQuantity(int currencyId, int quantity) {}
+    /**
+     * Exact units of one currency (never an item id) this requirement's craft path consumes or would consume, and
+     * where they come from: the captured wallet balance, surplus an earlier production batch of the same plan left,
+     * newly produced units (their batches are child requirements, charged there), or a missing remainder.
+     * {@code walletBalance} is the captured balance before the plan spent anything, null when unknown.
+     */
+    public record CurrencyQuantity(int currencyId, int quantity, int fromWallet, int fromProduced, int crafted,
+                                   int missing, Integer walletBalance) {
+        /** Quantity only, with no recorded sourcing. */
+        public CurrencyQuantity(int currencyId, int quantity) {
+            this(currencyId, quantity, 0, 0, 0, 0, null);
+        }
+    }
 
     /** Item-only node: no currency requirement. */
     public CraftTraceNode(int itemId, int requestedQuantity, int inventoryQuantity, int craftedQuantity,

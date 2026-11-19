@@ -29,6 +29,17 @@ describe('CraftingProfitTable currency rows', () => {
     expect(loss.find('[data-test="currency-conditional"]').exists()).toBe(true)
   })
 
+  it('shows no star when every consumed currency was produced by priced crafting batches', () => {
+    const currencyCosts = {
+      walletState: 'UNKNOWN',
+      goldMarginIsConditional: false,
+      economicsFromHypotheticalCraft: false,
+      costs: [{ currencyId: 61, name: 'Research Note', perCraft: 30, total: 300 }]
+    }
+    const wrapper = mountRows([{ ...profitableRow, currencyCosts }])
+    expect(wrapper.find('[data-test="currency-conditional"]').exists()).toBe(false)
+  })
+
   it('keeps item-only rows unchanged', () => {
     const wrapper = mountRows([profitableRow])
     expect(wrapper.find('[data-test="currency-conditional"]').exists()).toBe(false)

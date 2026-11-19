@@ -44,6 +44,12 @@ public class GlobalDataRefreshService {
         try {
             gateway.syncMaterialCategories();
             gateway.syncMaterialItemMetadata();
+            try {
+                // Display metadata only: a failure never blocks the catalog (the icon is simply absent).
+                gateway.syncCurrencies();
+            } catch (Exception displayOnly) {
+                System.out.println("Currency metadata refresh failed: " + displayOnly.getClass().getSimpleName());
+            }
             boolean tradeableItemsChanged = gateway.syncTpTradeableItems();
             boolean recipesChanged = gateway.syncAllRecipesGlobalSafe();
             if (recipesChanged) {

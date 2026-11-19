@@ -45,6 +45,12 @@ public class CraftResult {
      * it could not be modelled, so the profit figures are not a confident result.
      */
     public boolean unvaluedOwnedInput;
+    /**
+     * True while some consumed currency still has no gold valuation (wallet-owned units, or a craft the wallet
+     * blocked): the gold margin is then conditional. False when no currency is consumed or every unit was
+     * produced by priced crafting batches already charged in the costs.
+     */
+    public boolean unpricedCurrency;
 
     /**
      * Currency (by currency id, never item id) one craft consumes including nested crafts; empty for

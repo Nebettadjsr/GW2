@@ -625,11 +625,44 @@ describe('CraftingResolution', () => {
       expect(nodeAt(region, '0.1').element.querySelectorAll(':scope > [data-test="node-children"] > ul > [data-test="tree-currency"]'))
         .toHaveLength(1)
       for (const row of rows) {
+        // A currency is never an item: no item wiki link/identity, only its own named wiki article.
         expect(row.find('[data-test="node-wiki"]').exists()).toBe(false)
+        expect(row.find('[data-test="currency-wiki"]').attributes('href')).toBe('https://wiki.guildwars2.com/wiki/Research%20Note')
         expect(row.find('img').exists()).toBe(false)
-        expect(row.find('a').exists()).toBe(false)
+        expect(row.find('[data-test="currency-sources"]').exists()).toBe(false)
+        expect(row.find('[data-test="currency-wallet"]').exists()).toBe(false)
       }
       expect(nodePaths(region)).toEqual(['0', '0.0', '0.1'])
+    })
+
+    it('showsTheCurrencyIconWalletChipCraftedMissingAndCapturedBalance', () => {
+      const detailed = node({
+        itemId: 97487,
+        itemName: 'Piece of Dragon Jade',
+        currencies: [{
+          currencyId: 61, name: 'Research Note', quantity: 30, fromWallet: 5, fromProduced: 4, crafted: 20, missing: 1,
+          walletBalance: 5, iconUrl: '/api/resources/currencies/61/icon/abc.png'
+        }],
+        children: []
+      })
+      const row = ready({ tree: detailed }).find('[data-test="tree-currency"]')
+      expect(row.find('img').attributes('src')).toBe('/api/resources/currencies/61/icon/abc.png')
+      expect(row.findAll('[data-test="currency-source"]').map((c) => c.text().replace(/\s+/g, ' ')))
+        .toEqual(['From wallet ×5', 'From earlier batch ×4', 'Crafted ×20', 'Missing ×1'])
+      expect(row.find('[data-test="currency-wallet"]').text()).toBe('Wallet balance when calculated: 5')
+    })
+
+    it('saysUnknownWhenTheBackendHasNoWalletBalanceAndNeverGuessesAWikiPageForAnUnnamedCurrency', () => {
+      const unknown = node({
+        itemId: 1,
+        itemName: 'X',
+        currencies: [{ currencyId: 5, name: 'Currency 5', quantity: 3, fromWallet: 0, walletBalance: null }],
+        children: []
+      })
+      const row = ready({ tree: unknown }).find('[data-test="tree-currency"]')
+      expect(row.find('[data-test="currency-wallet"]').text()).toBe('Wallet balance unknown')
+      expect(row.find('[data-test="currency-wiki"]').exists()).toBe(false)
+      expect(row.find('[data-test="currency-source"]').exists()).toBe(false)
     })
 
     it('leavesItemOnlyTreesAsTheyWere', () => {

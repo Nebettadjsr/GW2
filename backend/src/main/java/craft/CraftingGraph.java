@@ -65,7 +65,20 @@ public class CraftingGraph {
             long id = Long.parseLong(needle);
             if (id > 0 && id <= Integer.MAX_VALUE) seedItems.add((int) id);
         }
-        return parentRecipeIdsForIngredientIds(seedItems);
+        Set<Integer> matched = new HashSet<>(parentRecipeIdsForIngredientIds(seedItems));
+        // A currency name finds the recipes that consume that currency and the verified recipes that produce it
+        // (no item is named "Research Note"), so the acquisition path is inspectable from a currency search.
+        KnownCurrencies.names().forEach((currencyId, name) -> {
+            if (!name.toLowerCase(Locale.ROOT).contains(needle)) return;
+            int producer = CurrencyProduction.forCurrency(currencyId).map(CurrencyProduction::itemId).orElse(-1);
+            for (Recipe recipe : recipes) {
+                if (recipe.outputItemId == producer
+                        || recipe.currencies.stream().anyMatch(c -> c.currencyId() == currencyId)) {
+                    matched.add(recipe.recipeId);
+                }
+            }
+        });
+        return Collections.unmodifiableSet(matched);
     }
 
     private static Map<Integer, List<Recipe>> freeze(Map<Integer, List<Recipe>> recipes) {
