@@ -20,6 +20,9 @@ public class ResolvedNeed {
     /** An owned sellable quantity here (or below) could not be valued at all (DOMAIN_SPEC.md 11.2). */
     private boolean unvaluedOwnedInput;
     private boolean spendsUnpricedCurrency;
+    /** Research Notes paid from the captured wallet here (or below), valued by {@link #noteEstimate}. */
+    private int walletNoteUnits;
+    private ResearchNoteEstimate noteEstimate;
 
     private final List<CurrencySourcing> currencySourcing = new ArrayList<>();
 
@@ -98,12 +101,33 @@ public class ResolvedNeed {
 
     /** Exact effective cost; may exceed the int range, so comparisons use this. */
     public long effectiveCostCopper() {
-        return (long) buyCostCopper + opportunityCostCopper;
+        return (long) buyCostCopper + opportunityCostCopper + walletNoteCostCopper();
+    }
+
+    public int getWalletNoteUnits() {
+        return walletNoteUnits;
+    }
+
+    /** Records wallet-paid Notes that are valued by the estimate (never newly produced or surplus-reused ones). */
+    public void addWalletNotes(int units, ResearchNoteEstimate estimate) {
+        if (units <= 0) return;
+        this.walletNoteUnits = Math.addExact(this.walletNoteUnits, units);
+        this.noteEstimate = estimate;
+    }
+
+    /** Copies the wallet-Note facts of another node (the root of a chosen craft route). */
+    public void absorbWalletNotes(ResolvedNeed other) {
+        if (other.walletNoteUnits > 0) addWalletNotes(other.walletNoteUnits, other.noteEstimate);
+    }
+
+    /** Whole copper of the estimated wallet Notes here, rounded up once over the aggregate. */
+    public int walletNoteCostCopper() {
+        return walletNoteUnits == 0 || noteEstimate == null ? 0 : noteEstimate.costCopper(walletNoteUnits);
     }
 
     /** @throws ArithmeticException when the effective cost is outside the supported int range */
     public int getEffectiveCostCopper() {
-        return Math.addExact(buyCostCopper, opportunityCostCopper);
+        return Math.addExact(Math.addExact(buyCostCopper, opportunityCostCopper), walletNoteCostCopper());
     }
 
     public int getQtySatisfied() {
@@ -174,6 +198,7 @@ public class ResolvedNeed {
         this.opportunityCostCopper = Math.addExact(this.opportunityCostCopper, child.getOpportunityCostCopper());
         this.unvaluedOwnedInput |= child.unvaluedOwnedInput;
         this.spendsUnpricedCurrency |= child.spendsUnpricedCurrency;
+        if (child.walletNoteUnits > 0) addWalletNotes(child.walletNoteUnits, child.noteEstimate);
     }
 
     /**

@@ -77,4 +77,30 @@ class CurrencyCostRowMappingTest {
         assertEquals(0, c.costs().get(0).perCraft());
         assertEquals(30 * (r.craftableCount - 1), c.costs().get(0).total());
     }
+
+    /** Approved estimate: rows carry only the compact amounts; the selected detail adds both actual recipes. */
+    @Test
+    void estimateVariantsAppearOnlyInSelectedDetailAndAgreeWithTheTableRow() {
+        Recipe a = new Recipe(15120, 104934, 1, 0, "Artificer", List.of(new Ingredient(1001, 4)));
+        Recipe b = new Recipe(15131, 104934, 1, 0, "Artificer", List.of(new Ingredient(2001, 4)));
+        Map<Integer, PriceQuote> tp = Map.of(97487, new PriceQuote(100_000, 120_000), 97102, new PriceQuote(1, 2),
+                1001, new PriceQuote(100, 100));
+        CraftResult r = new CraftingPlanner().withWallet(Map.of(61, 90)).evaluateAll(List.of(JADE, a, b),
+                Map.of(97102, 40), Map.of(), tp, OWN, Set.of(13839, 15120, 15131)).get(13839);
+        CraftingRowDto table = CraftingRowMapper.toRow(JADE, r, Map.of(), tp);
+        CraftingRowDto detail = CraftingRowMapper.toRow(JADE, r, Map.of(), tp, true);
+        var te = table.currencyCosts().estimate();
+        var de = detail.currencyCosts().estimate();
+        assertEquals(90, te.totalNotes());
+        assertEquals(240, te.totalCopper());
+        assertTrue(te.variants().isEmpty(), "no recipe comparison is repeated across table rows");
+        assertEquals(te.totalCopper(), de.totalCopper());
+        assertEquals(table.profitCopper(), detail.profitCopper());
+        assertEquals(2, de.variants().size());
+        assertTrue(de.variants().get(0).basis());
+        assertEquals(400L, de.variants().get(0).batchCostCopper());
+        assertEquals(3L, de.variants().get(0).perNoteCopperCeil());
+        assertNull(de.variants().get(1).batchCostCopper());
+        assertEquals(false, table.currencyCosts().goldMarginIsConditional());
+    }
 }

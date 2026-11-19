@@ -139,7 +139,7 @@ final class CraftingResolutionMapper {
      * captured.
      */
     static CraftingRowDto toRow(CraftingResolutionDetail detail) {
-        return CraftingRowMapper.toRow(detail.recipe(), detail.row(), detail.items(), detail.quotes());
+        return CraftingRowMapper.toRow(detail.recipe(), detail.row(), detail.items(), detail.quotes(), true);
     }
 
     /**

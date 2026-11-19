@@ -62,6 +62,17 @@ public class CraftResult {
     /** KNOWN when a wallet balance was available, UNKNOWN when a currency recipe had none, NOT_REQUIRED otherwise. */
     public String walletState = "NOT_REQUIRED";
     /**
+     * Research Notes paid from the existing wallet and valued by the approved estimate (per first craft / all
+     * accepted crafts), with the whole-copper amount already deducted from {@link #profitCopper} and
+     * {@link #totalProfitCopper}. Zero when no estimate applied. Separate from own-item and bought-material totals.
+     */
+    public int estimatedNotesPerCraft;
+    public int estimatedNotesTotal;
+    public int estimatedNotesCostPerCraftCopper;
+    public int estimatedNotesCostTotalCopper;
+    /** The shared immutable estimate that was applied (selected-detail data only); null when none applied. */
+    public ResearchNoteEstimate noteEstimate;
+    /**
      * True when the per-craft economics describe a hypothetical craft because the wallet blocked every real
      * craft (craftableCount stays 0): output quote and material costs remain valid and visible.
      */

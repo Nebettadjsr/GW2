@@ -361,6 +361,12 @@ public class CraftingProfitService {
         enriched.currencyPerCraft = cr.currencyPerCraft;
         enriched.currencyTotal = cr.currencyTotal;
         enriched.walletState = cr.walletState;
+        enriched.unpricedCurrency = cr.unpricedCurrency;
+        enriched.estimatedNotesPerCraft = cr.estimatedNotesPerCraft;
+        enriched.estimatedNotesTotal = cr.estimatedNotesTotal;
+        enriched.estimatedNotesCostPerCraftCopper = cr.estimatedNotesCostPerCraftCopper;
+        enriched.estimatedNotesCostTotalCopper = cr.estimatedNotesCostTotalCopper;
+        enriched.noteEstimate = cr.noteEstimate;
         enriched.economicsFromHypotheticalCraft = cr.economicsFromHypotheticalCraft;
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);

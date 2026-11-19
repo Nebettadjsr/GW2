@@ -7,6 +7,7 @@ import type {
   MissingItem
 } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
+import ResearchNoteEstimatePopup from './ResearchNoteEstimatePopup.vue'
 import CraftingResolution from './CraftingResolution.vue'
 import {
   formatCopper,
@@ -254,6 +255,12 @@ function materialQuoteText(item: MissingItem): string {
               <span class="calc-negative" data-test="detail-currency-cost">
                 {{ formatCount(row.currencyCosts?.economicsFromHypotheticalCraft ? cost.perCraft : cost.total) }}
               </span>
+              <template v-if="cost.currencyId === 61 && row.currencyCosts?.estimate">
+                <span class="calc-negative" data-test="detail-note-estimate-cost">
+                  ({{ formatCopper(row.currencyCosts.economicsFromHypotheticalCraft ? row.currencyCosts.estimate.perCraftCopper : row.currencyCosts.estimate.totalCopper) }})
+                </span>
+                <ResearchNoteEstimatePopup :estimate="row.currencyCosts.estimate" />
+              </template>
             </dd>
           </template>
 

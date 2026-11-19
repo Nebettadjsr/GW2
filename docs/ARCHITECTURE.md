@@ -380,3 +380,5 @@ decisions include disposable caches (UD-016), proportionate browser-held keys (U
 account access (ADR-008), Flyway (ADR-010), static frontend Nginx (ADR-011) and host TLS
 (ADR-012). This document carries their current constraints; archived superseded plans,
 pre-release gates and workflow instructions are not the execution contract.
+
+The Research Note estimate (DOMAIN_SPEC 2.1.0) is computed once per captured calculation (`ResearchNoteEstimate`, held lazily by the shared `PlannerContext`) from the already captured quotes of recipes 15120/15131, so it joins the normal calculation identity and adds no producer planning per row. The resolver values only wallet-paid Notes (aggregate rounded up once, included in route cost comparison); the planner deducts the amount from profit. Table rows carry only the compact estimate amounts; the two-recipe comparison is selected-detail data. The frontend formats backend results and never calls ArenaNet.

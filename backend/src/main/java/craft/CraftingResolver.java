@@ -105,6 +105,7 @@ public class CraftingResolver {
         root.setOpportunityCostCopper(craftNeed.getOpportunityCostCopper());
         if (craftNeed.hasUnvaluedOwnedInput()) root.setUnvaluedOwnedInput(true);
         if (craftNeed.spendsUnpricedCurrency()) root.setSpendsUnpricedCurrency(true);
+        root.absorbWalletNotes(craftNeed);
         for (ResolvedNeed child : craftNeed.getChildren()) root.addChild(child);
         root.determineMode();
         return new ResolveResult(root);
@@ -255,6 +256,7 @@ public class CraftingResolver {
                     chosenNeed.getOpportunityCostCopper()));
             if (chosenNeed.hasUnvaluedOwnedInput()) result.setUnvaluedOwnedInput(true);
             if (chosenNeed.spendsUnpricedCurrency()) result.setSpendsUnpricedCurrency(true);
+            result.absorbWalletNotes(chosenNeed);
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(chosenNeed.getBlockedReason());
@@ -486,7 +488,17 @@ public class CraftingResolver {
                 // The shared pool tally is total consumption whatever its source (actual wallet/credit demand).
                 state.spendCurrency(currencyId, needed, null, false);
                 // Only wallet units keep a deferred (unpriced) valuation; crafted units are charged by their batches.
-                if (fromWallet > 0) craftResult.setSpendsUnpricedCurrency(true);
+                // Wallet Research Notes are valued by the captured-quote estimate when one exists; every other
+                // wallet currency (and Notes without a complete estimate) stays unpriced.
+                if (fromWallet > 0) {
+                    ResearchNoteEstimate noteEstimate = currencyId == CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID
+                            ? ctx.researchNoteEstimate() : null;
+                    if (noteEstimate != null && noteEstimate.available()) {
+                        craftResult.addWalletNotes(Math.toIntExact(fromWallet), noteEstimate);
+                    } else {
+                        craftResult.setSpendsUnpricedCurrency(true);
+                    }
+                }
             }
 
             boolean allChildrenSatisfied = true;

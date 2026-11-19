@@ -90,12 +90,18 @@ class ResearchNoteProductionTest {
         CraftResult r = run(List.of(CONSUMER, PRR_A), Map.of(NOTE, 45), stock(100, 4), OWN_ONLY);
         assertEquals(6, r.craftableCount);
         assertEquals(Map.of(NOTE, 180), r.currencyTotal);
-        assertTrue(r.unpricedCurrency, "owned wallet Notes keep a deferred, unpriced valuation");
+        // Changed from "owned wallet Notes stay unpriced": the approved Research Note estimate now values the 45
+        // wallet Notes (recipe 15120: 4 x 100c per 150 Notes) at ceil(45 * 400 / 150) = 120c, rounded once.
+        assertFalse(r.unpricedCurrency, "wallet Notes are valued by the estimate");
+        assertEquals(45, r.estimatedNotesTotal);
+        assertEquals(120, r.estimatedNotesCostTotalCopper);
 
         // Wallet already covers everything: no production, no materials needed.
         CraftResult owned = run(List.of(CONSUMER, PRR_A), Map.of(NOTE, 90), stock(100, 0), OWN_ONLY);
         assertEquals(3, owned.craftableCount);
-        assertTrue(owned.unpricedCurrency);
+        assertFalse(owned.unpricedCurrency);
+        assertEquals(90, owned.estimatedNotesTotal);
+        assertEquals(240, owned.estimatedNotesCostTotalCopper);
     }
 
     @Test

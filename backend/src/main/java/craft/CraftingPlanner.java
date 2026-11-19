@@ -292,7 +292,15 @@ public class CraftingPlanner {
         // unavailable or non-positive output quote already reports (DOMAIN_SPEC.md §21), and the
         // downstream availability predicates still see exactly the figure they saw before.
         int feeOne = revenueOne > 0 ? (int) TradingPostFeePolicy.feeOn(revenueOne) : 0;
-        int profitOne = Math.toIntExact((long) revenueOne - feeOne - buyCostOne - matsSellOne);
+        // Approved exception (DOMAIN_SPEC.md 2.1.0): Notes paid from the existing wallet are valued at the
+        // estimated replacement rate, aggregated and rounded up once. Produced Notes are already charged in buyCostOne.
+        ResearchNoteEstimate noteEstimate = ctx.researchNoteEstimate();
+        boolean noteValued = noteEstimate.available();
+        int notesOne = noteValued && firstCraft != null ? firstCraft.getWalletNoteUnits() : 0;
+        long notesTotal = noteValued && !hypothetical ? sim.getWalletNoteUnitsTotal() : 0;
+        int noteCostOne = notesOne > 0 ? noteEstimate.costCopper(notesOne) : 0;
+        int noteCostTotal = notesTotal > 0 ? noteEstimate.costCopper(notesTotal) : 0;
+        int profitOne = Math.toIntExact((long) revenueOne - feeOne - buyCostOne - matsSellOne - noteCostOne);
 
         // Owned-material use can vary by execution, so the total uses full-plan aggregates below.
 
@@ -305,7 +313,8 @@ public class CraftingPlanner {
         // accepted full plan instead of scaling the first craft's opportunity cost.
         int totalProfit = Math.toIntExact((long) totalSellValue
                 - (long) feeOne * realCrafts
-                - (hypothetical ? 0 : sim.getBuyCostTotal()) - (hypothetical ? 0 : sim.getOpportunityCostTotal()));
+                - (hypothetical ? 0 : sim.getBuyCostTotal()) - (hypothetical ? 0 : sim.getOpportunityCostTotal())
+                - noteCostTotal);
 
         CraftResult result = new CraftResult(
                 recipe.outputItemId,
@@ -337,7 +346,14 @@ public class CraftingPlanner {
         result.currencyTotal = hypothetical ? Map.of() : sim.getCurrencyTotal();
         if (!result.currencyPerCraft.isEmpty() || !result.currencyTotal.isEmpty()) {
             result.walletState = ctx.wallet == null ? "UNKNOWN" : "KNOWN";
-            result.unpricedCurrency = sim.spendsUnpricedCurrency() || sim.getCraftCount() == 0;
+            result.unpricedCurrency = sim.spendsUnpricedCurrency() || firstCraft == null;
+            if (notesOne > 0 || notesTotal > 0) {
+                result.estimatedNotesPerCraft = notesOne;
+                result.estimatedNotesTotal = Math.toIntExact(notesTotal);
+                result.estimatedNotesCostPerCraftCopper = noteCostOne;
+                result.estimatedNotesCostTotalCopper = noteCostTotal;
+                result.noteEstimate = noteEstimate;
+            }
         }
         return result;
     }

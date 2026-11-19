@@ -20,6 +20,7 @@ public class RecipeSimulationResult {
     private int opportunityCostTotal;
     private boolean unvaluedOwnedInput;
     private boolean unpricedCurrency;
+    private long walletNoteUnitsTotal;
     private Map<Integer, Integer> currencyTotal = Map.of();
     private Map<Integer, Integer> currencyFirstCraft = Map.of();
 
@@ -97,6 +98,10 @@ public class RecipeSimulationResult {
     public boolean spendsUnpricedCurrency() {
         return unpricedCurrency;
     }
+
+    /** Research Notes the accepted crafts paid from the captured wallet (valued by the estimate). */
+    public long getWalletNoteUnitsTotal() { return walletNoteUnitsTotal; }
+    public void addWalletNoteUnits(int units) { walletNoteUnitsTotal = Math.addExact(walletNoteUnitsTotal, units); }
 
     public void markUnpricedCurrency() {
         unpricedCurrency = true;

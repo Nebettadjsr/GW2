@@ -57,6 +57,15 @@ final class CraftingRowMapper {
                                 CraftResult result,
                                 Map<Integer, ItemRepository.ItemInfo> items,
                                 Map<Integer, PriceQuote> tp) {
+        return toRow(recipe, result, items, tp, false);
+    }
+
+    /** As above; {@code detail} adds the selected-result-only Research Note recipe comparison. */
+    static CraftingRowDto toRow(Recipe recipe,
+                                CraftResult result,
+                                Map<Integer, ItemRepository.ItemInfo> items,
+                                Map<Integer, PriceQuote> tp,
+                                boolean detail) {
         if (result == null) {
             return new CraftingRowDto(
                     recipe.recipeId, recipe.outputItemId, itemName(recipe.outputItemId, items),
@@ -90,7 +99,7 @@ final class CraftingRowMapper {
                 ingredientNames(recipe, items),
                 iconUrl(recipe.outputItemId, items),
                 result.unvaluedOwnedInput,
-                toCurrencyCosts(result));
+                toCurrencyCosts(result, items, detail));
     }
 
     /** Labels for currencies this application recognises; any other id keeps its exact number. */
@@ -103,7 +112,8 @@ final class CraftingRowMapper {
     /**
      * Copies the domain's exact currency spending; no valuation or break-even figure is derived (deferred).
      */
-    private static CurrencyCostsDto toCurrencyCosts(CraftResult result) {
+    private static CurrencyCostsDto toCurrencyCosts(CraftResult result,
+                                                    Map<Integer, ItemRepository.ItemInfo> items, boolean detail) {
         Map<Integer, Integer> first = result.currencyPerCraft == null ? Map.of() : result.currencyPerCraft;
         Map<Integer, Integer> total = result.currencyTotal == null ? Map.of() : result.currencyTotal;
         // Union: a currency only later executions consume (first craft used an owned intermediate) still counts.
@@ -116,7 +126,33 @@ final class CraftingRowMapper {
             costs.add(new CurrencyCostsDto.CurrencyCostDto(id,
                     CURRENCY_NAMES.getOrDefault(id, "Currency " + id), perCraft, total.getOrDefault(id, 0)));
         }
-        return new CurrencyCostsDto(result.walletState, result.unpricedCurrency, result.economicsFromHypotheticalCraft, costs);
+        return new CurrencyCostsDto(result.walletState, result.unpricedCurrency, result.economicsFromHypotheticalCraft,
+                costs, toEstimate(result, items, detail));
+    }
+
+    private static CurrencyCostsDto.NoteEstimateDto toEstimate(CraftResult result,
+                                                               Map<Integer, ItemRepository.ItemInfo> items,
+                                                               boolean detail) {
+        craft.ResearchNoteEstimate estimate = result.noteEstimate;
+        if (estimate == null || (result.estimatedNotesPerCraft == 0 && result.estimatedNotesTotal == 0)) return null;
+        List<CurrencyCostsDto.VariantDto> variants = new ArrayList<>();
+        if (detail) {
+            for (craft.ResearchNoteEstimate.Variant v : estimate.variants()) {
+                List<CurrencyCostsDto.LineDto> lines = new ArrayList<>();
+                for (craft.ResearchNoteEstimate.Line line : v.ingredients()) {
+                    lines.add(new CurrencyCostsDto.LineDto(line.itemId(), itemName(line.itemId(), items), line.count(),
+                            line.unitPriceCopper(), line.totalCopper(), iconUrl(line.itemId(), items)));
+                }
+                Long perNote = v.priced() ? (v.batchCostCopper() + v.notesPerBatch() - 1) / v.notesPerBatch() : null;
+                variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
+                        v.notesPerBatch(), v.batchCostCopper(), perNote,
+                        estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
+                        List.copyOf(lines)));
+            }
+        }
+        return new CurrencyCostsDto.NoteEstimateDto(result.estimatedNotesPerCraft, result.estimatedNotesTotal,
+                result.estimatedNotesCostPerCraftCopper, result.estimatedNotesCostTotalCopper,
+                estimate.basisRecipeId(), List.copyOf(variants));
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */

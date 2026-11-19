@@ -48,6 +48,7 @@ const displayRows = computed(() =>
     unvalued: row.unvaluedOwnedInput === true,
     profit: formatSignedCopper(row.profitCopper),
     // Only while a consumed currency still has no gold value (wallet-owned units): crafted units are charged in the costs.
+    noteEstimated: row.currencyCosts?.estimate != null,
     conditionalCurrencies: row.currencyCosts?.goldMarginIsConditional === true ? row.currencyCosts.costs.map((c) => c.name) : [],
     profitTone: moneyTone(row.profitCopper),
     sellValue: formatCopper(row.totalSellValueCopper),
@@ -186,6 +187,12 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
         </td>
         <td class="numeric is-total" data-test="total-profit">
           <span :class="`money money--${row.totalTone}`">{{ row.total }}</span>
+          <span
+            v-if="row.noteEstimated"
+            class="unvalued-note"
+            data-test="currency-estimated"
+            title="Includes an estimated Research Note value"
+          >≈</span>
           <span
             v-if="row.conditionalCurrencies.length"
             class="unvalued-note"

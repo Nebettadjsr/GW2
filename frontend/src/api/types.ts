@@ -95,6 +95,37 @@ export interface CurrencyCosts {
   goldMarginIsConditional: boolean
   economicsFromHypotheticalCraft: boolean
   costs: CurrencyCost[]
+  /** Present only while wallet Research Notes were valued by the approved estimate. */
+  estimate?: NoteEstimate | null
+}
+
+export interface NoteEstimateLine {
+  itemId: number
+  name: string | null
+  count: number
+  unitPriceCopper: number | null
+  totalCopper: number | null
+  iconUrl?: string | null
+}
+
+export interface NoteEstimateVariant {
+  recipeId: number
+  outputName: string | null
+  notesPerBatch: number
+  batchCostCopper: number | null
+  perNoteCopperCeil: number | null
+  basis: boolean
+  ingredients: NoteEstimateLine[]
+}
+
+/** Backend-computed estimate of Notes consumed from the existing wallet; `variants` only in selected detail. */
+export interface NoteEstimate {
+  perCraftNotes: number
+  totalNotes: number
+  perCraftCopper: number
+  totalCopper: number
+  basisRecipeId: number | null
+  variants: NoteEstimateVariant[]
 }
 
 /** The scope the backend actually calculated with, after it applied its own defaults. */

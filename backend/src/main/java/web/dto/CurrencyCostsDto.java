@@ -15,7 +15,27 @@ import java.util.List;
 public record CurrencyCostsDto(String walletState,
                                boolean goldMarginIsConditional,
                                boolean economicsFromHypotheticalCraft,
-                               List<CurrencyCostDto> costs) {
+                               List<CurrencyCostDto> costs,
+                               NoteEstimateDto estimate) {
+
+    public CurrencyCostsDto(String walletState, boolean goldMarginIsConditional,
+                            boolean economicsFromHypotheticalCraft, List<CurrencyCostDto> costs) {
+        this(walletState, goldMarginIsConditional, economicsFromHypotheticalCraft, costs, null);
+    }
+
+    /**
+     * Approved Research Note estimate (DOMAIN_SPEC.md 2.1.0), present only while wallet Notes were valued: the Notes
+     * paid from the existing wallet and the whole-copper amount the backend already deducted from profit.
+     * {@code variants} (both actual recipes) is selected-detail data only and empty in table rows.
+     */
+    public record NoteEstimateDto(int perCraftNotes, int totalNotes, int perCraftCopper, int totalCopper,
+                                  Integer basisRecipeId, List<VariantDto> variants) {}
+
+    public record VariantDto(int recipeId, String outputName, int notesPerBatch, Long batchCostCopper,
+                             Long perNoteCopperCeil, boolean basis, List<LineDto> ingredients) {}
+
+    public record LineDto(int itemId, String name, int count, Integer unitPriceCopper, Long totalCopper,
+                          String iconUrl) {}
 
     /**
      * @param perCraft  exact units one craft consumes (including nested crafts)
