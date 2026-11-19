@@ -13,6 +13,40 @@ public class PlannerContext {
     public final CraftingSettings settings;
     public final Set<Integer> allowedRecipeIds;
 
+    /** How currency requirements are checked (see {@link WalletMode}). */
+    public enum WalletMode { ENFORCED, IGNORED }
+
+    /**
+     * Account wallet balances by currency id, or {@code null} when the wallet is unknown (no permission,
+     * never refreshed, failed refresh). Unknown is neither zero nor unlimited: a recipe consuming a currency is
+     * then blocked with {@link BlockedReason#WALLET_UNAVAILABLE}. Currency ids are not item ids.
+     */
+    public final Map<Integer, Integer> wallet;
+    public final WalletMode walletMode;
+
+    /** Lazily computed Research Note estimate shared by every derived context of one captured calculation. */
+    private final NoteEstimateHolder noteEstimateHolder;
+
+    static final class NoteEstimateHolder {
+        private volatile ResearchNoteEstimate value;
+    }
+
+    /** Immutable Research Note replacement-cost estimate for this calculation's captured quotes (computed once). */
+    public ResearchNoteEstimate researchNoteEstimate() {
+        ResearchNoteEstimate cached = noteEstimateHolder.value;
+        if (cached == null) {
+            cached = ResearchNoteEstimate.compute(recipesByOutput, tp, settings);
+            noteEstimateHolder.value = cached;
+        }
+        return cached;
+    }
+
+    /**
+     * Budget-retry mode: compare immediate cash before valuation class/effective cost. This keeps cheap
+     * purchases available alongside currency crafts. Used only after the ordinary route exceeds maxBuyCopper.
+     */
+    public final boolean minimizeBuyCost;
+
     /** Vendor sell value by item id (DOMAIN_SPEC.md 11.2); empty when unknown. Values <= 0 mean none. */
     public final Map<Integer, Integer> vendorValues;
 
@@ -48,7 +82,7 @@ public class PlannerContext {
                           Set<Integer> allowedRecipeIds,
                           List<CharacterCraftingProfile> coordinatedRoster) {
         this(recipesByOutput, tp, settings, allowedRecipeIds, coordinatedRoster,
-                new ConcurrentHashMap<>(), Map.of());
+                new ConcurrentHashMap<>(), Map.of(), null, WalletMode.ENFORCED, false, new NoteEstimateHolder());
     }
 
     private PlannerContext(Map<Integer, List<Recipe>> recipesByOutput,
@@ -57,8 +91,16 @@ public class PlannerContext {
                            Set<Integer> allowedRecipeIds,
                            List<CharacterCraftingProfile> coordinatedRoster,
                            Map<Integer, List<String>> eligibleCharactersByRecipeId,
-                           Map<Integer, Integer> vendorValues) {
+                           Map<Integer, Integer> vendorValues,
+                           Map<Integer, Integer> wallet,
+                           WalletMode walletMode,
+                           boolean minimizeBuyCost,
+                           NoteEstimateHolder noteEstimateHolder) {
+        this.noteEstimateHolder = noteEstimateHolder;
+        this.minimizeBuyCost = minimizeBuyCost;
         this.vendorValues = vendorValues;
+        this.wallet = wallet;
+        this.walletMode = walletMode;
         this.recipesByOutput = recipesByOutput;
         this.tp = tp;
         this.settings = settings;
@@ -76,13 +118,32 @@ public class PlannerContext {
         CraftingSettings noBuySettings = settings.withBuyingDisabled();
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, minimizeBuyCost, noteEstimateHolder);
     }
 
     /** This context with vendor sell values for the untradeable-material fallback; shares the memo tables. */
     public PlannerContext withVendorValues(Map<Integer, Integer> vendorValues) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, minimizeBuyCost, noteEstimateHolder);
+    }
+
+    /** This context with the account wallet ({@code null} = unknown); shares the memo tables. */
+    public PlannerContext withWallet(Map<Integer, Integer> wallet) {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues,
+                wallet == null ? null : Map.copyOf(wallet), walletMode, minimizeBuyCost, noteEstimateHolder);
+    }
+
+    /** Hypothetical single-craft economics: currency is still tallied but never limits the craft. */
+    public PlannerContext withWalletIgnored() {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, WalletMode.IGNORED, minimizeBuyCost, noteEstimateHolder);
+    }
+
+    /** Minimize immediate cash during a budget retry; shares the eligibility memo. */
+    public PlannerContext withBuyCostMinimized() {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, true, noteEstimateHolder);
     }
 
     public boolean isCoordinated() {

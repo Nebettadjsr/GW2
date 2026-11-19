@@ -7,6 +7,7 @@ import craft.Recipe;
 import craft.MaterialPurchaseCost;
 import repo.ItemRepository;
 import web.dto.CraftingRowDto;
+import web.dto.CurrencyCostsDto;
 import web.dto.MissingItemDto;
 import web.dto.TradingPostQuoteDto;
 
@@ -56,6 +57,15 @@ final class CraftingRowMapper {
                                 CraftResult result,
                                 Map<Integer, ItemRepository.ItemInfo> items,
                                 Map<Integer, PriceQuote> tp) {
+        return toRow(recipe, result, items, tp, false);
+    }
+
+    /** As above; {@code detail} adds the selected-result-only Research Note recipe comparison. */
+    static CraftingRowDto toRow(Recipe recipe,
+                                CraftResult result,
+                                Map<Integer, ItemRepository.ItemInfo> items,
+                                Map<Integer, PriceQuote> tp,
+                                boolean detail) {
         if (result == null) {
             return new CraftingRowDto(
                     recipe.recipeId, recipe.outputItemId, itemName(recipe.outputItemId, items),
@@ -63,7 +73,7 @@ final class CraftingRowMapper {
                     false, null, null, null, null, null, null, null, null, null,
                     toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
                     ingredientNames(recipe, items),
-                    iconUrl(recipe.outputItemId, items), false);
+                    iconUrl(recipe.outputItemId, items), false, null);
         }
 
         return new CraftingRowDto(
@@ -88,7 +98,75 @@ final class CraftingRowMapper {
                 toMissing(result.missingToBuyOne, result.materialPurchaseCostsOne, items, tp),
                 ingredientNames(recipe, items),
                 iconUrl(recipe.outputItemId, items),
-                result.unvaluedOwnedInput);
+                result.unvaluedOwnedInput,
+                toCurrencyCosts(result, items, detail));
+    }
+
+    /** Labels for currencies this application recognises; any other id keeps its exact number. */
+    private static final Map<Integer, String> CURRENCY_NAMES = craft.KnownCurrencies.names();
+
+    static String currencyName(int currencyId) {
+        return CURRENCY_NAMES.getOrDefault(currencyId, "Currency " + currencyId);
+    }
+
+    /**
+     * Copies the domain's exact currency spending; no valuation or break-even figure is derived (deferred).
+     */
+    private static CurrencyCostsDto toCurrencyCosts(CraftResult result,
+                                                    Map<Integer, ItemRepository.ItemInfo> items, boolean detail) {
+        Map<Integer, Integer> first = result.currencyPerCraft == null ? Map.of() : result.currencyPerCraft;
+        Map<Integer, Integer> total = result.currencyTotal == null ? Map.of() : result.currencyTotal;
+        // Union: a currency only later executions consume (first craft used an owned intermediate) still counts.
+        java.util.TreeSet<Integer> ids = new java.util.TreeSet<>(first.keySet());
+        ids.addAll(total.keySet());
+        if (ids.isEmpty()) return null;
+        List<CurrencyCostsDto.CurrencyCostDto> costs = new ArrayList<>();
+        for (int id : ids) {
+            int perCraft = first.getOrDefault(id, 0);
+            costs.add(new CurrencyCostsDto.CurrencyCostDto(id,
+                    CURRENCY_NAMES.getOrDefault(id, "Currency " + id), perCraft, total.getOrDefault(id, 0)));
+        }
+        return new CurrencyCostsDto(result.walletState, result.unpricedCurrency, result.economicsFromHypotheticalCraft,
+                costs, toEstimate(result, items, detail),
+                result.unpricedCurrencyIds == null ? List.of() : result.unpricedCurrencyIds.stream().sorted().toList());
+    }
+
+    private static CurrencyCostsDto.NoteEstimateDto toEstimate(CraftResult result,
+                                                               Map<Integer, ItemRepository.ItemInfo> items,
+                                                               boolean detail) {
+        craft.ResearchNoteEstimate estimate = result.noteEstimate;
+        if (estimate == null || (result.estimatedNotesPerCraft == 0 && result.estimatedNotesTotal == 0)) return null;
+        List<CurrencyCostsDto.VariantDto> variants = new ArrayList<>();
+        if (detail) {
+            for (craft.ResearchNoteEstimate.Variant v : estimate.variants()) {
+                List<CurrencyCostsDto.LineDto> lines = new ArrayList<>();
+                for (craft.ResearchNoteEstimate.Line line : v.ingredients()) {
+                    lines.add(new CurrencyCostsDto.LineDto(line.itemId(), itemName(line.itemId(), items), line.count(),
+                            line.unitPriceCopper(), line.totalCopper(), iconUrl(line.itemId(), items)));
+                }
+                variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
+                        v.notesPerBatch(), v.batchCostCopper(), per100(v),
+                        estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
+                        List.copyOf(lines)));
+            }
+        }
+        return new CurrencyCostsDto.NoteEstimateDto(result.estimatedNotesPerCraft, result.estimatedNotesTotal,
+                result.estimatedNotesCostPerCraftCopper, result.estimatedNotesCostTotalCopper,
+                estimate.basisRecipeId(), List.copyOf(variants));
+    }
+
+    /** Backend-owned display amount: ceil(batchCost * 100 / notesPerBatch), exact; null when unpriced or unrepresentable. */
+    private static Long per100(craft.ResearchNoteEstimate.Variant v) {
+        if (!v.priced() || v.notesPerBatch() <= 0) return null;
+        try {
+            java.math.BigInteger[] qr = java.math.BigInteger.valueOf(v.batchCostCopper())
+                    .multiply(java.math.BigInteger.valueOf(100))
+                    .divideAndRemainder(java.math.BigInteger.valueOf(v.notesPerBatch()));
+            java.math.BigInteger up = qr[1].signum() > 0 ? qr[0].add(java.math.BigInteger.ONE) : qr[0];
+            return up.longValueExact();
+        } catch (ArithmeticException e) {
+            return null;
+        }
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */

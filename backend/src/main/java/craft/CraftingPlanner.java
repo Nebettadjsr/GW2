@@ -16,6 +16,8 @@ public class CraftingPlanner {
     private final CostEvaluator costEvaluator = new CostEvaluator();
     private final Map<Integer, Integer> vendorValues;
     private final boolean reuseSimulationState;
+    /** Account wallet by currency id; {@code null} = unknown (never zero or unlimited). */
+    private final Map<Integer, Integer> wallet;
 
     public CraftingPlanner() {
         this(Map.of(), true);
@@ -26,6 +28,12 @@ public class CraftingPlanner {
     }
 
     private CraftingPlanner(Map<Integer, Integer> vendorValues, boolean reuseSimulationState) {
+        this(vendorValues, reuseSimulationState, null);
+    }
+
+    private CraftingPlanner(Map<Integer, Integer> vendorValues, boolean reuseSimulationState,
+                            Map<Integer, Integer> wallet) {
+        this.wallet = wallet;
         this.vendorValues = vendorValues;
         this.reuseSimulationState = reuseSimulationState;
     }
@@ -35,7 +43,14 @@ public class CraftingPlanner {
      * (DOMAIN_SPEC.md 11.2 step 2), keyed by item id; non-positive values mean "no vendor value".
      */
     public CraftingPlanner withVendorValues(Map<Integer, Integer> vendorValues) {
-        return vendorValues.equals(this.vendorValues) ? this : new CraftingPlanner(Map.copyOf(vendorValues), reuseSimulationState);
+        return vendorValues.equals(this.vendorValues) ? this : new CraftingPlanner(Map.copyOf(vendorValues), reuseSimulationState, wallet);
+    }
+
+    /** A planner spending from this account wallet (currency id to balance); {@code null} means unknown. */
+    public CraftingPlanner withWallet(Map<Integer, Integer> wallet) {
+        // Unchanged wallet (typically still unknown) keeps this very planner, like withVendorValues does.
+        if (java.util.Objects.equals(wallet, this.wallet)) return this;
+        return new CraftingPlanner(vendorValues, reuseSimulationState, wallet == null ? null : Map.copyOf(wallet));
     }
 
     public Map<Integer, CraftResult> evaluateAll(List<Recipe> recipes,
@@ -54,7 +69,7 @@ public class CraftingPlanner {
                                                             CraftingSettings settings,
                                                             Set<Integer> allowedRecipeIds) {
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
-        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds).withVendorValues(vendorValues).withWallet(wallet);
         return recipes.parallelStream().collect(Collectors.toConcurrentMap(
                 r -> r.recipeId,
                 r -> evaluateOneRecipeNew(r, new PlanState(sellableInventory, boundInventory), ctx,
@@ -78,7 +93,7 @@ public class CraftingPlanner {
                                                  Set<Integer> allowedRecipeIds) {
 
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
-        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
+        PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds).withVendorValues(vendorValues).withWallet(wallet);
 
         // Every recipe's simulation only reads shared/immutable inputs (ctx, sellableInventory,
         // boundInventory) and writes to its own fresh PlanState/RecipeSimulator, so recipes are
@@ -114,7 +129,7 @@ public class CraftingPlanner {
 
         Map<Integer, List<Recipe>> recipesByOutput = buildRecipesByOutput(recipes);
         PlannerContext ctx = new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                roster).withVendorValues(vendorValues);
+                roster).withVendorValues(vendorValues).withWallet(wallet);
 
         // Request-local: no account state remains attached to shared pool threads after return.
         Map<Thread, PlanState> workerStates = new java.util.concurrent.ConcurrentHashMap<>();
@@ -151,7 +166,7 @@ public class CraftingPlanner {
                                    Set<Integer> allowedRecipeIds) {
 
         PlannerContext ctx = new PlannerContext(
-                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues).withWallet(wallet);
 
         return evaluateOneRecipeNew(
                 recipe, new PlanState(sellableInventory, boundInventory), ctx, new RecipeSimulator());
@@ -166,7 +181,7 @@ public class CraftingPlanner {
                                            CraftingSettings settings,
                                            Set<Integer> allowedRecipeIds) {
         PlannerContext ctx = new PlannerContext(
-                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues).withWallet(wallet);
         return evaluateOneRecipeNew(recipe, new PlanState(sellableInventory, boundInventory), ctx,
                 new RecipeSimulator(new CraftingResolver(), 1, true));
     }
@@ -188,7 +203,7 @@ public class CraftingPlanner {
             Set<Integer> allowedRecipeIds) {
 
         PlannerContext ctx = new PlannerContext(
-                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
+                buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
 
         return evaluateOneRecipeNew(
                 recipe,
@@ -234,6 +249,19 @@ public class CraftingPlanner {
         // uncraftable when its ingredients may themselves be crafted.
         sim = baseState.isReusable() ? recipeSimulator.simulateOnState(recipe, ctx, baseState)
                 : recipeSimulator.simulateRecipe(recipe, ctx, baseState);
+
+        // A wallet-blocked currency recipe keeps valid output quotes and material costs: its single-craft
+        // economics come from a hypothetical craft that tallies currency without being limited by it.
+        boolean hypothetical = false;
+        if (sim.getCraftCount() == 0 && isWalletBlock(sim.getBlockedReason())) {
+            RecipeSimulationResult what = new RecipeSimulator(new CraftingResolver(), 1, true)
+                    .simulateRecipe(recipe, ctx.withWalletIgnored(), new PlanState(baseState));
+            if (what.getCraftCount() > 0) {
+                what.setBlockedReason(sim.getBlockedReason());
+                sim = what;
+                hypothetical = true;
+            }
+        }
         CostEvaluationResult cost = costEvaluator.evaluate(recipe, sim, ctx.tp, ctx.settings);
 
         ResolvedNeed firstCraft = sim.getFirstCraft();
@@ -264,27 +292,37 @@ public class CraftingPlanner {
         // unavailable or non-positive output quote already reports (DOMAIN_SPEC.md §21), and the
         // downstream availability predicates still see exactly the figure they saw before.
         int feeOne = revenueOne > 0 ? (int) TradingPostFeePolicy.feeOn(revenueOne) : 0;
-        int profitOne = Math.toIntExact((long) revenueOne - feeOne - buyCostOne - matsSellOne);
+        // Approved exception (DOMAIN_SPEC.md 2.1.0): Notes paid from the existing wallet are valued at the
+        // estimated replacement rate, aggregated and rounded up once. Produced Notes are already charged in buyCostOne.
+        ResearchNoteEstimate noteEstimate = ctx.researchNoteEstimate();
+        boolean noteValued = noteEstimate.available();
+        int notesOne = noteValued && firstCraft != null ? firstCraft.getWalletNoteUnits() : 0;
+        long notesTotal = noteValued && !hypothetical ? sim.getWalletNoteUnitsTotal() : 0;
+        int noteCostOne = notesOne > 0 ? noteEstimate.costCopper(notesOne) : 0;
+        int noteCostTotal = notesTotal > 0 ? noteEstimate.costCopper(notesTotal) : 0;
+        int profitOne = Math.toIntExact((long) revenueOne - feeOne - buyCostOne - matsSellOne - noteCostOne);
 
         // Owned-material use can vary by execution, so the total uses full-plan aggregates below.
 
         // DOMAIN_SPEC.md §2.1.1: §25's per-execution output revenue - which already carries the
         // recipe's output quantity and deducts no selling fee - for §28's craftable count. Built
         // from the two figures above rather than from a second resolver or price read.
-        int totalSellValue = Math.multiplyExact(revenueOne, sim.getCraftCount());
+        int realCrafts = hypothetical ? 0 : sim.getCraftCount();
+        int totalSellValue = Math.multiplyExact(revenueOne, realCrafts);
         // Inventory consumed can vary between executions, so total profit uses costs from the
         // accepted full plan instead of scaling the first craft's opportunity cost.
         int totalProfit = Math.toIntExact((long) totalSellValue
-                - (long) feeOne * sim.getCraftCount()
-                - sim.getBuyCostTotal() - sim.getOpportunityCostTotal());
+                - (long) feeOne * realCrafts
+                - (hypothetical ? 0 : sim.getBuyCostTotal()) - (hypothetical ? 0 : sim.getOpportunityCostTotal())
+                - noteCostTotal);
 
         CraftResult result = new CraftResult(
                 recipe.outputItemId,
                 recipe.disciplinesText,
-                sim.getCraftCount(),
-                sim.getTotalMissingToBuy(),
+                realCrafts,
+                hypothetical ? Map.of() : sim.getTotalMissingToBuy(),
                 missingToBuyOne,
-                totalBuyCost,
+                hypothetical ? 0 : totalBuyCost,
                 matsSellOne,
                 revenueOne,
                 profitOne,
@@ -292,12 +330,43 @@ public class CraftingPlanner {
                 totalSellValue,
                 tree,
                 sim.getBlockedReason(),
-                sim.getOpportunityCostTotal(),
-                purchaseCosts,
+                hypothetical ? 0 : sim.getOpportunityCostTotal(),
+                hypothetical ? Map.of() : purchaseCosts,
                 purchaseCostsOne
         );
         result.unvaluedOwnedInput = sim.hasUnvaluedOwnedInput();
+        result.economicsFromHypotheticalCraft = hypothetical;
+        Map<Integer, Integer> perCraft = sim.getCurrencyFirstCraft();
+        if (perCraft.isEmpty() && !recipe.currencies.isEmpty()) {
+            Map<Integer, Integer> direct = new java.util.TreeMap<>();
+            recipe.currencies.forEach(c -> direct.merge(c.currencyId(), c.count(), Integer::sum));
+            perCraft = direct;
+        }
+        result.currencyPerCraft = Map.copyOf(perCraft);
+        result.currencyTotal = hypothetical ? Map.of() : sim.getCurrencyTotal();
+        if (!result.currencyPerCraft.isEmpty() || !result.currencyTotal.isEmpty()) {
+            result.walletState = ctx.wallet == null ? "UNKNOWN" : "KNOWN";
+            result.unpricedCurrency = sim.spendsUnpricedCurrency() || firstCraft == null;
+            java.util.Set<Integer> unpriced = new java.util.TreeSet<>(sim.unpricedCurrencyIds());
+            // No real craft: every consumed currency is hypothetical and stays unpriced.
+            if (firstCraft == null) {
+                unpriced.addAll(result.currencyPerCraft.keySet());
+                unpriced.addAll(result.currencyTotal.keySet());
+            }
+            result.unpricedCurrencyIds = java.util.Set.copyOf(unpriced);
+            if (notesOne > 0 || notesTotal > 0) {
+                result.estimatedNotesPerCraft = notesOne;
+                result.estimatedNotesTotal = Math.toIntExact(notesTotal);
+                result.estimatedNotesCostPerCraftCopper = noteCostOne;
+                result.estimatedNotesCostTotalCopper = noteCostTotal;
+                result.noteEstimate = noteEstimate;
+            }
+        }
         return result;
+    }
+
+    private static boolean isWalletBlock(BlockedReason reason) {
+        return reason == BlockedReason.WALLET_UNAVAILABLE || reason == BlockedReason.INSUFFICIENT_CURRENCY;
     }
 
     private Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,

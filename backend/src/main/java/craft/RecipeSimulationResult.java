@@ -19,6 +19,11 @@ public class RecipeSimulationResult {
     private int buyCostTotal;
     private int opportunityCostTotal;
     private boolean unvaluedOwnedInput;
+    private boolean unpricedCurrency;
+    private final java.util.Set<Integer> unpricedCurrencyIds = new java.util.TreeSet<>();
+    private long walletNoteUnitsTotal;
+    private Map<Integer, Integer> currencyTotal = Map.of();
+    private Map<Integer, Integer> currencyFirstCraft = Map.of();
 
     private BlockedReason blockedReason = BlockedReason.NONE;
 
@@ -90,6 +95,29 @@ public class RecipeSimulationResult {
         return unvaluedOwnedInput;
     }
 
+    /** True when an accepted craft paid any currency from the wallet (deferred, unpriced valuation). */
+    public boolean spendsUnpricedCurrency() {
+        return unpricedCurrency;
+    }
+
+    /** Research Notes the accepted crafts paid from the captured wallet (valued by the estimate). */
+    public long getWalletNoteUnitsTotal() { return walletNoteUnitsTotal; }
+    public void addWalletNoteUnits(int units) { walletNoteUnitsTotal = Math.addExact(walletNoteUnitsTotal, units); }
+
+    public void markUnpricedCurrency() {
+        unpricedCurrency = true;
+    }
+
+    /** Marks the given currencies (by currency id) as spent without a gold valuation. */
+    public void markUnpricedCurrencies(java.util.Collection<Integer> currencyIds) {
+        unpricedCurrency = true;
+        unpricedCurrencyIds.addAll(currencyIds);
+    }
+
+    public java.util.Set<Integer> unpricedCurrencyIds() {
+        return unpricedCurrencyIds;
+    }
+
     public void markUnvaluedOwnedInput() {
         unvaluedOwnedInput = true;
     }
@@ -122,4 +150,12 @@ public class RecipeSimulationResult {
     public void setBlockedAttempt(ResolvedNeed blockedAttempt) {
         this.blockedAttempt = blockedAttempt;
     }
+
+    /** Cumulative currency spent by every accepted craft (wallet pool), by currency id. */
+    public Map<Integer, Integer> getCurrencyTotal() { return currencyTotal; }
+    public void setCurrencyTotal(Map<Integer, Integer> value) { this.currencyTotal = value; }
+
+    /** Currency spent by the first accepted craft including nested crafts, by currency id. */
+    public Map<Integer, Integer> getCurrencyFirstCraft() { return currencyFirstCraft; }
+    public void setCurrencyFirstCraft(Map<Integer, Integer> value) { this.currencyFirstCraft = value; }
 }

@@ -56,7 +56,7 @@ class DiscoveryCalculationQuoteCoordinationTest {
     /** Character validation passes; the calculation itself records the covered quotes and stops. */
     private final CraftingDiscoveryService reaching = new CraftingDiscoveryService(null, null, null, null, null) {
         @Override
-        public CraftingDiscoveryService forScope(model.AccountScope scope) {
+        public CraftingDiscoveryService forScope(model.AccountScope scope, boolean walletAuthorized) {
             return this;
         }
 

@@ -42,6 +42,8 @@ import java.util.List;
  *                           these may coexist with methods
  * @param blockedReasons     the explicit reasons this requirement is blocked
  *                           ({@code craft.BlockedReason} names); empty when it is not
+ * @param currencies         exact currency units this node's own craft path consumes (or would, when blocked);
+ *                           empty for item-only requirements. Currency ids are not item ids
  * @param children           ingredient requirements of the selected or attempted craft, in the
  *                           order the resolver produced them; repeated items in different branches
  *                           remain separate occurrences
@@ -74,5 +76,30 @@ public record ResolutionNodeDto(int itemId,
                                 boolean effectiveUnitCostApproximate,
                                 List<ResolutionNodeDto> children,
                                 String iconUrl,
-                                @JsonInclude(JsonInclude.Include.NON_NULL) String recipeKnowledge) {
+                                @JsonInclude(JsonInclude.Include.NON_NULL) String recipeKnowledge,
+                                List<CurrencyQuantityDto> currencies) {
+
+    /** Item-only node (no currency requirement). */
+    public ResolutionNodeDto(int itemId, String itemName, int requestedQuantity, int inventoryQuantity,
+                             int craftedQuantity, int boughtQuantity, int missingQuantity, Integer recipeId,
+                             int craftCount, int producedQuantity, String characterName, List<String> methods,
+                             List<String> states, List<String> blockedReasons, Integer cashCostCopper,
+                             Integer opportunityCostCopper, Integer effectiveCostCopper,
+                             Integer effectiveUnitCostCopper, boolean effectiveUnitCostApproximate,
+                             List<ResolutionNodeDto> children, String iconUrl, String recipeKnowledge) {
+        this(itemId, itemName, requestedQuantity, inventoryQuantity, craftedQuantity, boughtQuantity,
+                missingQuantity, recipeId, craftCount, producedQuantity, characterName, methods, states,
+                blockedReasons, cashCostCopper, opportunityCostCopper, effectiveCostCopper,
+                effectiveUnitCostCopper, effectiveUnitCostApproximate, children, iconUrl, recipeKnowledge,
+                List.of());
+    }
+
+    /** Exact units of one currency (its own namespace, never an item id) for this node's craft path. */
+    public record CurrencyQuantityDto(int currencyId, String name, int quantity, int fromWallet, int fromProduced,
+                                      int crafted, int missing, Integer walletBalance, String iconUrl) {
+        /** Quantity only, with no recorded sourcing. */
+        public CurrencyQuantityDto(int currencyId, String name, int quantity) {
+            this(currencyId, name, quantity, 0, 0, 0, 0, null, null);
+        }
+    }
 }

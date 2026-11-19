@@ -46,6 +46,7 @@ class AccountDataDeletionSchemaTest {
                 st.execute("INSERT INTO account_materials (account_id, item_id, count) VALUES ('" + id + "', 19721, 5)");
                 st.execute("INSERT INTO account_recipes (account_id, recipe_id) VALUES ('" + id + "', 7319)");
                 st.execute("INSERT INTO account_luck (account_id, consumed_luck) VALUES ('" + id + "', 10)");
+                st.execute("INSERT INTO account_wallet (account_id, currency_id, value) VALUES ('" + id + "', 61, 309)");
                 st.execute("INSERT INTO characters (account_id, character_id, name) VALUES ('" + id + "', 41, 'Same')");
                 st.execute("INSERT INTO character_crafting (account_id, character_id, discipline, rating) VALUES ('" + id + "', 41, 'Artificer', 400)");
                 st.execute("INSERT INTO character_recipes (account_id, character_id, recipe_id) VALUES ('" + id + "', 41, 7319)");

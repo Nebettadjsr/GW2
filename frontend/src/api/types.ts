@@ -77,6 +77,58 @@ export interface CraftingRow {
    * profit shown is not a confident figure.
    */
   unvaluedOwnedInput?: boolean
+  /** Exact unpriced currency spending; absent/null for item-only recipes. */
+  currencyCosts?: CurrencyCosts | null
+}
+
+export interface CurrencyCost {
+  currencyId: number
+  name: string
+  perCraft: number
+  total: number
+}
+
+export interface CurrencyCosts {
+  /** KNOWN, or UNKNOWN when no wallet balance is available (never zero, never unlimited). */
+  walletState: string
+  /** The gold margin is before these unpriced currency costs. */
+  goldMarginIsConditional: boolean
+  economicsFromHypotheticalCraft: boolean
+  costs: CurrencyCost[]
+  /** Present only while wallet Research Notes were valued by the approved estimate. */
+  estimate?: NoteEstimate | null
+  /** Consumed currency ids whose cost is NOT in the margin; the only ones a warning may name. */
+  unpricedCurrencyIds?: number[]
+}
+
+export interface NoteEstimateLine {
+  itemId: number
+  name: string | null
+  count: number
+  unitPriceCopper: number | null
+  totalCopper: number | null
+  iconUrl?: string | null
+}
+
+export interface NoteEstimateVariant {
+  recipeId: number
+  outputName: string | null
+  notesPerBatch: number
+  batchCostCopper: number | null
+  /** Backend-computed ceil(batchCost * 100 / notesPerBatch); null while not completely priced. */
+  per100NotesCopper?: number | null
+  basis: boolean
+  ingredients: NoteEstimateLine[]
+}
+
+/** Backend-computed estimate of Notes consumed from the existing wallet; `variants` only in selected detail. */
+export interface NoteEstimate {
+  perCraftNotes: number
+  totalNotes: number
+  perCraftCopper: number
+  totalCopper: number
+  basisRecipeId: number | null
+  variants: NoteEstimateVariant[]
 }
 
 /** The scope the backend actually calculated with, after it applied its own defaults. */
@@ -286,6 +338,29 @@ export interface ResolutionNode {
   iconUrl: string | null
   /** Discovery only: present only for a crafted recipe proven known or eligible to discover. */
   recipeKnowledge?: 'KNOWN' | 'TO_DISCOVER' | null
+  /**
+   * Exact currency units this node's own craft path consumes (or would, when blocked), as the backend counted them.
+   * Currency ids are not item ids. Absent or empty for item-only requirements.
+   */
+  currencies?: ResolutionCurrency[]
+}
+
+export interface ResolutionCurrency {
+  currencyId: number
+  name: string
+  quantity: number
+  /** Units paid from the account wallet's captured balance (owned; value deferred). Absent from older backends. */
+  fromWallet?: number
+  /** Units reused from surplus an earlier production batch of the same plan credited. */
+  fromProduced?: number
+  /** Units newly produced for this step by crafted batches (shown as that item's own child requirement). */
+  crafted?: number
+  /** Units no source could provide. */
+  missing?: number
+  /** Captured wallet balance before the plan spent anything; null when unknown (never zero or unlimited). */
+  walletBalance?: number | null
+  /** Same-origin application icon URL of this currency, or null. */
+  iconUrl?: string | null
 }
 
 /** The effective inputs a resolution response echoes back, in the table response's own shape. */

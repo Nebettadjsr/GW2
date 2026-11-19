@@ -190,14 +190,24 @@ public class CachedCraftingProfitService {
 
     public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
                                 KeyedAdmission keyed) throws Exception {
+        return profit(scope, choice, settings, keyed, keyed == null ? null : keyed.context());
+    }
+
+    /**
+     * @param readContext the already validated request context, independent of optional keyed refresh
+     *                    admission: it alone decides whether the cached wallet may be read (grant and endpoint).
+     */
+    public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
+                                KeyedAdmission keyed, application.access.AccountContext readContext) throws Exception {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingProfitService.ProfitData data = null;
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope)) {
-            captured = capture(session, scope);
+        boolean wallet = walletAuthorized(readContext, keyed);
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
+            captured = capture(session, scope, wallet);
             if (captured.usable()) {
                 data = profitServices.apply(session).reload(choice, settings);
             }
@@ -226,14 +236,26 @@ public class CachedCraftingProfitService {
                                         CraftingSettings settings,
                                         String basedOnCalculationId,
                                         KeyedAdmission keyed) throws Exception {
+        return resolution(scope, recipeId, choice, settings, basedOnCalculationId, keyed,
+                keyed == null ? null : keyed.context());
+    }
+
+    public ResolutionOutcome resolution(AccountScope scope,
+                                        int recipeId,
+                                        DiscChoice choice,
+                                        CraftingSettings settings,
+                                        String basedOnCalculationId,
+                                        KeyedAdmission keyed,
+                                        application.access.AccountContext readContext) throws Exception {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingResolutionDetail detail = null;
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope)) {
-            captured = capture(session, scope);
+        boolean wallet = walletAuthorized(readContext, keyed);
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
+            captured = capture(session, scope, wallet);
             if (captured.usable()) {
                 detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
             }
@@ -247,6 +269,15 @@ public class CachedCraftingProfitService {
         return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null, scope, keyed));
     }
 
+    /** Validated session authority; a presented key must additionally have proved its own wallet scope. */
+    private static boolean walletAuthorized(application.access.AccountContext context, KeyedAdmission keyed) {
+        if (context == null || !context.permits(application.access.AccountOperation.WALLET_READ)) return false;
+        if (keyed == null) return true;
+        var proof = keyed.proof().get();
+        return proof != null && proof.credentialScope() != null
+                && proof.credentialScope().permits(application.access.AccountOperation.WALLET_READ);
+    }
+
     /**
      * A presented key is proven before any account work or activity: a definitive rejection
      * ({@link ScopedAccountRefreshCoordinator.Rejected}) reaches the caller instead of a calculation.
@@ -258,10 +289,14 @@ public class CachedCraftingProfitService {
     }
 
     /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
-    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope) throws SQLException {
+    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet)
+            throws SQLException {
         Instant evaluatedAt = clock.instant();
+        session.withWalletFreshness(evaluatedAt, accountMaxAge);
+        Set<String> sources = new java.util.LinkedHashSet<>(CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
+        if (wallet) sources.add(repo.AccountSyncStateRepository.WALLET);
         Map<String, AccountSourceStateRepository.SourceState> states = accountSourceStates.read(
-                session.connection(), scope, CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
+                session.connection(), scope, sources);
 
         Map<String, Instant> versions = new LinkedHashMap<>();
         Map<String, Long> generations = new LinkedHashMap<>();
@@ -272,7 +307,7 @@ public class CachedCraftingProfitService {
 
         CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
-                evaluatedAt);
+                evaluatedAt).withWalletTracked(wallet);
     }
 
     /**

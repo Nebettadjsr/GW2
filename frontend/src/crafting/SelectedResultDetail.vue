@@ -7,6 +7,7 @@ import type {
   MissingItem
 } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
+import ResearchNoteEstimatePopup from './ResearchNoteEstimatePopup.vue'
 import CraftingResolution from './CraftingResolution.vue'
 import {
   formatCopper,
@@ -87,6 +88,21 @@ const calculationSellPriceLabel = computed(() => {
 /** Confirmed effective settings: the detail's own calculation when present, else the table's echo. */
 const effectiveSettings = computed(() => props.resolutionDetail?.calculation?.settings ?? props.settings)
 provide(RESOLUTION_SETTINGS_KEY, effectiveSettings)
+
+/**
+ * The estimate the popup explains. Table rows carry only compact amounts; both producer variants come with the
+ * detail response's own row, so for the same recipe and same amounts the detail's variants are used.
+ */
+const noteEstimate = computed(() => {
+  const own = props.row?.currencyCosts?.estimate ?? null
+  if (own === null || own.variants.length > 0) return own
+  const fromDetail = props.resolutionDetail?.row?.currencyCosts?.estimate ?? null
+  if (fromDetail === null || fromDetail.variants.length === 0) return own
+  const sameRecipe = props.resolutionDetail?.row?.recipeId === props.row?.recipeId
+  const sameAmounts = fromDetail.totalNotes === own.totalNotes && fromDetail.totalCopper === own.totalCopper
+    && fromDetail.perCraftCopper === own.perCraftCopper && fromDetail.basisRecipeId === own.basisRecipeId
+  return sameRecipe && sameAmounts ? { ...own, variants: fromDetail.variants } : own
+})
 function keepNote(itemId: number): string | null { return keepTargetNote(effectiveSettings.value, itemId) }
 
 function materialQuoteText(item: MissingItem): string {
@@ -246,6 +262,27 @@ function materialQuoteText(item: MissingItem): string {
             </span>
           </dd>
 
+          <template v-for="cost in row.currencyCosts?.costs ?? []" :key="cost.currencyId">
+            <dt data-test="detail-currency-label">
+              {{ cost.currencyId === 61 ? 'Research Notes' : cost.name }}
+            </dt>
+            <dd class="numeric">
+              <span class="calc-negative" data-test="detail-currency-cost">
+                {{ formatCount(row.currencyCosts?.economicsFromHypotheticalCraft ? cost.perCraft : cost.total) }}
+              </span>
+            </dd>
+            <template v-if="cost.currencyId === 61 && row.currencyCosts?.estimate">
+              <dt class="calculation__sub" data-test="detail-note-estimate-label">
+                <ResearchNoteEstimatePopup :estimate="noteEstimate ?? row.currencyCosts.estimate" />
+              </dt>
+              <dd class="numeric">
+                <span class="calc-negative" data-test="detail-note-estimate-cost">
+                  {{ formatCopper(row.currencyCosts.economicsFromHypotheticalCraft ? row.currencyCosts.estimate.perCraftCopper : row.currencyCosts.estimate.totalCopper) }}
+                </span>
+              </dd>
+            </template>
+          </template>
+
           <dt>
             Bought materials
           </dt>
@@ -267,6 +304,13 @@ function materialQuoteText(item: MissingItem): string {
             >
               after 15% TP fees
             </span>
+            <span
+              v-if="row.currencyCosts && row.currencyCosts.costs.length && row.currencyCosts.goldMarginIsConditional"
+              class="value-note"
+              data-test="detail-currency-exclusion"
+            >
+              Excluding costs for other currencies
+            </span>
           </dt>
 
           <dd class="numeric calculation__result">
@@ -286,6 +330,21 @@ function materialQuoteText(item: MissingItem): string {
         >
           An owned material has no Trading Post, crafting or vendor value, so it is counted as 0
           rather than free. This profit is not reliable.
+        </p>
+
+        <p
+          v-if="row.currencyCosts && row.currencyCosts.costs.length && row.currencyCosts.goldMarginIsConditional && row.currencyCosts.walletState !== 'KNOWN'"
+          class="value-note"
+          data-test="detail-wallet-unknown"
+        >
+          Wallet balance unavailable; craftable count unconfirmed.
+        </p>
+        <p
+          v-if="row.currencyCosts && row.currencyCosts.economicsFromHypotheticalCraft"
+          class="value-note"
+          data-test="detail-hypothetical"
+        >
+          No craft is currently possible; figures describe one hypothetical craft.
         </p>
 
         <!-- TP prices -->
@@ -462,6 +521,12 @@ function materialQuoteText(item: MissingItem): string {
 
 .calculation dd {
   white-space: nowrap;
+}
+
+/* Second row of a currency: small, slightly indented beneath its label. */
+.calculation dt.calculation__sub {
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
 }
 
 /*

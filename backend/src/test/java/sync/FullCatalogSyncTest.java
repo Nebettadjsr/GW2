@@ -78,8 +78,13 @@ class FullCatalogSyncTest {
         return IntStream.rangeClosed(from, to).boxed().map(String::valueOf).collect(Collectors.joining(",", "[", "]"));
     }
 
+    /** The pinned-schema catalog URL carries a version query but no ids parameter. */
+    private static boolean isRecipeCatalog(String url) {
+        return url.contains("/v2/recipes") && !url.contains("ids=");
+    }
+
     private static List<Integer> requested(String url) {
-        return java.util.Arrays.stream(url.substring(url.indexOf("ids=") + 4).split(",")).map(Integer::valueOf).toList();
+        return java.util.Arrays.stream(url.substring(url.indexOf("ids=") + 4).replaceAll("&.*$", "").split(",")).map(Integer::valueOf).toList();
     }
 
     private static String itemJson(int id, String name) {
@@ -167,7 +172,7 @@ class FullCatalogSyncTest {
     private void recipeUpstream(int recipeCount, java.util.function.IntFunction<String> recipe) {
         RecipeSync.fetcher = url -> {
             urls.add(url);
-            if (url.endsWith("/v2/recipes")) return json(ids(1, recipeCount));
+            if (isRecipeCatalog(url)) return json(ids(1, recipeCount));
             return json(requested(url).stream().map(i -> recipe.apply(i)).collect(Collectors.joining(",", "[", "]")));
         };
         ItemSync.fetcher = url -> { urls.add(url); return itemsFor(url, "I"); };
@@ -202,14 +207,80 @@ class FullCatalogSyncTest {
 
     @Test
     void fullRecipes_missingOrDuplicateDetailRejected() throws Exception {
-        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1,2]")
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1,2]")
                 : json("[" + recipeJson(1, 10, 11) + "]");
         ItemSync.fetcher = url -> itemsFor(url, "I");
         assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
         assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
-        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1,2]")
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1,2]")
                 : json("[" + recipeJson(1, 10, 11) + "," + recipeJson(1, 10, 11) + "]");
         assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+    }
+
+    private static String typedRecipe(int id, int out, String ingredientsJson) {
+        return "{\"id\":" + id + ",\"type\":\"Refinement\",\"output_item_id\":" + out + ",\"output_item_count\":1,\"min_rating\":0,"
+                + "\"time_to_craft_ms\":1,\"disciplines\":[\"Artificer\"],\"flags\":[\"AutoLearned\"],\"chat_link\":\"[&A]\","
+                + "\"ingredients\":" + ingredientsJson + "}";
+    }
+
+    @Test
+    void fullRecipes_typedItemAndCurrencyWithEqualIds_andKnownUnsupportedGuildUpgradeSkippedNotFatal() throws Exception {
+        String supported = typedRecipe(13839, 97487,
+                "[{\"type\":\"Item\",\"id\":61,\"count\":4},{\"type\":\"Currency\",\"id\":61,\"count\":30}]");
+        String guild = typedRecipe(13324, 70000,
+                "[{\"type\":\"Item\",\"id\":70926,\"count\":1},{\"type\":\"Item\",\"id\":74982,\"count\":4},"
+                        + "{\"type\":\"GuildUpgrade\",\"id\":721,\"count\":8}]");
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (13324, 'stale-free')");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[13839,13324]") : json("[" + supported + "," + guild + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertNotNull(scalar("SELECT 1 FROM recipes WHERE recipe_id=13839"));
+        assertNull(scalar("SELECT 1 FROM recipes WHERE recipe_id=13324"), "unsupported recipe is never published or kept free");
+        assertNull(scalar("SELECT 1 FROM recipe_ingredients WHERE recipe_id=13324"));
+        assertEquals("1", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id=13839 AND item_id=61 AND count=4"));
+        assertEquals("1", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=13839 AND kind='Currency' AND ref_id=61 AND count=30"));
+
+        // Public payload -> stored recipe -> repository eligibility: AutoLearned is known with no unlock rows.
+        String acct = "10000000-0000-0000-0000-0000000000ee";
+        exec("INSERT INTO account_registry (account_id) VALUES ('" + acct + "')");
+        var scope = model.AccountScope.of(acct);
+        var repo = new repo.RecipeRepository();
+        try (Connection con = Db.open()) {
+            var known = repo.loadRecipes(con, scope, "Artificer");
+            assertEquals(List.of(13839), known.stream().map(r -> r.recipeId).toList());
+            assertEquals(1, known.get(0).currencies.size());
+            assertEquals(61, known.get(0).currencies.get(0).currencyId());
+            assertTrue(repo.loadKnownRecipeIds(con, scope).contains(13839));
+            assertEquals(List.of(), repo.loadRecipes(con, scope, "Weaponsmith"), "discipline boundary retained");
+            assertEquals(List.of(), repo.loadMissingDiscoverableRecipeIdsForCharacter(con, scope, "x", "Artificer"),
+                    "AutoLearned is not a Discovery candidate");
+        }
+    }
+
+    @Test
+    void fullRecipes_mixedShadowFieldsPublishCanonicalIdentityAndInvalidCanonicalIdIsRejected() throws Exception {
+        String mixed = typedRecipe(7, 97487,
+                "[{\"type\":\"Item\",\"id\":10,\"item_id\":0,\"count\":3},"
+                        + "{\"type\":\"Currency\",\"id\":61,\"item_id\":20,\"count\":30}]");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[7]") : json("[" + mixed + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("10:3", scalar("SELECT string_agg(item_id||':'||count, ',') FROM recipe_ingredients WHERE recipe_id=7"));
+        assertEquals("61:30", scalar("SELECT string_agg(ref_id||':'||count, ',') FROM recipe_non_item_requirements WHERE recipe_id=7"));
+
+        String bad = typedRecipe(8, 97487, "[{\"type\":\"Item\",\"id\":0,\"item_id\":10,\"count\":1}]");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[8]") : json("[" + bad + "]");
+        assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+    }
+
+    @Test
+    void fullRecipes_arbitraryUnknownRequirementKindStillRejected() throws Exception {
+        String bad = typedRecipe(5, 10, "[{\"type\":\"Mystery\",\"id\":1,\"count\":1}]");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[5]") : json("[" + bad + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
     }
 
     // ------------------------------------------------------------------ trading post
@@ -397,13 +468,13 @@ class FullCatalogSyncTest {
         };
         ItemSync.fetcher = url -> itemsFor(url, "I");
         for (String rec : bad) {
-            RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]") : json("[" + rec + "]");
+            RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json("[" + rec + "]");
             assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()), rec);
             assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"), rec);
         }
         assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients"));
         // guild upgrade recipe (no item output, no ingredients array) is a legitimate documented shape
-        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]") : json(
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json(
                 "[{\"id\":1,\"type\":\"GuildConsumable\",\"output_upgrade_id\":3,\"min_rating\":0,\"time_to_craft_ms\":1,"
                         + "\"guild_ingredients\":[{\"upgrade_id\":2,\"count\":1}]}]");
         RecipeSync.syncAllRecipesFull(TaskDeadline.start());
@@ -418,6 +489,47 @@ class FullCatalogSyncTest {
         ItemSync.fetcher = url -> { clock.addAndGet(Duration.ofMinutes(31).toNanos()); return itemsFor(url, "I"); };
         assertThrows(TaskDeadline.ExceededException.class, () -> RecipeSync.syncAllRecipesFull(d));
         assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+    }
+
+    /**
+     * Item and currency requirements of one fetched detail batch publish atomically: more than
+     * DB_FLUSH_BATCH item rows are flushed, then the currency insert fails; the whole detail-batch
+     * transaction rolls back so the previous item AND currency sets stay intact, publication stays
+     * incomplete, and a corrected retry replaces both exact sets.
+     */
+    @Test
+    void fullRecipes_currencyFailureAfterLargeItemFlushRollsBackBothRequirementTables() throws Exception {
+        int n = SyncConstants.DB_FLUSH_BATCH + 7;
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (1, 'Old')");
+        exec("INSERT INTO items (item_id) VALUES (900001)");
+        exec("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (1, 900001, 7)");
+        exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (1, 'Currency', 61, 30)");
+        exec("INSERT INTO recipe_catalog_publication (complete) VALUES (TRUE)");
+        exec("CREATE FUNCTION rejcur() RETURNS trigger AS $$ BEGIN IF NEW.count = 31 THEN RAISE EXCEPTION 'rejected'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql");
+        exec("CREATE TRIGGER rejcur BEFORE INSERT ON recipe_non_item_requirements FOR EACH ROW EXECUTE FUNCTION rejcur()");
+
+        java.util.function.IntFunction<String> recipe = currencyCount -> {
+            String items = IntStream.rangeClosed(1, n)
+                    .mapToObj(i -> "{\"type\":\"Item\",\"id\":" + i + ",\"count\":2}")
+                    .collect(Collectors.joining(","));
+            return typedRecipe(1, 97487, "[" + items + ",{\"type\":\"Currency\",\"id\":61,\"count\":" + currencyCount + "}]");
+        };
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json("[" + recipe.apply(31) + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        assertThrows(Exception.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"), "publication must not become complete");
+        assertEquals("900001:7", scalar("SELECT string_agg(item_id||':'||count, ',') FROM recipe_ingredients WHERE recipe_id=1"),
+                "no flushed partial item replacement survives");
+        assertEquals("61:30", scalar("SELECT string_agg(ref_id||':'||count, ',') FROM recipe_non_item_requirements WHERE recipe_id=1"),
+                "previous currency requirement remains");
+
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json("[" + recipe.apply(25) + "]");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals(n + ":" + n * 2, scalar("SELECT count(*)||':'||sum(count) FROM recipe_ingredients WHERE recipe_id=1"));
+        assertNull(scalar("SELECT 1 FROM recipe_ingredients WHERE item_id=900001"));
+        assertEquals("61:25", scalar("SELECT string_agg(ref_id||':'||count, ',') FROM recipe_non_item_requirements WHERE recipe_id=1"));
     }
 
     // ------------------------------------------------------------------ trading post coverage

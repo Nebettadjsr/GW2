@@ -52,4 +52,48 @@ class RecipeParserTest {
         assertEquals(new RecipeParser.IngredientRow(7319, 19721, 1), rows.get(1));
         assertEquals(new RecipeParser.IngredientRow(7319, 46747, 10), rows.get(2));
     }
+
+    @Test
+    void typedPayloadSeparatesItemIngredientsFromCurrencyRequirements() throws Exception {
+        JsonNode recipe = MAPPER.readTree("""
+            {"id":13839,"type":"Jade","output_item_id":97487,"output_item_count":1,"ingredients":[
+              {"type":"Item","id":97102,"count":4},
+              {"type":"Item","id":19721,"count":2},
+              {"type":"Currency","id":61,"count":30},
+              {"type":"Currency","id":50,"count":0},
+              {"type":"Mystery","id":7,"count":1}]}
+            """);
+
+        List<RecipeParser.IngredientRow> items = RecipeParser.parseIngredients(recipe);
+        List<RecipeParser.RequirementRow> others = RecipeParser.parseNonItemRequirements(recipe);
+
+        assertEquals(List.of(new RecipeParser.IngredientRow(13839, 97102, 4),
+                new RecipeParser.IngredientRow(13839, 19721, 2)), items);
+        assertEquals(List.of(new RecipeParser.RequirementRow(13839, "Currency", 61, 30),
+                new RecipeParser.RequirementRow(13839, "Mystery", 7, 1)), others);
+    }
+
+    @Test
+    void legacyPayloadHasNoNonItemRequirements() throws Exception {
+        assertEquals(List.of(), RecipeParser.parseNonItemRequirements(loadFixture("/parser/recipe_7319.json")));
+    }
+
+    @Test
+    void typedEntriesReadOnlyCanonicalIdAndLegacyEntriesReadOnlyItemId() throws Exception {
+        JsonNode recipe = MAPPER.readTree("""
+            {"id":5,"ingredients":[
+              {"type":"Item","id":10,"item_id":0,"count":1},
+              {"type":"Item","id":11,"item_id":999,"count":2},
+              {"type":"Currency","id":61,"item_id":12,"count":30},
+              {"item_id":13,"id":888,"count":3},
+              {"item_id":0,"id":14,"count":4},
+              {"type":"Item","id":0,"item_id":15,"count":5},
+              {"type":"Item","item_id":16,"count":6}]}
+            """);
+
+        assertEquals(List.of(new RecipeParser.IngredientRow(5, 10, 1), new RecipeParser.IngredientRow(5, 11, 2),
+                new RecipeParser.IngredientRow(5, 13, 3)), RecipeParser.parseIngredients(recipe));
+        assertEquals(List.of(new RecipeParser.RequirementRow(5, "Currency", 61, 30)),
+                RecipeParser.parseNonItemRequirements(recipe));
+    }
 }

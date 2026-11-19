@@ -32,10 +32,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * STORY-COV-003: current read/parse and rebuild-failure behaviour of {@link CraftingGraphCache}
  * with test-owned temporary cache files and deterministic in-memory repositories (no database).
  *
- * <p>These tests record the behaviour KP-16 (docs/KNOWN_PROBLEMS.md) describes; they do not change the
- * cache policy. Where today's behaviour is the known weakness - a stored cache is trusted without a
- * freshness check, and a corrupt file fails every load instead of being rebuilt - the test says so
- * and asserts what actually happens now.
+ * <p>Cold snapshots are validated against their source publication; warm snapshots remain
+ * invalidation-driven. Corrupt-file recovery remains the known weakness recorded in KP-16.
  */
 class CraftingGraphCacheFailureBoundaryTest {
 
@@ -49,6 +47,8 @@ class CraftingGraphCacheFailureBoundaryTest {
     private int databaseRecipeReads;
     private int snapshotRecipeReads;
     private int itemNameReads;
+    private String publication = "initial";
+    private int publicationReads;
 
     private final RecipeRepository recipeRepo = new RecipeRepository() {
         @Override public List<Recipe> loadAllRecipes() throws SQLException {
@@ -61,6 +61,10 @@ class CraftingGraphCacheFailureBoundaryTest {
             return List.copyOf(recipes);
         }
         @Override public int countRecipes() { return recipes.size(); }
+        @Override public String publicationKey() { publicationReads++; return publication; }
+        @Override public int countRecipeCurrencyRequirements() {
+            return recipes.stream().mapToInt(r -> r.currencies.size()).sum();
+        }
         @Override public int countRecipeIngredients() {
             return recipes.stream().mapToInt(r -> r.ingredients.size()).sum();
         }
@@ -118,14 +122,14 @@ class CraftingGraphCacheFailureBoundaryTest {
 
         assertSoupGraph(graph);
         String json = Files.readString(cacheFile);
-        assertTrue(json.contains("\"cacheKey\" : \"recipes=1;ingredients=1\""), json);
+        assertTrue(json.contains("\"cacheKey\" : \"recipes=1;ingredients=1;currencies=0;publication=initial\""), json);
         try (Stream<Path> left = Files.list(dir)) {
             assertEquals(List.of(cacheFile), left.toList(), "no temporary file may be left beside the cache");
         }
     }
 
     @Test
-    void existingCacheFileIsReadWithoutTouchingTheDatabaseAndMapsEveryField() throws Exception {
+    void unchangedPublicationReadsDiskWithoutReloadingGraphDataAndMapsEveryField() throws Exception {
         cache().rebuild();
         databaseRecipeReads = 0;
         itemNameReads = 0;
@@ -138,17 +142,29 @@ class CraftingGraphCacheFailureBoundaryTest {
     }
 
     @Test
-    void storedCacheIsTrustedEvenWhenTheRecipeTableHasSinceChanged_KP16() throws Exception {
+    void storedCacheIsRebuiltWhenSourceCountsChange() throws Exception {
         cache().rebuild();
         recipes.add(new Recipe(2, 30, 1, 0, "", List.of()));
 
-        // KP-16 current behaviour: no freshness check, so the new recipe is invisible until invalidate()
-        CraftingGraph stale = cache().load();
-        assertEquals(1, stale.getRecipes().size());
+        assertEquals(2, cache().load().getRecipes().size());
+    }
 
-        CraftingGraphCache fresh = cache();
-        fresh.invalidate();
-        assertEquals(2, fresh.load().getRecipes().size());
+    @Test
+    void newPublicationRebuildsModernDiskSnapshotWithUnchangedRowCounts() throws Exception {
+        recipes.set(0, new Recipe(1, 20, 2, 0, "Cook", List.of(new Ingredient(10, 3)),
+                List.of(new craft.CurrencyRequirement(61, 30))));
+        CraftingGraphCache warm = cache();
+        CraftingGraph first = warm.load();
+        int metadataReads = publicationReads;
+        recipes.set(0, new Recipe(1, 20, 2, 0, "Cook", List.of(new Ingredient(10, 3)),
+                List.of(new craft.CurrencyRequirement(50, 60))));
+        publication = "next";
+
+        assertSame(first, warm.load(), "warm readers still follow explicit invalidation");
+        assertEquals(metadataReads, publicationReads, "no extra source query on the warm fast path");
+        assertEquals(List.of(new craft.CurrencyRequirement(50, 60)),
+                cache().load().getRecipes().get(0).currencies,
+                "a restart after publication cannot keep the old currency id or quantity");
     }
 
     @Test

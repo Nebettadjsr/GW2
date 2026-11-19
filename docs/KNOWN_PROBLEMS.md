@@ -15,13 +15,13 @@ the retired capacity programme. Select any improvement through a bounded approve
 
 Evidence: `application/ScopedAccountRefreshCoordinator.java`, `application/AccountRefreshService.java`, `application/ProfitInputSession.java`, `sync/AccountSync.java` and `repo/AccountSourcePublication.java`. Existing single-writer and repeatable-read tests verify those protections; they do not prove a coherent upstream instant.
 
-## KP-16 File graph cache validation and corruption recovery
+## KP-16 File graph cache corruption recovery
 
-**Observed:** `repo.CraftingGraphCache.load()` reuses its in-memory graph, and otherwise reads an existing file without validating the stored source key or age. Invalid JSON is not automatically rebuilt. Rebuilds are synchronized and written through a temporary file with atomic replacement where supported. Snapshot-bound Profit reads use `loadForSnapshot(connection)` and bypass this file.
+**Observed:** `repo.CraftingGraphCache.load()` reuses its in-memory graph until invalidation. Cold disk loads validate schema, row counts and the recipe publication marker, including same-count currency changes. Invalid JSON is not automatically rebuilt. Rebuilds are synchronized and written through a temporary file with atomic replacement where supported. Snapshot-bound Profit reads use `loadForSnapshot(connection)` and bypass this file.
 
-**Risk:** consumers of the shared file can repeatedly fail on corrupt derived data or retain a graph from a different source until invalidation/rebuild. This is not a claim that every Profit request reparses that file.
+**Risk:** consumers of the shared file can repeatedly fail on corrupt derived data. This is not a claim that every Profit request reparses that file.
 
-**Follow-up:** validate source identity and recover by rebuilding disposable derived data. Preserve synchronized publication and the existing pinned-snapshot path.
+**Follow-up:** recover from corrupt files by rebuilding disposable derived data. Preserve source validation, synchronized publication and the existing pinned-snapshot path.
 
 Evidence: `repo/CraftingGraphCache.java`, especially `load`, `loadForSnapshot`, `rebuild` and `invalidate`.
 
@@ -57,11 +57,13 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 ## KP-33 Recipe sync uses the legacy unpinned API profile
 
-**Observed:** `sync.RecipeSync` requests `/v2/recipes` without a `v=` schema version. The default catalog omits some modern recipes (for example Jade recipe 13839, present under `v=2022-03-09T02:00:00.000Z` with typed Item/Currency ingredients), and `RecipeParser` reads only legacy `item_id` ingredients. The automatic owner API compatibility check reports this as attention (`KNOWN_COVERAGE_GAP`, shown as "Needs update" on the compact card), not as an upstream break.
+**Observed (before #372):** `sync.RecipeSync` requested `/v2/recipes` without a `v=` schema version. The default catalog omits some modern recipes (for example Jade recipe 13839, present under `v=2022-03-09T02:00:00.000Z` with typed Item/Currency ingredients). Sync, validation and the owner API compatibility check now use the pinned version; the default-schema Jade probe is informational.
 
 **Risk:** recipes that exist only under newer schemas are invisible or have no readable ingredients. The check samples a small fixed public set; authenticated account endpoint payloads are not live-verified.
 
-**Follow-up:** a separately approved story must choose and migrate to an explicit supported schema version; the check never switches production versions itself. Currency valuation is owned by #372.
+**Update (#372):** recipe sync now pins one schema version for catalog and details; typed Item/Currency requirements are stored apart (`recipe_non_item_requirements`). Structurally valid records with a known unsupported kind (`GuildUpgrade`, e.g. recipe 13324) are skipped in both the safe and the full sync, never published as free; unknown/malformed kinds still fail the full sync. No guild-upgrade acquisition planner exists. AutoLearned recipes (e.g. 13839) are known without unlock rows; level/discipline/account boundaries still apply and they are not Discovery candidates. Wallet balances join the calculation identity/freshness (WALLET source) only for requests with the wallet grant, using the configured account freshness policy; currencies consumed only after the first craft stay visible via the union of per-craft and total currency.
+
+**Fixed (#372):** the safe sync compares the upstream catalog with stored ids plus the skipped unsupported ids recorded in `recipe_catalog_publication.skipped_recipe_ids`, written only together with `complete = true`; an unchanged catalog with skipped recipes is skipped on the next run, a changed one or an unfinished publication still syncs. Currency valuation follows DOMAIN_SPEC 2.1.0.
 
 Evidence: `sync/RecipeSync.java`, `parser/RecipeParser.java`, `api/ApiCompatibilityChecker.java`.
 

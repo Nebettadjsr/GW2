@@ -10,8 +10,16 @@ public class Recipe {
     public final int minRating;
     public final String disciplinesText; // "Artificer, Tailor, ..."
     public final List<Ingredient> ingredients;
+    /** Typed currency requirements per craft (never item ids); empty for item-only recipes. */
+    public final List<CurrencyRequirement> currencies;
 
     public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText, List<Ingredient> ingredients) {
+        this(recipeId, outputItemId, outputCount, minRating, disciplinesText, ingredients, List.of());
+    }
+
+    public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText,
+                  List<Ingredient> ingredients, List<CurrencyRequirement> currencies) {
+        this.currencies = List.copyOf(currencies);
         this.recipeId = recipeId;
         this.outputItemId = outputItemId;
         this.outputCount = outputCount;

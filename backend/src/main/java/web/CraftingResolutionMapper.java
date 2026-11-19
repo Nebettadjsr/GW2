@@ -139,7 +139,7 @@ final class CraftingResolutionMapper {
      * captured.
      */
     static CraftingRowDto toRow(CraftingResolutionDetail detail) {
-        return CraftingRowMapper.toRow(detail.recipe(), detail.row(), detail.items(), detail.quotes());
+        return CraftingRowMapper.toRow(detail.recipe(), detail.row(), detail.items(), detail.quotes(), true);
     }
 
     /**
@@ -193,7 +193,11 @@ final class CraftingResolutionMapper {
                 isApproximate(node.effectiveCostCopper(), node.requestedQuantity()),
                 children,
                 iconUrl(node.itemId(), items),
-                recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds));
+                recipeKnowledge(node.recipeId(), knownRecipeIds, discoverableRecipeIds),
+                node.currencies().stream().map(q -> new ResolutionNodeDto.CurrencyQuantityDto(
+                        q.currencyId(), CraftingRowMapper.currencyName(q.currencyId()), q.quantity(), q.fromWallet(),
+                        q.fromProduced(), q.crafted(), q.missing(), q.walletBalance(),
+                        CurrencyIcons.urlFor(q.currencyId()))).toList());
     }
 
     /** Display projection only: whole-copper HALF_UP average of the node total; null if undefined. */

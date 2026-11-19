@@ -27,6 +27,20 @@ class CraftingGraphSearchTest {
     }
 
     @Test
+    void aCurrencyNameFindsItsConsumersAndTheVerifiedProductionRecipes() {
+        Recipe consumer = new Recipe(1, 97487, 1, 0, "", List.of(new Ingredient(5, 1)),
+                List.of(new CurrencyRequirement(61, 30)));
+        Recipe producerA = new Recipe(15120, 104934, 1, 0, "", List.of(new Ingredient(6, 1)));
+        Recipe producerB = new Recipe(15131, 104934, 1, 0, "", List.of(new Ingredient(7, 1)));
+        Recipe unrelated = new Recipe(2, 8, 1, 0, "", List.of(new Ingredient(5, 1)));
+        CraftingGraph graph = new CraftingGraph(List.of(consumer, producerA, producerB, unrelated),
+                Map.of(5, "Iron", 6, "Page", 7, "Leaf", 8, "Ring", 104934, "Peer Reviewed Research"));
+
+        assertEquals(Set.of(1, 15120, 15131), graph.parentRecipeIdsForIngredientName("research note"));
+        assertEquals(Set.of(), graph.parentRecipeIdsForIngredientName("festival token"));
+    }
+
+    @Test
     void searchesNamesAndReturnsNoParentsForUnknownTerms() {
         CraftingGraph graph = new CraftingGraph(
                 List.of(recipe(1, 20, 4, 10)), Map.of(10, "Fresh Cabbage", 20, "Cabbage Soup"));

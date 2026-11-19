@@ -148,7 +148,7 @@ final class AccountAccessHttpFixture implements AutoCloseable {
         @RequestMapping({"/api/account/bank", "/api/account/materials", "/api/account/luck",
                 "/api/account/characters", "/api/account/characters/Test/build-tabs",
                 "/api/sync/account", "/api/sync/account/crafting-profit", "/api/sync/account/bank",
-                "/api/sync/account/materials", "/api/sync/account/characters", "/api/sync/account/luck",
+                "/api/sync/account/materials", "/api/sync/account/wallet", "/api/sync/account/characters", "/api/sync/account/luck",
                 "/api/sync/account/character-equipment-tabs", "/api/sync/account/character-build-tabs",
                 "/api/crafting/profit", "/api/crafting/profit/resolution", "/api/crafting/selector-options",
                 "/api/crafting/discovery", "/api/crafting/discovery/resolution"})

@@ -104,6 +104,9 @@ public class CraftingResolver {
         root.setBuyCostCopper(craftNeed.getBuyCostCopper());
         root.setOpportunityCostCopper(craftNeed.getOpportunityCostCopper());
         if (craftNeed.hasUnvaluedOwnedInput()) root.setUnvaluedOwnedInput(true);
+        if (craftNeed.spendsUnpricedCurrency()) root.setSpendsUnpricedCurrency(true);
+        craftNeed.unpricedCurrencyIds().forEach(root::addUnpricedCurrency);
+        root.absorbWalletNotes(craftNeed);
         for (ResolvedNeed child : craftNeed.getChildren()) root.addChild(child);
         root.determineMode();
         return new ResolveResult(root);
@@ -224,7 +227,7 @@ public class CraftingResolver {
         }
 
         // 4) Choose better candidate
-        CandidateEval chosen = chooseBetterCandidate(buyEval, craftEval);
+        CandidateEval chosen = chooseBetterCandidate(buyEval, craftEval, ctx);
 
         if (chosen != null) {
             if (chosen.isStateCandidate()) {
@@ -253,6 +256,9 @@ public class CraftingResolver {
             result.setOpportunityCostCopper(Math.addExact(result.getOpportunityCostCopper(),
                     chosenNeed.getOpportunityCostCopper()));
             if (chosenNeed.hasUnvaluedOwnedInput()) result.setUnvaluedOwnedInput(true);
+            if (chosenNeed.spendsUnpricedCurrency()) result.setSpendsUnpricedCurrency(true);
+            chosenNeed.unpricedCurrencyIds().forEach(result::addUnpricedCurrency);
+            result.absorbWalletNotes(chosenNeed);
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(chosenNeed.getBlockedReason());
@@ -278,7 +284,9 @@ public class CraftingResolver {
 
             BlockedReason craftReason = craftEval == null ? BlockedReason.NONE : craftEval.need.getBlockedReason();
             if (!ctx.settings.allowBuying && craftReason != BlockedReason.MATERIAL_LIMIT
-                    && craftReason != BlockedReason.VALUE_RANGE) {
+                    && craftReason != BlockedReason.VALUE_RANGE
+                    && craftReason != BlockedReason.WALLET_UNAVAILABLE
+                    && craftReason != BlockedReason.INSUFFICIENT_CURRENCY) {
                 // A nested limit/range failure is the real cause and is never masked by this.
                 result.setBlockedReason(BlockedReason.BUYING_DISABLED);
             } else if (craftEval != null && craftEval.need.getBlockedReason() != BlockedReason.NONE) {
@@ -342,7 +350,7 @@ public class CraftingResolver {
             return blockedNeed(itemId, qtyRequested, BlockedReason.RECIPE_NOT_ALLOWED, recipe, null);
         }
 
-        // A single candidate is always "best" (isBetterCraftAttempt(attempt, null) is always
+        // A single candidate is always "best" (isBetterCraftAttempt with no current best is always
         // true), so the speculative trial-copy-then-copyFrom dance below is unnecessary and,
         // being on the hot recursive path, materially expensive (STORY-PERF-001) - apply directly.
         if (eligible.size() == 1) {
@@ -358,7 +366,7 @@ public class CraftingResolver {
 
         for (String character : eligible) {
             ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, character);
-            if (isBetterCraftAttempt(attempt, best)) {
+            if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)) {
                 best = attempt;
                 bestEffect = state.captureDelta(mark);
             }
@@ -420,6 +428,86 @@ public class CraftingResolver {
 
             int produced = Math.multiplyExact(times, recipe.outputCount);
             int qtySatisfied = Math.min(produced, qtyRequested);
+
+            // Currency is spent from one account-wide wallet pool shared by nested and repeated crafts.
+            // Unknown balance is not zero and not unlimited: the attempt is blocked, and the caller's
+            // rollback restores the pool together with every other resource this attempt touched.
+            for (CurrencyRequirement currency : recipe.currencies) {
+                long needed = (long) currency.count() * times;
+                // A fully published wallet without this currency's row is a known zero; only a null wallet is unknown.
+                Integer balance = ctx.wallet == null ? null : ctx.wallet.getOrDefault(currency.currencyId(), 0);
+                boolean enforce = ctx.walletMode == PlannerContext.WalletMode.ENFORCED;
+                int currencyId = currency.currencyId();
+                CurrencyProduction production = enforce && ctx.recipesByOutput.containsKey(
+                        CurrencyProduction.forCurrency(currencyId).map(CurrencyProduction::itemId).orElse(-1))
+                        ? CurrencyProduction.forCurrency(currencyId).orElse(null) : null;
+
+                // Owned wallet units are used first, then units an earlier batch of this plan left over, then new
+                // production batches. An unknown wallet contributes nothing: it is neither zero nor unlimited.
+                long spent = state.currencySpent(currencyId);
+                long ownedLeft = balance == null ? 0 : Math.max(0, balance - spent);
+                long producedLeft = state.currencyProduced(currencyId) - Math.max(0, spent - (balance == null ? 0 : balance));
+                // Hypothetical (IGNORED) evaluation bypasses affordability only: ownership is never invented, so
+                // units beyond the captured shared balance stay missing and unpriced.
+                long fromWallet = Math.min(needed, ownedLeft);
+                long fromProduced = enforce ? Math.min(needed - fromWallet, Math.max(0, producedLeft)) : 0;
+                long toProduce = needed - fromWallet - fromProduced;
+                long craftedUnits = 0;
+                boolean producerBlocked = false;
+                BlockedReason producerReason = BlockedReason.NONE;
+
+                if (toProduce > 0 && production != null) {
+                    long batches = (toProduce + production.yield() - 1) / production.yield();
+                    if (batches > Integer.MAX_VALUE) throw new ArithmeticException("currency batches out of range");
+                    int batchCount = (int) batches;
+                    if (!state.reserveDemand(production.itemId(), batchCount)) {
+                        return limitBlocked(craftResult, qtyRequested, BlockedReason.MATERIAL_LIMIT);
+                    }
+                    ResolvedNeed producer = resolveNeed(production.itemId(), batchCount, ctx, state, false,
+                            recipe.disciplinesText, assignedCharacter);
+                    craftResult.addChild(producer);
+                    if (producer.isFullySatisfied()) {
+                        craftResult.addCostsFromChild(producer);
+                        state.creditCurrency(currencyId, Math.multiplyExact((long) batchCount, production.yield()));
+                        craftedUnits = toProduce;
+                    } else {
+                        producerBlocked = true;
+                        producerReason = producer.getBlockedReason();
+                    }
+                }
+
+                long covered = fromWallet + fromProduced + craftedUnits;
+                craftResult.addCurrencySourcing(new ResolvedNeed.CurrencySourcing(currencyId,
+                        Math.toIntExact(needed), Math.toIntExact(fromWallet), Math.toIntExact(fromProduced),
+                        Math.toIntExact(craftedUnits), Math.toIntExact(needed - covered), balance));
+
+                if (producerBlocked || (enforce && covered < needed)) {
+                    if (producerReason == BlockedReason.MATERIAL_LIMIT || producerReason == BlockedReason.VALUE_RANGE) {
+                        return limitBlocked(craftResult, qtyRequested, producerReason);
+                    }
+                    return limitBlocked(craftResult, qtyRequested,
+                            ctx.wallet == null
+                                    ? BlockedReason.WALLET_UNAVAILABLE : BlockedReason.INSUFFICIENT_CURRENCY);
+                }
+                // The shared pool tally is total consumption whatever its source (actual wallet/credit demand).
+                state.spendCurrency(currencyId, needed, null, false);
+                // Only wallet units keep a deferred (unpriced) valuation; crafted units are charged by their batches.
+                // Wallet Research Notes are valued by the captured-quote estimate when one exists; every other
+                // wallet currency (and Notes without a complete estimate) stays unpriced.
+                if (!enforce && covered < needed) {
+                    // Hypothetical missing units are neither wallet nor produced: they remain unpriced.
+                    craftResult.addUnpricedCurrency(currencyId);
+                }
+                if (fromWallet > 0) {
+                    ResearchNoteEstimate noteEstimate = currencyId == CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID
+                            ? ctx.researchNoteEstimate() : null;
+                    if (noteEstimate != null && noteEstimate.available()) {
+                        craftResult.addWalletNotes(Math.toIntExact(fromWallet), noteEstimate);
+                    } else {
+                        craftResult.addUnpricedCurrency(currencyId);
+                    }
+                }
+            }
 
             boolean allChildrenSatisfied = true;
             BlockedReason unsatisfiedChildReason = BlockedReason.NONE;
@@ -512,8 +600,10 @@ public class CraftingResolver {
             ResolvedNeed attempt = tryCraft(itemId, quantity, ctx, state, parentDiscipline, recipe);
             boolean matches = sharesDiscipline(parentDiscipline, recipe.disciplinesText);
             boolean preferDiscipline = best != null && attempt.isFullySatisfied()
-                    && best.isFullySatisfied() && matches != bestMatches;
-            if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best)) {
+                    && best.isFullySatisfied() && matches != bestMatches
+                    && attempt.spendsUnpricedCurrency() == best.spendsUnpricedCurrency()
+                    && (!ctx.minimizeBuyCost || attempt.getBuyCostCopper() == best.getBuyCostCopper());
+            if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)) {
                 best = attempt;
                 bestMatches = matches;
                 effect = state.captureDelta(mark);
@@ -556,11 +646,12 @@ public class CraftingResolver {
     /**
      * Compares two candidate character assignments for the same craft step: fully satisfied
      * beats partially satisfied, and among fully-satisfied candidates the lowest total effective
-     * economic cost wins (DOMAIN_SPEC.md section 22), otherwise the least-blocked candidate wins.
+     * economic cost wins within the preferred valuation class (DOMAIN_SPEC.md section 22), otherwise
+     * the least-blocked candidate wins. Budget retries compare immediate cash first.
      * Soulbound ingredients never carry an opportunity-cost difference between characters, so
      * this reduces to "prefer whichever eligible character can actually supply this step."
      */
-    private boolean isBetterCraftAttempt(ResolvedNeed candidate, ResolvedNeed currentBest) {
+    private boolean isBetterCraftAttempt(ResolvedNeed candidate, ResolvedNeed currentBest, boolean minimizeBuyCost) {
         if (currentBest == null) return true;
 
         boolean candidateSatisfied = candidate.isFullySatisfied();
@@ -571,13 +662,20 @@ public class CraftingResolver {
         }
 
         if (candidateSatisfied) {
+            if (minimizeBuyCost && candidate.getBuyCostCopper() != currentBest.getBuyCostCopper()) {
+                return candidate.getBuyCostCopper() < currentBest.getBuyCostCopper();
+            }
+            // Without a cash difference during retry, keep the ordinary valuation preference.
+            if (candidate.spendsUnpricedCurrency() != currentBest.spendsUnpricedCurrency()) {
+                return !candidate.spendsUnpricedCurrency();
+            }
             return candidate.effectiveCostCopper() <= currentBest.effectiveCostCopper();
         }
 
         return candidate.getQtySatisfied() > currentBest.getQtySatisfied();
     }
 
-    private CandidateEval chooseBetterCandidate(CandidateEval buyEval, CandidateEval craftEval) {
+    private CandidateEval chooseBetterCandidate(CandidateEval buyEval, CandidateEval craftEval, PlannerContext ctx) {
         boolean buyValid = buyEval != null
                 && buyEval.need != null
                 && buyEval.need.getQtyBlocked() == 0;
@@ -587,6 +685,11 @@ public class CraftingResolver {
                 && craftEval.need.getQtyBlocked() == 0;
 
         if (buyValid && craftValid) {
+            if (ctx.minimizeBuyCost && craftEval.need.getBuyCostCopper() != buyEval.need.getBuyCostCopper()) {
+                return craftEval.need.getBuyCostCopper() < buyEval.need.getBuyCostCopper() ? craftEval : buyEval;
+            }
+            // An unpriced-currency craft is not proven cheaper than a fully priced purchase: buying wins.
+            if (craftEval.need.spendsUnpricedCurrency()) return buyEval;
             // DOMAIN_SPEC.md section 22: choose the lowest total effective economic cost
             // (cash + opportunity cost), not the lowest immediate cash cost.
             return craftEval.need.effectiveCostCopper() <= buyEval.need.effectiveCostCopper()
@@ -651,6 +754,8 @@ public class CraftingResolver {
         try {
             OwnedValue best = OwnedValue.ZERO;
             for (Recipe recipe : ctx.recipesByOutput.getOrDefault(itemId, List.of())) {
+                // A currency-consuming route has no complete gold cost: never value it as if currency were free.
+                if (!recipe.currencies.isEmpty()) continue;
                 OwnedValue total = OwnedValue.ZERO;
                 boolean valued = true;
                 for (Ingredient ing : recipe.ingredients) {

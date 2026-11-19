@@ -76,7 +76,20 @@ public class CraftingDiscoveryApiController {
     /** What the account-input check decided: the envelope to report and whether a result is possible. */
     private record InputGate(DiscoveryFreshnessDto freshness, boolean pending,
                              java.util.Set<String> needing,
-                             application.access.AccountAccessService.KeyedProof proof) {
+                             application.access.AccountAccessService.KeyedProof proof,
+                             CraftingDiscoveryService service) {
+    }
+
+    /**
+     * Wallet authority: the validated session must permit WALLET_READ and, for a keyed read, so must the
+     * presented key's own proven credential scope. A keyless read keeps the session authority alone.
+     */
+    static boolean walletAuthorized(application.access.AccountContext context,
+                                    application.access.AccountAccessService.KeyedProof proof, boolean keyed) {
+        if (context == null || !context.permits(application.access.AccountOperation.WALLET_READ)) return false;
+        if (!keyed) return true;
+        return proof != null && proof.credentialScope() != null
+                && proof.credentialScope().permits(application.access.AccountOperation.WALLET_READ);
     }
 
     /**
@@ -86,7 +99,7 @@ public class CraftingDiscoveryApiController {
      * occurs immediately for pending/no-result). Without a key, refresh is reported
      * {@code CREDENTIAL_REQUIRED}; no configured credential is ever used.
      */
-    private InputGate gate(HttpServletRequest http, CraftingDiscoveryService service, DiscChoice choice)
+    private InputGate gate(HttpServletRequest http, DiscChoice choice)
             throws Exception {
         String key = web.access.AccountAccessHttp.presentedApiKey(http);
         boolean keyed = key != null && accountRefresh != null;
@@ -97,17 +110,20 @@ public class CraftingDiscoveryApiController {
                     web.access.AccountAccessHttp.presentedSessionId(http).orElseThrow(), key,
                     CraftingDiscoveryService.SOURCES);
         }
+        CraftingDiscoveryService service = discoveryServiceFactory.get().forScope(
+                RequestAccountContext.scopeOf(http),
+                walletAuthorized(RequestAccountContext.required(http), proof, keyed));
         service.verifySelectedCharacter(choice);
 
         CraftingDiscoveryService.InputState state = service.inputState();
         var needing = state.needingRefresh();
-        if (needing.isEmpty()) return new InputGate(null, false, needing, proof);
+        if (needing.isEmpty()) return new InputGate(null, false, needing, proof, service);
 
         boolean pending = !state.missing().isEmpty();
         return new InputGate(new DiscoveryFreshnessDto(
                 pending ? DiscoveryFreshnessDto.PENDING : DiscoveryFreshnessDto.STALE,
-                (pending ? state.missing() : state.stale()).stream().sorted().toList(),
-                application.ScopedSourceGate.CREDENTIAL_REQUIRED, null), pending, needing, proof);
+                (pending ? state.missing() : state.needingRefresh()).stream().sorted().toList(),
+                application.ScopedSourceGate.CREDENTIAL_REQUIRED, null), pending, needing, proof, service);
     }
 
     /** Admit only after usable inputs have been calculated; pending requests have no inputs to race. */
@@ -143,8 +159,8 @@ public class CraftingDiscoveryApiController {
             @RequestBody(required = false) CraftingDiscoveryRequest request) throws Exception {
 
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
-        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http));
-        InputGate inputs = gate(http, service, effective.toDiscChoice());
+        InputGate inputs = gate(http, effective.toDiscChoice());
+        CraftingDiscoveryService service = inputs.service();
         if (inputs.pending()) return pendingTable(effective, service, admitRefresh(http, inputs));
         refreshQuotes(RequestAccountContext.scopeOf(http));
 
@@ -199,8 +215,8 @@ public class CraftingDiscoveryApiController {
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
-        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http));
-        InputGate inputs = gate(http, service, effective.toDiscChoice());
+        InputGate inputs = gate(http, effective.toDiscChoice());
+        CraftingDiscoveryService service = inputs.service();
         var calculation = new CraftingDiscoveryResolutionResponse.CalculationDto(
                 effective.scope(), effective.settings());
         if (inputs.pending()) {

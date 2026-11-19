@@ -342,7 +342,8 @@ class AccountSyncApiControllerTest {
                 .andExpect(jsonPath("$.operation").value("ACCOUNT_SYNC"))
                 .andReturn().getResponse().getContentAsString();
         awaitRuns(1);
-        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(0));
+        // ALL grants include wallet, so the optional wallet source joins the full refresh (changed on purpose, #372).
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS, WALLET]", runs.get(0));
         assertFalse(body.contains("key-a"), "the response never carries the key");
     }
 
@@ -374,11 +375,68 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void anItemOnlyKeyRefreshesEverySourceExceptTheOptionalWallet() throws Exception {
+        AccountProof proof = new AccountProof(A, Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES,
+                AccountGrant.CHARACTERS, AccountGrant.UNLOCKS, AccountGrant.PROGRESSION), Set.of(), null);
+        keys.put("key-item", proof);
+        var s = sessions.establish(proof);
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-item")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+    }
+
+    @Test
+    void aWalletSessionPresentingAnItemOnlyKeyStillRefreshesItemSourcesWithoutWallet() throws Exception {
+        var s = session(A, "key-a");
+        AccountProof itemOnly = new AccountProof(A, Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES,
+                AccountGrant.CHARACTERS, AccountGrant.UNLOCKS, AccountGrant.PROGRESSION), Set.of(), null);
+        keys.put("key-item", itemOnly);
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-item")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+        mvc.perform(trigger("/api/sync/account", s, "key-item")).andExpect(status().isAccepted());
+        awaitRuns(2);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(1));
+    }
+
+    @Test
+    void aWalletGrantedKeyRestrictedAwayFromTheWalletEndpointRefreshesWithoutWalletOnBothRoutes() throws Exception {
+        var s = session(A, "key-a");
+        // Same account, all grants incl. WALLET, but an endpoint restriction that excludes /v2/account/wallet.
+        Set<String> noWallet = new java.util.HashSet<>();
+        for (var op : application.access.AccountOperation.values()) noWallet.addAll(op.upstreamEndpoints());
+        noWallet.remove("/v2/account/wallet");
+        keys.put("key-restricted", new AccountProof(A, ALL, noWallet, null));
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-restricted")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+        mvc.perform(trigger("/api/sync/account", s, "key-restricted")).andExpect(status().isAccepted());
+        awaitRuns(2);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(1));
+    }
+
+    @Test
+    void aNarrowSessionPresentingAWalletWideKeyNeverRefreshesTheWalletOnBothRoutes() throws Exception {
+        AccountProof narrow = new AccountProof(A, Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES,
+                AccountGrant.CHARACTERS, AccountGrant.UNLOCKS, AccountGrant.PROGRESSION), Set.of(), null);
+        keys.put("key-narrow", narrow);
+        var s = sessions.establish(narrow);
+        keys.put("key-wide", new AccountProof(A, ALL, Set.of(), null));
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-wide")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+        mvc.perform(trigger("/api/sync/account", s, "key-wide")).andExpect(status().isAccepted());
+        awaitRuns(2);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(1));
+    }
+
+    @Test
     void theProfitRefreshExcludesLuck() throws Exception {
         var s = session(A, "key-a");
         mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a")).andExpect(status().isAccepted());
         awaitRuns(1);
-        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+        // Luck stays excluded; the optional wallet joins only because this session holds the wallet grant (#372).
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS, WALLET]", runs.get(0));
     }
 
     @Test

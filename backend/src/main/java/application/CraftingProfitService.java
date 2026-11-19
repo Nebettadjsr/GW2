@@ -49,6 +49,7 @@ public class CraftingProfitService {
     private final CharacterRepository charRepo;
     private final CraftingGraphCache graphCache;
     private final CraftingPlanner planner;
+    private final repo.WalletRepository walletRepo = new repo.WalletRepository();
 
     /**
      * The captured read view this service's operations load their inputs through.
@@ -111,7 +112,7 @@ public class CraftingProfitService {
         Candidates candidates = loadCandidates(choice);
         CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
 
-        Map<Integer, CraftResult> resultsByRecipeId = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateAllCoordinated(
+        Map<Integer, CraftResult> resultsByRecipeId = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).evaluateAllCoordinated(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.accountBoundInventory(),
                 inputs.characterBoundInventory(), inputs.roster(), inputs.tp(), settings,
                 candidates.allowedRecipeIds());
@@ -151,12 +152,12 @@ public class CraftingProfitService {
 
         CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
 
-        CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateOneCoordinated(
+        CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).evaluateOneCoordinated(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
                 inputs.tp(), settings, candidates.allowedRecipeIds());
 
-        SingleCraftExplanation explanation = new SingleCraftExplainer(ItemRepository.vendorValues(inputs.items())).explainCoordinatedResult(
+        SingleCraftExplanation explanation = new SingleCraftExplainer(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).explainCoordinatedResult(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.accountBoundInventory(), inputs.characterBoundInventory(), inputs.roster(),
                 inputs.tp(), settings, candidates.allowedRecipeIds(), row.craftableCount);
@@ -197,7 +198,8 @@ public class CraftingProfitService {
                                      Map<Integer, Integer> accountBoundInventory,
                                      Map<String, Map<Integer, Integer>> characterBoundInventory,
                                      Map<Integer, PriceQuote> tp,
-                                     Map<Integer, ItemRepository.ItemInfo> items) {
+                                     Map<Integer, ItemRepository.ItemInfo> items,
+                                     Map<Integer, Integer> wallet) {
     }
 
     private Candidates loadCandidates(DiscChoice choice) throws SQLException {
@@ -254,8 +256,15 @@ public class CraftingProfitService {
             characterBoundInv = inv.characterBound();
         }
 
+        // Wallet facts are optional and authority-gated: no grant/proof, no publication or a failed read all
+        // leave null = unknown (never zero, never unlimited). Item-only recipes never look at it.
+        Map<Integer, Integer> wallet = null;
+        if (session.walletAuthorized() && allRecipes.stream().anyMatch(r -> !r.currencies.isEmpty())) {
+            wallet = walletRepo.load(con, session.scope(), session.walletEvaluatedAt(), session.walletMaxAge()).orElse(null);
+        }
+
         return new CalculationInputs(roster, sellableInv, accountBoundInv, characterBoundInv, tp,
-                items);
+                items, wallet);
     }
 
     private InventoryRepository.CoordinatedInventory loadOwnedInventory(Connection con, Set<String> names,
@@ -348,6 +357,18 @@ public class CraftingProfitService {
                 cr.materialPurchaseCosts,
                 cr.materialPurchaseCostsOne
         );
+        enriched.unvaluedOwnedInput = cr.unvaluedOwnedInput;
+        enriched.currencyPerCraft = cr.currencyPerCraft;
+        enriched.currencyTotal = cr.currencyTotal;
+        enriched.walletState = cr.walletState;
+        enriched.unpricedCurrency = cr.unpricedCurrency;
+        enriched.unpricedCurrencyIds = cr.unpricedCurrencyIds;
+        enriched.estimatedNotesPerCraft = cr.estimatedNotesPerCraft;
+        enriched.estimatedNotesTotal = cr.estimatedNotesTotal;
+        enriched.estimatedNotesCostPerCraftCopper = cr.estimatedNotesCostPerCraftCopper;
+        enriched.estimatedNotesCostTotalCopper = cr.estimatedNotesCostTotalCopper;
+        enriched.noteEstimate = cr.noteEstimate;
+        enriched.economicsFromHypotheticalCraft = cr.economicsFromHypotheticalCraft;
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);
         copy.put(recipeId, enriched);

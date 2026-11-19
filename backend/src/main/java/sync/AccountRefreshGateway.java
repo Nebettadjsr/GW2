@@ -26,6 +26,10 @@ public class AccountRefreshGateway {
         AccountSync.syncAccountRecipes(scope, fetcher);
     }
 
+    public void syncAccountWallet(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
+        AccountSync.syncAccountWallet(scope, fetcher);
+    }
+
     public void syncAccountLuck(model.AccountScope scope, AccountSync.AuthFetcher fetcher) throws Exception {
         AccountSync.syncAccountLuck(scope, fetcher);
     }

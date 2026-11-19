@@ -243,7 +243,7 @@ terminal path and errors carry no upstream credential/body text.
 
 | Work | Source/trigger | Default policy |
 | --- | --- | --- |
-| Account freshness | Per-source publication markers, feature demand | 15-minute maximum age; Bank/Materials/Characters refresh only their needed sources. |
+| Account freshness | Per-source publication markers, feature demand | 15-minute maximum age; Bank/Materials/Characters refresh only their needed sources. The optional `WALLET` source is added only when the validated request context permits `WALLET_READ` (independent of whether a raw key accompanies the read); it joins calculation identity/freshness but never makes a calculation pending. Discovery tracks it the same way (unpublished = explicit unknown requested for refresh, expired = stale), never as a mandatory source, and a keyed read also needs the key's own proven wallet scope. |
 | Profit account inputs | Bank, Materials, account recipes, Characters | Excludes Luck and optional equipment/build tabs. |
 | Trading Post | Feature-relevant item IDs, shared cache | Reuse quotes younger than ten minutes; batch missing/stale IDs on demand. |
 | Global metadata | Scheduler and owner action, one shared service | Six-hour fixed delay, one-minute initial delay; cheap ID lists first. |
@@ -257,7 +257,11 @@ Discovery and ingredient search use that shared cache. Profit separately builds 
 its captured database connection with `loadForSnapshot`, preserving its repeatable-read view;
 there is no graph-generation reuse for those pinned loads yet. A temporary file/atomic replacement
 publishes the rebuilt cache file. Existing readers finish on the graph they captured, and a failed
-rebuild leaves the shared cache invalidated. This publication mechanism does not establish deep
+rebuild leaves the shared cache invalidated. Cold disk loads validate schema, row counts and the
+existing recipe publication marker; warm in-memory reads add no source query and still require
+invalidation. Incomplete, duplicate or malformed safe-sync details leave the publication incomplete for retry;
+only deliberate unsupported-kind skips participate in the complete-catalog fast path.
+This publication mechanism does not establish deep
 immutability of every graph member; shared-generation reuse remains a concrete future improvement.
 Recipe-catalog publication evidence makes incomplete synchronization retryable. Unchanged IDs
 skip detail work, so in-place edits under unchanged recipe IDs remain a known limitation.
@@ -276,6 +280,11 @@ five-minute recovery budget spans all tasks, polling and recalculation, includin
 Failure/deadline keeps the last usable result, ends the animation and offers retry. Context,
 generation and request guards reject late table/detail answers. Detail supplies its own matching
 row if inputs changed; an unchanged completed detail can be reused on return navigation.
+The tracked wallet's discrete freshness state joins calculation identity because expiry withholds
+its balance even without a new publication. Identity remains stable within each usability state.
+If the ordinary economic route exceeds the purchase budget, one rolled-back retry compares cash
+cost first across purchases, recipe alternatives and character assignments. It can mix purchases
+and currency crafts; the simulator still enforces the cumulative budget and rolls back failed trials.
 
 The existing UD-013–015 responsiveness requirement is at most seven seconds for the complete
 usable cached Profit page, including an expired-input provisional result. Refresh and its later
@@ -320,6 +329,8 @@ the public deployment**. Oracle additionally requires a protected HTTPS override
 environment file for the exact origin and separate restricted application DB role. Until
 [#228](https://github.com/Nebettadjsr/GW2/issues/228) is resolved, do not omit that override or
 claim standalone production portability. CURRENT_STATE_SPEC owns host paths and verified flags.
+
+Wallet currency display metadata (`wallet_currencies`, public `/v2/currencies?ids=all`, refreshed with global data; failure never blocks the recipe refresh) feeds the same-origin currency icon route `/api/resources/currencies/{id}/icon/...` through the existing resource icon cache; the browser never calls ArenaNet.
 
 Database, downloaded icons and operational history use separate named cache volumes. The
 derived graph file is in the backend writable data directory and can rebuild after recreation.
@@ -369,3 +380,5 @@ decisions include disposable caches (UD-016), proportionate browser-held keys (U
 account access (ADR-008), Flyway (ADR-010), static frontend Nginx (ADR-011) and host TLS
 (ADR-012). This document carries their current constraints; archived superseded plans,
 pre-release gates and workflow instructions are not the execution contract.
+
+The Research Note estimate (DOMAIN_SPEC 2.1.0) is computed once per captured calculation (`ResearchNoteEstimate`, held lazily by the shared `PlannerContext`) from the already captured quotes of recipes 15120/15131, so it joins the normal calculation identity and adds no producer planning per row. The resolver values only wallet-paid Notes (aggregate rounded up once, included in route cost comparison); the planner deducts the amount from profit. Table rows carry only the compact estimate amounts; the two-recipe comparison is selected-detail data. The frontend formats backend results and never calls ArenaNet.

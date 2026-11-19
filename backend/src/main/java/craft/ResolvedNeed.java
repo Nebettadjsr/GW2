@@ -19,6 +19,13 @@ public class ResolvedNeed {
 
     /** An owned sellable quantity here (or below) could not be valued at all (DOMAIN_SPEC.md 11.2). */
     private boolean unvaluedOwnedInput;
+    private boolean spendsUnpricedCurrency;
+    private final java.util.Set<Integer> unpricedCurrencyIds = new java.util.TreeSet<>();
+    /** Research Notes paid from the captured wallet here (or below), valued by {@link #noteEstimate}. */
+    private int walletNoteUnits;
+    private ResearchNoteEstimate noteEstimate;
+
+    private final List<CurrencySourcing> currencySourcing = new ArrayList<>();
 
     private AcquisitionMode mode = AcquisitionMode.BLOCKED;
     private BlockedReason blockedReason = BlockedReason.NONE;
@@ -95,12 +102,37 @@ public class ResolvedNeed {
 
     /** Exact effective cost; may exceed the int range, so comparisons use this. */
     public long effectiveCostCopper() {
-        return (long) buyCostCopper + opportunityCostCopper;
+        return (long) buyCostCopper + opportunityCostCopper + walletNoteCostCopper();
+    }
+
+    public ResearchNoteEstimate getNoteEstimate() {
+        return noteEstimate;
+    }
+
+    public int getWalletNoteUnits() {
+        return walletNoteUnits;
+    }
+
+    /** Records wallet-paid Notes that are valued by the estimate (never newly produced or surplus-reused ones). */
+    public void addWalletNotes(int units, ResearchNoteEstimate estimate) {
+        if (units <= 0) return;
+        this.walletNoteUnits = Math.addExact(this.walletNoteUnits, units);
+        this.noteEstimate = estimate;
+    }
+
+    /** Copies the wallet-Note facts of another node (the root of a chosen craft route). */
+    public void absorbWalletNotes(ResolvedNeed other) {
+        if (other.walletNoteUnits > 0) addWalletNotes(other.walletNoteUnits, other.noteEstimate);
+    }
+
+    /** Whole copper of the estimated wallet Notes here, rounded up once over the aggregate. */
+    public int walletNoteCostCopper() {
+        return walletNoteUnits == 0 || noteEstimate == null ? 0 : noteEstimate.costCopper(walletNoteUnits);
     }
 
     /** @throws ArithmeticException when the effective cost is outside the supported int range */
     public int getEffectiveCostCopper() {
-        return Math.addExact(buyCostCopper, opportunityCostCopper);
+        return Math.addExact(Math.addExact(buyCostCopper, opportunityCostCopper), walletNoteCostCopper());
     }
 
     public int getQtySatisfied() {
@@ -170,6 +202,54 @@ public class ResolvedNeed {
         this.buyCostCopper = Math.addExact(this.buyCostCopper, child.getBuyCostCopper());
         this.opportunityCostCopper = Math.addExact(this.opportunityCostCopper, child.getOpportunityCostCopper());
         this.unvaluedOwnedInput |= child.unvaluedOwnedInput;
+        this.spendsUnpricedCurrency |= child.spendsUnpricedCurrency;
+        this.unpricedCurrencyIds.addAll(child.unpricedCurrencyIds);
+        if (child.walletNoteUnits > 0) addWalletNotes(child.walletNoteUnits, child.noteEstimate);
+    }
+
+    /**
+     * True when this route (itself or any nested step) spends currency that has no gold valuation, so its copper
+     * cost is not a complete cost and must not be ranked against fully valued routes.
+     */
+    public boolean spendsUnpricedCurrency() {
+        return spendsUnpricedCurrency;
+    }
+
+    public void setSpendsUnpricedCurrency(boolean spends) {
+        this.spendsUnpricedCurrency = spends;
+    }
+
+    /** Marks one specific currency (by currency id) as spent without a gold valuation. */
+    public void addUnpricedCurrency(int currencyId) {
+        this.spendsUnpricedCurrency = true;
+        this.unpricedCurrencyIds.add(currencyId);
+    }
+
+    /** The currency ids whose consumption in this route (itself or nested) has no gold valuation. */
+    public java.util.Set<Integer> unpricedCurrencyIds() {
+        return unpricedCurrencyIds;
+    }
+
+    /**
+     * How this craft step's currency requirements were sourced, per currency (empty when it needs none).
+     * Quantities only; never a gold valuation.
+     *
+     * @param needed         units the executions of this step consume
+     * @param fromWallet     units paid from the account wallet's captured balance (owned, deferred valuation)
+     * @param fromProduced   units reused from surplus an earlier production batch of the same plan credited
+     * @param crafted        units newly credited by this step's production batches and consumed here
+     * @param missing        units that no source could provide (the step is then blocked)
+     * @param walletBalance  captured balance before this plan spent anything, or null when unknown
+     */
+    public record CurrencySourcing(int currencyId, int needed, int fromWallet, int fromProduced, int crafted,
+                                   int missing, Integer walletBalance) {}
+
+    public List<CurrencySourcing> getCurrencySourcing() {
+        return currencySourcing;
+    }
+
+    public void addCurrencySourcing(CurrencySourcing sourcing) {
+        currencySourcing.add(sourcing);
     }
 
     public boolean hasUnvaluedOwnedInput() {

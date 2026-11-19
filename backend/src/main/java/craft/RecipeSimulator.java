@@ -56,6 +56,7 @@ public class RecipeSimulator {
         // resolver call sees buying disabled too; daily crafting remains independently controlled.
         simulatePhase(recipe, ctx, state, result);
 
+        result.setCurrencyTotal(state.currencySpentSnapshot());
         return result;
     }
 
@@ -78,9 +79,27 @@ public class RecipeSimulator {
             // these up-to-250 iterations copied the entire state before attempting
             // (STORY-PERF-001).
             int mark = state.mark();
+            Map<Integer, Integer> spentBefore = state.currencySpentSnapshot();
 
             ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, state);
             ResolvedNeed root = rr.getRoot();
+
+            // The ordinary economic route can exceed the cash budget. Retry once minimizing cash at each
+            // choice, retaining a mix of affordable purchases and crafts rather than switching every ingredient.
+            if (budgetExceeded(ctx, result, rr) && root.getQtySatisfied() >= root.getQtyRequested()
+                    && !ctx.minimizeBuyCost) {
+                state.rollbackTo(mark);
+                ResolveResult retry = resolver.resolveOneCraft(recipe, ctx.withBuyCostMinimized(), state);
+                if (retry.getRoot().getQtySatisfied() >= retry.getRoot().getQtyRequested()
+                        && !budgetExceeded(ctx, result, retry)) {
+                    rr = retry;
+                    root = rr.getRoot();
+                } else {
+                    state.rollbackTo(mark);
+                    rr = resolver.resolveOneCraft(recipe, ctx, state);
+                    root = rr.getRoot();
+                }
+            }
 
             if (root.getQtySatisfied() < root.getQtyRequested()) {
                 state.rollbackTo(mark);
@@ -104,8 +123,24 @@ public class RecipeSimulator {
                 break;
             }
 
+            long noteCostTotal;
+            try {
+                // The estimated wallet-Note value is part of the cumulative profit: rounded up once over the
+                // cumulative Note quantity, so a craft that would push it out of range is rejected alone.
+                long cumulativeNotes = Math.addExact(result.getWalletNoteUnitsTotal(), (long) root.getWalletNoteUnits());
+                ResearchNoteEstimate noteEstimate = ctx.researchNoteEstimate();
+                noteCostTotal = cumulativeNotes > 0 && noteEstimate.available()
+                        ? noteEstimate.costCopper(cumulativeNotes) : 0;
+            } catch (ArithmeticException outOfRange) {
+                state.rollbackTo(mark);
+                result.setBlockedReason(BlockedReason.VALUE_RANGE);
+                result.setBlockedAttempt(root);
+                break;
+            }
+
             if (!aggregatesRepresentable(recipe, ctx, result.getCraftCount() + 1,
-                    nextBuyTotal, Math.addExact(result.getOpportunityCostTotal(), rr.getOpportunityCostCopper()))) {
+                    nextBuyTotal, Math.addExact(result.getOpportunityCostTotal(), rr.getOpportunityCostCopper())
+                            + noteCostTotal)) {
                 // Keep the batches already accepted; only this one would push a revenue/profit
                 // aggregate outside the supported range.
                 state.rollbackTo(mark);
@@ -129,6 +164,7 @@ public class RecipeSimulator {
 
             if (result.getCraftCount() == 0) {
                 result.setFirstCraft(root);
+                result.setCurrencyFirstCraft(difference(state.currencySpentSnapshot(), spentBefore));
             }
 
             if (captureAcceptedCrafts) result.addAcceptedCraft(root);
@@ -138,6 +174,11 @@ public class RecipeSimulator {
             result.addBuyCost(rr.getBuyCostCopper());
             result.addOpportunityCost(rr.getOpportunityCostCopper());
             if (rr.hasUnvaluedOwnedInput()) result.markUnvaluedOwnedInput();
+            if (root.spendsUnpricedCurrency()) {
+                result.markUnpricedCurrency();
+                result.markUnpricedCurrencies(root.unpricedCurrencyIds());
+            }
+            result.addWalletNoteUnits(root.getWalletNoteUnits());
 
             root.accumulateBoughtItems(result.getTotalMissingToBuy());
 
@@ -145,6 +186,11 @@ public class RecipeSimulator {
                 break;
             }
         }
+    }
+
+    private static boolean budgetExceeded(PlannerContext ctx, RecipeSimulationResult result, ResolveResult rr) {
+        return ctx.settings.maxBuyCopper > 0
+                && (long) result.getBuyCostTotal() + rr.getBuyCostCopper() > ctx.settings.maxBuyCopper;
     }
 
     /**
@@ -164,6 +210,16 @@ public class RecipeSimulator {
         long sellTotal = (long) revenueOne * crafts;
         long profit = sellTotal - feeOne * crafts - buyTotal - opportunityTotal;
         return fits(sellTotal) && fits(profit);
+    }
+
+    private static Map<Integer, Integer> difference(Map<Integer, Integer> after, Map<Integer, Integer> before) {
+        if (after.isEmpty()) return Map.of();
+        Map<Integer, Integer> delta = new java.util.TreeMap<>();
+        after.forEach((id, spent) -> {
+            int d = spent - before.getOrDefault(id, 0);
+            if (d > 0) delta.put(id, d);
+        });
+        return Map.copyOf(delta);
     }
 
     private static boolean fits(long value) {

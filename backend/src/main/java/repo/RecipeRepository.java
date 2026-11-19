@@ -1,5 +1,6 @@
 package repo;
 
+import craft.CurrencyRequirement;
 import craft.Ingredient;
 import craft.Recipe;
 import craft.RecipeKnowledgePolicy;
@@ -44,15 +45,19 @@ public class RecipeRepository {
                                           Set<Integer> accountUnlocked,
                                           Set<Integer> unlockedByAnyCharacter) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
+        Map<Integer, List<CurrencyRequirement>> currencies = loadCurrencyRequirements(con);
+        Set<Integer> unsupported = loadUnsupportedRecipeIds(con);
 
         String sqlAll = """
-        SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines
+        SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines,
+               ('AutoLearned' = ANY(r.flags)) AS auto_learned
         FROM recipes r
         ORDER BY r.recipe_id
     """;
 
         String sqlDisc = """
-        SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines
+        SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines,
+               ('AutoLearned' = ANY(r.flags)) AS auto_learned
         FROM recipes r
         WHERE ? = ANY(r.disciplines)
         ORDER BY r.recipe_id
@@ -73,13 +78,15 @@ public class RecipeRepository {
         try (ps; ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
+                if (unsupported.contains(recipeId)) continue;
 
-                boolean known = RecipeKnowledgePolicy.isKnownAccountWide(
+                // AutoLearned recipes are not listed in unlock facts; the flag itself is the knowledge.
+                boolean known = rs.getBoolean("auto_learned") || RecipeKnowledgePolicy.isKnownAccountWide(
                         accountUnlocked.contains(recipeId),
                         unlockedByAnyCharacter.contains(recipeId));
                 if (!known) continue;
 
-                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe, currencies));
             }
         }
 
@@ -102,10 +109,12 @@ public class RecipeRepository {
      */
     public List<Recipe> loadAllRecipes(Connection con) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
+        Map<Integer, List<CurrencyRequirement>> currencies = loadCurrencyRequirements(con);
+        Set<Integer> unsupported = loadUnsupportedRecipeIds(con);
 
         String sql = """
         SELECT recipe_id, output_item_id, output_item_count,min_rating, disciplines
-        FROM recipes
+        FROM recipes r
         ORDER BY recipe_id
     """;
 
@@ -116,7 +125,8 @@ public class RecipeRepository {
 
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
-                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
+                if (unsupported.contains(recipeId)) continue;
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe, currencies));
             }
         }
 
@@ -124,8 +134,47 @@ public class RecipeRepository {
     }
 
 
+    /**
+     * Currency requirements per recipe id, kept in their own namespace (never item ids) and attached to
+     * every loaded {@link Recipe}. Requirements of an unrecognised kind are not currencies; full-catalog
+     * validation rejects such a payload instead of publishing it, so none are expected here.
+     */
+    public Map<Integer, List<CurrencyRequirement>> loadCurrencyRequirements(Connection con) throws SQLException {
+        Map<Integer, List<CurrencyRequirement>> map = new HashMap<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT recipe_id, ref_id, count FROM recipe_non_item_requirements
+                WHERE kind = 'Currency' ORDER BY recipe_id, ref_id""");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                map.computeIfAbsent(rs.getInt(1), k -> new ArrayList<>())
+                        .add(new CurrencyRequirement(rs.getInt(2), rs.getInt(3)));
+            }
+        }
+        return map;
+    }
+
+    /**
+     * Recipes carrying a requirement kind this application cannot honour (for example a guild upgrade).
+     * They are quarantined from every load, so a legacy cached row can never be used as a free item-only recipe.
+     */
+    public Set<Integer> loadUnsupportedRecipeIds(Connection con) throws SQLException {
+        Set<Integer> ids = new java.util.HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(
+                """
+                SELECT recipe_id FROM recipe_non_item_requirements WHERE kind <> 'Currency'
+                UNION
+                SELECT recipe_id FROM recipes
+                WHERE jsonb_typeof(guild_ingredients) = 'array' AND jsonb_array_length(guild_ingredients) > 0
+                """);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+        return ids;
+    }
+
     /** Maps the current {@code recipes} row (id column already read) with its ingredients; one mapping for every read. */
-    private static Recipe mapRecipe(ResultSet rs, int recipeId, Map<Integer, List<Ingredient>> ingredientsByRecipe)
+    private static Recipe mapRecipe(ResultSet rs, int recipeId, Map<Integer, List<Ingredient>> ingredientsByRecipe,
+                                    Map<Integer, List<CurrencyRequirement>> currencies)
             throws SQLException {
         Array discsArr = rs.getArray("disciplines");
         String disciplinesText = "";
@@ -134,7 +183,8 @@ public class RecipeRepository {
             if (discs != null && discs.length > 0) disciplinesText = String.join(", ", discs);
         }
         return new Recipe(recipeId, rs.getInt("output_item_id"), rs.getInt("output_item_count"),
-                rs.getInt("min_rating"), disciplinesText, ingredientsByRecipe.getOrDefault(recipeId, List.of()));
+                rs.getInt("min_rating"), disciplinesText, ingredientsByRecipe.getOrDefault(recipeId, List.of()),
+                currencies.getOrDefault(recipeId, List.of()));
     }
 
     private Map<Integer, List<Ingredient>> loadIngredientsByRecipe(Connection con) throws SQLException {
@@ -229,6 +279,11 @@ public class RecipeRepository {
     public Set<Integer> loadKnownRecipeIds(Connection con, model.AccountScope scope) throws SQLException {
         Set<Integer> ids = loadAccountUnlockedRecipeIds(con, scope);
         ids.addAll(loadAnyCharacterUnlockedRecipeIds(con, scope));
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT recipe_id FROM recipes WHERE 'AutoLearned' = ANY(flags)");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
         return Set.copyOf(ids);
     }
 
@@ -287,10 +342,33 @@ public class RecipeRepository {
         return ids;
     }
 
+    /** Existing publication marker identifies content changes even when all recipe row counts stay equal. */
+    public String publicationKey() throws SQLException {
+        try (Connection con = Db.open()) {
+            return publicationKey(con);
+        }
+    }
+
+    public String publicationKey(Connection con) throws SQLException {
+        try (var ps = con.prepareStatement("SELECT complete, updated_at FROM recipe_catalog_publication WHERE singleton = TRUE");
+             var rs = ps.executeQuery()) {
+            return rs.next() ? rs.getBoolean(1) + ":" + rs.getTimestamp(2).toInstant() : "unpublished";
+        }
+    }
+
     public int countRecipes() throws SQLException {
         String sql = "SELECT COUNT(*) FROM recipes";
         try (Connection conn = repo.Db.open();
              var ps = conn.prepareStatement(sql);
+             var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    public int countRecipeCurrencyRequirements() throws SQLException {
+        try (Connection conn = repo.Db.open();
+             var ps = conn.prepareStatement("SELECT COUNT(*) FROM recipe_non_item_requirements");
              var rs = ps.executeQuery()) {
             rs.next();
             return rs.getInt(1);

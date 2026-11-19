@@ -28,7 +28,7 @@ class CraftingProfitKeyedAdmissionHttpTest {
                 null, null, null, null, null, null, null, null) {
             @Override
             public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
-                                        KeyedAdmission keyed) {
+                                        KeyedAdmission keyed, application.access.AccountContext readContext) {
                 calls.incrementAndGet();
                 if (rejection != null) throw new ScopedAccountRefreshCoordinator.Rejected(rejection);
                 throw new AssertionError("not reached");

@@ -100,7 +100,7 @@ public class BuildMetadataRepository {
         return switch (type) {
             case SPECIALIZATIONS -> "profession IS NOT NULL";
             case TRAITS -> "specialization_id IS NOT NULL AND tier IS NOT NULL AND trait_order IS NOT NULL AND slot IS NOT NULL";
-            case SKILLS, PETS -> "name IS NOT NULL";
+            case SKILLS, PETS, CURRENCIES -> "name IS NOT NULL";
         };
     }
 

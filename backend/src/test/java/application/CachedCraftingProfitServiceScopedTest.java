@@ -48,6 +48,9 @@ class CachedCraftingProfitServiceScopedTest {
     private Instant completedAt = EXPIRED_AT;
     private boolean covered = false;
     private long sourceGeneration = 5L;
+    private Instant evaluatedAt = NOW;
+    private Instant walletCompletedAt = FRESH_AT;
+    private CraftResult calculationResult = RESULT;
     private final List<CraftingSettings> calculatedSettings = new ArrayList<>();
     private final List<AccountScope> opened = new ArrayList<>();
     private final List<AccountScope> requiredScopes = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -182,6 +185,52 @@ class CachedCraftingProfitServiceScopedTest {
         assertTrue(tasks.admitted.isEmpty(), "fresh allocation-only changes must not admit upstream work");
     }
 
+    @Test
+    void walletExpiryBetweenTableAndDetailChangesIdentityAndCarriesTheRecalculatedRow() throws Exception {
+        completedAt = NOW;
+        walletCompletedAt = NOW.minus(Duration.ofMinutes(15));
+        covered = true;
+        AccountScope scope = AccountScope.of("11111111-2222-3333-4444-555555555555");
+        var context = new application.access.AccountContext(scope.id(),
+                java.util.Set.of(application.access.AccountGrant.ACCOUNT, application.access.AccountGrant.WALLET),
+                java.util.Set.of(), "ctx", NOW.plusSeconds(3600));
+
+        evaluatedAt = NOW.minusSeconds(1);
+        var table = service().profit(scope, DiscChoice.all(), settings(), null, context);
+        String first = table.freshness().calculationId();
+        evaluatedAt = NOW; // Exactly maxAge is still usable, without a new publication.
+        var atBoundary = service().resolution(scope, RECIPE.recipeId, DiscChoice.all(), settings(), first, null, context);
+        assertEquals(first, atBoundary.freshness().calculationId(), "fresh identity does not tick with time");
+        assertEquals(CachedCraftingProfitService.CONSISTENCY_FRESH_CALCULATION, atBoundary.consistency());
+
+        evaluatedAt = NOW.plusNanos(1);
+        calculationResult = new CraftResult(100, "Artificer", 0, Map.of(), Map.of(), 0, 0, 0, 0, 0, null);
+        var expired = service().resolution(scope, RECIPE.recipeId, DiscChoice.all(), settings(), first, null, context);
+        assertNotEquals(first, expired.freshness().calculationId());
+        assertEquals(CachedCraftingProfitService.CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS, expired.consistency());
+        assertEquals(calculationResult, expired.detail().row(), "detail returns its matching newly blocked row");
+        assertEquals(table.freshness().sourceGenerations(), expired.freshness().sourceGenerations(),
+                "expiry alone changes affordability; no generation or timestamp changed");
+        assertEquals(List.of(repo.AccountSyncStateRepository.WALLET), expired.freshness().accountSources().stream()
+                .filter(s -> s.state() == CalculationFreshness.SourceState.STALE).map(CalculationFreshness.SourceFreshness::source).toList());
+
+        evaluatedAt = NOW.plusSeconds(5);
+        assertEquals(expired.freshness().calculationId(),
+                service().resolution(scope, RECIPE.recipeId, DiscChoice.all(), settings(), first, null, context)
+                        .freshness().calculationId(), "unknown wallet identity is stable too");
+    }
+
+    @Test
+    void untrackedWalletExpiryDoesNotChangeItemOnlyCalculationIdentity() throws Exception {
+        completedAt = NOW;
+        walletCompletedAt = NOW.minus(Duration.ofMinutes(15));
+        covered = true;
+        AccountScope scope = AccountScope.of("11111111-2222-3333-4444-555555555555");
+        String before = service().profit(scope, DiscChoice.all(), settings()).freshness().calculationId();
+        evaluatedAt = NOW.plusSeconds(1);
+        assertEquals(before, service().profit(scope, DiscChoice.all(), settings()).freshness().calculationId());
+    }
+
     private CachedCraftingProfitService service() {
         return new CachedCraftingProfitService(
                 new ProfitInputSession.Factory() {
@@ -194,27 +243,28 @@ class CachedCraftingProfitServiceScopedTest {
                     @Override public ProfitData reload(DiscChoice choice, CraftingSettings settings) {
                         calculatedSettings.add(settings);
                         return new ProfitData(List.of(RECIPE), List.of(RECIPE),
-                                Map.of(RECIPE.recipeId, RESULT), Map.of(), Map.of());
+                                Map.of(RECIPE.recipeId, calculationResult), Map.of(), Map.of());
                     }
                     @Override public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice,
                                                                             CraftingSettings settings) {
                         calculatedSettings.add(settings);
                         return new CraftingResolutionDetail(RECIPE.recipeId,
-                                CraftingResolutionDetail.Status.RESULT_UNAVAILABLE, RECIPE, RESULT,
+                                CraftingResolutionDetail.Status.RESULT_UNAVAILABLE, RECIPE, calculationResult,
                                 SingleCraftExplanation.unavailable(RECIPE.recipeId, RECIPE.outputItemId,
                                         RECIPE.outputCount), Map.of(), Map.of());
                     }
                 },
                 (con, scope, sources) -> {
                     Map<String, AccountSourceStateRepository.SourceState> states = new java.util.LinkedHashMap<>();
-                    for (String s : sources) states.put(s, new AccountSourceStateRepository.SourceState(s, sourceGeneration, completedAt));
+                    for (String s : sources) states.put(s, new AccountSourceStateRepository.SourceState(s, sourceGeneration,
+                            repo.AccountSyncStateRepository.WALLET.equals(s) ? walletCompletedAt : completedAt));
                     return states;
                 },
                 (con, scope) -> new CalculationFreshness.PriceCoverage(
                         10, covered ? 10 : 0, covered ? 0 : 10, 0, FRESH_AT, FRESH_AT, covered, "q"),
                 new TradingPostRefreshCoordinator(new TradingPostPriceRefreshService(countingPriceGateway), tasks),
                 tasks,
-                Clock.fixed(NOW, ZoneOffset.UTC),
+                Clock.fixed(evaluatedAt, ZoneOffset.UTC),
                 Duration.ofMinutes(15));
     }
 

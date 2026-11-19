@@ -59,6 +59,7 @@ class AccountAccessRouteMappingHttpTest {
                 new Route("POST", "/api/sync/account/crafting-profit", profit, profitUrls),
                 new Route("POST", "/api/sync/account/bank", inventory, Set.of("/v2/account/bank")),
                 new Route("POST", "/api/sync/account/materials", inventory, Set.of("/v2/account/materials")),
+                new Route("POST", "/api/sync/account/wallet", Set.of(ACCOUNT, WALLET), Set.of("/v2/account/wallet")),
                 new Route("POST", "/api/sync/account/characters", characters, Set.of("/v2/characters")),
                 new Route("POST", "/api/sync/account/luck", luck, Set.of("/v2/account/luck")),
                 new Route("POST", "/api/sync/account/character-equipment-tabs", templates,

@@ -47,6 +47,13 @@ const displayRows = computed(() =>
     ownMaterials: formatCopper(row.matsSellValueCopper),
     unvalued: row.unvaluedOwnedInput === true,
     profit: formatSignedCopper(row.profitCopper),
+    // Only while a consumed currency still has no gold value (wallet-owned units): crafted units are charged in the costs.
+    noteEstimated: row.currencyCosts?.estimate != null,
+    conditionalCurrencies: row.currencyCosts?.goldMarginIsConditional === true
+      ? row.currencyCosts.costs
+          .filter((c) => (row.currencyCosts?.unpricedCurrencyIds ?? []).includes(c.currencyId))
+          .map((c) => c.name)
+      : [],
     profitTone: moneyTone(row.profitCopper),
     sellValue: formatCopper(row.totalSellValueCopper),
     total: formatSignedCopper(row.totalProfitCopper),
@@ -184,6 +191,18 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
         </td>
         <td class="numeric is-total" data-test="total-profit">
           <span :class="`money money--${row.totalTone}`">{{ row.total }}</span>
+          <span
+            v-if="row.noteEstimated"
+            class="unvalued-note"
+            data-test="currency-estimated"
+            title="Includes an estimated Research Note value"
+          >≈</span>
+          <span
+            v-if="row.conditionalCurrencies.length"
+            class="unvalued-note"
+            data-test="currency-conditional"
+            :title="`Excludes costs for other currencies: ${row.conditionalCurrencies.join(', ')}`"
+          >*</span>
         </td>
       </tr>
     </tbody>

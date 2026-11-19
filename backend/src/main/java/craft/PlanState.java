@@ -62,6 +62,13 @@ public class PlanState {
     // Required units per material item ID in this plan, owned and purchased alike. Journalled.
     private final Map<Integer, Integer> demand = new HashMap<>();
 
+    // Currency units consumed so far by this plan, per currency id (not item id). One account-wide pool
+    // shared by nested and repeated crafts; journalled so a failed attempt/alternative restores it.
+    private final Map<Integer, Integer> currencySpent = new HashMap<>();
+    // Currency units credited so far by production batches in this plan (for example Peer Reviewed Research
+    // awarding Research Notes); journalled with everything else so a rejected attempt leaves no credit behind.
+    private final Map<Integer, Integer> currencyProduced = new HashMap<>();
+
     public int buyCostCopper = 0;
 
     // ---------------- undo journal ----------------
@@ -74,6 +81,8 @@ public class PlanState {
     private static final int BUY_COST = 5;
     private static final int SURPLUS = 6;
     private static final int DEMAND = 7;
+    private static final int CURRENCY_SPENT = 8;
+    private static final int CURRENCY_PRODUCED = 9;
 
     /** Journalled "this slot had no value before", distinguishable from every real quantity. */
     private static final int ABSENT = Integer.MIN_VALUE;
@@ -152,6 +161,8 @@ public class PlanState {
         this.buyCostCopper = other.buyCostCopper;
         this.surplus.putAll(other.surplus);
         this.demand.putAll(other.demand);
+        this.currencySpent.putAll(other.currencySpent);
+        this.currencyProduced.putAll(other.currencyProduced);
     }
 
     /**
@@ -270,6 +281,8 @@ public class PlanState {
             case BUY_COST -> buyCostCopper;
             case SURPLUS -> valueOrAbsent(surplus, key);
             case DEMAND -> valueOrAbsent(demand, key);
+            case CURRENCY_SPENT -> valueOrAbsent(currencySpent, key);
+            case CURRENCY_PRODUCED -> valueOrAbsent(currencyProduced, key);
             default -> throw new IllegalStateException("unknown journal kind " + kind);
         };
     }
@@ -290,6 +303,8 @@ public class PlanState {
             case BUY_COST -> buyCostCopper = value;
             case SURPLUS -> writeOrRemove(surplus, key, value);
             case DEMAND -> writeOrRemove(demand, key, value);
+            case CURRENCY_SPENT -> writeOrRemove(currencySpent, key, value);
+            case CURRENCY_PRODUCED -> writeOrRemove(currencyProduced, key, value);
             default -> throw new IllegalStateException("unknown journal kind " + kind);
         }
     }
@@ -333,6 +348,39 @@ public class PlanState {
         if (total > MAX_MATERIAL_UNITS) return false;
         if (quantity > 0) setValue(DEMAND, itemId, null, (int) total);
         return true;
+    }
+
+    /**
+     * Spends {@code quantity} of one currency from the shared wallet pool. Fails (changing nothing) when
+     * {@code balance} (null = unknown) cannot cover it; {@code enforce=false} tallies without limiting.
+     */
+    public boolean spendCurrency(int currencyId, long quantity, Integer balance, boolean enforce) {
+        long total = currencySpent.getOrDefault(currencyId, 0) + quantity;
+        if (total > Integer.MAX_VALUE) throw new ArithmeticException("currency spending out of range");
+        if (enforce && (balance == null || total > balance)) return false;
+        if (quantity > 0) setValue(CURRENCY_SPENT, currencyId, null, (int) total);
+        return true;
+    }
+
+    /** Credits {@code quantity} units of a currency produced by an accepted production batch of this plan. */
+    public void creditCurrency(int currencyId, long quantity) {
+        long total = currencyProduced.getOrDefault(currencyId, 0) + quantity;
+        if (total > Integer.MAX_VALUE) throw new ArithmeticException("currency credit out of range");
+        if (quantity > 0) setValue(CURRENCY_PRODUCED, currencyId, null, (int) total);
+    }
+
+    /** Units of this currency credited by production batches so far (not the account wallet balance). */
+    public int currencyProduced(int currencyId) {
+        return currencyProduced.getOrDefault(currencyId, 0);
+    }
+
+    public int currencySpent(int currencyId) {
+        return currencySpent.getOrDefault(currencyId, 0);
+    }
+
+    /** Immutable copy of cumulative currency spending, following journalled rollback. */
+    public Map<Integer, Integer> currencySpentSnapshot() {
+        return currencySpent.isEmpty() ? Map.of() : Map.copyOf(currencySpent);
     }
 
     /** True while {@code itemId} is being resolved higher up the current recursion (cycle guard). */

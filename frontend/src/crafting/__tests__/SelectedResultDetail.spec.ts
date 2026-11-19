@@ -416,3 +416,62 @@ describe('unvalued owned input (DOMAIN_SPEC.md 11.2)', () => {
     expect(wrapper.find('[data-test="detail-unvalued-owned-input"]').exists()).toBe(false)
   })
 })
+
+describe('currency costs (issue 372)', () => {
+  const jade = {
+    ...profitableRow,
+    currencyCosts: {
+      walletState: 'KNOWN',
+      goldMarginIsConditional: true,
+      economicsFromHypotheticalCraft: false,
+      costs: [{ currencyId: 61, name: 'Research Note', perCraft: 30, total: 300 }]
+    }
+  }
+
+  it('shows the backend currency total between Own materials and Bought materials', () => {
+    const wrapper = detailOf(jade)
+    const labels = wrapper.findAll('.calculation dt').map((dt) => dt.text())
+    const own = labels.findIndex((t) => t.startsWith('Own materials'))
+    const note = labels.findIndex((t) => t === 'Research Notes')
+    const bought = labels.findIndex((t) => t.startsWith('Bought materials'))
+    expect(own).toBeGreaterThanOrEqual(0)
+    expect(note).toBe(own + 1)
+    expect(bought).toBe(note + 1)
+    expect(wrapper.find('[data-test="detail-currency-cost"]').text()).toBe('300')
+    expect(wrapper.find('[data-test="detail-wallet-unknown"]').exists()).toBe(false)
+  })
+
+  it('replaces the explanation block with one short exclusion line and no break-even text', () => {
+    const wrapper = detailOf(jade)
+    expect(wrapper.find('[data-test="detail-currency-costs"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="detail-currency-exclusion"]').text()).toBe('Excluding costs for other currencies')
+    expect(wrapper.text()).not.toMatch(/break-even|break even/i)
+  })
+
+  it('shows one craft quantity when the economics are a hypothetical craft', () => {
+    const wrapper = detailOf({
+      ...jade,
+      currencyCosts: { ...jade.currencyCosts, walletState: 'UNKNOWN', economicsFromHypotheticalCraft: true,
+        costs: [{ currencyId: 61, name: 'Research Note', perCraft: 30, total: 0 }] }
+    })
+    expect(wrapper.find('[data-test="detail-currency-cost"]').text()).toBe('30')
+    expect(wrapper.find('[data-test="detail-wallet-unknown"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="detail-hypothetical"]').exists()).toBe(true)
+  })
+
+  it('keeps the quantity but drops the exclusion and wallet-unknown notes when crafted batches paid every unit', () => {
+    const wrapper = detailOf({
+      ...jade,
+      currencyCosts: { ...jade.currencyCosts, walletState: 'UNKNOWN', goldMarginIsConditional: false }
+    })
+    expect(wrapper.find('[data-test="detail-currency-cost"]').text()).toBe('300')
+    expect(wrapper.find('[data-test="detail-currency-exclusion"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="detail-wallet-unknown"]').exists()).toBe(false)
+  })
+
+  it('renders no currency row or exclusion for item-only rows', () => {
+    const wrapper = detailOf(profitableRow)
+    expect(wrapper.find('[data-test="detail-currency-cost"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="detail-currency-exclusion"]').exists()).toBe(false)
+  })
+})

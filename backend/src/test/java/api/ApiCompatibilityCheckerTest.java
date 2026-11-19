@@ -33,7 +33,9 @@ class ApiCompatibilityCheckerTest {
     static final String ITEM = "{\"id\":19721,\"name\":\"Glob of Ectoplasm\",\"type\":\"CraftingMaterial\",\"rarity\":\"Rare\",\"extra\":{\"new\":1}}";
     static final String RECIPE = "{\"id\":7319,\"type\":\"Refinement\",\"output_item_id\":46742,\"output_item_count\":1,"
             + "\"time_to_craft_ms\":1000,\"disciplines\":[\"Artificer\"],\"min_rating\":400,\"flags\":[],"
-            + "\"ingredients\":[{\"item_id\":19721,\"count\":1}],\"chat_link\":\"[&x]\"}";
+            + "\"ingredients\":[{\"type\":\"Item\",\"id\":19721,\"count\":1}],\"chat_link\":\"[&x]\"}";
+    /** Production requests the explicit pinned schema for every recipe, so the ordinary canary does too. */
+    static final String RECIPE_URL = B + "/v2/recipes/7319?v=2022-03-09T02:00:00.000Z";
     static final String PRICE = "{\"id\":19721,\"buys\":{\"quantity\":5,\"unit_price\":10},\"sells\":{\"quantity\":6,\"unit_price\":12}}";
     static final String CURRENCIES = "[{\"id\":1,\"name\":\"Coin\"},{\"id\":2,\"name\":\"Karma\"}]";
     static final String JADE_TYPED = "{\"id\":13839,\"type\":\"Refinement\",\"output_item_id\":97487,\"output_item_count\":1,"
@@ -47,7 +49,7 @@ class ApiCompatibilityCheckerTest {
     void healthy() {
         ok(ApiCompatibilityChecker.DIRECTORY_URL, DIRECTORY);
         ok(B + "/v2/items/19721", ITEM);
-        ok(B + "/v2/recipes/7319", RECIPE);
+        ok(RECIPE_URL, RECIPE);
         ok(B + "/v2/commerce/prices/19721", PRICE);
         ok(B + "/v2/currencies?ids=1,2", CURRENCIES);
         responses.put(B + "/v2/recipes/13839", new PublicApiTransport.Response(404, "{\"text\":\"no such id\"}"));
@@ -82,14 +84,15 @@ class ApiCompatibilityCheckerTest {
         assertEquals(Status.OK, probe(r, "prices").status());
         assertEquals(Status.OK, probe(r, "currencies").status());
         assertEquals(Status.OK, probe(r, "directory").status());
-        assertEquals("KNOWN_COVERAGE_GAP", probe(r, "jade-default").code());
-        assertEquals(Status.ATTENTION, probe(r, "jade-default").status());
+        // The default schema omits Jade, which is expected and informational: production pins the schema.
+        assertEquals("DEFAULT_SCHEMA_OMITS_RECIPE", probe(r, "jade-default").code());
+        assertEquals(Status.OK, probe(r, "jade-default").status());
         // The directory's item_ingredients wording differs from the typed payload: informational.
         assertEquals("DIRECTORY_PAYLOAD_DISCREPANCY", probe(r, "jade-pinned").code());
         assertEquals(Status.ATTENTION, r.overall());
         assertEquals(ApiCompatibilityChecker.RECIPE_PROFILE, r.recipeProfile());
-        assertTrue(r.recipeProfile().contains("unpinned"));
-        assertEquals("legacy default (unpinned)", probe(r, "recipe").profile());
+        assertTrue(r.recipeProfile().contains("explicit, production"));
+        assertEquals(ApiCompatibilityChecker.RECIPE_PROFILE, probe(r, "recipe").profile());
         assertTrue(requested.size() <= ApiCompatibilityChecker.MAX_REQUESTS);
         assertTrue(requested.stream().allMatch(u -> u.startsWith(B + "/v2")));
     }
@@ -134,11 +137,11 @@ class ApiCompatibilityCheckerTest {
     }
 
     @Test
-    void jadePresentInDefaultButTypedIsStillKnownGapNotUpstreamMismatch() {
+    void jadePresentInDefaultSchemaIsInformationalBecauseProductionIsPinned() {
         ok(B + "/v2/recipes/13839", JADE_TYPED);
         var p = probe(run(), "jade-default");
-        assertEquals(Status.ATTENTION, p.status());
-        assertEquals("KNOWN_COVERAGE_GAP", p.code());
+        assertEquals(Status.OK, p.status());
+        assertEquals("COMPATIBLE", p.code());
     }
 
     @Test
@@ -185,17 +188,18 @@ class ApiCompatibilityCheckerTest {
     }
 
     @Test
-    void typedRecipeInLegacyProfileIsUnsupportedIngredientMismatch() {
-        ok(B + "/v2/recipes/7319", JADE_TYPED.replace("13839", "7319").replace("\"ingredients\"", "\"disciplines\":[\"Artificer\"],\"ingredients\""));
+    void aRecipeWithAnUnsupportedIngredientKindIsAnUnsupportedIngredientMismatch() {
+        ok(RECIPE_URL, RECIPE.replace("{\"type\":\"Item\",\"id\":19721,\"count\":1}",
+                "{\"type\":\"Item\",\"id\":19721,\"count\":1},{\"type\":\"GuildUpgrade\",\"id\":721,\"count\":8}"));
         var p = probe(run(), "recipe");
         assertEquals(Status.MISMATCH, p.status());
         assertEquals("UNSUPPORTED_INGREDIENT", p.code());
     }
 
     @Test
-    void legacyRecipeWithAnUnreadableIngredientIsUnsupported() {
-        ok(B + "/v2/recipes/7319", RECIPE.replace("\"count\":1}]", "\"count\":1},{\"item_id\":0,\"count\":1}]"));
-        assertEquals("UNSUPPORTED_INGREDIENT", probe(run(), "recipe").code());
+    void aRecipeWithAnUnreadableIngredientIsNotCompatible() {
+        ok(RECIPE_URL, RECIPE.replace("\"count\":1}]", "\"count\":1},{\"type\":\"Currency\",\"id\":0,\"count\":1}]"));
+        assertEquals(Status.MISMATCH, probe(run(), "recipe").status());
     }
 
     @Test
@@ -224,7 +228,7 @@ class ApiCompatibilityCheckerTest {
     @Test
     void timeoutRateLimitServerErrorAndUnreachableAreUnavailableNotSchemaChanges() {
         responses.put(B + "/v2/items/19721", new HttpTimeoutException("secret-timeout-detail"));
-        responses.put(B + "/v2/recipes/7319", new PublicApiTransport.Response(429, "slow down"));
+        responses.put(RECIPE_URL, new PublicApiTransport.Response(429, "slow down"));
         responses.put(B + "/v2/commerce/prices/19721", new PublicApiTransport.Response(503, "<html>boom</html>"));
         responses.put(B + "/v2/currencies?ids=1,2", new IOException("connection refused to 10.0.0.1"));
         var r = run();
@@ -311,11 +315,11 @@ class ApiCompatibilityCheckerTest {
 
     @Test
     void ordinaryRecipeMustSatisfyTheProductionFullRefreshValidator() {
-        ok(B + "/v2/recipes/7319", RECIPE.replace("\"min_rating\":400,", ""));
+        ok(RECIPE_URL, RECIPE.replace("\"min_rating\":400,", ""));
         assertEquals(Status.MISMATCH, probe(run(), "recipe").status());
-        ok(B + "/v2/recipes/7319", RECIPE.replace("\"time_to_craft_ms\":1000,", ""));
+        ok(RECIPE_URL, RECIPE.replace("\"time_to_craft_ms\":1000,", ""));
         assertEquals(Status.MISMATCH, probe(run(), "recipe").status());
-        ok(B + "/v2/recipes/7319", RECIPE); // control: the unmodified fixture is compatible
+        ok(RECIPE_URL, RECIPE); // control: the unmodified fixture is compatible
         assertEquals(Status.OK, probe(run(), "recipe").status());
     }
 }

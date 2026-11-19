@@ -42,6 +42,7 @@ public class CraftingDiscoveryService {
     private final ItemRepository itemRepo;
     private final CraftingGraphCache graphCache;
     private final CraftingPlanner planner;
+    private boolean walletAuthorized;
     private final ScopedInputsBinding binding;
     /** The authorized account of this request-local instance; null only on the unbound builder. */
     private final model.AccountScope scope;
@@ -122,11 +123,21 @@ public class CraftingDiscoveryService {
      * calculation is unchanged and receives the already-scoped ordinary inputs.
      */
     public CraftingDiscoveryService forScope(model.AccountScope scope) {
+        return forScope(scope, false);
+    }
+
+    /**
+     * As {@link #forScope(model.AccountScope)}; {@code walletAuthorized} says the validated request context
+     * permits {@code WALLET_READ}, so the cached wallet may decide currency affordability. Otherwise the wallet
+     * stays unknown (never zero or unlimited) and item-only recipes are unaffected.
+     */
+    public CraftingDiscoveryService forScope(model.AccountScope scope, boolean walletAuthorized) {
         java.util.Objects.requireNonNull(scope);
         CraftingDiscoveryService bound = new CraftingDiscoveryService(tpRepo, itemRepo, graphCache, planner,
                 binding, scope, binding.bind(scope, clock));
         bound.clock = clock;
         bound.accountMaxAge = accountMaxAge;
+        bound.walletAuthorized = walletAuthorized;
         return bound;
     }
 
@@ -214,10 +225,17 @@ public class CraftingDiscoveryService {
      * Source state of the account's Discovery inputs: {@code missing} were never published (no
      * calculation is possible), {@code stale} were published but expired (still usable).
      */
-    public record InputState(java.util.Set<String> missing, java.util.Set<String> stale) {
+    public record InputState(java.util.Set<String> missing, java.util.Set<String> stale,
+                             java.util.Set<String> optionalUnpublished) {
+        public InputState(java.util.Set<String> missing, java.util.Set<String> stale) {
+            this(missing, stale, java.util.Set.of());
+        }
+
+        /** Required missing/stale sources plus the optional wallet when authorized and unpublished. */
         public java.util.Set<String> needingRefresh() {
             java.util.Set<String> all = new java.util.TreeSet<>(missing);
             all.addAll(stale);
+            all.addAll(optionalUnpublished);
             return all;
         }
     }
@@ -239,7 +257,19 @@ public class CraftingDiscoveryService {
                 }
             }
         }
-        return new InputState(missing, stale);
+        // Optional wallet: tracked only with authority. Unpublished is an explicit unknown (never pending,
+        // never blocking item-only rows); an expired publication is stale like any other source.
+        java.util.Set<String> optional = new java.util.TreeSet<>();
+        if (walletAuthorized) {
+            try (java.sql.Connection con = repo.Db.open()) {
+                var state = new repo.AccountSourceStateRepository().read(con, scope, repo.AccountSyncStateRepository.WALLET);
+                if (state.isEmpty()) optional.add(repo.AccountSyncStateRepository.WALLET);
+                else if (accountMaxAge != null && state.get().completedAt().plus(accountMaxAge).isBefore(clock.instant())) {
+                    stale.add(repo.AccountSyncStateRepository.WALLET);
+                }
+            }
+        }
+        return new InputState(missing, stale, optional);
     }
 
     /** Records ordinary authorized use (activity only, never freshness) for a request that calculated nothing. */
@@ -313,7 +343,7 @@ public class CraftingDiscoveryService {
         CalculationInputs inputs =
                 loadCalculationInputs(oneCraftSettings, choice.charName, candidates.allRecipes());
 
-        Map<Integer, CraftResult> results = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateAllSingleCraft(
+        Map<Integer, CraftResult> results = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).evaluateAllSingleCraft(
                 candidates.allRecipes(), inputs.sellableInventory(), inputs.boundInventory(),
                 inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
@@ -359,11 +389,11 @@ public class CraftingDiscoveryService {
         CalculationInputs inputs =
                 loadCalculationInputs(oneCraftSettings, choice.charName, candidates.allRecipes());
 
-        CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).evaluateSingleCraft(
+        CraftResult row = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).evaluateSingleCraft(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
-        SingleCraftExplanation explanation = new SingleCraftExplainer(ItemRepository.vendorValues(inputs.items())).explainIndividual(
+        SingleCraftExplanation explanation = new SingleCraftExplainer(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).explainIndividual(
                 selected, candidates.allRecipes(), inputs.sellableInventory(),
                 inputs.boundInventory(), inputs.tp(), oneCraftSettings, candidates.usableRecipeIds());
 
@@ -423,7 +453,8 @@ public class CraftingDiscoveryService {
     private record CalculationInputs(Map<Integer, Integer> sellableInventory,
                                      Map<Integer, Integer> boundInventory,
                                      Map<Integer, PriceQuote> tp,
-                                     Map<Integer, ItemRepository.ItemInfo> items) {
+                                     Map<Integer, ItemRepository.ItemInfo> items,
+                                     Map<Integer, Integer> wallet) {
     }
 
     private Candidates loadCandidates(DiscChoice choice) throws SQLException {
@@ -514,7 +545,15 @@ public class CraftingDiscoveryService {
         Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(itemIds);
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(itemIds);
 
-        return new CalculationInputs(sellableInv, boundInv, tp, items);
+        // Optional, authority-gated wallet: unknown (null) unless authorized, published and needed.
+        Map<Integer, Integer> wallet = null;
+        if (walletAuthorized && scope != null && allRecipes.stream().anyMatch(r -> !r.currencies.isEmpty())) {
+            try (java.sql.Connection con = repo.Db.open()) {
+                wallet = new repo.WalletRepository().load(con, scope, clock.instant(), accountMaxAge).orElse(null);
+            }
+        }
+
+        return new CalculationInputs(sellableInv, boundInv, tp, items, wallet);
     }
 
     /**

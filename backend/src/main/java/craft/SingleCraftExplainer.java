@@ -29,12 +29,19 @@ import java.util.Set;
 public final class SingleCraftExplainer {
 
     private final Map<Integer, Integer> vendorValues;
+    private Map<Integer, Integer> wallet; // null = unknown
 
     public SingleCraftExplainer() {
         this(Map.of());
     }
 
     /** An explainer valuing untradeable owned materials with these vendor values (DOMAIN_SPEC.md 11.2). */
+    /** Explains against this account wallet (currency id to balance); {@code null} = unknown. */
+    public SingleCraftExplainer withWallet(Map<Integer, Integer> wallet) {
+        this.wallet = wallet == null ? null : Map.copyOf(wallet);
+        return this;
+    }
+
     public SingleCraftExplainer(Map<Integer, Integer> vendorValues) {
         this.vendorValues = Map.copyOf(vendorValues);
     }
@@ -61,7 +68,7 @@ public final class SingleCraftExplainer {
                                                    ) {
 
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues).withWallet(wallet);
 
         return explain(recipe, ctx, new PlanState(sellableInventory, boundInventory), 1);
     }
@@ -86,7 +93,7 @@ public final class SingleCraftExplainer {
                                                     ) {
 
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
 
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory), 1);
@@ -111,7 +118,7 @@ public final class SingleCraftExplainer {
             int countedCrafts
     ) {
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
                 Math.max(1, countedCrafts));
@@ -123,12 +130,17 @@ public final class SingleCraftExplainer {
                 new CraftingResolver(true), acceptedCraftLimit, true);
         RecipeSimulationResult simulation = simulator.simulateRecipe(recipe, ctx, initialState);
 
+        Map<Integer, Recipe> recipesById = new java.util.HashMap<>();
+        ctx.recipesByOutput.values().forEach(list -> list.forEach(r -> recipesById.put(r.recipeId, r)));
+        recipesById.put(recipe.recipeId, recipe);
+
         List<ResolvedNeed> accepted = simulation.getAcceptedCrafts();
         if (!accepted.isEmpty()) {
+            NoteLedger ledger = new NoteLedger();
             List<CraftTraceNode> roots = accepted.stream()
-                    .map(craft -> toNode(craft, BlockedReason.NONE))
+                    .map(craft -> toNode(craft, BlockedReason.NONE, recipesById, ledger))
                     .toList();
-            return explanationOf(recipe, combineNodes(roots),
+            return explanationOf(recipe, combineNodes(roots, ledger),
                     Math.multiplyExact(recipe.outputCount, simulation.getCraftCount()));
         }
 
@@ -136,7 +148,7 @@ public final class SingleCraftExplainer {
         // (ARCHITECTURE.md section 7), unlike the absence of a result.
         ResolvedNeed rejected = simulation.getBlockedAttempt();
         if (rejected != null) {
-            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason()), recipe.outputCount);
+            return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason(), recipesById, new NoteLedger()), recipe.outputCount);
         }
 
         return SingleCraftExplanation.unavailable(
@@ -148,7 +160,13 @@ public final class SingleCraftExplainer {
                 recipe.recipeId, recipe.outputItemId, outputQuantity, true, root);
     }
 
-    private CraftTraceNode combineNodes(List<CraftTraceNode> nodes) {
+    /** Per-call exact wallet-Note units of each mapped node, so combined nodes round the aggregate once. */
+    private static final class NoteLedger {
+        record Entry(long units, ResearchNoteEstimate estimate) { }
+        final Map<CraftTraceNode, Entry> entries = new java.util.IdentityHashMap<>();
+    }
+
+    private CraftTraceNode combineNodes(List<CraftTraceNode> nodes, NoteLedger ledger) {
         CraftTraceNode first = nodes.get(0);
         int requested = nodes.stream().mapToInt(CraftTraceNode::requestedQuantity).sum();
         int inventory = nodes.stream().mapToInt(CraftTraceNode::inventoryQuantity).sum();
@@ -172,27 +190,74 @@ public final class SingleCraftExplainer {
         });
 
         List<CraftTraceNode> children = new ArrayList<>();
-        int childCount = nodes.stream().mapToInt(node -> node.children().size()).max().orElse(0);
-        for (int index = 0; index < childCount; index++) {
-            Map<String, List<CraftTraceNode>> variants = new LinkedHashMap<>();
-            for (CraftTraceNode parent : nodes) {
-                if (parent.children().size() <= index) continue;
-                CraftTraceNode child = parent.children().get(index);
-                String key = child.itemId() + ":" + child.recipeId() + ":" + child.characterName();
-                variants.computeIfAbsent(key, ignored -> new ArrayList<>()).add(child);
+        // Children are aligned by identity (item, recipe, character, occurrence), not list position: an optional
+        // child (e.g. a Research Note producer needed only by a later craft) must not shift the others.
+        Map<String, List<CraftTraceNode>> variants = new LinkedHashMap<>();
+        for (CraftTraceNode parent : nodes) {
+            Map<String, Integer> seen = new java.util.HashMap<>();
+            for (CraftTraceNode child : parent.children()) {
+                String base = child.itemId() + ":" + child.recipeId() + ":" + child.characterName();
+                int occurrence = seen.merge(base, 1, Integer::sum);
+                variants.computeIfAbsent(base + "#" + occurrence, ignored -> new ArrayList<>()).add(child);
             }
-            variants.values().forEach(variant -> children.add(combineNodes(variant)));
         }
+        variants.values().forEach(variant -> children.add(combineNodes(variant, ledger)));
 
-        return new CraftTraceNode(
+        java.util.TreeMap<Integer, CraftTraceNode.CurrencyQuantity> currencyTotals = new java.util.TreeMap<>();
+        for (CraftTraceNode node : nodes) {
+            for (CraftTraceNode.CurrencyQuantity q : node.currencies()) {
+                currencyTotals.merge(q.currencyId(), q, (a, b) -> new CraftTraceNode.CurrencyQuantity(
+                        a.currencyId(), Math.addExact(a.quantity(), b.quantity()),
+                        Math.addExact(a.fromWallet(), b.fromWallet()),
+                        Math.addExact(a.fromProduced(), b.fromProduced()),
+                        Math.addExact(a.crafted(), b.crafted()), Math.addExact(a.missing(), b.missing()),
+                        a.walletBalance()));
+            }
+        }
+        List<CraftTraceNode.CurrencyQuantity> currencies = List.copyOf(currencyTotals.values());
+
+        CraftTraceNode combined = new CraftTraceNode(
                 first.itemId(), requested, inventory, crafted, bought, missing,
                 first.recipeId(), craftCount, produced,
                 characters.isEmpty() ? null : String.join(", ", characters),
                 List.copyOf(methods), List.copyOf(states), List.copyOf(reasons),
                 sumIfAllKnown(nodes, CraftTraceNode::cashCostCopper),
                 sumIfAllKnown(nodes, CraftTraceNode::opportunityCostCopper),
-                sumIfAllKnown(nodes, CraftTraceNode::effectiveCostCopper),
-                children);
+                combinedEffective(nodes, ledger),
+                children, currencies);
+        long units = 0;
+        ResearchNoteEstimate estimate = null;
+        for (CraftTraceNode node : nodes) {
+            NoteLedger.Entry e = ledger.entries.get(node);
+            if (e == null) continue;
+            units = Math.addExact(units, e.units());
+            if (e.estimate() != null) estimate = e.estimate();
+        }
+        if (units > 0) ledger.entries.put(combined, new NoteLedger.Entry(units, estimate));
+        return combined;
+    }
+
+    /**
+     * Sum of the nodes' effective costs with the estimated wallet-Note value re-rounded once over the combined
+     * Note quantity, instead of adding each execution's separately rounded-up Note cost.
+     */
+    private Integer combinedEffective(List<CraftTraceNode> nodes, NoteLedger ledger) {
+        long total = 0;
+        long units = 0;
+        ResearchNoteEstimate estimate = null;
+        for (CraftTraceNode node : nodes) {
+            Integer amount = node.effectiveCostCopper();
+            if (amount == null) return null;
+            total += amount;
+            NoteLedger.Entry e = ledger.entries.get(node);
+            if (e != null && e.estimate() != null && e.units() > 0) {
+                total -= e.estimate().costCopper(e.units());
+                units += e.units();
+                estimate = e.estimate();
+            }
+        }
+        if (estimate != null) total += estimate.costCopper(units);
+        return total < Integer.MIN_VALUE || total > Integer.MAX_VALUE ? null : (int) total;
     }
 
     private Integer sumIfAllKnown(List<CraftTraceNode> nodes,
@@ -214,7 +279,8 @@ public final class SingleCraftExplainer {
      *                        but could not be afforded. {@link BlockedReason#NONE} everywhere else,
      *                        including for every child.
      */
-    private CraftTraceNode toNode(ResolvedNeed need, BlockedReason rejectionReason) {
+    private CraftTraceNode toNode(ResolvedNeed need, BlockedReason rejectionReason, Map<Integer, Recipe> recipesById,
+                                  NoteLedger ledger) {
         ResolvedNeed.NodeTrace trace = need.getTrace();
         ResolvedNeed craftAttempt = trace == null ? null : trace.getCraftAttempt();
 
@@ -227,7 +293,7 @@ public final class SingleCraftExplainer {
             // Repeated items in different branches stay separate occurrences: each child is mapped
             // where it occurs, and a cycle ends in the resolver's finite CYCLE_DETECTED node.
             for (ResolvedNeed child : craftAttempt.getChildren()) {
-                children.add(toNode(child, BlockedReason.NONE));
+                children.add(toNode(child, BlockedReason.NONE, recipesById, ledger));
             }
         }
 
@@ -238,7 +304,30 @@ public final class SingleCraftExplainer {
         List<BlockedReason> blockedReasons = blockedReasonsOf(need, craftAttempt, rejectionReason);
         boolean complete = need.isFullySatisfied();
 
-        return new CraftTraceNode(
+        // Currency units of this node's own craft path, from the recipe the resolver selected: the executions it
+        // performed, or one attempt's worth (output-covering crafts) for a rejected/blocked attempt.
+        Integer selectedRecipeId = craftTrace == null ? null : craftTrace.getSelectedRecipeId();
+        Recipe selected = selectedRecipeId == null ? null : recipesById.get(selectedRecipeId);
+        List<CraftTraceNode.CurrencyQuantity> currencies = List.of();
+        if (selected != null && !selected.currencies.isEmpty()) {
+            int executions = crafted ? craftTrace.getCraftCount()
+                    : Math.max(1, ceilDiv(need.getQtyRequested(), Math.max(1, selected.outputCount)));
+            Map<Integer, ResolvedNeed.CurrencySourcing> sourcing = new java.util.HashMap<>();
+            for (ResolvedNeed.CurrencySourcing s : (craftAttempt != null ? craftAttempt : need).getCurrencySourcing()) {
+                sourcing.put(s.currencyId(), s);
+            }
+            currencies = selected.currencies.stream().map(c -> {
+                ResolvedNeed.CurrencySourcing s = sourcing.get(c.currencyId());
+                if (s == null) {
+                    return new CraftTraceNode.CurrencyQuantity(c.currencyId(),
+                            Math.toIntExact((long) c.count() * executions));
+                }
+                return new CraftTraceNode.CurrencyQuantity(c.currencyId(), s.needed(), s.fromWallet(),
+                        s.fromProduced(), s.crafted(), s.missing(), s.walletBalance());
+            }).toList();
+        }
+
+        CraftTraceNode node = new CraftTraceNode(
                 need.getItemId(),
                 need.getQtyRequested(),
                 need.getQtyFromInventory(),
@@ -255,8 +344,17 @@ public final class SingleCraftExplainer {
                 complete ? need.getBuyCostCopper() : null,
                 complete ? need.getOpportunityCostCopper() : null,
                 complete ? effectiveOrNull(need) : null,
-                children
+                children,
+                currencies
         );
+        if (need.getWalletNoteUnits() > 0 && need.getNoteEstimate() != null) {
+            ledger.entries.put(node, new NoteLedger.Entry(need.getWalletNoteUnits(), need.getNoteEstimate()));
+        }
+        return node;
+    }
+
+    private static int ceilDiv(int a, int b) {
+        return (int) (((long) a + b - 1) / b);
     }
 
     /** The effective cost, or null when cash plus opportunity cost is outside the int range. */

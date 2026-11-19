@@ -17,6 +17,10 @@ public class GlobalDataRefreshGateway {
         IconSync.syncItemIconUrls();
     }
 
+    public void syncCurrencies() throws Exception {
+        CurrencySync.syncCurrencies();
+    }
+
     public boolean syncTpTradeableItems() throws Exception {
         return TpSync.syncTpTradeableItems();
     }

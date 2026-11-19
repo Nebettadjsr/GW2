@@ -37,6 +37,7 @@ public final class ProfitInputSession implements AutoCloseable {
 
     private final Connection connection;
     private final AccountScope scope;
+    private volatile boolean walletAuthorized;
 
     private ProfitInputSession(Connection connection, AccountScope scope) {
         this.connection = connection;
@@ -95,6 +96,37 @@ public final class ProfitInputSession implements AutoCloseable {
      */
     public AccountScope scope() {
         return scope;
+    }
+
+    /**
+     * Whether the request's key context may read the cached wallet ({@code wallet} grant and endpoint). Default
+     * false: a cached wallet is never revealed through a context that has not proven that authority.
+     */
+    public ProfitInputSession authorizeWallet(boolean authorized) {
+        this.walletAuthorized = authorized;
+        return this;
+    }
+
+    public boolean walletAuthorized() {
+        return walletAuthorized;
+    }
+
+    private volatile java.time.Instant walletEvaluatedAt;
+    private volatile java.time.Duration walletMaxAge;
+
+    /** The calculation's evaluation instant and the configured account max-age that decide wallet expiry. */
+    public ProfitInputSession withWalletFreshness(java.time.Instant evaluatedAt, java.time.Duration maxAge) {
+        this.walletEvaluatedAt = evaluatedAt;
+        this.walletMaxAge = maxAge;
+        return this;
+    }
+
+    public java.time.Instant walletEvaluatedAt() {
+        return walletEvaluatedAt;
+    }
+
+    public java.time.Duration walletMaxAge() {
+        return walletMaxAge;
     }
 
     @Override

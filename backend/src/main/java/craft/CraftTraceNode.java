@@ -59,14 +59,42 @@ public record CraftTraceNode(
         Integer cashCostCopper,
         Integer opportunityCostCopper,
         Integer effectiveCostCopper,
-        List<CraftTraceNode> children
+        List<CraftTraceNode> children,
+        List<CurrencyQuantity> currencies
 ) {
+
+    /**
+     * Exact units of one currency (never an item id) this requirement's craft path consumes or would consume, and
+     * where they come from: the captured wallet balance, surplus an earlier production batch of the same plan left,
+     * newly produced units (their batches are child requirements, charged there), or a missing remainder.
+     * {@code walletBalance} is the captured balance before the plan spent anything, null when unknown.
+     */
+    public record CurrencyQuantity(int currencyId, int quantity, int fromWallet, int fromProduced, int crafted,
+                                   int missing, Integer walletBalance) {
+        /** Quantity only, with no recorded sourcing. */
+        public CurrencyQuantity(int currencyId, int quantity) {
+            this(currencyId, quantity, 0, 0, 0, 0, null);
+        }
+    }
+
+    /** Item-only node: no currency requirement. */
+    public CraftTraceNode(int itemId, int requestedQuantity, int inventoryQuantity, int craftedQuantity,
+                          int boughtQuantity, int missingQuantity, Integer recipeId, int craftCount,
+                          int producedQuantity, String characterName, List<AcquisitionMethod> methods,
+                          List<ResolutionState> states, List<BlockedReason> blockedReasons,
+                          Integer cashCostCopper, Integer opportunityCostCopper, Integer effectiveCostCopper,
+                          List<CraftTraceNode> children) {
+        this(itemId, requestedQuantity, inventoryQuantity, craftedQuantity, boughtQuantity, missingQuantity,
+                recipeId, craftCount, producedQuantity, characterName, methods, states, blockedReasons,
+                cashCostCopper, opportunityCostCopper, effectiveCostCopper, children, List.of());
+    }
 
     public CraftTraceNode {
         methods = List.copyOf(methods);
         states = List.copyOf(states);
         blockedReasons = List.copyOf(blockedReasons);
         children = List.copyOf(children);
+        currencies = List.copyOf(currencies);
     }
 
     /** Output units produced beyond what this requirement used (DOMAIN_SPEC.md section 17). */

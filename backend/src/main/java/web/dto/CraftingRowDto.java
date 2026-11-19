@@ -51,6 +51,9 @@ import java.util.List;
  * @param unvaluedOwnedInput true when an owned sellable input had no Trading Post value, crafting
  *                            cost or vendor value (DOMAIN_SPEC.md 11.2); its cost was taken as 0 only
  *                            because it could not be valued, so the profit is not a confident figure
+ * @param currencyCosts       null for item-only recipes. Otherwise the exact per-craft/total currency spending,
+ *                            the wallet state and the conditional-gold-margin facts; currency is never valued
+ *                            as zero and {@code profitCopper} is then explicitly before these costs
  */
 public record CraftingRowDto(int recipeId,
                              int outputItemId,
@@ -73,5 +76,6 @@ public record CraftingRowDto(int recipeId,
                              List<MissingItemDto> missingToBuyOne,
                              List<String> ingredientNames,
                              String iconUrl,
-                             boolean unvaluedOwnedInput) {
+                             boolean unvaluedOwnedInput,
+                             CurrencyCostsDto currencyCosts) {
 }

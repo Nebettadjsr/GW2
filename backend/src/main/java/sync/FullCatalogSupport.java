@@ -17,6 +17,9 @@ import java.util.function.ToIntFunction;
 public final class FullCatalogSupport {
     private FullCatalogSupport() {}
 
+    /** Structurally valid requirement kinds this application knows but cannot plan (recipe is skipped, never free). */
+    static final Set<String> KNOWN_UNSUPPORTED_KINDS = Set.of("GuildUpgrade");
+
     /** One finite upstream ID snapshot: a non-empty array of distinct positive integers. */
     static List<Integer> parseIdSnapshot(JsonNode root, String what) {
         if (root == null || !root.isArray()) throw new IllegalStateException(what + " id snapshot is not an array");
@@ -87,7 +90,45 @@ public final class FullCatalogSupport {
     }
 
     /**
-     * Full-operation only: a recipe needs a positive id, text type, and either a positive item output
+     * Strict ingredient boundary shared by the full refresh and the scheduled safe sync. Pinned schema
+     * {type: Item|Currency, id, count}; legacy {item_id, count} stays valid. Identity is the (kind, id) pair, so an
+     * Item and a Currency with equal numbers never collide and an unsupported kind is rejected, not dropped.
+     */
+    static boolean validIngredients(JsonNode ing) {
+        if (!ing.isArray()) return false;
+        Set<String> identities = new HashSet<>();
+        for (JsonNode i : ing) {
+            String kind;
+            String idField;
+            if (i.isObject() && i.has("type")) {
+                kind = i.get("type").isTextual() ? i.get("type").asText() : "";
+                idField = "id";
+                if (!"Item".equals(kind) && !"Currency".equals(kind) && !KNOWN_UNSUPPORTED_KINDS.contains(kind)) return false;
+            } else {
+                kind = "Item";
+                idField = "item_id";
+            }
+            if (!i.isObject() || !intAbove(i, idField, 1) || !intAbove(i, "count", 1)
+                    || !identities.add(kind + ":" + i.get(idField).asInt())) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Safe-sync guard: malformed typed or legacy ingredients quarantine the whole recipe rather than
+     * dropping a requirement. Valid legacy item_id/count records remain supported.
+     */
+    public static void requireIngredients(JsonNode recipe) {
+        JsonNode ing = recipe.get("ingredients");
+        // Missing, null and non-array collections are malformed. As in full refresh, an empty collection is
+        // permitted only for a non-item output; accepting it for an item would publish a requirement-free recipe.
+        if (ing == null || !validIngredients(ing) || (recipe.has("output_item_id") && ing.isEmpty()))
+            throw new IllegalStateException("recipes detail batch contains a malformed record");
+    }
+
+    /**
+     * Full-refresh validation, also used to classify safe-sync unsupported records: a recipe needs
+     * a positive id, text type, and either a positive item output
      * with a positive count or (guild upgrade recipes) a positive {@code output_upgrade_id};
      * non-negative rating and craft time; typed optional fields; and well-formed, distinct,
      * positive-quantity ingredients (a missing array is only legitimate for a guild upgrade recipe).
@@ -110,18 +151,8 @@ public final class FullCatalogSupport {
             JsonNode ing = n.get("ingredients");
             if (ing == null || ing.isNull()) {
                 ok = !itemOutput;
-            } else if (!ing.isArray()) {
-                ok = false;
             } else {
-                Set<Integer> items = new HashSet<>();
-                for (JsonNode i : ing) {
-                    if (!i.isObject() || !intAbove(i, "item_id", 1) || !intAbove(i, "count", 1)
-                            || !items.add(i.get("item_id").asInt())) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok && itemOutput && ing.isEmpty()) ok = false;
+                ok = validIngredients(ing) && !(itemOutput && ing.isEmpty());
             }
         }
         if (!ok) throw new IllegalStateException("recipes detail batch contains a malformed record");
