@@ -6,6 +6,7 @@ import craft.CraftingGraph;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
 import craft.Ingredient;
+import craft.MysticForgeCatalog;
 import craft.Node;
 import craft.PlannerContext;
 import craft.PriceQuote;
@@ -109,7 +110,7 @@ public class CraftingProfitService {
 
     public ProfitData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
 
-        Candidates candidates = loadCandidates(choice);
+        Candidates candidates = loadCandidates(choice, settings);
         CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
 
         Map<Integer, CraftResult> resultsByRecipeId = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).evaluateAllCoordinated(
@@ -143,7 +144,7 @@ public class CraftingProfitService {
     public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice, CraftingSettings settings)
             throws SQLException {
 
-        Candidates candidates = loadCandidates(choice);
+        Candidates candidates = loadCandidates(choice, settings);
 
         Recipe selected = candidates.selected(recipeId);
         if (selected == null) {
@@ -202,7 +203,7 @@ public class CraftingProfitService {
                                      Map<Integer, Integer> wallet) {
     }
 
-    private Candidates loadCandidates(DiscChoice choice) throws SQLException {
+    private Candidates loadCandidates(DiscChoice choice, CraftingSettings settings) throws SQLException {
         Connection con = session.connection();
         AccountScope scope = session.scope();
         List<Recipe> visibleRecipes;
@@ -225,7 +226,27 @@ public class CraftingProfitService {
             throw new RuntimeException("Failed to load crafting graph cache", e);
         }
 
-        return new Candidates(visibleRecipes, graph.getRecipes(), allowedRecipeIds);
+        List<Recipe> allRecipes = graph.getRecipes();
+        if (settings != null && settings.allowMysticForge) {
+            // Forge recipes are a separate, setting-gated source: negative ids never collide with ordinary
+            // ids or account unlocks, and the toggle-off path above is untouched.
+            List<Recipe> forge = MysticForgeCatalog.bundled().recipes();
+            if (!forge.isEmpty()) {
+                visibleRecipes = concat(visibleRecipes, forge);
+                allRecipes = concat(allRecipes, forge);
+                Set<Integer> withForge = new HashSet<>(allowedRecipeIds);
+                forge.forEach(r -> withForge.add(r.recipeId));
+                allowedRecipeIds = withForge;
+            }
+        }
+        return new Candidates(visibleRecipes, allRecipes, allowedRecipeIds);
+    }
+
+    private static List<Recipe> concat(List<Recipe> a, List<Recipe> b) {
+        List<Recipe> out = new java.util.ArrayList<>(a.size() + b.size());
+        out.addAll(a);
+        out.addAll(b);
+        return out;
     }
 
     private CalculationInputs loadCalculationInputs(DiscChoice choice,

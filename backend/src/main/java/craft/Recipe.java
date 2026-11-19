@@ -12,6 +12,8 @@ public class Recipe {
     public final List<Ingredient> ingredients;
     /** Typed currency requirements per craft (never item ids); empty for item-only recipes. */
     public final List<CurrencyRequirement> currencies;
+    /** Where the recipe comes from; ordinary ArenaNet recipes unless explicitly a Mystic Forge recipe. */
+    public final RecipeSource source;
 
     public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText, List<Ingredient> ingredients) {
         this(recipeId, outputItemId, outputCount, minRating, disciplinesText, ingredients, List.of());
@@ -19,6 +21,13 @@ public class Recipe {
 
     public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText,
                   List<Ingredient> ingredients, List<CurrencyRequirement> currencies) {
+        this(recipeId, outputItemId, outputCount, minRating, disciplinesText, ingredients, currencies,
+                RecipeSource.ORDINARY);
+    }
+
+    public Recipe(int recipeId, int outputItemId, int outputCount, int minRating, String disciplinesText,
+                  List<Ingredient> ingredients, List<CurrencyRequirement> currencies, RecipeSource source) {
+        this.source = source;
         this.currencies = List.copyOf(currencies);
         this.recipeId = recipeId;
         this.outputItemId = outputItemId;
@@ -26,5 +35,9 @@ public class Recipe {
         this.minRating = minRating;
         this.disciplinesText = disciplinesText;
         this.ingredients = ingredients;
+    }
+
+    public boolean isMysticForge() {
+        return source == RecipeSource.MYSTIC_FORGE;
     }
 }

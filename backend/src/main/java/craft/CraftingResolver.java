@@ -75,12 +75,7 @@ public class CraftingResolver {
             PlannerContext ctx,
             PlanState state
                                         ) {
-        if (ctx.isCoordinated() && (!ctx.allowedRecipeIds.contains(recipe.recipeId)
-                || ctx.eligibleCharactersFor(recipe).isEmpty())) {
-            return new ResolveResult(blockedNeed(recipe.outputItemId, recipe.outputCount,
-                    BlockedReason.RECIPE_NOT_ALLOWED, recipe, null));
-        }
-        if (!ctx.allowedRecipeIds.contains(recipe.recipeId)) {
+        if (!ctx.isPerformable(recipe)) {
             return new ResolveResult(blockedNeed(recipe.outputItemId, recipe.outputCount,
                     BlockedReason.RECIPE_NOT_ALLOWED, recipe, null));
         }
@@ -335,7 +330,8 @@ public class CraftingResolver {
             return blockedNeed(itemId, qtyRequested, BlockedReason.DAILY_LIMIT, recipe, null);
         }
 
-        if (!ctx.isCoordinated()) {
+        // Mystic Forge steps need no crafter: never assign (or invent) a character.
+        if (!ctx.isCoordinated() || recipe.isMysticForge()) {
             return tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, null);
         }
 
@@ -589,14 +585,12 @@ public class CraftingResolver {
         List<Recipe> candidates = ctx.recipesByOutput.getOrDefault(itemId, List.of());
         if (candidates.size() == 1) {
             Recipe only = candidates.getFirst();
-            if (ctx.allowedRecipeIds.contains(only.recipeId)
-                    && (!ctx.isCoordinated() || !ctx.eligibleCharactersFor(only).isEmpty())) {
+            if (ctx.isPerformable(only)) {
                 return tryCraft(itemId, quantity, ctx, state, parentDiscipline, only);
             }
         }
         for (Recipe recipe : candidates) {
-            if (!ctx.allowedRecipeIds.contains(recipe.recipeId)
-                    || (ctx.isCoordinated() && ctx.eligibleCharactersFor(recipe).isEmpty())) continue;
+            if (!ctx.isPerformable(recipe)) continue;
             ResolvedNeed attempt = tryCraft(itemId, quantity, ctx, state, parentDiscipline, recipe);
             boolean matches = sharesDiscipline(parentDiscipline, recipe.disciplinesText);
             boolean preferDiscipline = best != null && attempt.isFullySatisfied()
@@ -818,8 +812,7 @@ public class CraftingResolver {
         }
 
         for (Recipe recipe : list) {
-            if (ctx.allowedRecipeIds.contains(recipe.recipeId)
-                    && (!ctx.isCoordinated() || !ctx.eligibleCharactersFor(recipe).isEmpty())) {
+            if (ctx.isPerformable(recipe)) {
                 return false;
             }
         }

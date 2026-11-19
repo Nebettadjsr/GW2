@@ -68,6 +68,15 @@ describe('changes', () => {
     ])
   })
 
+  it('enables the Mystic Forge checkbox, default off, and emits the choice with other settings kept', async () => {
+    const wrapper = form()
+    const box = wrapper.find('[data-test="setting-allowMysticForge"]')
+    expect((box.element as HTMLInputElement).disabled).toBe(false)
+    expect((box.element as HTMLInputElement).checked).toBe(false)
+    await box.setValue(true)
+    expect(applied(wrapper)).toEqual([{ ...settings, allowMysticForge: true }])
+  })
+
   it('emits listing and instant choices for sell and buy prices', async () => {
     const wrapper = form()
     await wrapper.find('[data-test="setting-listingSell"]').setValue('listing')

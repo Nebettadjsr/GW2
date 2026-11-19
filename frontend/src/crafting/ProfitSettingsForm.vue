@@ -85,6 +85,13 @@ function onAllowDailyCraftsChange(event: Event): void {
   }
 }
 
+function onAllowMysticForgeChange(event: Event): void {
+  const allowMysticForge = checkedValue(event)
+  if (allowMysticForge !== null) {
+    emitWith({ allowMysticForge })
+  }
+}
+
 function onListingSellChange(event: Event): void {
   const listingSell = isListingMode(event)
   if (listingSell !== null) {
@@ -264,11 +271,12 @@ function onMaxBuyCopperChange(event: Event): void {
         <span>Allow daily craft</span>
       </label>
 
-      <label class="check-row check-row--disabled">
+      <label class="check-row">
         <input
           type="checkbox"
           data-test="setting-allowMysticForge"
-          disabled
+          :checked="settings.allowMysticForge ?? false"
+          @change="onAllowMysticForgeChange"
         />
         <span>Allow Mystic Forge recipes</span>
       </label>

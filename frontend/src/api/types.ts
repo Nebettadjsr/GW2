@@ -147,6 +147,8 @@ export interface EffectiveSettings {
   listingSell: boolean
   listingBuy: boolean
   allowDailyCrafts: boolean
+  /** Mystic Forge recipes opted in (default off); absent from older backends, meaning off. */
+  allowMysticForge?: boolean
   /**
    * Material Protection as the backend canonicalized it (additive: absent from older backends, in
    * which case the browser must not claim protection was enforced).

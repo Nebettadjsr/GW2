@@ -2107,3 +2107,11 @@ remain excluded. The crawler policy permits the exact `/welcome` document and re
 static assets while disallowing other paths, and the application sets the corresponding
 index/noindex page metadata. Crawler directives express indexing preferences; they do
 not make public legal pages private or replace account authorization.
+
+## Mystic Forge recipes
+
+- `allowMysticForge` (default off, saved per account, echoed in effective settings) gates Forge roots and nested Forge routes; off leaves every ordinary result unchanged.
+- Forge recipes are a separate source (`RecipeSource.MYSTIC_FORGE`) from the bundled backend catalog `mystic-forge/catalog.json`, generated offline from the ArenaNet-hosted GW2 Wiki (Semantic MediaWiki `[[Has recipe source::Mystic forge]]`; contributors GFDL 1.3, game assets ArenaNet). The backend never calls the Wiki at runtime. Recipe ids are the negated wiki forge id, so they cannot collide with ArenaNet recipe ids, account unlocks or selected-detail ids; they are never sent to ArenaNet.
+- A Forge step needs no discipline, rating, unlock or crafting character; ordinary steps nested around it keep their normal eligibility, bindings, currency, stock/protection, buying and budget rules. Soulbound stock is not attributed to a character for a Forge step.
+- A catalog row is accepted only when its wiki forge id, output, quantity and every ingredient id/count are valid and its output is verified fixed. SMW stores only the lower output quantity, so unverified (random or unknown) rows are excluded with a reason, never treated as fixed, free or guaranteed. Expected-yield (mean) valuation is not implemented yet; a min/max range is never a mean.
+- Discovery never includes Forge recipes.

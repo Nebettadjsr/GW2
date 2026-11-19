@@ -59,6 +59,7 @@ public record CraftingProfitResponse(String status,
                                        List<Integer> protectedMaterialItemIds,
                                        java.util.Map<Integer, Integer> protectedBankQuantities,
                                        java.util.Map<Integer, Integer> protectedMaterialQuantities,
-                                       List<craft.BankAllocation> protectedBankAllocations) {
+                                       List<craft.BankAllocation> protectedBankAllocations,
+                                       boolean allowMysticForge) {
     }
 }
