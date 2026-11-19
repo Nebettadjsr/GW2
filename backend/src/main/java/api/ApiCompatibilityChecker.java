@@ -161,6 +161,18 @@ public class ApiCompatibilityChecker {
 
     private record Fetched(int status, JsonNode json) {}
 
+    /** The fixed request asks for currencies 1 and 2: both distinct IDs must come back, once each, in any order. */
+    private static String currencyIdentityProblem(JsonNode arr) {
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        for (JsonNode c : arr) {
+            int id = c.path("id").asInt();
+            if (id != 1 && id != 2) return "unrequested currency id " + id;
+            if (!seen.add(id)) return "duplicate currency id " + id;
+        }
+        if (!seen.containsAll(java.util.Set.of(1, 2))) return "requested currency id missing (expected 1 and 2)";
+        return null;
+    }
+
     /** Runs the whole check; never throws for upstream behavior. */
     public ApiCompatibilityResult check() {
         long started = nanoClock.getAsLong();
@@ -236,6 +248,7 @@ public class ApiCompatibilityChecker {
                     bad = c.isObject() ? missing(c, intField("id"), textField("name")) : "entry";
                     if (bad != null) break;
                 }
+                if (bad == null) bad = currencyIdentityProblem(cur.json());
                 if (bad == null) {
                     run.add("currencies", "Currency metadata", "/v2/currencies?ids=1,2", DEFAULT_PROFILE, Status.OK,
                             "COMPATIBLE", "Consumed currency fields have the expected types.");

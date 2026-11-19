@@ -95,6 +95,31 @@ class ApiCompatibilityCheckerTest {
     }
 
     @Test
+    void currencyProbeRequiresBothDistinctRequestedIds() {
+        String missing = "[{\"id\":1,\"name\":\"Coin\"}]";
+        ok(B + "/v2/currencies?ids=1,2", missing);
+        assertEquals(Status.MISMATCH, probe(run(), "currencies").status());
+        // Partial (206) response with only one of the requested ids.
+        responses.put(B + "/v2/currencies?ids=1,2", new PublicApiTransport.Response(206, missing));
+        assertEquals(Status.MISMATCH, probe(run(), "currencies").status());
+        // Wrong id replaces a requested one.
+        ok(B + "/v2/currencies?ids=1,2", "[{\"id\":1,\"name\":\"Coin\"},{\"id\":3,\"name\":\"Laurel\"}]");
+        assertEquals(Status.MISMATCH, probe(run(), "currencies").status());
+        // Duplicate id leaves the other missing.
+        ok(B + "/v2/currencies?ids=1,2", "[{\"id\":1,\"name\":\"Coin\"},{\"id\":1,\"name\":\"Coin\"}]");
+        assertEquals(Status.MISMATCH, probe(run(), "currencies").status());
+        // Duplicate plus both present is still not the exact requested set.
+        ok(B + "/v2/currencies?ids=1,2", "[{\"id\":1,\"name\":\"Coin\"},{\"id\":2,\"name\":\"Karma\"},{\"id\":2,\"name\":\"Karma\"}]");
+        assertEquals(Status.MISMATCH, probe(run(), "currencies").status());
+    }
+
+    @Test
+    void currencyProbeAcceptsReversedOrderWithAdditiveFields() {
+        ok(B + "/v2/currencies?ids=1,2", "[{\"id\":2,\"name\":\"Karma\",\"order\":9,\"icon\":\"x\"},{\"id\":1,\"name\":\"Coin\",\"extra\":true}]");
+        assertEquals(Status.OK, probe(run(), "currencies").status());
+    }
+
+    @Test
     void pinnedJadeWithoutDescriptionDiscrepancyIsOk() {
         ok(ApiCompatibilityChecker.DIRECTORY_URL, DIRECTORY.replace("`item_ingredients` and add `currency_ingredients`", "ingredients"));
         assertEquals(Status.OK, probe(run(), "jade-pinned").status());
