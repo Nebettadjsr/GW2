@@ -96,7 +96,8 @@ const presentation = computed<{ text: string; tone: Tone }>(() => {
   return { text: 'Needs update', tone: 'caution' }
 })
 const lastChecked = computed(() => {
-  const iso = view.value?.result.state === 'COMPLETE' ? view.value.result.checkedAt : null
+  // The backend carries the previous checkedAt into RUNNING; show any valid time, a first run shows the dash.
+  const iso = view.value?.result.checkedAt ?? null
   if (!iso) return '—'
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? '—' : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(d)

@@ -118,6 +118,31 @@ describe('OwnerApiCompatibility (compact status card)', () => {
     expect(Object.keys(systemApi)).not.toContain('startApiCompatibilityCheck') // the browser has no start path
   })
 
+  it('keepsThePriorCheckedTimeWhileRunning_andShowsDashOnlyForAFirstRun', async () => {
+    const checked = () => w.find(sel('api-compat-checked-at')).text()
+    const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValueOnce(complete('OK'))
+    const w = mount()
+    await flushPromises()
+    const prior = checked()
+    expect(prior).not.toBe('—')
+    const running = { stale: false, result: { ...complete('OK').result, state: 'RUNNING' as const } }
+    read.mockResolvedValueOnce(running)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(state(w)).toBe('Checking…')
+    expect(checked()).toBe(prior)
+    read.mockResolvedValueOnce({ stale: false, result: { ...complete('ATTENTION').result, checkedAt: '2026-11-19T16:00:00Z' } })
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(state(w)).toBe('Needs update')
+    expect(checked()).not.toBe(prior)
+    expect(checked()).not.toBe('—')
+    w.unmount()
+    read.mockResolvedValueOnce(RUNNING)
+    const first = mount()
+    await flushPromises()
+    expect(state(first)).toBe('Checking…')
+    expect(first.find(sel('api-compat-checked-at')).text()).toBe('—')
+  })
+
   it('confirmedDenialClearsTheCardAndAsksTheOwnerBoundaryToWithdraw', async () => {
     const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValueOnce(complete('OK'))
     const w = mount()
