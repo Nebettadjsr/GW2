@@ -48,7 +48,7 @@ public class ApiCompatibilityApiController {
                     .body(new ApiErrorResponse("ORIGIN_REJECTED",
                             "This request did not come from this application's own origin"));
         }
-        service.start(); // a duplicate in-flight check raises TaskAlreadyRunningException -> 409
+        service.start(); // a duplicate in-flight check raises OperationAlreadyRunning -> 409
         return ResponseEntity.accepted().header(HttpHeaders.CACHE_CONTROL, "no-store").body(service.read());
     }
 }

@@ -7,6 +7,7 @@ import api.ApiCompatibilityResult.VersionEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import parser.RecipeParser;
+import sync.FullCatalogSupport;
 
 import java.io.IOException;
 import java.net.http.HttpTimeoutException;
@@ -30,7 +31,7 @@ import java.util.function.LongSupplier;
  * advertised schema version, the known Jade profile gap and a directory/payload discrepancy are
  * {@code ATTENTION}.
  */
-public final class ApiCompatibilityChecker {
+public class ApiCompatibilityChecker {
 
     public static final String BASE = "https://api.guildwars2.com";
     public static final String DIRECTORY_URL = BASE + "/v2.json?v=latest";
@@ -54,11 +55,14 @@ public final class ApiCompatibilityChecker {
     static final int ITEM_ID = 19721;
     static final int RECIPE_ID = 7319;
     static final int JADE_RECIPE_ID = 13839;
+    /** Fixed identity of the Jade canary: its output item and the Research Notes currency it must still require. */
+    static final int JADE_OUTPUT_ITEM_ID = 97487;
+    static final int JADE_CURRENCY_ID = 61;
     static final int MAX_REQUESTS = 7;
     static final int TOTAL_MINUTES = 2;
     static final int MAX_VERSIONS = 64;
     static final int MAX_DESC = 240;
-    static final int MAX_BODY_CHARS = 8_000_000;
+    static final int MAX_BODY_CHARS = PublicApiTransport.MAX_BODY_BYTES;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -193,7 +197,7 @@ public final class ApiCompatibilityChecker {
         Fetched item = run.fetch("item", "Item detail", "/v2/items/{id}", DEFAULT_PROFILE, BASE + "/v2/items/" + ITEM_ID);
         if (item != null) {
             judge(run, "item", "Item detail", "/v2/items/{id}", DEFAULT_PROFILE, item, ITEM_ID,
-                    n -> missing(n, intField("id"), textField("name"), textField("type")));
+                    ApiCompatibilityChecker::itemProblem);
         }
 
         // 3. Ordinary legacy recipe through the production parser
@@ -294,6 +298,28 @@ public final class ApiCompatibilityChecker {
                 return;
             }
         }
+        if (n.path("id").asInt(-1) != JADE_RECIPE_ID || n.path("output_item_id").asInt(-1) != JADE_OUTPUT_ITEM_ID) {
+            run.add(id, label, ep, PINNED_PROFILE, Status.MISMATCH, "SHAPE_MISMATCH",
+                    "The canary answered with a different recipe or output item than the fixed sample.");
+            return;
+        }
+        if (n.path("output_item_count").asInt(0) <= 0) {
+            run.add(id, label, ep, PINNED_PROFILE, Status.MISMATCH, "SHAPE_MISMATCH", "The canary output count is not positive.");
+            return;
+        }
+        boolean hasResearchNotes = false;
+        for (JsonNode ing : typed) {
+            if (ing.path("count").asInt(0) <= 0) {
+                run.add(id, label, ep, PINNED_PROFILE, Status.MISMATCH, "SHAPE_MISMATCH", "An ingredient quantity is not positive.");
+                return;
+            }
+            if ("Currency".equals(ing.path("type").asText()) && ing.path("id").asInt(-1) == JADE_CURRENCY_ID) hasResearchNotes = true;
+        }
+        if (!hasResearchNotes) {
+            run.add(id, label, ep, PINNED_PROFILE, Status.MISMATCH, "SHAPE_MISMATCH",
+                    "The currency ingredient (Research Notes, currency 61) is no longer required by the canary.");
+            return;
+        }
         boolean describesSplit = desc != null && desc.contains("item_ingredients");
         if (advertised && describesSplit && !n.has("item_ingredients")) {
             run.add(id, label, ep, PINNED_PROFILE, Status.ATTENTION, "DIRECTORY_PAYLOAD_DISCREPANCY",
@@ -325,6 +351,25 @@ public final class ApiCompatibilityChecker {
         }
     }
 
+    /**
+     * Consumed item fields: id/name/type/rarity are required; vendor_value, icon and flags are optional
+     * (absent or null is legitimate) but, when present, must have their real types, never coerced to 0.
+     */
+    static String itemProblem(JsonNode n) {
+        String m = missing(n, intField("id"), textField("name"), textField("type"), textField("rarity"));
+        if (m != null) return m;
+        JsonNode vv = n.get("vendor_value");
+        if (vv != null && !vv.isNull() && !(vv.isIntegralNumber() && vv.asInt() >= 0)) return "vendor_value";
+        JsonNode icon = n.get("icon");
+        if (icon != null && !icon.isNull() && !icon.isTextual()) return "icon";
+        JsonNode flags = n.get("flags");
+        if (flags != null && !flags.isNull()) {
+            if (!flags.isArray()) return "flags";
+            for (JsonNode f : flags) if (!f.isTextual()) return "flags";
+        }
+        return null;
+    }
+
     /** Real production parser expectations for a legacy recipe; {@code null} when readable. */
     static String recipeProblem(JsonNode n) {
         if (n == null || !n.isObject()) return "recipe";
@@ -340,6 +385,12 @@ public final class ApiCompatibilityChecker {
         }
         if (RecipeParser.parseRecipe(n) == null) return "recipe";
         if (RecipeParser.parseIngredients(n).size() != ings.size()) return "unsupported ingredient";
+        // The same strict validator the production full-catalog refresh applies (min_rating, time_to_craft_ms, ...).
+        try {
+            FullCatalogSupport.requireRecipe(n);
+        } catch (IllegalStateException e) {
+            return "recipe (production validation)";
+        }
         return null;
     }
 

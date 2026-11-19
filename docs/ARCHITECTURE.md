@@ -199,9 +199,14 @@ privileged data. Generic health contains no hidden owner payload.
 
 `GET /api/system/api-compatibility` (cached result only) and `POST /api/system/api-compatibility/check`
 are owner-authorized before any read or work; the POST also requires a same Origin and is admitted
-once at a time through the administrative task executor (a duplicate is 409). The checker
-(`api.ApiCompatibilityChecker`) makes at most seven fixed public ArenaNet requests under a two-minute
-bound, compares consumed fields/types and the real `RecipeParser`, reads `/v2.json?v=latest` against
+once at a time through the existing `BackgroundTasks` port's administrative admission (a duplicate is 409;
+the application service does not import the web task package). A checker failure publishes a sanitized
+unsuccessful latest attempt rather than keeping an older success. The checker
+(`api.ApiCompatibilityChecker`) makes at most seven fixed public ArenaNet requests under a cooperative two-minute
+whole-check bound checked between requests; each request is itself bounded by the 1 MiB byte limit
+(accumulation is cancelled while reading) and a wall-clock per-request limit that also covers a stalled
+body (`api.PublicApiTransport`). Item fields, the ordinary recipe (production full-refresh validator)
+and the Jade canary identity/Research Notes currency 61 are verified, not just their type, compares consumed fields/types and the real `RecipeParser`, reads `/v2.json?v=latest` against
 an explicit reviewed version baseline, and classifies probes OK/ATTENTION/UNAVAILABLE/MISMATCH. Only the
 latest result lives in process memory (not-checked after restart; stale after 24 hours); no scheduler,
 history, account endpoint, mutation or automatic API-version migration exists.

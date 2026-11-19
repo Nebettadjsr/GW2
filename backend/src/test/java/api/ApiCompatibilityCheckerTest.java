@@ -30,7 +30,7 @@ class ApiCompatibilityCheckerTest {
             {"v":"2019-02-21T00:00:00.000Z","desc":"Add last_modified."},
             {"v":"2022-03-09T02:00:00.000Z","desc":"Change `ingredients` to `item_ingredients` and add `currency_ingredients` to `/v2/recipes`."},
             {"v":"2025-08-29T01:00:00.000Z","desc":"Remove mount."}]}""";
-    static final String ITEM = "{\"id\":19721,\"name\":\"Glob of Ectoplasm\",\"type\":\"CraftingMaterial\",\"extra\":{\"new\":1}}";
+    static final String ITEM = "{\"id\":19721,\"name\":\"Glob of Ectoplasm\",\"type\":\"CraftingMaterial\",\"rarity\":\"Rare\",\"extra\":{\"new\":1}}";
     static final String RECIPE = "{\"id\":7319,\"type\":\"Refinement\",\"output_item_id\":46742,\"output_item_count\":1,"
             + "\"time_to_craft_ms\":1000,\"disciplines\":[\"Artificer\"],\"min_rating\":400,\"flags\":[],"
             + "\"ingredients\":[{\"item_id\":19721,\"count\":1}],\"chat_link\":\"[&x]\"}";
@@ -102,7 +102,7 @@ class ApiCompatibilityCheckerTest {
 
     @Test
     void splitItemAndCurrencyIngredientsAreAlsoUnderstood() {
-        ok(B + "/v2/recipes/13839?v=" + PINNED, "{\"id\":13839,\"type\":\"Refinement\",\"output_item_id\":1,\"output_item_count\":1,"
+        ok(B + "/v2/recipes/13839?v=" + PINNED, "{\"id\":13839,\"type\":\"Refinement\",\"output_item_id\":97487,\"output_item_count\":1,"
                 + "\"item_ingredients\":[{\"id\":1,\"count\":1}],\"currency_ingredients\":[{\"id\":61,\"count\":3}]}");
         assertEquals("DIRECTORY_PAYLOAD_DISCREPANCY".equals(probe(run(), "jade-pinned").code()), false);
         assertEquals(Status.OK, probe(run(), "jade-pinned").status());
@@ -219,5 +219,49 @@ class ApiCompatibilityCheckerTest {
         var d = run().versions().get(0).description();
         assertTrue(d.length() <= ApiCompatibilityChecker.MAX_DESC + 1);
         assertFalse(d.contains("\n"));
+    }
+
+    @Test
+    void consumedItemFieldsMustHaveRealTypesWhilePresentAndOptionalOnesMayBeAbsent() {
+        String base = "{\"id\":19721,\"name\":\"Glob\",\"type\":\"CraftingMaterial\",\"rarity\":\"Rare\"";
+        ok(B + "/v2/items/19721", base + "}"); // vendor_value, icon and flags legitimately absent
+        assertEquals(Status.OK, probe(run(), "item").status());
+        ok(B + "/v2/items/19721", base + ",\"vendor_value\":null,\"icon\":null,\"flags\":null}");
+        assertEquals(Status.OK, probe(run(), "item").status());
+        for (String bad : new String[] {",\"vendor_value\":\"7\"", ",\"vendor_value\":-1", ",\"icon\":5",
+                ",\"flags\":\"NoSell\"", ",\"flags\":[\"NoSell\",3]"}) {
+            ok(B + "/v2/items/19721", base + bad + "}");
+            var p = probe(run(), "item");
+            assertEquals(Status.MISMATCH, p.status(), bad);
+            assertEquals("SHAPE_MISMATCH", p.code(), bad);
+        }
+        ok(B + "/v2/items/19721", "{\"id\":19721,\"name\":\"Glob\",\"type\":\"CraftingMaterial\"}");
+        assertTrue(probe(run(), "item").detail().contains("rarity"));
+    }
+
+    @Test
+    void jadeCanaryMustKeepItsIdentityAndTheResearchNotesCurrency() {
+        ok(B + "/v2/recipes/13839?v=" + PINNED, JADE_TYPED.replace("97487", "1"));
+        assertEquals(Status.MISMATCH, probe(run(), "jade-pinned").status());
+        ok(B + "/v2/recipes/13839?v=" + PINNED, JADE_TYPED.replace("\"id\":13839", "\"id\":1"));
+        assertEquals(Status.MISMATCH, probe(run(), "jade-pinned").status());
+        // Currency 61 disappeared: only an item ingredient is left.
+        ok(B + "/v2/recipes/13839?v=" + PINNED, JADE_TYPED.replace("{\"type\":\"Currency\",\"id\":61,\"count\":30}", "{\"type\":\"Item\",\"id\":5,\"count\":1}"));
+        var gone = probe(run(), "jade-pinned");
+        assertEquals(Status.MISMATCH, gone.status());
+        assertTrue(gone.detail().contains("currency 61"));
+        // Currency 61 present but with a non-positive quantity.
+        ok(B + "/v2/recipes/13839?v=" + PINNED, JADE_TYPED.replace("\"count\":30", "\"count\":0"));
+        assertEquals(Status.MISMATCH, probe(run(), "jade-pinned").status());
+    }
+
+    @Test
+    void ordinaryRecipeMustSatisfyTheProductionFullRefreshValidator() {
+        ok(B + "/v2/recipes/7319", RECIPE.replace("\"min_rating\":400,", ""));
+        assertEquals(Status.MISMATCH, probe(run(), "recipe").status());
+        ok(B + "/v2/recipes/7319", RECIPE.replace("\"time_to_craft_ms\":1000,", ""));
+        assertEquals(Status.MISMATCH, probe(run(), "recipe").status());
+        ok(B + "/v2/recipes/7319", RECIPE); // control: the unmodified fixture is compatible
+        assertEquals(Status.OK, probe(run(), "recipe").status());
     }
 }

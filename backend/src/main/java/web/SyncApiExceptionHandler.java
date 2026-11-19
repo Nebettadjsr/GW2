@@ -68,6 +68,15 @@ public class SyncApiExceptionHandler {
                                 + e.existingTaskId() + "; query its status instead of starting another"));
     }
 
+    /** The application-layer form of the same refusal, raised through the {@code BackgroundTasks} port. */
+    @ExceptionHandler(application.BackgroundTasks.OperationAlreadyRunning.class)
+    public ResponseEntity<ApiErrorResponse> handleOperationAlreadyRunning(application.BackgroundTasks.OperationAlreadyRunning e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse("SYNC_ALREADY_RUNNING",
+                        "A " + e.operation() + " task is already in progress as task "
+                                + e.existingTaskId() + "; query its status instead of starting another"));
+    }
+
     /** Identifier this process cannot resolve; see {@link UnknownTaskException} for the causes. */
     @ExceptionHandler(UnknownTaskException.class)
     public ResponseEntity<ApiErrorResponse> handleUnknownTask(UnknownTaskException e) {

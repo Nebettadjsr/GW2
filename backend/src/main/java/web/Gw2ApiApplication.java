@@ -221,7 +221,7 @@ public class Gw2ApiApplication {
     /** Owner API compatibility check (STORY-OPS-008); calls ArenaNet only when an owner starts a check. */
     @Bean
     public application.ApiCompatibilityService apiCompatibilityService(BackgroundTaskService tasks) {
-        return new application.ApiCompatibilityService(tasks, api.ApiCompatibilityChecker::live, java.time.Clock.systemUTC());
+        return new application.ApiCompatibilityService(new BackgroundTaskServiceTasks(tasks), api.ApiCompatibilityChecker::live, java.time.Clock.systemUTC());
     }
 
     /**

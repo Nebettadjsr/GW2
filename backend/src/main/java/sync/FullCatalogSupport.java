@@ -14,7 +14,7 @@ import java.util.function.ToIntFunction;
  * Strict validation for the owner full-catalog operations. Failures name the endpoint kind and the
  * defect only, never the payload, and none of them may be treated as a successful run.
  */
-final class FullCatalogSupport {
+public final class FullCatalogSupport {
     private FullCatalogSupport() {}
 
     /** One finite upstream ID snapshot: a non-empty array of distinct positive integers. */
@@ -74,7 +74,7 @@ final class FullCatalogSupport {
      * rarity and a non-negative integer vendor value; optional icon must be text and flags an array of
      * text. The tolerant ordinary {@code ItemParser} is untouched.
      */
-    static JsonNode requireItem(JsonNode n) {
+    public static JsonNode requireItem(JsonNode n) {
         boolean ok = n != null && n.isObject() && intAbove(n, "id", 1)
                 && n.hasNonNull("name") && n.get("name").isTextual()
                 && n.hasNonNull("type") && n.get("type").isTextual()
@@ -93,7 +93,7 @@ final class FullCatalogSupport {
      * positive-quantity ingredients (a missing array is only legitimate for a guild upgrade recipe).
      * Malformed ingredients are rejected rather than skipped, so no incomplete recipe is published.
      */
-    static JsonNode requireRecipe(JsonNode n) {
+    public static JsonNode requireRecipe(JsonNode n) {
         boolean ok = n != null && n.isObject() && intAbove(n, "id", 1)
                 && n.hasNonNull("type") && n.get("type").isTextual()
                 && intAbove(n, "min_rating", 0) && intAbove(n, "time_to_craft_ms", 0)

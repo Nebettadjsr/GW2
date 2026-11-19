@@ -155,4 +155,24 @@ describe('OwnerApiCompatibility', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(read.mock.calls.length).toBe(calls)
   })
+
+  it('preStartReadResolvingAfterStartNeverOverwritesTheNewerRunningState', async () => {
+    for (const old of [NOT_CHECKED, complete('OK')]) {
+      const late = deferred<ApiCompatibilityView>()
+      const read = vi.spyOn(systemApi, 'readApiCompatibility').mockReturnValueOnce(late.promise)
+      vi.spyOn(systemApi, 'startApiCompatibilityCheck').mockResolvedValue(RUNNING)
+      const w = mount()
+      await w.find(sel('api-compat-check')).trigger('click')
+      await flushPromises()
+      expect(w.find(sel('api-compat-state')).text()).toBe('Running…')
+      late.resolve(old) // the older GET answers after POST returned RUNNING
+      await flushPromises()
+      expect(w.find(sel('api-compat-state')).text()).toBe('Running…')
+      read.mockResolvedValueOnce(complete('ATTENTION'))
+      await vi.advanceTimersByTimeAsync(2000) // polling was not stopped by the stale answer
+      expect(w.find(sel('api-compat-state')).text()).toBe('Needs attention')
+      w.unmount()
+      vi.restoreAllMocks()
+    }
+  })
 })

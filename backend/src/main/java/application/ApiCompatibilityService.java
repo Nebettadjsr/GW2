@@ -2,8 +2,6 @@ package application;
 
 import api.ApiCompatibilityChecker;
 import api.ApiCompatibilityResult;
-import web.task.BackgroundTaskService;
-import web.task.TaskAlreadyRunningException;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -24,7 +22,7 @@ public class ApiCompatibilityService {
     /** What the owner sees: the cached result plus server-computed staleness. */
     public record View(ApiCompatibilityResult result, boolean stale) {}
 
-    private final BackgroundTaskService tasks;
+    private final BackgroundTasks tasks;
     private final Supplier<ApiCompatibilityChecker> checker;
     private final Clock clock;
 
@@ -32,15 +30,15 @@ public class ApiCompatibilityService {
     private boolean running;
     private String runningTaskId;
 
-    public ApiCompatibilityService(BackgroundTaskService tasks, Supplier<ApiCompatibilityChecker> checker, Clock clock) {
+    public ApiCompatibilityService(BackgroundTasks tasks, Supplier<ApiCompatibilityChecker> checker, Clock clock) {
         this.tasks = tasks;
         this.checker = checker;
         this.clock = clock;
     }
 
-    /** Admits one check; throws {@link TaskAlreadyRunningException} while one is in flight. */
+    /** Admits one check; throws {@link BackgroundTasks.OperationAlreadyRunning} while one is in flight. */
     public synchronized void start() {
-        if (running) throw new TaskAlreadyRunningException(OPERATION, runningTaskId);
+        if (running) throw new BackgroundTasks.OperationAlreadyRunning(OPERATION, runningTaskId);
         running = true;
         try {
             runningTaskId = tasks.submitAdministrative(OPERATION, this::run);
@@ -55,8 +53,13 @@ public class ApiCompatibilityService {
         try {
             result = checker.get().check();
         } catch (RuntimeException | Error e) {
-            // A checker defect must not look like success or leak: keep the previous result.
-            synchronized (this) { running = false; runningTaskId = null; }
+            // A checker defect must not look like success or leak, and an older green result must not
+            // pass as the latest check: publish a sanitized unsuccessful attempt instead.
+            synchronized (this) {
+                latest = ApiCompatibilityResult.failedAttempt(clock.instant());
+                running = false;
+                runningTaskId = null;
+            }
             throw e;
         }
         synchronized (this) {

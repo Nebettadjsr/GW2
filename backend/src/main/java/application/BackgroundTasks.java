@@ -38,6 +38,15 @@ public interface BackgroundTasks {
         throw new UnsupportedOperationException("keyed exclusion is not supported by this facility");
     }
 
+    /**
+     * Admits {@code work} as administrative owner work: same exclusion rule as {@link #submit}, but the
+     * facility classifies the task as administrative so only the owner may observe it. Facilities
+     * without that classification refuse rather than silently running it as ordinary work.
+     */
+    default String submitAdministrative(String operation, Work work) throws OperationAlreadyRunning {
+        throw new UnsupportedOperationException("administrative admission is not supported by this facility");
+    }
+
     /** The task's last reported state, or empty when this process can no longer identify it. */
     Optional<Status> find(String taskId);
 

@@ -19,6 +19,8 @@ const error = ref<string | null>(null)
 const starting = ref(false)
 
 let epoch = 0
+/** Orders reads against starts: only the newest read/start may publish, so an older GET never overwrites a newer answer. */
+let sequence = 0
 let timer: ReturnType<typeof setTimeout> | null = null
 let unmounted = false
 
@@ -66,11 +68,13 @@ function apply(next: ApiCompatibilityView, live: () => boolean): void {
 async function load(): Promise<void> {
   if (connection.phase !== 'connected' || unmounted) return
   const live = guard()
+  const seq = ++sequence
   try {
     const next = await systemApi.readApiCompatibility()
-    if (!live()) return
+    if (!live() || seq !== sequence) return
     apply(next, live)
   } catch (cause) {
+    if (seq !== sequence) return
     if (handleFailure(cause, live)) return
     // An unreadable status is never shown as a result; keep polling only while a check was known to run.
     error.value = 'The API compatibility result could not be read.'
@@ -81,11 +85,13 @@ async function load(): Promise<void> {
 async function start(): Promise<void> {
   if (starting.value || view.value?.result.state === 'RUNNING' || connection.phase !== 'connected') return
   const live = guard()
+  sequence += 1 // invalidate any outstanding read issued before this start
+  const seq = sequence
   starting.value = true
   error.value = null
   try {
     const next = await systemApi.startApiCompatibilityCheck()
-    if (!live()) return
+    if (!live() || seq !== sequence) return
     apply(next, live)
   } catch (cause) {
     if (handleFailure(cause, live)) return

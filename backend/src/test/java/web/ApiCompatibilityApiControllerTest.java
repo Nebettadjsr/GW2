@@ -55,7 +55,7 @@ class ApiCompatibilityApiControllerTest {
             release.await(10, TimeUnit.SECONDS);
             return new PublicApiTransport.Response(500, "SECRET-UPSTREAM-BODY");
         };
-        var service = new ApiCompatibilityService(tasks,
+        var service = new ApiCompatibilityService(new BackgroundTaskServiceTasks(tasks),
                 () -> new ApiCompatibilityChecker(blocked, Clock.fixed(Instant.parse("2026-11-19T10:00:00Z"), ZoneOffset.UTC), System::nanoTime),
                 new Clock() {
                     @Override public java.time.ZoneId getZone() { return ZoneOffset.UTC; }
@@ -140,6 +140,5 @@ class ApiCompatibilityApiControllerTest {
         mvc.perform(as(get(BASE), OWNER)).andExpect(jsonPath("$.stale").value(false));
         clock = Clock.fixed(Instant.parse("2026-11-20T10:00:01Z"), ZoneOffset.UTC);
         mvc.perform(as(get(BASE), OWNER)).andExpect(jsonPath("$.stale").value(true));
-        assertEquals(ApiCompatibilityResult.State.COMPLETE, ApiCompatibilityResult.State.valueOf("COMPLETE"));
     }
 }

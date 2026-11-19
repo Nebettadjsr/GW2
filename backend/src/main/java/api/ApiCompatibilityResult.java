@@ -38,6 +38,16 @@ public record ApiCompatibilityResult(
         return new ApiCompatibilityResult(State.NOT_CHECKED, null, 0, null, null, List.of(), List.of(), List.of());
     }
 
+    /**
+     * The latest attempt itself failed (a checker defect). Never green and never carries the defect's
+     * text; it replaces any earlier result so an old success cannot pass as the latest check.
+     */
+    public static ApiCompatibilityResult failedAttempt(Instant at) {
+        var probe = new Probe("check", "API compatibility check", "-", "-", Status.UNAVAILABLE, "CHECK_FAILED",
+                "The latest check could not be completed because of an internal error. No result is available.");
+        return new ApiCompatibilityResult(State.COMPLETE, at, 0, Status.UNAVAILABLE, null, List.of(), List.of(), List.of(probe));
+    }
+
     public ApiCompatibilityResult asRunning() {
         return new ApiCompatibilityResult(State.RUNNING, checkedAt, durationMs, overall, recipeProfile,
                 versions, newerVersions, probes);
