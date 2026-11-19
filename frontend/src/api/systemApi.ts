@@ -103,7 +103,31 @@ export interface OperationsPeriod {
 }
 export interface OperationsPeriods { available: boolean; periods: OperationsPeriod[] }
 
+export type CompatStatus = 'OK' | 'ATTENTION' | 'UNAVAILABLE' | 'MISMATCH'
+export interface CompatProbe {
+  id: string; label: string; endpoint: string; profile: string; status: CompatStatus; code: string; detail: string
+}
+export interface CompatVersion { version: string; description: string; reviewed: boolean }
+/** Latest in-process public-API compatibility result; owner-only and cache-only (STORY-OPS-008). */
+export interface ApiCompatibilityView {
+  result: {
+    state: 'NOT_CHECKED' | 'RUNNING' | 'COMPLETE'
+    checkedAt: string | null
+    durationMs: number
+    overall: CompatStatus | null
+    recipeProfile: string | null
+    versions: CompatVersion[]
+    newerVersions: string[]
+    probes: CompatProbe[]
+  }
+  stale: boolean
+}
+
 export const systemApi = {
+  /** Owner-only cached result; never causes an ArenaNet request. */
+  readApiCompatibility(): Promise<ApiCompatibilityView> {
+    return getJson<ApiCompatibilityView>('/system/api-compatibility')
+  },
   /** Owner-only summary; read on explicit request, never polled. */
   readOperationsSummary(): Promise<OperationsSummary> {
     return getJson<OperationsSummary>('/system/operations/summary')

@@ -276,7 +276,7 @@ public final class TpSync {
     }
 
     /** A quote needs a positive id and either both null sides or both well-formed non-negative sides. */
-    private static TpPrice strictQuote(JsonNode p) {
+    public static TpPrice strictQuote(JsonNode p) {
         if (p == null || !p.isObject() || !p.has("id") || !p.get("id").isInt() || p.get("id").asInt() <= 0) {
             throw new IllegalStateException("tp quote is malformed");
         }

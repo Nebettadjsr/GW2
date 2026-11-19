@@ -63,4 +63,31 @@ describe('systemApi', () => {
     await expect(systemApi.downloadOperationsPeriod('d1')).rejects.toMatchObject({ code: ACCOUNT_CHANGED_CODE })
     expect(recover).not.toHaveBeenCalled()
   })
+
+  it('sendsTheApiCompatibilityReadThroughTheAccountTransportWithLeaseHeaders', async () => {
+    const stub = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ state: 'NOT_CHECKED' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    })))
+    vi.stubGlobal('fetch', stub)
+    const begin = vi.fn(async (sendKey: boolean) => ({ generation: 7, headers: { 'X-Account-Context': 'ctx-a' }, sendKey }))
+    const isCurrent = vi.fn(() => true)
+    installAccountTransport(transport({ begin: begin as AccountTransport['begin'], isCurrent }))
+    await systemApi.readApiCompatibility()
+    const calls = stub.mock.calls as unknown as Array<[string, RequestInit]>
+    expect(calls.map((c) => [c[0], c[1].method])).toEqual([
+      ['/api/system/api-compatibility', 'GET']])
+    for (const c of calls) {
+      const h = c[1].headers as Record<string, string>
+      expect(h['X-Account-Context']).toBe('ctx-a')
+      expect(h['X-GW2-API-Key']).toBeUndefined()
+    }
+    expect(begin.mock.calls).toEqual([[false]])
+    expect(isCurrent).toHaveBeenCalled()
+  })
+
+  it('rejectsACompatibilityAnswerArrivingAfterTheAccountChanged', async () => {
+    stubFetch(200, { state: 'NOT_CHECKED' })
+    installAccountTransport(transport({ isCurrent: () => false }))
+    await expect(systemApi.readApiCompatibility()).rejects.toMatchObject({ code: ACCOUNT_CHANGED_CODE })
+  })
 })

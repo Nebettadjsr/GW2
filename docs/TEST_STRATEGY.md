@@ -931,6 +931,8 @@ Formalizes §10's closing line into its own layer:
 - is allowed to fail because of external network/API unavailability without ever making the normal unit/integration suite flaky,
 - must never be the only coverage for parser/sync behavior — Layer 3's fixture-based tests remain the authoritative, always-run coverage; Layer 4 only adds a manual reality-check against the live API.
 
+`ApiCompatibilityLiveIT` runs the owner API compatibility checker (`api.ApiCompatibilityChecker`) against the real public endpoints on demand (`./mvnw test -Dtest=ApiCompatibilityLiveIT`). It prints every probe, fails on a mismatch or unavailable probe, never hardcodes volatile values, and reports the known Jade coverage gap and any newer schema version as attention rather than hiding or failing on them. The automatic schedule is covered offline in `ApiCompatibilitySchedulerTest` (fake task facility; test contexts defer the timer via `src/test/resources/config/application.properties`), and the compact card in `OwnerApiCompatibility.spec.ts`. The same checker is covered offline in `ApiCompatibilityCheckerTest`/`ApiCompatibilityApiControllerTest` with a fake transport and clocks.
+
 ### 31.5 General Principles
 
 - Choose the lowest layer that proves the behavior being tested; do not reach for an integration or live test when a unit test already proves the rule. This applies to browser tests too: a change confined to background/non-UI logic never needs one merely because a UI-adjacent story exists nearby.

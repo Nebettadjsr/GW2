@@ -7,6 +7,7 @@ import ConnectionPanel from '@/account/ConnectionPanel.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import OwnerCatalogControl from './OwnerCatalogControl.vue'
 import OwnerActivity from './OwnerActivity.vue'
+import OwnerApiCompatibility from './OwnerApiCompatibility.vue'
 import type { OwnerOperationKey, SyncOperationKey } from './operations'
 import { useSharedSyncOperations } from './provideSyncOperations'
 import { describeOperationStatus } from './statusPresentation'
@@ -371,6 +372,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
           @trigger="onTrigger(control.key)"
           @retry-status="onRetryStatus(control.key)"
         />
+        <OwnerApiCompatibility @denied="withdrawOwner('not-owner', true)" />
       </div>
       <article class="status-card" data-test="owner-diagnostics">
         <p v-if="ownerDetails.lastFailure" class="status-card__error notice notice--error" data-test="global-last-failure">{{ ownerDetails.lastFailure }}</p>

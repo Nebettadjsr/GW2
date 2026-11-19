@@ -33,6 +33,7 @@ import java.util.logging.Logger;
         AccountSyncApiController.class,
         GlobalSyncApiController.class,
         FullCatalogAdminApiController.class,
+        ApiCompatibilityApiController.class,
         PriceRefreshApiController.class,
         SyncTaskApiController.class})
 public class SyncApiExceptionHandler {
@@ -61,6 +62,15 @@ public class SyncApiExceptionHandler {
      */
     @ExceptionHandler(TaskAlreadyRunningException.class)
     public ResponseEntity<ApiErrorResponse> handleAlreadyRunning(TaskAlreadyRunningException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse("SYNC_ALREADY_RUNNING",
+                        "A " + e.operation() + " task is already in progress as task "
+                                + e.existingTaskId() + "; query its status instead of starting another"));
+    }
+
+    /** The application-layer form of the same refusal, raised through the {@code BackgroundTasks} port. */
+    @ExceptionHandler(application.BackgroundTasks.OperationAlreadyRunning.class)
+    public ResponseEntity<ApiErrorResponse> handleOperationAlreadyRunning(application.BackgroundTasks.OperationAlreadyRunning e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ApiErrorResponse("SYNC_ALREADY_RUNNING",
                         "A " + e.operation() + " task is already in progress as task "
