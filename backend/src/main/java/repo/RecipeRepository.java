@@ -45,11 +45,11 @@ public class RecipeRepository {
                                           Set<Integer> accountUnlocked,
                                           Set<Integer> unlockedByAnyCharacter) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
+        Map<Integer, List<CurrencyRequirement>> currencies = loadCurrencyRequirements(con);
 
         String sqlAll = """
         SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines
         FROM recipes r
-        WHERE NOT EXISTS (SELECT 1 FROM recipe_non_item_requirements n WHERE n.recipe_id = r.recipe_id)
         ORDER BY r.recipe_id
     """;
 
@@ -57,7 +57,6 @@ public class RecipeRepository {
         SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines
         FROM recipes r
         WHERE ? = ANY(r.disciplines)
-          AND NOT EXISTS (SELECT 1 FROM recipe_non_item_requirements n WHERE n.recipe_id = r.recipe_id)
         ORDER BY r.recipe_id
     """;
 
@@ -82,7 +81,7 @@ public class RecipeRepository {
                         unlockedByAnyCharacter.contains(recipeId));
                 if (!known) continue;
 
-                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe, currencies));
             }
         }
 
@@ -105,11 +104,11 @@ public class RecipeRepository {
      */
     public List<Recipe> loadAllRecipes(Connection con) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
+        Map<Integer, List<CurrencyRequirement>> currencies = loadCurrencyRequirements(con);
 
         String sql = """
         SELECT recipe_id, output_item_id, output_item_count,min_rating, disciplines
         FROM recipes r
-        WHERE NOT EXISTS (SELECT 1 FROM recipe_non_item_requirements n WHERE n.recipe_id = r.recipe_id)
         ORDER BY recipe_id
     """;
 
@@ -120,7 +119,7 @@ public class RecipeRepository {
 
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
-                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe));
+                out.add(mapRecipe(rs, recipeId, ingredientsByRecipe, currencies));
             }
         }
 
@@ -129,10 +128,9 @@ public class RecipeRepository {
 
 
     /**
-     * Currency requirements per recipe id. The item-only loaders above leave out every recipe that has any
-     * typed non-item requirement (until the currency-aware planner exists), so such a recipe is never costed
-     * as if the currency were free; this read keeps the exact quantities available for it.
-     * Requirements of an unrecognised kind are not currencies and are excluded here.
+     * Currency requirements per recipe id, kept in their own namespace (never item ids) and attached to
+     * every loaded {@link Recipe}. Requirements of an unrecognised kind are not currencies; full-catalog
+     * validation rejects such a payload instead of publishing it, so none are expected here.
      */
     public Map<Integer, List<CurrencyRequirement>> loadCurrencyRequirements(Connection con) throws SQLException {
         Map<Integer, List<CurrencyRequirement>> map = new HashMap<>();
@@ -149,7 +147,8 @@ public class RecipeRepository {
     }
 
     /** Maps the current {@code recipes} row (id column already read) with its ingredients; one mapping for every read. */
-    private static Recipe mapRecipe(ResultSet rs, int recipeId, Map<Integer, List<Ingredient>> ingredientsByRecipe)
+    private static Recipe mapRecipe(ResultSet rs, int recipeId, Map<Integer, List<Ingredient>> ingredientsByRecipe,
+                                    Map<Integer, List<CurrencyRequirement>> currencies)
             throws SQLException {
         Array discsArr = rs.getArray("disciplines");
         String disciplinesText = "";
@@ -158,7 +157,8 @@ public class RecipeRepository {
             if (discs != null && discs.length > 0) disciplinesText = String.join(", ", discs);
         }
         return new Recipe(recipeId, rs.getInt("output_item_id"), rs.getInt("output_item_count"),
-                rs.getInt("min_rating"), disciplinesText, ingredientsByRecipe.getOrDefault(recipeId, List.of()));
+                rs.getInt("min_rating"), disciplinesText, ingredientsByRecipe.getOrDefault(recipeId, List.of()),
+                currencies.getOrDefault(recipeId, List.of()));
     }
 
     private Map<Integer, List<Ingredient>> loadIngredientsByRecipe(Connection con) throws SQLException {
@@ -315,6 +315,15 @@ public class RecipeRepository {
         String sql = "SELECT COUNT(*) FROM recipes";
         try (Connection conn = repo.Db.open();
              var ps = conn.prepareStatement(sql);
+             var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    public int countRecipeCurrencyRequirements() throws SQLException {
+        try (Connection conn = repo.Db.open();
+             var ps = conn.prepareStatement("SELECT COUNT(*) FROM recipe_non_item_requirements");
              var rs = ps.executeQuery()) {
             rs.next();
             return rs.getInt(1);

@@ -242,6 +242,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             case "/api/sync/account/bank" -> AccountOperation.BANK_READ;
             case "/api/sync/account/materials" -> AccountOperation.MATERIAL_STORAGE_READ;
             case "/api/sync/account/characters" -> AccountOperation.CHARACTERS_READ;
+            case "/api/sync/account/wallet" -> AccountOperation.WALLET_READ;
             case "/api/sync/account/luck" -> AccountOperation.LUCK_READ;
             case "/api/sync/account/character-equipment-tabs" -> AccountOperation.CHARACTER_EQUIPMENT_TABS_READ;
             case "/api/sync/account/character-build-tabs" -> AccountOperation.CHARACTER_BUILD_TABS_READ;

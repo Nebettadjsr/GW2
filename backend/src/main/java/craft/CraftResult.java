@@ -46,6 +46,21 @@ public class CraftResult {
      */
     public boolean unvaluedOwnedInput;
 
+    /**
+     * Currency (by currency id, never item id) one craft consumes including nested crafts; empty for
+     * item-only results. Actual wallet demand, kept apart from any gold valuation (none is applied).
+     */
+    public Map<Integer, Integer> currencyPerCraft = Map.of();
+    /** Currency consumed by the {@link #craftableCount} accepted crafts. */
+    public Map<Integer, Integer> currencyTotal = Map.of();
+    /** KNOWN when a wallet balance was available, UNKNOWN when a currency recipe had none, NOT_REQUIRED otherwise. */
+    public String walletState = "NOT_REQUIRED";
+    /**
+     * True when the per-craft economics describe a hypothetical craft because the wallet blocked every real
+     * craft (craftableCount stays 0): output quote and material costs remain valid and visible.
+     */
+    public boolean economicsFromHypotheticalCraft;
+
     public CraftResult(int outputItemId, String discipline, int craftableCount,
                        Map<Integer, Integer> missingToBuy,
                        Map<Integer, Integer> missingToBuyOne,

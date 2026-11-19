@@ -154,7 +154,8 @@ public class CraftingGraphCache {
                 });
                 deadline.check();
                 deadline.limitTransaction(con);
-                key = "recipes=" + count(con, "recipes") + ";ingredients=" + count(con, "recipe_ingredients");
+                key = "recipes=" + count(con, "recipes") + ";ingredients=" + count(con, "recipe_ingredients")
+                        + ";currencies=" + count(con, "recipe_non_item_requirements");
                 graph = new CraftingGraph(recipes, itemNames);
             } finally {
                 try { con.rollback(); } finally { con.setAutoCommit(auto); }
@@ -187,7 +188,8 @@ public class CraftingGraphCache {
     private String buildCacheKeyFromDb() throws SQLException {
         int recipeCount = recipeRepo.countRecipes();
         int ingredientCount = recipeRepo.countRecipeIngredients();
-        return "recipes=" + recipeCount + ";ingredients=" + ingredientCount;
+        return "recipes=" + recipeCount + ";ingredients=" + ingredientCount
+                + ";currencies=" + recipeRepo.countRecipeCurrencyRequirements();
     }
 
     private CraftingGraph fromDto(CraftingGraphDto dto, Map<Integer, String> itemNames) {
@@ -203,13 +205,21 @@ public class CraftingGraphCache {
                 ));
             }
 
+            List<craft.CurrencyRequirement> currencies = new ArrayList<>();
+            if (r.currencies != null) {
+                for (CraftingGraphDto.IngredientDto cur : r.currencies) {
+                    currencies.add(new craft.CurrencyRequirement(cur.itemId, cur.count));
+                }
+            }
+
             recipes.add(new Recipe(
                     r.recipeId,
                     r.outputItemId,
                     r.outputCount,
                     r.minRating,
                     r.disciplinesText,
-                    ingredients
+                    ingredients,
+                    currencies
             ));
         }
 
@@ -236,6 +246,14 @@ public class CraftingGraphCache {
                 id.itemId = ing.itemId;
                 id.count = ing.count;
                 rd.ingredients.add(id);
+            }
+
+            rd.currencies = new ArrayList<>();
+            for (craft.CurrencyRequirement cur : r.currencies) {
+                CraftingGraphDto.IngredientDto cd = new CraftingGraphDto.IngredientDto();
+                cd.itemId = cur.currencyId(); // field reused as the currency id of this separate list
+                cd.count = cur.count();
+                rd.currencies.add(cd);
             }
 
             dto.recipes.add(rd);

@@ -196,7 +196,7 @@ public class CachedCraftingProfitService {
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope)) {
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(keyed))) {
             captured = capture(session, scope);
             if (captured.usable()) {
                 data = profitServices.apply(session).reload(choice, settings);
@@ -232,7 +232,7 @@ public class CachedCraftingProfitService {
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope)) {
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(keyed))) {
             captured = capture(session, scope);
             if (captured.usable()) {
                 detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
@@ -245,6 +245,11 @@ public class CachedCraftingProfitService {
                 : CONSISTENCY_RECALCULATED_FOR_CHANGED_INPUTS;
 
         return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null, scope, keyed));
+    }
+
+    private static boolean walletAuthorized(KeyedAdmission keyed) {
+        return keyed != null && keyed.context() != null
+                && keyed.context().permits(application.access.AccountOperation.WALLET_READ);
     }
 
     /**

@@ -118,7 +118,7 @@ class CraftingGraphCacheFailureBoundaryTest {
 
         assertSoupGraph(graph);
         String json = Files.readString(cacheFile);
-        assertTrue(json.contains("\"cacheKey\" : \"recipes=1;ingredients=1\""), json);
+        assertTrue(json.contains("\"cacheKey\" : \"recipes=1;ingredients=1;currencies=0\""), json);
         try (Stream<Path> left = Files.list(dir)) {
             assertEquals(List.of(cacheFile), left.toList(), "no temporary file may be left beside the cache");
         }

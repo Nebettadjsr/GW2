@@ -13,6 +13,17 @@ public class PlannerContext {
     public final CraftingSettings settings;
     public final Set<Integer> allowedRecipeIds;
 
+    /** How currency requirements are checked (see {@link WalletMode}). */
+    public enum WalletMode { ENFORCED, IGNORED }
+
+    /**
+     * Account wallet balances by currency id, or {@code null} when the wallet is unknown (no permission,
+     * never refreshed, failed refresh). Unknown is neither zero nor unlimited: a recipe consuming a currency is
+     * then blocked with {@link BlockedReason#WALLET_UNAVAILABLE}. Currency ids are not item ids.
+     */
+    public final Map<Integer, Integer> wallet;
+    public final WalletMode walletMode;
+
     /** Vendor sell value by item id (DOMAIN_SPEC.md 11.2); empty when unknown. Values <= 0 mean none. */
     public final Map<Integer, Integer> vendorValues;
 
@@ -48,7 +59,7 @@ public class PlannerContext {
                           Set<Integer> allowedRecipeIds,
                           List<CharacterCraftingProfile> coordinatedRoster) {
         this(recipesByOutput, tp, settings, allowedRecipeIds, coordinatedRoster,
-                new ConcurrentHashMap<>(), Map.of());
+                new ConcurrentHashMap<>(), Map.of(), null, WalletMode.ENFORCED);
     }
 
     private PlannerContext(Map<Integer, List<Recipe>> recipesByOutput,
@@ -57,8 +68,12 @@ public class PlannerContext {
                            Set<Integer> allowedRecipeIds,
                            List<CharacterCraftingProfile> coordinatedRoster,
                            Map<Integer, List<String>> eligibleCharactersByRecipeId,
-                           Map<Integer, Integer> vendorValues) {
+                           Map<Integer, Integer> vendorValues,
+                           Map<Integer, Integer> wallet,
+                           WalletMode walletMode) {
         this.vendorValues = vendorValues;
+        this.wallet = wallet;
+        this.walletMode = walletMode;
         this.recipesByOutput = recipesByOutput;
         this.tp = tp;
         this.settings = settings;
@@ -76,13 +91,26 @@ public class PlannerContext {
         CraftingSettings noBuySettings = settings.withBuyingDisabled();
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode);
     }
 
     /** This context with vendor sell values for the untradeable-material fallback; shares the memo tables. */
     public PlannerContext withVendorValues(Map<Integer, Integer> vendorValues) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode);
+    }
+
+    /** This context with the account wallet ({@code null} = unknown); shares the memo tables. */
+    public PlannerContext withWallet(Map<Integer, Integer> wallet) {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues,
+                wallet == null ? null : Map.copyOf(wallet), walletMode);
+    }
+
+    /** Hypothetical single-craft economics: currency is still tallied but never limits the craft. */
+    public PlannerContext withWalletIgnored() {
+        return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, WalletMode.IGNORED);
     }
 
     public boolean isCoordinated() {

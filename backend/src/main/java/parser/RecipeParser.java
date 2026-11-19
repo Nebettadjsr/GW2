@@ -115,6 +115,18 @@ public final class RecipeParser {
         return rows;
     }
 
+    /** True when an ingredient has a type this application cannot honour (neither Item nor Currency). */
+    public static boolean hasUnsupportedRequirement(JsonNode r) {
+        JsonNode ingredients = r == null ? null : r.get("ingredients");
+        if (ingredients == null || !ingredients.isArray()) return false;
+        for (JsonNode ing : ingredients) {
+            if (!ing.hasNonNull("type")) continue;
+            String kind = ing.get("type").asText();
+            if (!"Item".equals(kind) && !"Currency".equals(kind)) return true;
+        }
+        return false;
+    }
+
     private static String[] parseStringArray(JsonNode node) {
 
         if (node == null || !node.isArray()) return new String[0];

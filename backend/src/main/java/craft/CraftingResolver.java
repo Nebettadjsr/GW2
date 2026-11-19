@@ -278,7 +278,9 @@ public class CraftingResolver {
 
             BlockedReason craftReason = craftEval == null ? BlockedReason.NONE : craftEval.need.getBlockedReason();
             if (!ctx.settings.allowBuying && craftReason != BlockedReason.MATERIAL_LIMIT
-                    && craftReason != BlockedReason.VALUE_RANGE) {
+                    && craftReason != BlockedReason.VALUE_RANGE
+                    && craftReason != BlockedReason.WALLET_UNAVAILABLE
+                    && craftReason != BlockedReason.INSUFFICIENT_CURRENCY) {
                 // A nested limit/range failure is the real cause and is never masked by this.
                 result.setBlockedReason(BlockedReason.BUYING_DISABLED);
             } else if (craftEval != null && craftEval.need.getBlockedReason() != BlockedReason.NONE) {
@@ -420,6 +422,20 @@ public class CraftingResolver {
 
             int produced = Math.multiplyExact(times, recipe.outputCount);
             int qtySatisfied = Math.min(produced, qtyRequested);
+
+            // Currency is spent from one account-wide wallet pool shared by nested and repeated crafts.
+            // Unknown balance is not zero and not unlimited: the attempt is blocked, and the caller's
+            // rollback restores the pool together with every other resource this attempt touched.
+            for (CurrencyRequirement currency : recipe.currencies) {
+                long needed = (long) currency.count() * times;
+                Integer balance = ctx.wallet == null ? null : ctx.wallet.get(currency.currencyId());
+                boolean enforce = ctx.walletMode == PlannerContext.WalletMode.ENFORCED;
+                if (!state.spendCurrency(currency.currencyId(), needed, balance, enforce)) {
+                    return limitBlocked(craftResult, qtyRequested,
+                            ctx.wallet == null || balance == null
+                                    ? BlockedReason.WALLET_UNAVAILABLE : BlockedReason.INSUFFICIENT_CURRENCY);
+                }
+            }
 
             boolean allChildrenSatisfied = true;
             BlockedReason unsatisfiedChildReason = BlockedReason.NONE;
@@ -651,6 +667,8 @@ public class CraftingResolver {
         try {
             OwnedValue best = OwnedValue.ZERO;
             for (Recipe recipe : ctx.recipesByOutput.getOrDefault(itemId, List.of())) {
+                // A currency-consuming route has no complete gold cost: never value it as if currency were free.
+                if (!recipe.currencies.isEmpty()) continue;
                 OwnedValue total = OwnedValue.ZERO;
                 boolean valued = true;
                 for (Ingredient ing : recipe.ingredients) {

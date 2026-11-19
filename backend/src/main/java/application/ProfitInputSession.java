@@ -37,6 +37,7 @@ public final class ProfitInputSession implements AutoCloseable {
 
     private final Connection connection;
     private final AccountScope scope;
+    private volatile boolean walletAuthorized;
 
     private ProfitInputSession(Connection connection, AccountScope scope) {
         this.connection = connection;
@@ -95,6 +96,19 @@ public final class ProfitInputSession implements AutoCloseable {
      */
     public AccountScope scope() {
         return scope;
+    }
+
+    /**
+     * Whether the request's key context may read the cached wallet ({@code wallet} grant and endpoint). Default
+     * false: a cached wallet is never revealed through a context that has not proven that authority.
+     */
+    public ProfitInputSession authorizeWallet(boolean authorized) {
+        this.walletAuthorized = authorized;
+        return this;
+    }
+
+    public boolean walletAuthorized() {
+        return walletAuthorized;
     }
 
     @Override

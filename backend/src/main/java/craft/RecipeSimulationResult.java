@@ -19,6 +19,8 @@ public class RecipeSimulationResult {
     private int buyCostTotal;
     private int opportunityCostTotal;
     private boolean unvaluedOwnedInput;
+    private Map<Integer, Integer> currencyTotal = Map.of();
+    private Map<Integer, Integer> currencyFirstCraft = Map.of();
 
     private BlockedReason blockedReason = BlockedReason.NONE;
 
@@ -122,4 +124,12 @@ public class RecipeSimulationResult {
     public void setBlockedAttempt(ResolvedNeed blockedAttempt) {
         this.blockedAttempt = blockedAttempt;
     }
+
+    /** Cumulative currency spent by every accepted craft (wallet pool), by currency id. */
+    public Map<Integer, Integer> getCurrencyTotal() { return currencyTotal; }
+    public void setCurrencyTotal(Map<Integer, Integer> value) { this.currencyTotal = value; }
+
+    /** Currency spent by the first accepted craft including nested crafts, by currency id. */
+    public Map<Integer, Integer> getCurrencyFirstCraft() { return currencyFirstCraft; }
+    public void setCurrencyFirstCraft(Map<Integer, Integer> value) { this.currencyFirstCraft = value; }
 }

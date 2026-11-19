@@ -63,6 +63,7 @@ public class AccountRefreshService {
                 new ScopedStep(AccountSyncStateRepository.BANK, () -> gateway.syncAccountBank(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.MATERIALS, () -> gateway.syncAccountMaterials(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.RECIPES, () -> gateway.syncAccountRecipes(scope, fetcher)),
+                new ScopedStep(AccountSyncStateRepository.WALLET, () -> gateway.syncAccountWallet(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.LUCK, () -> gateway.syncAccountLuck(scope, fetcher)),
                 new ScopedStep(AccountSyncStateRepository.CHARACTERS,
                         () -> gateway.syncCharacterCraftingAndRecipes(scope, fetcher)),

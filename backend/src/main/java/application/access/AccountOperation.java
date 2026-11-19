@@ -81,6 +81,9 @@ public enum AccountOperation {
             AccountGrant.UNLOCKS),
             Set.of("/v2/account/bank", "/v2/account/materials", "/v2/account/recipes", "/v2/characters")),
 
+    /** Account wallet balances, stored from {@code /v2/account/wallet}; consumed only by currency recipes. */
+    WALLET_READ(Set.of(AccountGrant.ACCOUNT, AccountGrant.WALLET), Set.of("/v2/account/wallet")),
+
     /** A full account refresh: every account source this application publishes. */
     ACCOUNT_REFRESH(Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES, AccountGrant.CHARACTERS,
             AccountGrant.UNLOCKS, AccountGrant.PROGRESSION),

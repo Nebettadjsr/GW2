@@ -7,6 +7,7 @@ import craft.Recipe;
 import craft.MaterialPurchaseCost;
 import repo.ItemRepository;
 import web.dto.CraftingRowDto;
+import web.dto.CurrencyCostsDto;
 import web.dto.MissingItemDto;
 import web.dto.TradingPostQuoteDto;
 
@@ -63,7 +64,7 @@ final class CraftingRowMapper {
                     false, null, null, null, null, null, null, null, null, null,
                     toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
                     ingredientNames(recipe, items),
-                    iconUrl(recipe.outputItemId, items), false);
+                    iconUrl(recipe.outputItemId, items), false, null);
         }
 
         return new CraftingRowDto(
@@ -88,7 +89,31 @@ final class CraftingRowMapper {
                 toMissing(result.missingToBuyOne, result.materialPurchaseCostsOne, items, tp),
                 ingredientNames(recipe, items),
                 iconUrl(recipe.outputItemId, items),
-                result.unvaluedOwnedInput);
+                result.unvaluedOwnedInput,
+                toCurrencyCosts(result));
+    }
+
+    /** Labels for currencies this application recognises; any other id keeps its exact number. */
+    private static final Map<Integer, String> CURRENCY_NAMES = Map.of(
+            61, "Research Note", 50, "Festival Token", 78, "Fine Rift Essence",
+            79, "Rare Rift Essence", 80, "Masterwork Rift Essence");
+
+    /**
+     * Copies the domain's exact currency spending. The only derived figure is the single-unpriced-currency
+     * break-even (known gold margin / per-craft units); it is withheld for several currencies and for a margin
+     * that is not positive, because no nonnegative currency value can then make the craft profitable.
+     */
+    private static CurrencyCostsDto toCurrencyCosts(CraftResult result) {
+        if (result.currencyPerCraft == null || result.currencyPerCraft.isEmpty()) return null;
+        boolean single = result.currencyPerCraft.size() == 1;
+        List<CurrencyCostsDto.CurrencyCostDto> costs = new ArrayList<>();
+        result.currencyPerCraft.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
+            Integer breakEven = single && result.profitCopper > 0 ? result.profitCopper / e.getValue() : null;
+            costs.add(new CurrencyCostsDto.CurrencyCostDto(e.getKey(),
+                    CURRENCY_NAMES.getOrDefault(e.getKey(), "Currency " + e.getKey()), e.getValue(),
+                    result.currencyTotal.getOrDefault(e.getKey(), 0), breakEven));
+        });
+        return new CurrencyCostsDto(result.walletState, true, result.economicsFromHypotheticalCraft, costs);
     }
 
     /** Sorted by item id purely so the response is stable; the domain's maps are unordered. */

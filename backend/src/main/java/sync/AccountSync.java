@@ -14,6 +14,7 @@ import util.DbBind;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public final class AccountSync {
     private AccountSync() {}
@@ -119,6 +120,53 @@ public final class AccountSync {
                                                                   java.time.Clock clock) throws Exception {
         return publication(clock).publish(con, scope, AccountSyncStateRepository.RECIPES,
                 (tx, owner, runTs) -> upsertScopedAccountRecipes(tx, owner, ids, runTs));
+    }
+
+    /** Fetches and publishes one account's wallet; unknown or malformed payloads publish nothing. */
+    public static void syncAccountWallet(model.AccountScope scope, AuthFetcher fetcher) throws Exception {
+        requireCredentialOwner(scope, fetcher);
+        Map<Integer, Long> balances = parseWallet(fetcher.get("https://api.guildwars2.com/v2/account/wallet"));
+        try (Connection con = Db.open()) {
+            publishWallet(con, scope, balances, java.time.Clock.systemUTC());
+        }
+    }
+
+    static repo.AccountSourcePublication.Published publishWallet(Connection con, model.AccountScope scope,
+                                                                 Map<Integer, Long> balances,
+                                                                 java.time.Clock clock) throws Exception {
+        return publication(clock).publish(con, scope, AccountSyncStateRepository.WALLET,
+                (tx, owner, runTs) -> {
+                    try (PreparedStatement ps = tx.prepareStatement("""
+                            INSERT INTO account_wallet (account_id, currency_id, value, fetched_at)
+                            VALUES (?, ?, ?, ?)
+                            ON CONFLICT (account_id, currency_id)
+                            DO UPDATE SET value = EXCLUDED.value, fetched_at = EXCLUDED.fetched_at
+                            """)) {
+                        for (var e : balances.entrySet()) {
+                            ps.setObject(1, owner.accountId());
+                            ps.setInt(2, e.getKey());
+                            ps.setLong(3, e.getValue());
+                            ps.setTimestamp(4, runTs);
+                            ps.addBatch();
+                        }
+                        ps.executeBatch();
+                    }
+                    deleteStale(tx, owner, "account_wallet", runTs);
+                });
+    }
+
+    /** {@code [{id, value}]} to currency id -> balance; a malformed entry rejects the whole payload. */
+    static Map<Integer, Long> parseWallet(JsonNode root) {
+        if (root == null || !root.isArray()) throw new RuntimeException("Unexpected JSON (wallet): not an array");
+        Map<Integer, Long> out = new java.util.LinkedHashMap<>();
+        for (JsonNode e : root) {
+            if (!e.isObject() || !e.path("id").isInt() || e.path("id").asInt() <= 0
+                    || !e.path("value").canConvertToLong() || e.path("value").asLong() < 0
+                    || out.put(e.get("id").asInt(), e.get("value").asLong()) != null) {
+                throw new RuntimeException("Unexpected JSON (wallet): malformed entry; nothing published");
+            }
+        }
+        return out;
     }
 
     /**

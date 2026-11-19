@@ -56,6 +56,7 @@ public class RecipeSimulator {
         // resolver call sees buying disabled too; daily crafting remains independently controlled.
         simulatePhase(recipe, ctx, state, result);
 
+        result.setCurrencyTotal(state.currencySpentSnapshot());
         return result;
     }
 
@@ -78,6 +79,7 @@ public class RecipeSimulator {
             // these up-to-250 iterations copied the entire state before attempting
             // (STORY-PERF-001).
             int mark = state.mark();
+            Map<Integer, Integer> spentBefore = state.currencySpentSnapshot();
 
             ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, state);
             ResolvedNeed root = rr.getRoot();
@@ -129,6 +131,7 @@ public class RecipeSimulator {
 
             if (result.getCraftCount() == 0) {
                 result.setFirstCraft(root);
+                result.setCurrencyFirstCraft(difference(state.currencySpentSnapshot(), spentBefore));
             }
 
             if (captureAcceptedCrafts) result.addAcceptedCraft(root);
@@ -164,6 +167,16 @@ public class RecipeSimulator {
         long sellTotal = (long) revenueOne * crafts;
         long profit = sellTotal - feeOne * crafts - buyTotal - opportunityTotal;
         return fits(sellTotal) && fits(profit);
+    }
+
+    private static Map<Integer, Integer> difference(Map<Integer, Integer> after, Map<Integer, Integer> before) {
+        if (after.isEmpty()) return Map.of();
+        Map<Integer, Integer> delta = new java.util.TreeMap<>();
+        after.forEach((id, spent) -> {
+            int d = spent - before.getOrDefault(id, 0);
+            if (d > 0) delta.put(id, d);
+        });
+        return Map.copyOf(delta);
     }
 
     private static boolean fits(long value) {

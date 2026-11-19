@@ -113,10 +113,23 @@ public final class FullCatalogSupport {
             } else if (!ing.isArray()) {
                 ok = false;
             } else {
-                Set<Integer> items = new HashSet<>();
+                // Pinned typed schema: {type: Item|Currency, id, count}; legacy {item_id, count} remains valid.
+                // Identity is the (kind, id) pair, so an Item and a Currency with equal numbers never collide
+                // and an unsupported kind is rejected instead of being dropped.
+                Set<String> identities = new HashSet<>();
                 for (JsonNode i : ing) {
-                    if (!i.isObject() || !intAbove(i, "item_id", 1) || !intAbove(i, "count", 1)
-                            || !items.add(i.get("item_id").asInt())) {
+                    String kind;
+                    String idField;
+                    if (i.isObject() && i.hasNonNull("type")) {
+                        kind = i.get("type").isTextual() ? i.get("type").asText() : "";
+                        idField = "id";
+                        if (!"Item".equals(kind) && !"Currency".equals(kind)) { ok = false; break; }
+                    } else {
+                        kind = "Item";
+                        idField = "item_id";
+                    }
+                    if (!i.isObject() || !intAbove(i, idField, 1) || !intAbove(i, "count", 1)
+                            || !identities.add(kind + ":" + i.get(idField).asInt())) {
                         ok = false;
                         break;
                     }

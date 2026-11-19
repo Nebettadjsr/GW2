@@ -111,14 +111,33 @@ public class AccountSyncApiController {
     public ResponseEntity<?> syncAccount(HttpServletRequest request,
                                          @RequestBody(required = false) Map<String, Object> body) {
         SyncRequestValidation.rejectAnyRequestField(ACCOUNT_SYNC_PATH, body);
-        return admit(request, FULL_SOURCES);
+        return admit(request, withWalletWhenGranted(request, FULL_SOURCES));
     }
 
     @PostMapping(path = "/account/crafting-profit", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> syncCraftingProfitData(HttpServletRequest request,
                                                     @RequestBody(required = false) Map<String, Object> body) {
         SyncRequestValidation.rejectAnyRequestField("/api/sync/account/crafting-profit", body);
-        return admit(request, PROFIT_SOURCES);
+        return admit(request, withWalletWhenGranted(request, PROFIT_SOURCES));
+    }
+
+    @PostMapping(path = "/account/wallet", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> syncWallet(HttpServletRequest request,
+                                        @RequestBody(required = false) Map<String, Object> body) {
+        SyncRequestValidation.rejectAnyRequestField("/api/sync/account/wallet", body);
+        return admit(request, Set.of(AccountSyncStateRepository.WALLET));
+    }
+
+    /**
+     * The wallet is optional: only a key holding the {@code wallet} grant adds it, so an item-only key still
+     * refreshes every other source and never needs (or fails for lack of) that permission.
+     */
+    private static Set<String> withWalletWhenGranted(HttpServletRequest request, Set<String> sources) {
+        var context = RequestAccountContext.required(request);
+        if (!context.permits(application.access.AccountOperation.WALLET_READ)) return sources;
+        Set<String> withWallet = new LinkedHashSet<>(sources);
+        withWallet.add(AccountSyncStateRepository.WALLET);
+        return withWallet;
     }
 
     @PostMapping(path = "/account/bank", produces = MediaType.APPLICATION_JSON_VALUE)

@@ -15,13 +15,26 @@ public final class RecipeSync {
 
     private RecipeSync() {}
 
+    /**
+     * The one explicitly supported recipe schema, used for the ID catalog, every batched detail read and
+     * validation alike (never a global {@code latest}, never mixed): the default schema omits recipes such as
+     * 13839 that only exist with typed {@code {type,id,count}} ingredients. Item and currency ids are
+     * different namespaces in this schema.
+     */
+    public static final String SCHEMA_VERSION = "2022-03-09T02:00:00.000Z";
+    public static final String CATALOG_URL = "https://api.guildwars2.com/v2/recipes?v=" + SCHEMA_VERSION;
+
+    static String detailUrl(String idsParam) {
+        return "https://api.guildwars2.com/v2/recipes?ids=" + idsParam + "&v=" + SCHEMA_VERSION;
+    }
+
     /** Test seam: upstream fetch. Production keeps the real HTTP client. */
     static volatile PublicArrayFetcher fetcher = Gw2ApiClient::getPublicArray;
 
     public static boolean syncAllRecipesGlobalSafe() throws Exception {
 
         JsonNode idsRoot = fetcher.get(
-                "https://api.guildwars2.com/v2/recipes");
+                CATALOG_URL);
 
         List<Integer> ids = IdListParser.parseIntArray(idsRoot, "recipes");
 
@@ -51,7 +64,7 @@ public final class RecipeSync {
                 String idsParam = BatchUtils.idsParam(batch);
                 if (idsParam.isBlank()) continue;
 
-                String url = "https://api.guildwars2.com/v2/recipes?ids=" + idsParam;
+                String url = detailUrl(idsParam);
                 JsonNode root = fetcher.get(url);
 
                 List<RecipeParser.RecipeRow> rows = new ArrayList<>(root.size());
@@ -62,6 +75,11 @@ public final class RecipeSync {
 
                     var rr = RecipeParser.parseRecipe(r);
                     if (rr == null) continue;
+                    if (RecipeParser.hasUnsupportedRequirement(r)) {
+                        // Unsupported ingredient type: never publish a recipe with a silently dropped requirement.
+                        System.out.println("Skipping recipe " + rr.recipeId() + ": unsupported ingredient type");
+                        continue;
+                    }
 
                     rows.add(rr);
 
@@ -126,7 +144,7 @@ public final class RecipeSync {
      */
     static void syncAllRecipesFull(TaskDeadline deadline) throws Exception {
         deadline.check();
-        List<Integer> ids = FullCatalogSupport.parseIdSnapshot(fetcher.get("https://api.guildwars2.com/v2/recipes"), "recipes");
+        List<Integer> ids = FullCatalogSupport.parseIdSnapshot(fetcher.get(CATALOG_URL), "recipes");
         Set<Integer> remoteIds = new HashSet<>(ids);
 
         markPublication(false, deadline);
@@ -138,7 +156,7 @@ public final class RecipeSync {
              PreparedStatement psNow = con.prepareStatement("SELECT now()")) {
             for (List<Integer> batch : BatchUtils.chunk(ids, SyncConstants.HTTP_IDS_BATCH)) {
                 deadline.check();
-                JsonNode root = fetcher.get("https://api.guildwars2.com/v2/recipes?ids=" + BatchUtils.idsParam(batch));
+                JsonNode root = fetcher.get(detailUrl(BatchUtils.idsParam(batch)));
                 deadline.check();
                 List<RecipeParser.RecipeRow> rows = FullCatalogSupport.parseExact(
                         root, batch, n -> RecipeParser.parseRecipe(FullCatalogSupport.requireRecipe(n)),

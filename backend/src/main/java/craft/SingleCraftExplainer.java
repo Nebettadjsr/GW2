@@ -29,12 +29,19 @@ import java.util.Set;
 public final class SingleCraftExplainer {
 
     private final Map<Integer, Integer> vendorValues;
+    private Map<Integer, Integer> wallet; // null = unknown
 
     public SingleCraftExplainer() {
         this(Map.of());
     }
 
     /** An explainer valuing untradeable owned materials with these vendor values (DOMAIN_SPEC.md 11.2). */
+    /** Explains against this account wallet (currency id to balance); {@code null} = unknown. */
+    public SingleCraftExplainer withWallet(Map<Integer, Integer> wallet) {
+        this.wallet = wallet == null ? null : Map.copyOf(wallet);
+        return this;
+    }
+
     public SingleCraftExplainer(Map<Integer, Integer> vendorValues) {
         this.vendorValues = Map.copyOf(vendorValues);
     }
@@ -61,7 +68,7 @@ public final class SingleCraftExplainer {
                                                    ) {
 
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds).withVendorValues(vendorValues).withWallet(wallet);
 
         return explain(recipe, ctx, new PlanState(sellableInventory, boundInventory), 1);
     }
@@ -86,7 +93,7 @@ public final class SingleCraftExplainer {
                                                     ) {
 
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
 
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory), 1);
@@ -111,7 +118,7 @@ public final class SingleCraftExplainer {
             int countedCrafts
     ) {
         PlannerContext ctx = new PlannerContext(
-                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues);
+                CraftingPlanner.buildRecipesByOutput(recipes), tp, settings, allowedRecipeIds, roster).withVendorValues(vendorValues).withWallet(wallet);
         return explain(recipe, ctx,
                 new PlanState(sellableInventory, accountBoundInventory, characterBoundInventory),
                 Math.max(1, countedCrafts));

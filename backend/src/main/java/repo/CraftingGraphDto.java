@@ -18,6 +18,8 @@ public class CraftingGraphDto {
         public int minRating;
         public String disciplinesText;
         public List<IngredientDto> ingredients;
+        /** Currency requirements (currency id, never item id); absent in caches written before currencies. */
+        public List<IngredientDto> currencies;
     }
 
     public static class IngredientDto {

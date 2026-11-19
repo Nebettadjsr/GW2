@@ -38,10 +38,11 @@ public class ApiCompatibilityChecker {
     public static final String CHANGELOG_URL = "https://wiki.guildwars2.com/wiki/API:Changelog";
     public static final String SCHEMA_DOC_URL = "https://wiki.guildwars2.com/wiki/API:2#Schemas";
 
-    /** Honest label of the current production recipe requests (RecipeSync sends no {@code v=}). */
-    public static final String RECIPE_PROFILE = "legacy default (unpinned)";
-    public static final String PINNED_RECIPE_VERSION = "2022-03-09T02:00:00.000Z";
-    static final String PINNED_PROFILE = "v=" + PINNED_RECIPE_VERSION + " (explicit, not used by production)";
+    /** The one recipe schema production {@code RecipeSync} requests for catalog, details and validation. */
+    public static final String PINNED_RECIPE_VERSION = sync.RecipeSync.SCHEMA_VERSION;
+    /** Honest label of the production recipe requests: explicitly pinned, typed Item/Currency ingredients. */
+    public static final String RECIPE_PROFILE = "v=" + PINNED_RECIPE_VERSION + " (explicit, production)";
+    static final String PINNED_PROFILE = RECIPE_PROFILE;
     static final String DEFAULT_PROFILE = "default (unpinned)";
 
     /** Explicitly reviewed schema versions; a newer advertised one needs owner review, not an alarm. */
@@ -213,7 +214,8 @@ public class ApiCompatibilityChecker {
         }
 
         // 3. Ordinary legacy recipe through the production parser
-        Fetched recipe = run.fetch("recipe", "Recipe detail", "/v2/recipes/{id}", RECIPE_PROFILE, BASE + "/v2/recipes/" + RECIPE_ID);
+        Fetched recipe = run.fetch("recipe", "Recipe detail", "/v2/recipes/{id}", RECIPE_PROFILE,
+                BASE + "/v2/recipes/" + RECIPE_ID + "?v=" + PINNED_RECIPE_VERSION);
         if (recipe != null) {
             judge(run, "recipe", "Recipe detail", "/v2/recipes/{id}", RECIPE_PROFILE, recipe, RECIPE_ID,
                     ApiCompatibilityChecker::recipeProblem);
@@ -260,19 +262,17 @@ public class ApiCompatibilityChecker {
         }
 
         // 6. Jade canary, current default profile
-        Fetched jadeDefault = run.fetch("jade-default", "Jade recipe, current default", "/v2/recipes/13839", RECIPE_PROFILE,
+        Fetched jadeDefault = run.fetch("jade-default", "Jade recipe, current default", "/v2/recipes/13839", DEFAULT_PROFILE,
                 BASE + "/v2/recipes/" + JADE_RECIPE_ID);
         if (jadeDefault != null) {
             if (jadeDefault.status() == 404) {
-                run.add("jade-default", "Jade recipe, current default", "/v2/recipes/13839", RECIPE_PROFILE, Status.ATTENTION,
-                        "KNOWN_COVERAGE_GAP", "Absent from the default catalog; the app's unpinned recipe sync cannot see it. Known app coverage gap, not an upstream mismatch.");
+                run.add("jade-default", "Jade recipe, current default", "/v2/recipes/13839", DEFAULT_PROFILE, Status.OK,
+                        "DEFAULT_SCHEMA_OMITS_RECIPE", "Absent from the default schema, as expected; production requests the explicit pinned schema, so this is informational only.");
             } else {
                 String problem = recipeProblem(jadeDefault.json());
-                run.add("jade-default", "Jade recipe, current default", "/v2/recipes/13839", RECIPE_PROFILE,
-                        problem == null ? Status.OK : Status.ATTENTION,
-                        problem == null ? "COMPATIBLE" : "KNOWN_COVERAGE_GAP",
-                        problem == null ? "Now present with ingredients our parser reads."
-                                : "Present, but not fully readable by the current app profile (" + problem + "). Known app coverage gap.");
+                run.add("jade-default", "Jade recipe, current default", "/v2/recipes/13839", DEFAULT_PROFILE,
+                        Status.OK, "COMPATIBLE",
+                        "Present in the default schema" + (problem == null ? "." : " (differently shaped: " + problem + "); production uses the pinned schema."));
             }
         }
 
@@ -391,12 +391,15 @@ public class ApiCompatibilityChecker {
         JsonNode ings = n.get("ingredients");
         if (ings.isEmpty()) return "ingredients";
         for (JsonNode ing : ings) {
-            if (ing.has("type") && !"Item".equals(ing.path("type").asText())) return "unsupported ingredient";
-            if (!ing.has("item_id") && ing.has("id")) return "unsupported ingredient";
-            if (!ing.path("item_id").isInt() || !ing.path("count").isInt()) return "ingredients";
+            boolean typed = ing.has("type");
+            if (typed && !"Item".equals(ing.path("type").asText()) && !"Currency".equals(ing.path("type").asText()))
+                return "unsupported ingredient";
+            if (!ing.path(typed ? "id" : "item_id").isInt() || !ing.path("count").isInt()) return "ingredients";
         }
         if (RecipeParser.parseRecipe(n) == null) return "recipe";
-        if (RecipeParser.parseIngredients(n).size() != ings.size()) return "unsupported ingredient";
+        // Every requirement must reach either the item or the currency rows: nothing silently dropped.
+        if (RecipeParser.parseIngredients(n).size() + RecipeParser.parseNonItemRequirements(n).size() != ings.size())
+            return "unsupported ingredient";
         // The same strict validator the production full-catalog refresh applies (min_rating, time_to_craft_ms, ...).
         try {
             FullCatalogSupport.requireRecipe(n);
