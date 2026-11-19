@@ -61,7 +61,7 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 **Risk:** recipes that exist only under newer schemas are invisible or have no readable ingredients. The check samples a small fixed public set; authenticated account endpoint payloads are not live-verified.
 
-**Follow-up:** a separately approved story must choose and migrate to an explicit supported schema version; the check never switches production versions itself. Currency valuation is owned by #372.
+**Follow-up:** a separately approved story must choose and migrate to an explicit supported schema version; the check never switches production versions itself. Currency valuation is owned by #372 (see DOMAIN_SPEC 2.1.0); production sync stays unpinned until that migration so Jade-class recipes are not yet synced. The parser and storage already accept the typed shape.
 
 Evidence: `sync/RecipeSync.java`, `parser/RecipeParser.java`, `api/ApiCompatibilityChecker.java`.
 

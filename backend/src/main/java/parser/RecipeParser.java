@@ -28,6 +28,12 @@ public final class RecipeParser {
             int count
     ) {}
 
+    /**
+     * A typed non-item recipe requirement, e.g. {@code Currency} 61 (Research Note). It is kept apart from
+     * {@link IngredientRow} so item-only economics are unchanged and a currency id is never mistaken for an item id.
+     */
+    public record RequirementRow(int recipeId, String kind, int refId, int count) {}
+
     public static RecipeRow parseRecipe(JsonNode r) {
 
         if (r == null || r.isNull()) return null;
@@ -79,7 +85,9 @@ public final class RecipeParser {
 
         for (JsonNode ing : ingredients) {
 
-            int itemId = ing.path("item_id").asInt(0);
+            String kind = ing.path("type").asText("Item");
+            if (!"Item".equals(kind)) continue;
+            int itemId = ing.path("item_id").asInt(ing.path("id").asInt(0));
             int count = ing.path("count").asInt(0);
 
             if (itemId <= 0 || count <= 0) continue;
@@ -87,6 +95,23 @@ public final class RecipeParser {
             rows.add(new IngredientRow(recipeId, itemId, count));
         }
 
+        return rows;
+    }
+
+    /** Typed non-item requirements (currencies and any other unrecognised kind) of one recipe, in payload order. */
+    public static List<RequirementRow> parseNonItemRequirements(JsonNode r) {
+        List<RequirementRow> rows = new ArrayList<>();
+        if (r == null) return rows;
+        int recipeId = r.path("id").asInt(0);
+        JsonNode ingredients = r.get("ingredients");
+        if (recipeId <= 0 || ingredients == null || !ingredients.isArray()) return rows;
+        for (JsonNode ing : ingredients) {
+            if (!ing.hasNonNull("type") || "Item".equals(ing.get("type").asText())) continue;
+            int refId = ing.path("id").asInt(0);
+            int count = ing.path("count").asInt(0);
+            if (refId <= 0 || count <= 0) continue;
+            rows.add(new RequirementRow(recipeId, ing.get("type").asText(), refId, count));
+        }
         return rows;
     }
 

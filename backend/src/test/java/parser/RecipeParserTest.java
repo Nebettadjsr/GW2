@@ -52,4 +52,29 @@ class RecipeParserTest {
         assertEquals(new RecipeParser.IngredientRow(7319, 19721, 1), rows.get(1));
         assertEquals(new RecipeParser.IngredientRow(7319, 46747, 10), rows.get(2));
     }
+
+    @Test
+    void typedPayloadSeparatesItemIngredientsFromCurrencyRequirements() throws Exception {
+        JsonNode recipe = MAPPER.readTree("""
+            {"id":13839,"type":"Jade","output_item_id":97487,"output_item_count":1,"ingredients":[
+              {"type":"Item","id":97102,"count":4},
+              {"type":"Item","id":19721,"count":2},
+              {"type":"Currency","id":61,"count":30},
+              {"type":"Currency","id":50,"count":0},
+              {"type":"Mystery","id":7,"count":1}]}
+            """);
+
+        List<RecipeParser.IngredientRow> items = RecipeParser.parseIngredients(recipe);
+        List<RecipeParser.RequirementRow> others = RecipeParser.parseNonItemRequirements(recipe);
+
+        assertEquals(List.of(new RecipeParser.IngredientRow(13839, 97102, 4),
+                new RecipeParser.IngredientRow(13839, 19721, 2)), items);
+        assertEquals(List.of(new RecipeParser.RequirementRow(13839, "Currency", 61, 30),
+                new RecipeParser.RequirementRow(13839, "Mystery", 7, 1)), others);
+    }
+
+    @Test
+    void legacyPayloadHasNoNonItemRequirements() throws Exception {
+        assertEquals(List.of(), RecipeParser.parseNonItemRequirements(loadFixture("/parser/recipe_7319.json")));
+    }
 }

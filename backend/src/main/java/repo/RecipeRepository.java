@@ -1,5 +1,6 @@
 package repo;
 
+import craft.CurrencyRequirement;
 import craft.Ingredient;
 import craft.Recipe;
 import craft.RecipeKnowledgePolicy;
@@ -48,6 +49,7 @@ public class RecipeRepository {
         String sqlAll = """
         SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines
         FROM recipes r
+        WHERE NOT EXISTS (SELECT 1 FROM recipe_non_item_requirements n WHERE n.recipe_id = r.recipe_id)
         ORDER BY r.recipe_id
     """;
 
@@ -55,6 +57,7 @@ public class RecipeRepository {
         SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines
         FROM recipes r
         WHERE ? = ANY(r.disciplines)
+          AND NOT EXISTS (SELECT 1 FROM recipe_non_item_requirements n WHERE n.recipe_id = r.recipe_id)
         ORDER BY r.recipe_id
     """;
 
@@ -105,7 +108,8 @@ public class RecipeRepository {
 
         String sql = """
         SELECT recipe_id, output_item_id, output_item_count,min_rating, disciplines
-        FROM recipes
+        FROM recipes r
+        WHERE NOT EXISTS (SELECT 1 FROM recipe_non_item_requirements n WHERE n.recipe_id = r.recipe_id)
         ORDER BY recipe_id
     """;
 
@@ -123,6 +127,26 @@ public class RecipeRepository {
         return out;
     }
 
+
+    /**
+     * Currency requirements per recipe id. The item-only loaders above leave out every recipe that has any
+     * typed non-item requirement (until the currency-aware planner exists), so such a recipe is never costed
+     * as if the currency were free; this read keeps the exact quantities available for it.
+     * Requirements of an unrecognised kind are not currencies and are excluded here.
+     */
+    public Map<Integer, List<CurrencyRequirement>> loadCurrencyRequirements(Connection con) throws SQLException {
+        Map<Integer, List<CurrencyRequirement>> map = new HashMap<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT recipe_id, ref_id, count FROM recipe_non_item_requirements
+                WHERE kind = 'Currency' ORDER BY recipe_id, ref_id""");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                map.computeIfAbsent(rs.getInt(1), k -> new ArrayList<>())
+                        .add(new CurrencyRequirement(rs.getInt(2), rs.getInt(3)));
+            }
+        }
+        return map;
+    }
 
     /** Maps the current {@code recipes} row (id column already read) with its ingredients; one mapping for every read. */
     private static Recipe mapRecipe(ResultSet rs, int recipeId, Map<Integer, List<Ingredient>> ingredientsByRecipe)

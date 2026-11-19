@@ -76,6 +76,16 @@ The analysis may consider:
 
 ---
 
+## 2.1.0 Currency requirements (owner decision, issue #372)
+
+Recipes may consume currencies (for example 30 Research Notes for Piece of Dragon Jade). Currency ids are a separate namespace from item ids; requirements are typed, exact and per craft.
+
+- First stage: show separate currency costs and a conditional gold margin; verified conversions come later. Automatic conversion/research-acquisition estimators and custom per-currency gold values are deferred.
+- Wallet balance decides whether a craft can be afforded; valuation decides its economic cost. An unavailable wallet is unknown, never zero or unlimited, and must not disable item-only workflows.
+- An unpriced currency is never valued at zero. A gold margin with unpriced currencies is conditional, not a complete profit. If exactly one currency is unpriced and the known margin is positive, the break-even gold value per unit is the margin divided by its per-craft quantity; with several unpriced currencies each is listed without one invented rate. A nonpositive known margin cannot become profitable by valuing currencies non-negatively.
+- Currency quantities and gold valuation basis stay separate, so a valuation never changes wallet demand. A currency is never valued from the recipe being evaluated.
+- Implemented so far: typed non-item requirements are parsed and stored (`recipe_non_item_requirements`), and recipes having any are excluded from item-only costing so they are never costed as free. The currency-aware planner, wallet and UI are not yet delivered.
+
 ## 2.1.1 Crafting Profit result presentation
 
 For the human-facing names used for Trading Post quote sides and crafting values, see the canonical [Crafting Glossary](crafting/GLOSSARY.md). This specification remains authoritative for their domain meaning; the glossary explains how those concepts appear in the interface.

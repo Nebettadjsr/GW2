@@ -56,6 +56,7 @@ public final class RecipeSync {
 
                 List<RecipeParser.RecipeRow> rows = new ArrayList<>(root.size());
                 List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
+                List<RecipeParser.RequirementRow> requirementRows = new ArrayList<>();
 
                 for (JsonNode r : root) {
 
@@ -67,6 +68,7 @@ public final class RecipeSync {
                     if (rr.outputItem() > 0)
                         neededItemIds.add(rr.outputItem());
 
+                    requirementRows.addAll(RecipeParser.parseNonItemRequirements(r));
                     var ingredients = RecipeParser.parseIngredients(r);
                     ingredientRows.addAll(ingredients);
                     for (var ing : ingredients)
@@ -88,7 +90,7 @@ public final class RecipeSync {
 
                     upsertRecipes(con, rows, runTs);
                     con.commit();
-                    fetchedBatches.add(new RecipeBatch(List.copyOf(batch), List.copyOf(ingredientRows)));
+                    fetchedBatches.add(new RecipeBatch(List.copyOf(batch), List.copyOf(ingredientRows), List.copyOf(requirementRows)));
 
                 } catch (Exception ex) {
                     con.rollback();
@@ -142,7 +144,9 @@ public final class RecipeSync {
                         root, batch, n -> RecipeParser.parseRecipe(FullCatalogSupport.requireRecipe(n)),
                         RecipeParser.RecipeRow::recipeId, "recipes");
                 List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
+                List<RecipeParser.RequirementRow> requirementRows = new ArrayList<>();
                 for (JsonNode r : root) {
+                    requirementRows.addAll(RecipeParser.parseNonItemRequirements(r));
                     var ingredients = RecipeParser.parseIngredients(r);
                     ingredientRows.addAll(ingredients);
                     for (var ing : ingredients) if (ing.itemId() > 0) neededItemIds.add(ing.itemId());
@@ -160,7 +164,7 @@ public final class RecipeSync {
                     upsertRecipes(con, rows, runTs);
                     deadline.check();
                     con.commit();
-                    fetchedBatches.add(new RecipeBatch(List.copyOf(batch), List.copyOf(ingredientRows)));
+                    fetchedBatches.add(new RecipeBatch(List.copyOf(batch), List.copyOf(ingredientRows), List.copyOf(requirementRows)));
                     deadline.check();
                 } catch (Exception ex) {
                     con.rollback();
@@ -289,7 +293,8 @@ public final class RecipeSync {
     }
 
 
-    private record RecipeBatch(List<Integer> ids, List<RecipeParser.IngredientRow> ingredients) { }
+    private record RecipeBatch(List<Integer> ids, List<RecipeParser.IngredientRow> ingredients,
+                         List<RecipeParser.RequirementRow> requirements) { }
 
     private static void syncRecipeIngredients(List<RecipeBatch> batches, TaskDeadline deadline) throws Exception {
 
@@ -310,7 +315,13 @@ public final class RecipeSync {
                         delete.setArray(1, con.createArrayOf("int4", batch.ids().toArray(Integer[]::new)));
                         delete.executeUpdate();
                     }
+                    try (PreparedStatement delete = con.prepareStatement(
+                            "DELETE FROM recipe_non_item_requirements WHERE recipe_id = ANY (?)")) {
+                        delete.setArray(1, con.createArrayOf("int4", batch.ids().toArray(Integer[]::new)));
+                        delete.executeUpdate();
+                    }
                     upsertRecipeIngredients(con, batch.ingredients());
+                    upsertNonItemRequirements(con, batch.requirements());
                     deadline.check();
                     con.commit();
                     deadline.check();
@@ -330,6 +341,24 @@ public final class RecipeSync {
         }
 
         System.out.println("✅ Global recipes + items + ingredients synced.");
+    }
+
+    /** Writes typed non-item requirements (currencies); a repeated (recipe, kind, id) keeps the latest count. */
+    static void upsertNonItemRequirements(Connection con, List<RecipeParser.RequirementRow> rows) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (recipe_id, kind, ref_id) DO UPDATE SET count = EXCLUDED.count
+                """)) {
+            for (var r : rows) {
+                ps.setInt(1, r.recipeId());
+                ps.setString(2, r.kind());
+                ps.setInt(3, r.refId());
+                ps.setInt(4, r.count());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
     }
 
     /**

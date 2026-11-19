@@ -392,4 +392,29 @@ class RecipeRepositoryTest {
                 "loadMissingDiscoverableRecipeIdsForCharacter must no longer report a recipe known "
                         + "account-wide via another character as missing for a different character");
     }
+
+    @Test
+    void currencyRequirementRecipeIsNotCostedAsItemOnlyButKeepsExactQuantities() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("""
+                INSERT INTO recipes (recipe_id, output_item_id, output_item_count, min_rating, disciplines)
+                VALUES (10, 1000, 1, 0, ARRAY['Chef']), (11, 1100, 1, 0, ARRAY['Chef'])
+                """);
+            st.execute("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (10, 5, 4), (11, 5, 1)");
+            // currency id 61 deliberately equals an existing item id range: namespaces must not mix
+            st.execute("""
+                INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count)
+                VALUES (10, 'Currency', 61, 30), (10, 'Currency', 50, 2), (10, 'Mystery', 9, 1)
+                """);
+            st.execute("INSERT INTO account_recipes (account_id, recipe_id) SELECT '10000000-0000-0000-0000-00000000000a', v FROM (VALUES (10),(11)) t(v)");
+        }
+        RecipeRepository repo = new RecipeRepository();
+
+        assertEquals(List.of(11), repo.loadRecipes(con, A, "All").stream().map(r -> r.recipeId).toList());
+        assertEquals(List.of(11), repo.loadAllRecipes(con).stream().map(r -> r.recipeId).toList());
+        assertEquals(List.of(11), repo.loadRecipesForCharacter(con, A, "x", "Chef").stream().map(r -> r.recipeId).toList());
+        assertEquals(List.of(new craft.CurrencyRequirement(50, 2), new craft.CurrencyRequirement(61, 30)),
+                repo.loadCurrencyRequirements(con).get(10));
+        assertEquals(null, repo.loadCurrencyRequirements(con).get(11));
+    }
 }
