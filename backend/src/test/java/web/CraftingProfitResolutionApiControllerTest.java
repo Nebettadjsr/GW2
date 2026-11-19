@@ -55,7 +55,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * HTTP contract tests for the Crafting Profit resolution-detail route (STORY-API-008,
  * ARCHITECTURE.md section 7, TEST_STRATEGY.md): required inputs, the effective
- * inputs echoed back, the complete envelope and recursive node shape, the §13.4 outcomes, and
+ * inputs echoed back, the complete envelope and recursive node shape, failure outcomes, and
  * request isolation at the boundary.
  *
  * <p>The application service is replaced by a stub that returns a supplied
@@ -272,7 +272,7 @@ class CraftingProfitResolutionApiControllerTest {
         assertEquals(declared, emitted);
     }
 
-    // ---------- the recursive node shape (§13.3) ----------
+    // ---------- the recursive node shape ----------
 
     @Test
     void theRequestedRecipesOwnRootKeepsItsQuantitiesMethodsCostsAndIngredientChildren()
@@ -567,7 +567,7 @@ class CraftingProfitResolutionApiControllerTest {
         assertTrue(body.length() < 4_000, "a cycle must terminate, not serialize a repeating structure");
     }
 
-    // ---------- §13.4 outcomes ----------
+    // ---------- detail failure outcomes ----------
 
     @Test
     void anUnavailableCalculationResultIsACompleted200WithNoTree() throws Exception {

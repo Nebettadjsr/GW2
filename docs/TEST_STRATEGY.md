@@ -62,6 +62,7 @@ They test business rules without:
 - PostgreSQL,
 - HTTP,
 - Docker,
+- UI frameworks such as JavaFX,
 - frontend code,
 - live GW2 API calls.
 
@@ -371,9 +372,10 @@ The frontend test does not recalculate whether the item should have that domain 
 
 ### 12.1 How frontend tests are run
 
-Frontend tests live beside the code they cover, under `frontend/src/**/__tests__/`, and run with
-`npm test` in `frontend/`. They execute components in jsdom against a hand-written stand-in for the
-API client interface; the global `fetch` is not stubbed, and no test starts a backend or a database.
+`npm test` in `frontend/` selects `src/**/*.spec.ts` and `scripts/**/*.spec.mjs` through
+`vite.config.ts`. Component tests use jsdom with injected API stand-ins; transport and integrated
+interaction tests also stub `fetch` to control responses and verify request wiring. These tests
+start no application backend or database and make no live GW2 calls.
 
 Five rules follow from §12 and are worth stating explicitly, because the failure they prevent is
 silent:
@@ -684,7 +686,7 @@ The domain suite should survive changes to presentation and transport technology
 Local execution and full-regression execution have different owners (§36). Locally, run the smallest
 scope that proves the change: the exact affected test, then the affected class/module, then the related
 domain suite only when the change genuinely spans it. Do not run the complete backend, frontend or
-harness suite as routine verification or repeatedly while iterating; GitHub CI owns the full regression
+workflow-helper suite as routine verification or repeatedly while iterating; GitHub CI runs the full regression
 run against the pushed commit and is its authoritative verdict (§36).
 
 A local broad run is justified when a change's blast radius is genuinely unbounded (a shared fixture,
@@ -983,10 +985,18 @@ The methodology below applies unchanged to every route added afterwards — `STO
 ### 35.1 Contract tests (default `./mvnw test` run)
 
 - Build the controller directly with Spring's standalone MockMvc setup (`MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(...)`) rather than a full application context. It exercises the real routing, argument resolution, message conversion and exception-handler mapping without starting a server, a context or a database, so these stay fast enough to belong in the default goal.
-- Substitute the application service through the controller's own constructor seam — the `Supplier<CraftingProfitService>` the production wiring also uses — with a hand-written recording stub rather than a mocking framework, matching the fake-adapter style of the application-layer suites (§8, §31.2).
-- Cover, per §11: a valid request (including the all-defaults request), each validation rule, the applicable missing-resource behavior, and each mapped failure status. A validation test must additionally assert that **no** service instance was created, so "rejected before any calculation starts" is proven rather than assumed.
+- Substitute collaborators through the controller's production constructor seams: Profit receives
+  `CachedCraftingProfitService`, while Discovery uses a per-request service supplier. Existing
+  tests use hand-written recording stubs, matching the fake-adapter style of the application-layer
+  suites (§8, §31.2). Preserve the real scoped signature rather than reviving an unscoped helper.
+- Cover, per §11: a valid request (including all defaults), each validation rule, applicable missing
+  resources and mapped failure statuses. A rejected request must start no calculation. For a
+  factory-backed route, also assert that validation never invoked the factory.
 - Assert on the serialized JSON (`jsonPath`), not on a deserialized copy of the response record: field names are part of the contract, and round-tripping through the same record cannot detect a rename.
-- Where a boundary introduces per-request state, test isolation explicitly: issue successive *and* concurrent requests whose stubbed results are derived from each request's own input, then assert each response carries its own input's result and that no two requests shared a service instance. A stub that returns the same canned value for every call cannot detect leakage.
+- Where a boundary introduces per-request state, issue successive *and* concurrent requests whose
+  stubbed results derive from each request's own input, then assert each response carries only that
+  input's result. Factory-backed paths must create distinct services; a shared cache/coordinator must
+  keep calculation state request-local. A fixed canned response cannot expose leakage.
 - One context-startup test (`@SpringBootTest`) belongs in the default goal as evidence that the entry point genuinely boots and binds a port on the actual Java/Maven setup. Keep it from touching the database — with a per-request service factory, simply never invoking it is enough.
 
 Account access has a separate database-free MVC fixture in
@@ -1074,8 +1084,8 @@ is, what it runs, what it cannot run, and what "verified" therefore means.
 | GitHub Actions (`.github/workflows/ci.yml`) | complete default suites with coverage, type/build, workflow checks, and the STORY-COV-006 controlled browser selection after build | that required deterministic checks and named synthetic journeys pass on the PR head |
 | Local, explicitly invoked | live GW2 API smoke (§31.4), real-backend/full-stack browser checks, focused additional controlled journeys, owner-data `*IT` checks (§34, §35.2) | the explicitly observed integration/state/measurement scope that default CI does not establish |
 
-The gate runs the same commands and test selection as a developer; the split only decides who pays
-for the broad run — CI, once per pushed commit.
+CI runs the complete default selection at the identified commit; local checks stay focused on
+the change. Push, pull-request and explicit dispatch events can produce separate runs.
 
 ### 36.2 What the gate runs
 

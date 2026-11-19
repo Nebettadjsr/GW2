@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Proves the Spring Boot entry point is genuinely runnable on this Java/Maven setup
  * (STORY-API-001 acceptance criterion 1): the context starts, an embedded server binds a port, and
  * the crafting calculation endpoints are wired to their application use cases — Discovery to a
- * per-request service factory, and Profit to the cached-result use case and the shared refresh
+ * per-request service factory, and Profit to the cached-input use case and the shared refresh
  * coordinators STORY-APP-014 introduced.
  *
  * <p>Deliberately does not call the endpoints - that would need the real database. Transport
