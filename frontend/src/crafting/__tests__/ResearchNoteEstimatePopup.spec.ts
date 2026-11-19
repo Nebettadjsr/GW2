@@ -54,6 +54,20 @@ const estimate: NoteEstimate = {
 }
 
 describe('ResearchNoteEstimatePopup', () => {
+  it('waits for selected-detail recipe data before allowing the comparison to open', async () => {
+    const wrapper = mount(ResearchNoteEstimatePopup, { props: { estimate: { ...estimate, variants: [] } } })
+    const trigger = wrapper.find('[data-test="note-estimate-trigger"]')
+    expect((trigger.element as HTMLButtonElement).disabled).toBe(true)
+    await trigger.trigger('click')
+    expect(proto.showModal).not.toHaveBeenCalled()
+    await wrapper.setProps({ estimate })
+    expect((trigger.element as HTMLButtonElement).disabled).toBe(false)
+    await trigger.trigger('click')
+    expect(wrapper.findAll('section[data-test^="note-estimate-variant-"]')).toHaveLength(2)
+    expect((wrapper.find('[data-test="note-estimate-dialog"]').element as HTMLDialogElement).open).toBe(true)
+    wrapper.unmount()
+  })
+
   it('opens on click, shows both recipes with the cheaper one marked, and restores focus on close', async () => {
     const wrapper = mount(ResearchNoteEstimatePopup, { props: { estimate }, attachTo: document.body })
     const trigger = wrapper.find('[data-test="note-estimate-trigger"]')

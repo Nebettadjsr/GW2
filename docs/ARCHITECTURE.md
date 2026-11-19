@@ -259,7 +259,7 @@ there is no graph-generation reuse for those pinned loads yet. A temporary file/
 publishes the rebuilt cache file. Existing readers finish on the graph they captured, and a failed
 rebuild leaves the shared cache invalidated. Cold disk loads validate schema, row counts and the
 existing recipe publication marker; warm in-memory reads add no source query and still require
-invalidation. Incomplete or malformed safe-sync details leave the publication incomplete for retry;
+invalidation. Incomplete, duplicate or malformed safe-sync details leave the publication incomplete for retry;
 only deliberate unsupported-kind skips participate in the complete-catalog fast path.
 This publication mechanism does not establish deep
 immutability of every graph member; shared-generation reuse remains a concrete future improvement.

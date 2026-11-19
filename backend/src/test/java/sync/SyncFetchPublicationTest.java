@@ -585,6 +585,40 @@ class SyncFetchPublicationTest {
     }
 
     @Test
+    void recipeSync_duplicateDetailsQuarantineAllVersionsThenRetryTheSameCatalog() throws Exception {
+        exec("INSERT INTO items (item_id, name) VALUES (10, 'Old item')");
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");
+        exec("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (300, 10, 99)");
+        exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (300, 'Currency', 61, 30)");
+        String first = currencyRecipe(300, "{\"type\":\"Item\",\"id\":11,\"count\":2},{\"type\":\"Currency\",\"id\":61,\"count\":40}");
+        String second = currencyRecipe(300, "{\"type\":\"Item\",\"id\":12,\"count\":3},{\"type\":\"Currency\",\"id\":50,\"count\":5}");
+        RecipeSync.fetcher = url -> url.equals(RecipeSync.CATALOG_URL) ? json("[1,300]")
+                : json("[" + currencyRecipe(1, null) + "," + first + "," + second + "]");
+        ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id=300"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=300"));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("0", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+
+        RecipeSync.fetcher = url -> {
+            urls.add(url);
+            return url.equals(RecipeSync.CATALOG_URL) ? json("[1,300]")
+                    : json("[" + currencyRecipe(1, null) + "," + currencyRecipe(300,
+                            "{\"type\":\"Currency\",\"id\":61,\"count\":60}") + "]");
+        };
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "a duplicate never establishes a permanent skipped id");
+        assertEquals("1", scalar("SELECT count FROM recipe_ingredients WHERE recipe_id=300 AND item_id=10"));
+        assertEquals("61:60", scalar("SELECT ref_id||':'||count FROM recipe_non_item_requirements WHERE recipe_id=300"));
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        urls.clear();
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals(List.of(RecipeSync.CATALOG_URL), urls);
+    }
+
+    @Test
     void completedPublicationInvalidatesModernDiskGraphEvenWhenRowCountsStayEqual() throws Exception {
         java.nio.file.Path file = java.nio.file.Files.createTempFile("gw2-publication-graph", ".json");
         java.nio.file.Files.delete(file);
@@ -707,7 +741,7 @@ class SyncFetchPublicationTest {
 
     @Test
     void tpSync_existingRowIsUpdatedAndFailureOnLaterBatchKeepsEarlierBatch() throws Exception {
-        exec("INSERT INTO tp_prices VALUES (1, 1, 1, 1, 1, now())");
+        exec("INSERT INTO tp_prices VALUES (1, 1, 1, 1, 1, now() - interval '1 hour')");
         int[] call = {0};
         tp(b -> {
             if (++call[0] == 2) throw new IOException("tp down");

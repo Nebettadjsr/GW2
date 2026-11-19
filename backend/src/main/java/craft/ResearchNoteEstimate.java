@@ -87,6 +87,7 @@ public record ResearchNoteEstimate(List<Variant> variants, Integer basisRecipeId
     }
 
     public Variant basis() {
+        if (basisRecipeId == null) return null;
         return variants.stream().filter(v -> v.recipeId() == basisRecipeId).findFirst().orElse(null);
     }
 

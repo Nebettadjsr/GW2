@@ -84,6 +84,9 @@ class ResearchNoteEstimateTest {
 
     @Test
     void whenNeitherVariantCanBePricedNotesStayUnpricedAndConditional() {
+        ResearchNoteEstimate unavailable = ResearchNoteEstimate.compute(Map.of(PRR, List.of(PRR_A, PRR_B)),
+                tp(null, null), OWN_ONLY);
+        assertNull(unavailable.basis(), "missing prices cannot establish a valuation basis");
         CraftResult r = run(CONSUMER, tp(null, null), Map.of(NOTE, 90), Map.of(97102, 100), OWN_ONLY);
         assertEquals(3, r.craftableCount);
         assertTrue(r.unpricedCurrency);

@@ -78,11 +78,19 @@ public final class RecipeSync {
 
                 Set<Integer> requested = new HashSet<>(batch);
                 Set<Integer> accountedIds = new HashSet<>();
+                Set<Integer> duplicateIds = new HashSet<>();
+                // Quarantine every representation of a repeated id before collecting requirements;
+                // choosing either record or merging them would invent an unproven recipe.
+                for (JsonNode r : root) {
+                    var rr = RecipeParser.parseRecipe(r);
+                    if (rr != null && requested.contains(rr.recipeId()) && !accountedIds.add(rr.recipeId())) {
+                        duplicateIds.add(rr.recipeId());
+                    }
+                }
                 for (JsonNode r : root) {
 
                     var rr = RecipeParser.parseRecipe(r);
-                    if (rr == null || !requested.contains(rr.recipeId())) continue;
-                    accountedIds.add(rr.recipeId());
+                    if (rr == null || !requested.contains(rr.recipeId()) || duplicateIds.contains(rr.recipeId())) continue;
                     if (RecipeParser.hasUnsupportedRequirement(r)) {
                         // Unsupported ingredient type: never publish a recipe with a silently dropped requirement.
                         System.out.println("Skipping recipe " + rr.recipeId() + ": unsupported ingredient type");
@@ -123,10 +131,10 @@ public final class RecipeSync {
                 // never clear requirements on their behalf.
                 List<Integer> provenIds = new ArrayList<>(batch.size());
                 for (Integer id : batch) {
-                    if (accountedIds.contains(id)) {
+                    if (accountedIds.contains(id) && !duplicateIds.contains(id)) {
                         provenIds.add(id);
                     } else {
-                        System.out.println("Skipping recipe " + id + ": omitted or malformed detail record");
+                        System.out.println("Skipping recipe " + id + ": omitted, duplicate or malformed detail record");
                         remoteIds.remove(id);
                         skippedIds.add(id);
                         incompleteDetails = true;

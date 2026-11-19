@@ -32,6 +32,8 @@ function restoreFocus(): void {
       class="note-estimate__trigger"
       aria-haspopup="dialog"
       :aria-controls="dialogId"
+      :disabled="estimate.variants.length === 0"
+      :title="estimate.variants.length === 0 ? 'Recipe comparison is loading' : undefined"
       aria-label="Estimated Research Note value: show recipe comparison"
       data-test="note-estimate-trigger"
       @click="open"
@@ -124,6 +126,8 @@ function restoreFocus(): void {
   border-radius: var(--radius-panel);
   background: var(--color-surface);
   color: var(--color-text);
+  text-align: left;
+  white-space: normal;
 }
 
 .note-estimate__dialog::backdrop {
