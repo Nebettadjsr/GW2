@@ -432,7 +432,16 @@ public class CraftingResolver {
         PlanState.Delta bestEffect = null;
         int mark = state.mark();
 
-        for (String character : eligible) {
+        // Characters owning no carried/own-Bank stock of anything this step can transitively consume all produce the
+        // identical attempt; only the LAST of them is tried (it is the one the ">=" tie rule would have kept).
+        Set<Integer> relevantClosure = ownerRelevantClosure(recipe, ctx);
+        int lastUnbound = -1;
+        for (int i = 0; i < eligible.size(); i++) {
+            if (!ownsRelevantStock(state, eligible.get(i), relevantClosure)) lastUnbound = i;
+        }
+        for (int i = 0; i < eligible.size(); i++) {
+            String character = eligible.get(i);
+            if (i != lastUnbound && !ownsRelevantStock(state, character, relevantClosure)) continue;
             ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, character);
             if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)) {
                 best = attempt;
@@ -455,20 +464,18 @@ public class CraftingResolver {
                                              PlannerContext ctx, PlanState state) {
         int mark = state.mark();
         ResolvedNeed best = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(null));
-        if (best.isFullySatisfied()) {
-            return best;
-        }
         PlanState.Delta bestEffect = state.captureDelta(mark);
         state.rollbackTo(mark);
+        // The unassigned attempt may be satisfied yet buy an input an owner carries: owners are compared before it is
+        // accepted, but only those whose carried stock holds one of this step's own inputs (others repeat it exactly).
         Set<Integer> relevant = carriedRelevantItems(recipe);
-        for (var profile : ctx.coordinatedRoster) {
-            // A character whose carried soulbound stock holds none of this step's own inputs would repeat the
-            // shared attempt exactly (Bank stock is already shared); skipping it is result-neutral.
-            Map<Integer, Integer> carried = state.characterBoundInventory.get(profile.name());
+        for (String owner : forgeOwners(ctx, state)) {
+            Map<Integer, Integer> carried = state.characterBoundInventory.get(owner);
             if (carried == null || relevant.stream().noneMatch(id -> carried.getOrDefault(id, 0) > 0)) continue;
-            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(profile.name()));
+            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(owner));
             if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)
-                    && (attempt.isFullySatisfied() || attempt.getQtySatisfied() > best.getQtySatisfied())) {
+                    && (attempt.isFullySatisfied() || attempt.getQtySatisfied() > best.getQtySatisfied())
+                    && (!attempt.isFullySatisfied() || !best.isFullySatisfied() || !sameCost(attempt, best))) {
                 best = attempt;
                 bestEffect = state.captureDelta(mark);
             }
@@ -476,6 +483,57 @@ public class CraftingResolver {
         }
         state.applyDelta(bestEffect);
         return best;
+    }
+
+    /**
+     * Actual carried (non-Bank) owners of this account's state, independent of the ordinary crafter roster: roster
+     * order first (stable ties), then any other carried owner by name. Owners are never pooled.
+     */
+    private static List<String> forgeOwners(PlannerContext ctx, PlanState state) {
+        List<String> owners = new java.util.ArrayList<>();
+        for (var profile : ctx.coordinatedRoster) {
+            if (state.characterBoundInventory.containsKey(profile.name())) owners.add(profile.name());
+        }
+        List<String> others = new java.util.ArrayList<>();
+        for (String key : state.characterBoundInventory.keySet()) {
+            if (!key.startsWith(PlanState.BANK_PREFIX) && !owners.contains(key)) others.add(key);
+        }
+        java.util.Collections.sort(others);
+        owners.addAll(others);
+        return owners;
+    }
+
+    private final Map<Recipe, Set<Integer>> ownerClosureCache = new java.util.IdentityHashMap<>();
+
+    /** Immutable fact: every item the recipe's whole candidate subtree (and wallet-currency producers) could consume. */
+    private Set<Integer> ownerRelevantClosure(Recipe recipe, PlannerContext ctx) {
+        Set<Integer> cached = ownerClosureCache.get(recipe);
+        if (cached != null) return cached;
+        Set<Integer> ids = new java.util.HashSet<>();
+        java.util.ArrayDeque<Recipe> todo = new java.util.ArrayDeque<>();
+        Set<Recipe> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        todo.add(recipe);
+        while (!todo.isEmpty()) {
+            Recipe r = todo.poll();
+            if (!seen.add(r)) continue;
+            ids.addAll(carriedRelevantItems(r));
+            for (Ingredient ing : r.ingredients) todo.addAll(ctx.recipesByOutput.getOrDefault(ing.itemId, List.of()));
+            for (CurrencyRequirement c : r.currencies) {
+                CurrencyProduction.forCurrency(c.currencyId())
+                        .ifPresent(p -> todo.addAll(ctx.recipesByOutput.getOrDefault(p.itemId(), List.of())));
+            }
+        }
+        ownerClosureCache.put(recipe, ids);
+        return ids;
+    }
+
+    private static boolean ownsRelevantStock(PlanState state, String character, Set<Integer> relevant) {
+        for (String key : new String[]{character, PlanState.bankOwnerKey(character)}) {
+            Map<Integer, Integer> stock = state.characterBoundInventory.get(key);
+            if (stock == null) continue;
+            for (int id : relevant) if (stock.getOrDefault(id, 0) > 0) return true;
+        }
+        return false;
     }
 
     /** Items a Forge assignee's carried stock can affect: the step's own inputs and wallet-currency producers. */

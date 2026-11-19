@@ -83,6 +83,12 @@ public class CraftResult {
      */
     public boolean economicsFromHypotheticalCraft;
     /**
+     * True when Forge routes are enabled and affect this recipe but no full actual (or explicitly priced hypothetical)
+     * craft exists: the per-craft cost is unknown, so the profit must not be published as output revenue minus zero.
+     * The output quote, revenue and honest count/currency facts stay.
+     */
+    public boolean profitUnknown;
+    /**
      * Verified variable output of the root recipe (exact mean plus guaranteed min/max), or null for a fixed
      * output. When set, the revenue/profit figures are expected (estimated) economics, not guaranteed yield.
      */

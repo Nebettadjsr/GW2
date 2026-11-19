@@ -296,9 +296,15 @@ public class CraftingProfitService {
         if (settings.materialProtectionEnabled
                 && (!settings.protectedBankItemIds.isEmpty() || !settings.protectedMaterialItemIds.isEmpty()
                     || settings.hasFiniteReservations())) {
+            // Forge keeps every account character's carried stock under its actual owner; off keeps the legacy overloads.
+            if (settings.allowMysticForge) {
+                return invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
+                        settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations, true);
+            }
             return invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
                     settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations);
         }
+        if (settings.allowMysticForge) return invRepo.loadOwnedInventoryForCharacters(con, scope, names, true);
         return invRepo.loadOwnedInventoryForCharacters(con, scope, names);
     }
 

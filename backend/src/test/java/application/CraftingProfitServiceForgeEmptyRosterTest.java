@@ -63,6 +63,12 @@ class CraftingProfitServiceForgeEmptyRosterTest {
                                                                                   Set<String> names) {
                 return new CoordinatedInventory(Map.of(20852, 1, 19976, 100, 12976, 250, 19721, 250), Map.of(), Map.of());
             }
+
+            // Enabled Forge asks for every account character's carried owner stock through this overload.
+            @Override public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, AccountScope scope,
+                                                                                  Set<String> names, boolean keepAllCarriedOwners) {
+                return loadOwnedInventoryForCharacters(con, scope, names);
+            }
         }, new TpPriceRepository() {
             @Override public Map<Integer, PriceQuote> loadTpQuotes(Connection con, Set<Integer> ids) {
                 return Map.of(31058, new PriceQuote(1000, 1100));

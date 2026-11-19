@@ -372,6 +372,8 @@ public class CraftingPlanner {
         result.estimated = expected || (!hypothetical && sim.usesExpectedYield())
                 || (hypothetical && firstCraft != null && firstCraft.usesExpectedYield());
         result.economicsFromHypotheticalCraft = hypothetical;
+        // Enabled Forge routes with no complete craft anywhere: the missing seed/input cost is unknown, never zero.
+        result.profitUnknown = ctx.settings.allowMysticForge && firstCraft == null && forgeAffects(recipe, ctx);
         Map<Integer, Integer> perCraft = sim.getCurrencyFirstCraft();
         if (perCraft.isEmpty() && !recipe.currencies.isEmpty()) {
             Map<Integer, Integer> direct = new java.util.TreeMap<>();
@@ -399,6 +401,23 @@ public class CraftingPlanner {
             }
         }
         return result;
+    }
+
+    /** True when {@code root} or any recipe reachable through its ingredients is a Mystic Forge recipe. */
+    private static boolean forgeAffects(Recipe root, PlannerContext ctx) {
+        if (root.isMysticForge()) return true;
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        java.util.ArrayDeque<Integer> todo = new java.util.ArrayDeque<>();
+        for (Ingredient ing : root.ingredients) todo.add(ing.itemId);
+        while (!todo.isEmpty()) {
+            int item = todo.poll();
+            if (!seen.add(item)) continue;
+            for (Recipe r : ctx.recipesByOutput.getOrDefault(item, List.of())) {
+                if (r.isMysticForge()) return true;
+                for (Ingredient ing : r.ingredients) todo.add(ing.itemId);
+            }
+        }
+        return false;
     }
 
     private static boolean isWalletBlock(BlockedReason reason) {

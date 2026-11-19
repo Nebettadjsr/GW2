@@ -92,29 +92,40 @@ public class PlanState {
      */
     public static final int MAX_WORK_UNITS = 50_000;
 
-    // Work spent by this root. Deliberately NOT journalled: rollback must not refund speculative work.
-    private int workUsed = 0;
-    private int workLimit = MAX_WORK_UNITS;
-    private boolean workRefused = false;
+    /**
+     * One root's work authority. Shared by reference with every copy of the state (simulation, wallet-ignored and
+     * hypothetical retries), so spending in any copy charges the same root; never journalled, so rollback cannot
+     * refund it. {@link #resetWork(int)} installs a fresh authority, which is only done for a NEW root.
+     */
+    private static final class WorkCounter {
+        int used = 0;
+        int limit = MAX_WORK_UNITS;
+        boolean refused = false;
+    }
+
+    private WorkCounter work = new WorkCounter();
 
     /** Charges one attempt; false (and permanently exhausted) once the budget is spent. */
     boolean chargeWork() {
-        if (workRefused) return false;
-        if (workUsed >= workLimit) {
-            workRefused = true;
+        if (work.refused) return false;
+        if (work.used >= work.limit) {
+            work.refused = true;
             return false;
         }
-        workUsed++;
+        work.used++;
         return true;
     }
 
     /** True once an attempt was refused: some alternatives were never evaluated, so the plan is limited. */
-    boolean isWorkExhausted() { return workRefused; }
+    boolean isWorkExhausted() { return work.refused; }
 
-    int workUsed() { return workUsed; }
+    int workUsed() { return work.used; }
 
-    /** Starts a fresh budget for the next root evaluated on a reused worker state. */
-    void resetWork(int limit) { workUsed = 0; workLimit = limit; workRefused = false; }
+    /** Starts a fresh authority for the next root evaluated on a reused worker state (copies made earlier keep the old one). */
+    void resetWork(int limit) {
+        work = new WorkCounter();
+        work.limit = limit;
+    }
 
     // Required units per material item ID in this plan, owned and purchased alike. Journalled.
     private final Map<Integer, Integer> demand = new HashMap<>();
@@ -220,9 +231,7 @@ public class PlanState {
         this.demand.putAll(other.demand);
         this.currencySpent.putAll(other.currencySpent);
         this.currencyProduced.putAll(other.currencyProduced);
-        this.workUsed = other.workUsed;
-        this.workLimit = other.workLimit;
-        this.workRefused = other.workRefused;
+        this.work = other.work;
     }
 
     /**

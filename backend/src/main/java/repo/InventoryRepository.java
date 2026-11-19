@@ -88,12 +88,25 @@ public class InventoryRepository {
                                                                 model.AccountScope scope,
                                                                 Set<String> characterNames)
             throws SQLException {
+        return loadOwnedInventoryForCharacters(con, scope, characterNames, false);
+    }
+
+    /**
+     * @param keepAllCarriedOwners keep carried soulbound stock of EVERY character of this account (not only
+     *        {@code characterNames}) under its actual owner, for Mystic Forge owner steps; ordinary steps still
+     *        only ever use the assigned roster character's entry.
+     */
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con,
+                                                                model.AccountScope scope,
+                                                                Set<String> characterNames,
+                                                                boolean keepAllCarriedOwners)
+            throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> accountBound = new HashMap<>();
         Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
         forEachScopedRow(con, scope, Set.of(), Set.of(), Map.of(), Map.of(), List.of(),
-                coordinatedHandler(characterNames, sellable, accountBound, characterBound));
+                coordinatedHandler(characterNames, keepAllCarriedOwners, sellable, accountBound, characterBound));
         return new CoordinatedInventory(sellable, accountBound, characterBound);
     }
 
@@ -115,13 +128,13 @@ public class InventoryRepository {
      * (whatever the owner, roster member or not), so only a Forge step (any owner) or the owner's own ordinary
      * step can spend it, and it is debited once from that single entry.
      */
-    private static OwnedRowHandler coordinatedHandler(Set<String> characterNames,
+    private static OwnedRowHandler coordinatedHandler(Set<String> characterNames, boolean keepAllCarriedOwners,
                                                       Map<Integer, Integer> sellable,
                                                       Map<Integer, Integer> accountBound,
                                                       Map<String, Map<Integer, Integer>> characterBound) {
         return new OwnedRowHandler() {
             @Override public void accept(int itemId, int count, String binding, String boundTo) {
-                classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames,
+                classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames, keepAllCarriedOwners,
                         sellable, accountBound, characterBound);
             }
 
@@ -379,22 +392,34 @@ public class InventoryRepository {
                                                                 Map<Integer, Integer> bankQuantities,
                                                                 Map<Integer, Integer> materialQuantities,
                                                                 List<craft.BankAllocation> bankAllocations) throws SQLException {
+        return loadOwnedInventoryForCharacters(con, scope, characterNames, excludedBankIds, excludedMaterialIds,
+                bankQuantities, materialQuantities, bankAllocations, false);
+    }
+
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope,
+                                                                Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds,
+                                                                Map<Integer, Integer> bankQuantities,
+                                                                Map<Integer, Integer> materialQuantities,
+                                                                List<craft.BankAllocation> bankAllocations,
+                                                                boolean keepAllCarriedOwners) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> accountBound = new HashMap<>();
         Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
         forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, bankQuantities, materialQuantities, bankAllocations,
-                coordinatedHandler(characterNames, sellable, accountBound, characterBound));
+                coordinatedHandler(characterNames, keepAllCarriedOwners, sellable, accountBound, characterBound));
         return new CoordinatedInventory(sellable, accountBound, characterBound);
     }
 
     private static void classifyCoordinatedRow(int itemId, int count, String binding, String boundTo,
-                                                 Set<String> characterNames,
+                                                 Set<String> characterNames, boolean keepAllCarriedOwners,
                                                  Map<Integer, Integer> sellable,
                                                  Map<Integer, Integer> accountBound,
                                                  Map<String, Map<Integer, Integer>> characterBound) {
         if ("Character".equals(binding)) {
-            if (boundTo != null && characterNames.contains(boundTo)) {
+            if (boundTo != null && (keepAllCarriedOwners || characterNames.contains(boundTo))) {
                 characterBound.computeIfAbsent(boundTo, k -> new HashMap<>())
                         .merge(itemId, count, Integer::sum);
             }
