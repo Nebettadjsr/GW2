@@ -452,7 +452,12 @@ public class CraftingResolver {
         }
         PlanState.Delta bestEffect = state.captureDelta(mark);
         state.rollbackTo(mark);
+        Set<Integer> relevant = carriedRelevantItems(recipe);
         for (var profile : ctx.coordinatedRoster) {
+            // A character whose carried soulbound stock holds none of this step's own inputs would repeat the
+            // shared attempt exactly (Bank stock is already shared); skipping it is result-neutral.
+            Map<Integer, Integer> carried = state.characterBoundInventory.get(profile.name());
+            if (carried == null || relevant.stream().noneMatch(id -> carried.getOrDefault(id, 0) > 0)) continue;
             ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(profile.name()));
             if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)
                     && (attempt.isFullySatisfied() || attempt.getQtySatisfied() > best.getQtySatisfied())) {
@@ -463,6 +468,16 @@ public class CraftingResolver {
         }
         state.applyDelta(bestEffect);
         return best;
+    }
+
+    /** Items a Forge assignee's carried stock can affect: the step's own inputs and wallet-currency producers. */
+    private static Set<Integer> carriedRelevantItems(Recipe recipe) {
+        Set<Integer> ids = new java.util.HashSet<>();
+        for (Ingredient ing : recipe.ingredients) ids.add(ing.itemId);
+        for (CurrencyRequirement c : recipe.currencies) {
+            CurrencyProduction.forCurrency(c.currencyId()).ifPresent(p -> ids.add(p.itemId()));
+        }
+        return ids;
     }
 
     /**
@@ -479,6 +494,10 @@ public class CraftingResolver {
             PlanState state,
             String assignedCharacter
                                           ) {
+        // An abandoned/timed-out request must not keep expanding speculative routes.
+        if (Thread.currentThread().isInterrupted()) {
+            throw new java.util.concurrent.CancellationException("crafting calculation interrupted");
+        }
         // cycle protection
         if (state.isVisiting(itemId)) {
             return blockedNeed(itemId, qtyRequested, BlockedReason.CYCLE_DETECTED, recipe, assignedCharacter);
