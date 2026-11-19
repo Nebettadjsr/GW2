@@ -342,4 +342,42 @@ class CraftingProfitItemCollectorTest {
         assertEquals(priced.newestFetchedAt(), changed.newestFetchedAt());
         assertNotEquals(priced.quoteVersion(), changed.quoteVersion(), "a valuation-only quote change alters the fingerprint");
     }
+
+    @Test
+    void enabledForgeItemsJoinRefreshAndCoverageForOneAccountOnlyAndOffLeavesTheOrdinaryScope() throws Exception {
+        try (Statement statement = con.createStatement()) {
+            // 55 is Forge-only and unquoted; 56 is Forge-only and fresh; 57 is not tradeable.
+            statement.execute("INSERT INTO tp_tradeable_items (item_id) VALUES (55), (56)");
+            statement.execute("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, sell_quantity, "
+                    + "sell_unit_price, fetched_at) VALUES (56, 1, 5, 1, 6, now() - interval '1 minutes')");
+        }
+        CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
+        // -9 is a Forge recipe id and must never be demanded as an item.
+        Set<Integer> forge = Set.of(55, 56, 57, -9);
+
+        assertEquals(Set.of(11, 20, 21, 55), collector.collect(con, SCOPE, forge),
+                "the unquoted Forge-only item is requested; fresh, untradeable and negative ids are not");
+        assertEquals(Set.of(11, 20, 21), collector.collect(con, SCOPE, Set.of()),
+                "Forge off is exactly the ordinary relevance");
+        assertEquals(Set.of(11, 20, 21), collector.collect(con, SCOPE));
+        assertFalse(collector.collect(con, AccountScope.of(OTHER)).contains(55),
+                "another account's ordinary scope is not widened");
+
+        CraftingProfitItemCollector.Coverage off = collector.coverage(con, SCOPE);
+        CraftingProfitItemCollector.Coverage on = collector.coverage(con, SCOPE, forge);
+        assertEquals(off.requiredItems() + 2, on.requiredItems(), "items 55 and 56 join the required set");
+        assertEquals(off.missingItems() + 1, on.missingItems());
+        assertEquals(off.freshItems() + 1, on.freshItems());
+        assertNotEquals(off.quoteVersion(), on.quoteVersion());
+
+        try (Statement statement = con.createStatement()) {
+            statement.execute("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, sell_quantity, "
+                    + "sell_unit_price, fetched_at) VALUES (55, 1, 1, 1, 2, now())");
+        }
+        CraftingProfitItemCollector.Coverage quoted = collector.coverage(con, SCOPE, forge);
+        assertEquals(on.missingItems() - 1, quoted.missingItems(), "a Forge-only quote closes its own gap");
+        assertNotEquals(on.quoteVersion(), quoted.quoteVersion(), "and changes the quote identity");
+        assertEquals(off.quoteVersion(), collector.coverage(con, SCOPE).quoteVersion(),
+                "a Forge-only quote never changes the Forge-off identity");
+    }
 }

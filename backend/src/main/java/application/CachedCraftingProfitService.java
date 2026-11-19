@@ -306,7 +306,9 @@ public class CachedCraftingProfitService {
             generations.put(source, state.generation());
         });
 
-        CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
+        CalculationFreshness.PriceCoverage coverage = settings != null && settings.allowMysticForge
+                ? priceCoverage.read(session.connection(), scope, true)
+                : priceCoverage.read(session.connection(), scope);
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
                 evaluatedAt).withWalletTracked(wallet)
                 .withForgeCatalog(settings != null && settings.allowMysticForge
@@ -347,7 +349,7 @@ public class CachedCraftingProfitService {
         if (!captured.coverage().covered()) {
             // Trading Post quotes are shared, account-free data and need no key, so the on-demand
             // shared refresh is admitted without a key.
-            TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage(scope);
+            TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage(scope, captured.forgeEnabled());
             outstanding.add(new CalculationFreshness.OutstandingRefresh(
                     CalculationFreshness.RefreshKind.TRADING_POST, Set.of(), admission.taskId(),
                     stateOf(admission.taskId()), admission.reuse()));

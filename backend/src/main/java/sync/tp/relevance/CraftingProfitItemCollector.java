@@ -66,7 +66,7 @@ relevant_items AS (
   FROM recipe_ingredients ri
   JOIN craftable_recipes c ON c.recipe_id = ri.recipe_id
   WHERE ri.item_id IS NOT NULL
-),
+%3$s),
 relevant_tradeable AS (
   SELECT DISTINCT i.item_id, tp.fetched_at,
          tp.buy_quantity, tp.buy_unit_price, tp.sell_quantity, tp.sell_unit_price
@@ -104,7 +104,7 @@ relevant_tradeable AS (
      * <p>Two bind parameters, both the account GUID, in the order the two unlock sources appear.
      */
     static final String SCOPED_RELEVANT_TRADEABLE_ITEMS =
-            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(SCOPED_RECIPE_KNOWLEDGE, ESTIMATE_RECIPE_IDS);
+            scopedTemplate(false);
 
     /**
      * The same definition over shared data only: no account row enters it, so the
@@ -112,16 +112,36 @@ relevant_tradeable AS (
      * registry neither empties it nor makes it infer an account.
      */
     static final String GLOBAL_RELEVANT_TRADEABLE_ITEMS =
-            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(EVERY_SHARED_RECIPE, ESTIMATE_RECIPE_IDS);
+            globalTemplate(false);
+
+    /** Appended to {@code relevant_items} only when Mystic Forge is enabled: one int[] bind of real item ids. */
+    private static final String FORGE_ITEMS = """
+
+  UNION
+
+  -- Enabled Mystic Forge recipes live in the bundled catalog, not in recipes/recipe_ingredients; their
+  -- (positive) item ids are demand exactly like any recipe's, intersected with tp_tradeable_items below.
+  SELECT f.item_id FROM unnest(?::int[]) AS f(item_id) WHERE f.item_id > 0
+""";
+
+    private static String scopedTemplate(boolean forge) {
+        return RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(SCOPED_RECIPE_KNOWLEDGE, ESTIMATE_RECIPE_IDS,
+                forge ? FORGE_ITEMS : "");
+    }
+
+    private static String globalTemplate(boolean forge) {
+        return RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(EVERY_SHARED_RECIPE, ESTIMATE_RECIPE_IDS,
+                forge ? FORGE_ITEMS : "");
+    }
 
     private static final String SELECT_STALE = """
 SELECT item_id FROM relevant_tradeable tp
 WHERE
 """ + TpPriceFreshness.STALE_SQL_PREDICATE;
 
-    private static final String SCOPED_SQL = SCOPED_RELEVANT_TRADEABLE_ITEMS + SELECT_STALE;
+    private static String scopedSql(boolean forge) { return scopedTemplate(forge) + SELECT_STALE; }
 
-    private static final String GLOBAL_SQL = GLOBAL_RELEVANT_TRADEABLE_ITEMS + SELECT_STALE;
+    private static String globalSql(boolean forge) { return globalTemplate(forge) + SELECT_STALE; }
 
     /**
      * The coverage report, including {@code quote_version}: one digest over every relevant item's
@@ -152,7 +172,7 @@ SELECT COUNT(*) AS required,
 FROM relevant_tradeable
 """.formatted(TpPriceFreshness.TTL.toMinutes(), TpPriceFreshness.TTL.toMinutes());
 
-    private static final String SCOPED_COVERAGE_SQL = SCOPED_RELEVANT_TRADEABLE_ITEMS + COVERAGE_SELECT;
+    private static String scopedCoverageSql(boolean forge) { return scopedTemplate(forge) + COVERAGE_SELECT; }
 
     /**
      * How much of the Profit-relevant tradeable item set the stored quote cache currently answers.
@@ -201,10 +221,17 @@ FROM relevant_tradeable
      * refreshed is reused by every account demand instead of being refetched per account.
      */
     public Set<Integer> collectGlobal(Connection con) throws Exception {
+        return collectGlobal(con, Set.of());
+    }
+
+    /** As {@link #collectGlobal(Connection)}, plus enabled Mystic Forge catalog item ids (empty = Forge off). */
+    public Set<Integer> collectGlobal(Connection con, Set<Integer> forgeItemIds) throws Exception {
         Set<Integer> itemIds = new HashSet<>();
-        try (PreparedStatement ps = con.prepareStatement(GLOBAL_SQL);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) itemIds.add(rs.getInt(1));
+        try (PreparedStatement ps = con.prepareStatement(globalSql(!forgeItemIds.isEmpty()))) {
+            bindForge(con, ps, 1, forgeItemIds);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) itemIds.add(rs.getInt(1));
+            }
         }
         return itemIds;
     }
@@ -217,10 +244,20 @@ FROM relevant_tradeable
      * {@link #coverage(Connection, model.AccountScope)} measures still cannot diverge.
      */
     public Set<Integer> collect(Connection con, model.AccountScope scope) throws Exception {
+        return collect(con, scope, Set.of());
+    }
+
+    /**
+     * As {@link #collect(Connection, model.AccountScope)}, plus the enabled Mystic Forge catalog's item ids
+     * (empty = Forge off, which is exactly the ordinary scope). Only this account's own request carries them,
+     * so another account's ordinary relevance is neither widened nor narrowed.
+     */
+    public Set<Integer> collect(Connection con, model.AccountScope scope, Set<Integer> forgeItemIds) throws Exception {
         repo.ManagedSchema.requireManagedAccountSchema(con, "Profit price relevance");
         Set<Integer> itemIds = new HashSet<>();
-        try (PreparedStatement ps = con.prepareStatement(SCOPED_SQL)) {
+        try (PreparedStatement ps = con.prepareStatement(scopedSql(!forgeItemIds.isEmpty()))) {
             bindScope(ps, scope);
+            bindForge(con, ps, 3, forgeItemIds);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) itemIds.add(rs.getInt(1));
             }
@@ -237,11 +274,23 @@ FROM relevant_tradeable
      * accounts instead of being refetched per account.
      */
     public Coverage coverage(Connection con, model.AccountScope scope) throws SQLException {
+        return coverage(con, scope, Set.of());
+    }
+
+    /** As {@link #coverage(Connection, model.AccountScope)} over the same set {@code collect(..., forgeItemIds)} fetches. */
+    public Coverage coverage(Connection con, model.AccountScope scope, Set<Integer> forgeItemIds) throws SQLException {
         repo.ManagedSchema.requireManagedAccountSchema(con, "Profit price coverage");
-        try (PreparedStatement ps = con.prepareStatement(SCOPED_COVERAGE_SQL)) {
+        try (PreparedStatement ps = con.prepareStatement(scopedCoverageSql(!forgeItemIds.isEmpty()))) {
             bindScope(ps, scope);
+            bindForge(con, ps, 3, forgeItemIds);
             return coverageOf(ps);
         }
+    }
+
+    private static void bindForge(Connection con, PreparedStatement ps, int index, Set<Integer> forgeItemIds)
+            throws SQLException {
+        if (forgeItemIds.isEmpty()) return;
+        ps.setArray(index, con.createArrayOf("integer", new java.util.TreeSet<>(forgeItemIds).toArray()));
     }
 
     private static void bindScope(PreparedStatement ps, model.AccountScope scope) throws SQLException {

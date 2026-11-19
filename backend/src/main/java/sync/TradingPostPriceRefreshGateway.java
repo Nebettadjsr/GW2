@@ -25,4 +25,9 @@ public class TradingPostPriceRefreshGateway {
     public void syncTpPricesForProfit(model.AccountScope scope) throws Exception {
         TpSync.syncTpPricesForProfit(scope);
     }
+
+    public void syncTpPricesForProfit(model.AccountScope scope, boolean allowForge) throws Exception {
+        if (allowForge) TpSync.syncTpPricesForProfit(scope, parser.MysticForgeCatalogLoader.bundled().itemIds());
+        else TpSync.syncTpPricesForProfit(scope);
+    }
 }

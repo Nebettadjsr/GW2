@@ -49,6 +49,15 @@ public final class CalculationInputVersions {
          * arguments.
          */
         CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException;
+
+        /**
+         * As {@link #read(Connection, AccountScope)} when the calculation enabled Mystic Forge recipes: the required
+         * set then also holds the catalog's item ids. Ports without Forge awareness fall back to the ordinary set.
+         */
+        default CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope, boolean allowForge)
+                throws SQLException {
+            return read(con, scope);
+        }
     }
 
     /**
@@ -87,6 +96,11 @@ public final class CalculationInputVersions {
      * recipes, so a changed catalog can never read as the same generation. Null (Forge off) leaves the identity
      * exactly as it was.
      */
+    /** True when this calculation enabled Mystic Forge recipes (its price demand then includes the catalog). */
+    public boolean forgeEnabled() {
+        return forgeCatalogFingerprint != null;
+    }
+
     public CalculationInputVersions withForgeCatalog(String fingerprint) {
         this.forgeCatalogFingerprint = fingerprint;
         return this;
@@ -288,6 +302,14 @@ public final class CalculationInputVersions {
         public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {
             if (con == null) return CalculationFreshness.PriceCoverage.none();
             return map(collector.coverage(con, scope));
+        }
+
+        @Override
+        public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope, boolean allowForge)
+                throws SQLException {
+            if (con == null) return CalculationFreshness.PriceCoverage.none();
+            if (!allowForge) return read(con, scope);
+            return map(collector.coverage(con, scope, parser.MysticForgeCatalogLoader.bundled().itemIds()));
         }
 
         private static CalculationFreshness.PriceCoverage map(CraftingProfitItemCollector.Coverage coverage) {

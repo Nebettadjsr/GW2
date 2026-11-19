@@ -353,6 +353,15 @@ public final class TpSync {
         syncTpPrices(itemIds);
     }
 
+    /** As above plus the enabled Mystic Forge catalog's positive item ids (never Forge recipe ids). */
+    public static void syncTpPricesForProfit(model.AccountScope scope, Set<Integer> forgeItemIds) throws Exception {
+        Set<Integer> itemIds;
+        try (Connection con = Db.open()) {
+            itemIds = new CraftingProfitItemCollector().collect(con, scope, forgeItemIds);
+        }
+        syncTpPrices(itemIds);
+    }
+
     /** The Discovery counterpart of {@link #syncTpPricesForProfit(model.AccountScope)}. */
     public static void syncTpPricesForDiscovery(model.AccountScope scope) throws Exception {
         Set<Integer> itemIds;

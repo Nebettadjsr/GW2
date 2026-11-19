@@ -63,6 +63,19 @@ public final class MysticForgeCatalog {
     public List<Recipe> recipes() { return recipes; }
     public int excludedCount() { return coverage.sourceRows() - coverage.includedRecipes(); }
     public String source() { return source; }
+
+    /**
+     * Every real (positive) Trading Post item id the catalog's recipes produce or consume, sorted. Forge recipe ids
+     * are catalog-internal negatives and are never part of this set, so they can never reach an ArenaNet request.
+     */
+    public java.util.SortedSet<Integer> itemIds() {
+        java.util.TreeSet<Integer> ids = new java.util.TreeSet<>();
+        for (Recipe r : recipes) {
+            if (r.outputItemId > 0) ids.add(r.outputItemId);
+            for (Ingredient i : r.ingredients) if (i.itemId > 0) ids.add(i.itemId);
+        }
+        return ids;
+    }
     public String license() { return license; }
     public Coverage coverage() { return coverage; }
     public Provenance provenance(int recipeId) { return provenance.get(recipeId); }
