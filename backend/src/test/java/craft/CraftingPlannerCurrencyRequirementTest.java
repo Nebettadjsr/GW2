@@ -295,4 +295,27 @@ class CraftingPlannerCurrencyRequirementTest {
             assertEquals(Map.of(400, 1), r.missingToBuyOne);
         }
     }
+
+    @Test
+    void budgetRetryMixesAffordablePurchaseWithCheaperCurrencyCraft() {
+        Recipe expensiveNotes = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Recipe cheapNotes = new Recipe(3, 201, 1, 0, "Chef", List.of(ingredient(301, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Recipe expensiveMatchingDiscipline = new Recipe(4, 201, 1, 0, "Artificer", List.of(ingredient(302, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        for (boolean reversed : new boolean[]{true, false}) {
+            Recipe parent = new Recipe(1, 100, 1, 0, "Artificer", reversed
+                    ? List.of(ingredient(201, 1), ingredient(200, 1))
+                    : List.of(ingredient(200, 1), ingredient(201, 1)));
+            CraftResult r = run(List.of(parent, expensiveNotes, cheapNotes, expensiveMatchingDiscipline), Map.of(),
+                    Map.of(100, quote(900, 1000), 200, quote(10, 10), 201, quote(100, 100),
+                            300, quote(100, 100), 301, quote(10, 10), 302, quote(100, 100)),
+                    new CraftingSettings(true, true, 50, false, false, true), Map.of(NOTE, 60));
+            assertEquals(2, r.craftableCount, "buy A for 10c and craft B for 10c plus Notes, in either order");
+            assertEquals(40, r.buyCostCopper);
+            assertEquals(Map.of(NOTE, 60), r.currencyTotal);
+            assertEquals(Map.of(200, 1, 301, 1), r.missingToBuyOne);
+        }
+    }
 }

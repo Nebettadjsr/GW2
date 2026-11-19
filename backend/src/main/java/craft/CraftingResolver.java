@@ -362,7 +362,7 @@ public class CraftingResolver {
 
         for (String character : eligible) {
             ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, character);
-            if (isBetterCraftAttempt(attempt, best, ctx.preferCurrencyCraft)) {
+            if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)) {
                 best = attempt;
                 bestEffect = state.captureDelta(mark);
             }
@@ -581,8 +581,9 @@ public class CraftingResolver {
             boolean matches = sharesDiscipline(parentDiscipline, recipe.disciplinesText);
             boolean preferDiscipline = best != null && attempt.isFullySatisfied()
                     && best.isFullySatisfied() && matches != bestMatches
-                    && attempt.spendsUnpricedCurrency() == best.spendsUnpricedCurrency();
-            if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best, ctx.preferCurrencyCraft)) {
+                    && attempt.spendsUnpricedCurrency() == best.spendsUnpricedCurrency()
+                    && (!ctx.minimizeBuyCost || attempt.getBuyCostCopper() == best.getBuyCostCopper());
+            if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)) {
                 best = attempt;
                 bestMatches = matches;
                 effect = state.captureDelta(mark);
@@ -626,11 +627,11 @@ public class CraftingResolver {
      * Compares two candidate character assignments for the same craft step: fully satisfied
      * beats partially satisfied, and among fully-satisfied candidates the lowest total effective
      * economic cost wins within the preferred valuation class (DOMAIN_SPEC.md section 22), otherwise
-     * the least-blocked candidate wins. Budget retries prefer currency-bearing routes.
+     * the least-blocked candidate wins. Budget retries compare immediate cash first.
      * Soulbound ingredients never carry an opportunity-cost difference between characters, so
      * this reduces to "prefer whichever eligible character can actually supply this step."
      */
-    private boolean isBetterCraftAttempt(ResolvedNeed candidate, ResolvedNeed currentBest, boolean preferCurrencyCraft) {
+    private boolean isBetterCraftAttempt(ResolvedNeed candidate, ResolvedNeed currentBest, boolean minimizeBuyCost) {
         if (currentBest == null) return true;
 
         boolean candidateSatisfied = candidate.isFullySatisfied();
@@ -641,10 +642,12 @@ public class CraftingResolver {
         }
 
         if (candidateSatisfied) {
-            // Normally prefer fully valued routes. A budget retry must also consider currency-bearing
-            // crafting alternatives, not only direct purchases; the simulator still checks total affordability.
+            if (minimizeBuyCost && candidate.getBuyCostCopper() != currentBest.getBuyCostCopper()) {
+                return candidate.getBuyCostCopper() < currentBest.getBuyCostCopper();
+            }
+            // Without a cash difference during retry, keep the ordinary valuation preference.
             if (candidate.spendsUnpricedCurrency() != currentBest.spendsUnpricedCurrency()) {
-                return candidate.spendsUnpricedCurrency() == preferCurrencyCraft;
+                return !candidate.spendsUnpricedCurrency();
             }
             return candidate.effectiveCostCopper() <= currentBest.effectiveCostCopper();
         }
@@ -662,8 +665,11 @@ public class CraftingResolver {
                 && craftEval.need.getQtyBlocked() == 0;
 
         if (buyValid && craftValid) {
+            if (ctx.minimizeBuyCost && craftEval.need.getBuyCostCopper() != buyEval.need.getBuyCostCopper()) {
+                return craftEval.need.getBuyCostCopper() < buyEval.need.getBuyCostCopper() ? craftEval : buyEval;
+            }
             // An unpriced-currency craft is not proven cheaper than a fully priced purchase: buying wins.
-            if (craftEval.need.spendsUnpricedCurrency()) return ctx.preferCurrencyCraft ? craftEval : buyEval;
+            if (craftEval.need.spendsUnpricedCurrency()) return buyEval;
             // DOMAIN_SPEC.md section 22: choose the lowest total effective economic cost
             // (cash + opportunity cost), not the lowest immediate cash cost.
             return craftEval.need.effectiveCostCopper() <= buyEval.need.effectiveCostCopper()

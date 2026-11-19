@@ -282,6 +282,9 @@ generation and request guards reject late table/detail answers. Detail supplies 
 row if inputs changed; an unchanged completed detail can be reused on return navigation.
 The tracked wallet's discrete freshness state joins calculation identity because expiry withholds
 its balance even without a new publication. Identity remains stable within each usability state.
+If the ordinary economic route exceeds the purchase budget, one rolled-back retry compares cash
+cost first across purchases, recipe alternatives and character assignments. It can mix purchases
+and currency crafts; the simulator still enforces the cumulative budget and rolls back failed trials.
 
 The existing UD-013–015 responsiveness requirement is at most seven seconds for the complete
 usable cached Profit page, including an expired-input provisional result. Refresh and its later

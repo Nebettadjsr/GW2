@@ -25,11 +25,10 @@ public class PlannerContext {
     public final WalletMode walletMode;
 
     /**
-     * Budget-retry mode: when both a purchase and a currency-consuming craft are feasible for a requirement, the
-     * craft wins instead of the fully priced purchase. {@link RecipeSimulator} uses it only after the purchase route
-     * exceeded the cumulative {@code maxBuyCopper}.
+     * Budget-retry mode: compare immediate cash before valuation class/effective cost. This keeps cheap
+     * purchases available alongside currency crafts. Used only after the ordinary route exceeds maxBuyCopper.
      */
-    public final boolean preferCurrencyCraft;
+    public final boolean minimizeBuyCost;
 
     /** Vendor sell value by item id (DOMAIN_SPEC.md 11.2); empty when unknown. Values <= 0 mean none. */
     public final Map<Integer, Integer> vendorValues;
@@ -78,8 +77,8 @@ public class PlannerContext {
                            Map<Integer, Integer> vendorValues,
                            Map<Integer, Integer> wallet,
                            WalletMode walletMode,
-                           boolean preferCurrencyCraft) {
-        this.preferCurrencyCraft = preferCurrencyCraft;
+                           boolean minimizeBuyCost) {
+        this.minimizeBuyCost = minimizeBuyCost;
         this.vendorValues = vendorValues;
         this.wallet = wallet;
         this.walletMode = walletMode;
@@ -100,30 +99,30 @@ public class PlannerContext {
         CraftingSettings noBuySettings = settings.withBuyingDisabled();
 
         return new PlannerContext(recipesByOutput, tp, noBuySettings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, preferCurrencyCraft);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, minimizeBuyCost);
     }
 
     /** This context with vendor sell values for the untradeable-material fallback; shares the memo tables. */
     public PlannerContext withVendorValues(Map<Integer, Integer> vendorValues) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, preferCurrencyCraft);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, minimizeBuyCost);
     }
 
     /** This context with the account wallet ({@code null} = unknown); shares the memo tables. */
     public PlannerContext withWallet(Map<Integer, Integer> wallet) {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
                 coordinatedRoster, eligibleCharactersByRecipeId, vendorValues,
-                wallet == null ? null : Map.copyOf(wallet), walletMode, preferCurrencyCraft);
+                wallet == null ? null : Map.copyOf(wallet), walletMode, minimizeBuyCost);
     }
 
     /** Hypothetical single-craft economics: currency is still tallied but never limits the craft. */
     public PlannerContext withWalletIgnored() {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
-                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, WalletMode.IGNORED, preferCurrencyCraft);
+                coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, WalletMode.IGNORED, minimizeBuyCost);
     }
 
-    /** Prefer currency crafts over fully valued routes during a budget retry; shares the memo tables. */
-    public PlannerContext withCurrencyCraftPreferred() {
+    /** Minimize immediate cash during a budget retry; shares the eligibility memo. */
+    public PlannerContext withBuyCostMinimized() {
         return new PlannerContext(recipesByOutput, tp, settings, allowedRecipeIds,
                 coordinatedRoster, eligibleCharactersByRecipeId, vendorValues, wallet, walletMode, true);
     }

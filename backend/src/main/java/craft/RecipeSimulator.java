@@ -84,12 +84,12 @@ public class RecipeSimulator {
             ResolveResult rr = resolver.resolveOneCraft(recipe, ctx, state);
             ResolvedNeed root = rr.getRoot();
 
-            // A fully priced purchase may satisfy the batch yet exceed the cumulative buy budget while a
-            // currency-consuming craft of the same requirement is feasible: retry preferring that craft.
+            // The ordinary economic route can exceed the cash budget. Retry once minimizing cash at each
+            // choice, retaining a mix of affordable purchases and crafts rather than switching every ingredient.
             if (budgetExceeded(ctx, result, rr) && root.getQtySatisfied() >= root.getQtyRequested()
-                    && !ctx.preferCurrencyCraft) {
+                    && !ctx.minimizeBuyCost) {
                 state.rollbackTo(mark);
-                ResolveResult retry = resolver.resolveOneCraft(recipe, ctx.withCurrencyCraftPreferred(), state);
+                ResolveResult retry = resolver.resolveOneCraft(recipe, ctx.withBuyCostMinimized(), state);
                 if (retry.getRoot().getQtySatisfied() >= retry.getRoot().getQtyRequested()
                         && !budgetExceeded(ctx, result, retry)) {
                     rr = retry;
