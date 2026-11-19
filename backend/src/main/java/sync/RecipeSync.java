@@ -467,8 +467,9 @@ public final class RecipeSync {
      * Upserts a batch of already-parsed {@link RecipeParser.IngredientRow} values into
      * {@code recipe_ingredients}, flushing every {@link SyncConstants#DB_FLUSH_BATCH} rows.
      * Separate from the fetch so the write path is callable independently of the live GW2 API in
-     * tests. Each full flush commits; the caller controls the final commit or rollback, which cannot
-     * undo earlier committed flushes.
+     * tests. Full flushes only execute the JDBC batch; this helper never commits, so the caller's
+     * transaction owns commit/rollback for the item and currency requirement tables of one fetched
+     * detail batch together (both publish atomically or neither does).
      */
     static void upsertRecipeIngredients(Connection con, List<RecipeParser.IngredientRow> ingRows) throws SQLException {
 
@@ -493,10 +494,7 @@ public final class RecipeSync {
                 if (++counter % SyncConstants.DB_FLUSH_BATCH == 0) {
 
                     psIng.executeBatch();
-                    con.commit();
-
                     psIng.clearBatch();
-                    con.setAutoCommit(false);
                 }
             }
 

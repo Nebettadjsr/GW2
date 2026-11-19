@@ -491,6 +491,47 @@ class FullCatalogSyncTest {
         assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
     }
 
+    /**
+     * Item and currency requirements of one fetched detail batch publish atomically: more than
+     * DB_FLUSH_BATCH item rows are flushed, then the currency insert fails; the whole detail-batch
+     * transaction rolls back so the previous item AND currency sets stay intact, publication stays
+     * incomplete, and a corrected retry replaces both exact sets.
+     */
+    @Test
+    void fullRecipes_currencyFailureAfterLargeItemFlushRollsBackBothRequirementTables() throws Exception {
+        int n = SyncConstants.DB_FLUSH_BATCH + 7;
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (1, 'Old')");
+        exec("INSERT INTO items (item_id) VALUES (900001)");
+        exec("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (1, 900001, 7)");
+        exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (1, 'Currency', 61, 30)");
+        exec("INSERT INTO recipe_catalog_publication (complete) VALUES (TRUE)");
+        exec("CREATE FUNCTION rejcur() RETURNS trigger AS $$ BEGIN IF NEW.count = 31 THEN RAISE EXCEPTION 'rejected'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql");
+        exec("CREATE TRIGGER rejcur BEFORE INSERT ON recipe_non_item_requirements FOR EACH ROW EXECUTE FUNCTION rejcur()");
+
+        java.util.function.IntFunction<String> recipe = currencyCount -> {
+            String items = IntStream.rangeClosed(1, n)
+                    .mapToObj(i -> "{\"type\":\"Item\",\"id\":" + i + ",\"count\":2}")
+                    .collect(Collectors.joining(","));
+            return typedRecipe(1, 97487, "[" + items + ",{\"type\":\"Currency\",\"id\":61,\"count\":" + currencyCount + "}]");
+        };
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json("[" + recipe.apply(31) + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        assertThrows(Exception.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"), "publication must not become complete");
+        assertEquals("900001:7", scalar("SELECT string_agg(item_id||':'||count, ',') FROM recipe_ingredients WHERE recipe_id=1"),
+                "no flushed partial item replacement survives");
+        assertEquals("61:30", scalar("SELECT string_agg(ref_id||':'||count, ',') FROM recipe_non_item_requirements WHERE recipe_id=1"),
+                "previous currency requirement remains");
+
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json("[" + recipe.apply(25) + "]");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals(n + ":" + n * 2, scalar("SELECT count(*)||':'||sum(count) FROM recipe_ingredients WHERE recipe_id=1"));
+        assertNull(scalar("SELECT 1 FROM recipe_ingredients WHERE item_id=900001"));
+        assertEquals("61:25", scalar("SELECT string_agg(ref_id||':'||count, ',') FROM recipe_non_item_requirements WHERE recipe_id=1"));
+    }
+
     // ------------------------------------------------------------------ trading post coverage
 
     private static TpSync.TpUpstream scripted(int status, String arrayJson, java.util.function.IntFunction<String> single) {
