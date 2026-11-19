@@ -51,6 +51,31 @@ public class PlanState {
      */
     public final Map<String, Map<Integer, Integer>> characterBoundInventory;
 
+    /** Prefix of {@link #characterBoundInventory} keys holding character-bound stock that sits in the Bank. */
+    static final String BANK_PREFIX = "\u0000bank:";
+    /** Prefix of an assignee string marking a Mystic Forge step (optionally followed by the performing character). */
+    static final String FORGE_PREFIX = "\u0000forge:";
+
+    /** Key under which a character's Bank-resident soulbound stock lives (owner may be null/unknown/off-roster). */
+    public static String bankOwnerKey(String owner) {
+        return BANK_PREFIX + (owner == null ? "" : owner);
+    }
+
+    /** Assignee for a Forge step: Bank-bound stock of every owner is usable, carried stock only of {@code character}. */
+    public static String forgeAssignee(String character) {
+        return FORGE_PREFIX + (character == null ? "" : character);
+    }
+
+    /** The real character behind an assignee (null for none/shared), stripping the Forge marker. */
+    public static String characterOf(String assignee) {
+        if (assignee == null) return null;
+        if (assignee.startsWith(FORGE_PREFIX)) {
+            String name = assignee.substring(FORGE_PREFIX.length());
+            return name.isEmpty() ? null : name;
+        }
+        return assignee;
+    }
+
     public final Set<Integer> visiting;
     public final Map<Integer, Integer> dailyLeft;
     // Already paid for by earlier steps of this simulation, never valued as owned stock.
@@ -456,22 +481,41 @@ public class PlanState {
      * single-character/legacy path and by any consumption not attributable to one character).
      */
     public InventoryConsumption consumeInventoryWithBinding(int itemId, int qtyWanted, String assignedCharacter) {
+        boolean forge = assignedCharacter != null && assignedCharacter.startsWith(FORGE_PREFIX);
+        String character = characterOf(assignedCharacter);
         int usedCharacterBound = 0;
-        if (assignedCharacter != null) {
-            Map<Integer, Integer> ownerStock = characterBoundInventory.get(assignedCharacter);
-            if (ownerStock != null) {
-                int have = ownerStock.getOrDefault(itemId, 0);
-                usedCharacterBound = Math.min(have, qtyWanted);
-                if (usedCharacterBound > 0) {
-                    int left = have - usedCharacterBound;
-                    setValue(CHARACTER_BOUND, itemId, assignedCharacter, left > 0 ? left : ABSENT);
-                }
+        if (character != null) {
+            usedCharacterBound += consumeCharacterStock(character, itemId, qtyWanted);
+        }
+        if (forge) {
+            // Bank-resident soulbound stock of every owner, deterministic order; carried stock of others is never touched.
+            for (String key : bankKeys()) {
+                if (usedCharacterBound >= qtyWanted) break;
+                usedCharacterBound += consumeCharacterStock(key, itemId, qtyWanted - usedCharacterBound);
             }
+        } else if (character != null && usedCharacterBound < qtyWanted) {
+            usedCharacterBound += consumeCharacterStock(bankOwnerKey(character), itemId, qtyWanted - usedCharacterBound);
         }
 
         int usedAccountBound = consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - usedCharacterBound);
         int usedSellable = consumeInventory(itemId, qtyWanted - usedCharacterBound - usedAccountBound);
         return new InventoryConsumption(usedCharacterBound + usedAccountBound, usedSellable);
+    }
+
+    private int consumeCharacterStock(String key, int itemId, int wanted) {
+        Map<Integer, Integer> stock = characterBoundInventory.get(key);
+        if (stock == null) return 0;
+        int have = stock.getOrDefault(itemId, 0);
+        int used = Math.min(have, wanted);
+        if (used > 0) setValue(CHARACTER_BOUND, itemId, key, have > used ? have - used : ABSENT);
+        return used;
+    }
+
+    private java.util.List<String> bankKeys() {
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (String k : characterBoundInventory.keySet()) if (k.startsWith(BANK_PREFIX)) keys.add(k);
+        java.util.Collections.sort(keys);
+        return keys;
     }
 
     public record InventoryConsumption(int usedBound, int usedSellable) {

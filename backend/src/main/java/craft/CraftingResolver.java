@@ -446,14 +446,14 @@ public class CraftingResolver {
     private ResolvedNeed tryForgeCoordinated(int itemId, int qtyRequested, Recipe recipe,
                                              PlannerContext ctx, PlanState state) {
         int mark = state.mark();
-        ResolvedNeed best = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, null);
+        ResolvedNeed best = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(null));
         if (best.isFullySatisfied()) {
             return best;
         }
         PlanState.Delta bestEffect = state.captureDelta(mark);
         state.rollbackTo(mark);
         for (var profile : ctx.coordinatedRoster) {
-            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, profile.name());
+            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(profile.name()));
             if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)
                     && (attempt.isFullySatisfied() || attempt.getQtySatisfied() > best.getQtySatisfied())) {
                 best = attempt;
@@ -494,7 +494,7 @@ public class CraftingResolver {
             if (tracing) {
                 ResolvedNeed.NodeTrace trace = craftResult.traceForWrite();
                 trace.setSelectedRecipeId(recipe.recipeId);
-                trace.setAssignedCharacter(assignedCharacter);
+                trace.setAssignedCharacter(PlanState.characterOf(assignedCharacter));
             }
 
             // A guaranteed-gain self-seeded promotion runs its batches sequentially: only the FIRST batch's seed
@@ -751,7 +751,7 @@ public class CraftingResolver {
             if (recipe != null) {
                 trace.setSelectedRecipeId(recipe.recipeId);
             }
-            trace.setAssignedCharacter(assignedCharacter);
+            trace.setAssignedCharacter(PlanState.characterOf(assignedCharacter));
         }
 
         return blocked;
