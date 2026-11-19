@@ -260,7 +260,7 @@ public class CraftingProfitService {
         // leave null = unknown (never zero, never unlimited). Item-only recipes never look at it.
         Map<Integer, Integer> wallet = null;
         if (session.walletAuthorized() && allRecipes.stream().anyMatch(r -> !r.currencies.isEmpty())) {
-            wallet = walletRepo.load(con, session.scope()).orElse(null);
+            wallet = walletRepo.load(con, session.scope(), session.walletEvaluatedAt(), session.walletMaxAge()).orElse(null);
         }
 
         return new CalculationInputs(roster, sellableInv, accountBoundInv, characterBoundInv, tp,

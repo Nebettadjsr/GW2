@@ -292,6 +292,7 @@ public class CachedCraftingProfitService {
     private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet)
             throws SQLException {
         Instant evaluatedAt = clock.instant();
+        session.withWalletFreshness(evaluatedAt, accountMaxAge);
         Set<String> sources = new java.util.LinkedHashSet<>(CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
         if (wallet) sources.add(repo.AccountSyncStateRepository.WALLET);
         Map<String, AccountSourceStateRepository.SourceState> states = accountSourceStates.read(

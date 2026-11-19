@@ -19,6 +19,7 @@ public class ResolvedNeed {
 
     /** An owned sellable quantity here (or below) could not be valued at all (DOMAIN_SPEC.md 11.2). */
     private boolean unvaluedOwnedInput;
+    private boolean spendsUnpricedCurrency;
 
     private AcquisitionMode mode = AcquisitionMode.BLOCKED;
     private BlockedReason blockedReason = BlockedReason.NONE;
@@ -170,6 +171,19 @@ public class ResolvedNeed {
         this.buyCostCopper = Math.addExact(this.buyCostCopper, child.getBuyCostCopper());
         this.opportunityCostCopper = Math.addExact(this.opportunityCostCopper, child.getOpportunityCostCopper());
         this.unvaluedOwnedInput |= child.unvaluedOwnedInput;
+        this.spendsUnpricedCurrency |= child.spendsUnpricedCurrency;
+    }
+
+    /**
+     * True when this route (itself or any nested step) spends currency that has no gold valuation, so its copper
+     * cost is not a complete cost and must not be ranked against fully valued routes.
+     */
+    public boolean spendsUnpricedCurrency() {
+        return spendsUnpricedCurrency;
+    }
+
+    public void setSpendsUnpricedCurrency(boolean spends) {
+        this.spendsUnpricedCurrency = spends;
     }
 
     public boolean hasUnvaluedOwnedInput() {

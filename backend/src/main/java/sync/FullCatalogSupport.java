@@ -90,6 +90,47 @@ public final class FullCatalogSupport {
     }
 
     /**
+     * Strict typed ingredient boundary shared by the full refresh and the scheduled safe sync. Pinned schema
+     * {type: Item|Currency, id, count}; legacy {item_id, count} stays valid. Identity is the (kind, id) pair, so an
+     * Item and a Currency with equal numbers never collide and an unsupported kind is rejected, not dropped.
+     */
+    static boolean validIngredients(JsonNode ing) {
+        return validIngredients(ing, false);
+    }
+
+    private static boolean validIngredients(JsonNode ing, boolean typedOnly) {
+        if (!ing.isArray()) return false;
+        Set<String> identities = new HashSet<>();
+        for (JsonNode i : ing) {
+            if (typedOnly && !(i.isObject() && i.hasNonNull("type"))) continue; // tolerated legacy shape
+            String kind;
+            String idField;
+            if (i.isObject() && i.hasNonNull("type")) {
+                kind = i.get("type").isTextual() ? i.get("type").asText() : "";
+                idField = "id";
+                if (!"Item".equals(kind) && !"Currency".equals(kind) && !KNOWN_UNSUPPORTED_KINDS.contains(kind)) return false;
+            } else {
+                kind = "Item";
+                idField = "item_id";
+            }
+            if (!i.isObject() || !intAbove(i, idField, 1) || !intAbove(i, "count", 1)
+                    || !identities.add(kind + ":" + i.get(idField).asInt())) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Safe-sync guard: throws when any typed (Item/Currency/...) ingredient of the recipe is malformed so the whole
+     * recipe is quarantined and never published without a dropped requirement. Untyped legacy entries keep the
+     * safe path's historical tolerance.
+     */
+    public static void requireIngredients(JsonNode recipe) {
+        JsonNode ing = recipe.get("ingredients");
+        if (ing != null && !ing.isNull() && !validIngredients(ing, true))
+            throw new IllegalStateException("recipes detail batch contains a malformed record");
+    }
+
+    /**
      * Full-operation only: a recipe needs a positive id, text type, and either a positive item output
      * with a positive count or (guild upgrade recipes) a positive {@code output_upgrade_id};
      * non-negative rating and craft time; typed optional fields; and well-formed, distinct,
@@ -113,34 +154,8 @@ public final class FullCatalogSupport {
             JsonNode ing = n.get("ingredients");
             if (ing == null || ing.isNull()) {
                 ok = !itemOutput;
-            } else if (!ing.isArray()) {
-                ok = false;
             } else {
-                // Pinned typed schema: {type: Item|Currency, id, count}; legacy {item_id, count} remains valid.
-                // Identity is the (kind, id) pair, so an Item and a Currency with equal numbers never collide
-                // and an unsupported kind is rejected instead of being dropped.
-                Set<String> identities = new HashSet<>();
-                for (JsonNode i : ing) {
-                    String kind;
-                    String idField;
-                    if (i.isObject() && i.hasNonNull("type")) {
-                        kind = i.get("type").isTextual() ? i.get("type").asText() : "";
-                        idField = "id";
-                        if (!"Item".equals(kind) && !"Currency".equals(kind) && !KNOWN_UNSUPPORTED_KINDS.contains(kind)) {
-                            ok = false;
-                            break;
-                        }
-                    } else {
-                        kind = "Item";
-                        idField = "item_id";
-                    }
-                    if (!i.isObject() || !intAbove(i, idField, 1) || !intAbove(i, "count", 1)
-                            || !identities.add(kind + ":" + i.get(idField).asInt())) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok && itemOutput && ing.isEmpty()) ok = false;
+                ok = validIngredients(ing) && !(itemOutput && ing.isEmpty());
             }
         }
         if (!ok) throw new IllegalStateException("recipes detail batch contains a malformed record");

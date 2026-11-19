@@ -141,4 +141,82 @@ class CraftingPlannerCurrencyRequirementTest {
         assertTrue(r.currencyPerCraft.isEmpty());
         assertEquals("NOT_REQUIRED", r.walletState);
     }
+
+    // ---- Unpriced-currency routes never win a fully valued ranking (issue #372) ----
+
+    private static final CraftingSettings BUYING = new CraftingSettings(true, true, 0, false, false, true);
+
+    private static CraftResult run(List<Recipe> recipes, Map<Integer, Integer> stock, Map<Integer, PriceQuote> tp,
+                                   CraftingSettings settings, Map<Integer, Integer> wallet) {
+        Set<Integer> ids = new java.util.HashSet<>();
+        recipes.forEach(r -> ids.add(r.recipeId));
+        return new CraftingPlanner().withWallet(wallet).evaluateAll(recipes, stock, Map.of(), tp, settings, ids).get(1);
+    }
+
+    private static final Recipe PARENT = new Recipe(1, 100, 1, 0, "Artificer", List.of(ingredient(200, 1)));
+
+    @Test
+    void cheaperLookingCurrencyCraftDoesNotBeatAFullyPricedPurchase() {
+        // 200 craft = 50c material + 30 notes (unpriced); buying 200 costs 100c. Buying is the proven route.
+        Recipe viaNotes = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(900, 1000), 200, quote(100, 100), 300, quote(50, 50));
+        for (List<Recipe> order : List.of(List.of(PARENT, viaNotes), List.of(viaNotes, PARENT))) {
+            CraftResult r = run(order, Map.of(), tp, BUYING, Map.of(NOTE, 300));
+            assertTrue(r.craftableCount >= 1);
+            assertEquals(Map.of(200, 1), r.missingToBuyOne, "bought, not crafted with notes");
+            assertTrue(r.currencyTotal.isEmpty(), "no Research Notes spent: " + r.currencyTotal);
+        }
+    }
+
+    @Test
+    void fullyPricedCraftRouteBeatsCheaperLookingCurrencyRouteWhenBuyingIsOff() {
+        Recipe viaNotes = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Recipe priced = new Recipe(3, 200, 1, 0, "Artificer", List.of(ingredient(400, 1)));
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(900, 1000), 300, quote(50, 50), 400, quote(80, 80));
+        CraftingSettings craftOnly = new CraftingSettings(true, false, 0, false, false, true);
+        // Material 300/400 are bought? buying is off, so own them; the opportunity cost is what ranks the routes.
+        Map<Integer, Integer> stock = Map.of(300, 5, 400, 1000); // ample fully valued supply so no craft needs the notes route
+        for (List<Recipe> order : List.of(List.of(PARENT, viaNotes, priced), List.of(PARENT, priced, viaNotes))) {
+            CraftResult r = run(order, stock, tp, craftOnly, Map.of(NOTE, 300));
+            assertTrue(r.craftableCount >= 1);
+            assertTrue(r.currencyTotal.isEmpty(), "fully valued route chosen in " + order + ": " + r.currencyTotal);
+        }
+    }
+
+    @Test
+    void nestedCurrencyCostMakesTheWholeRouteUnpriced() {
+        Recipe viaNotes = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(250, 1)));
+        Recipe inner = new Recipe(4, 250, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(900, 1000), 200, quote(100, 100), 300, quote(10, 10));
+        CraftResult r = run(List.of(PARENT, viaNotes, inner), Map.of(), tp, BUYING, Map.of(NOTE, 300));
+        assertEquals(Map.of(200, 1), r.missingToBuyOne);
+        assertTrue(r.currencyTotal.isEmpty());
+    }
+
+    @Test
+    void currencyOnlyFeasibleRouteStaysAvailableAsConditional() {
+        Recipe viaNotes = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        // 200 has no TP quote: the currency craft is the only way, exact notes are still spent and reported.
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(900, 1000), 300, quote(50, 50));
+        CraftResult r = run(List.of(PARENT, viaNotes), Map.of(), tp, BUYING, Map.of(NOTE, 60));
+        assertEquals(2, r.craftableCount, "wallet 60 funds exactly two note crafts");
+        assertEquals(Map.of(NOTE, 60), r.currencyTotal);
+        assertEquals(Map.of(NOTE, 30), r.currencyPerCraft);
+        // And a currency route that cannot be afforded still blocks honestly.
+        CraftResult poor = run(List.of(PARENT, viaNotes), Map.of(), tp, BUYING, Map.of(NOTE, 10));
+        assertEquals(0, poor.craftableCount);
+    }
+
+    @Test
+    void itemOnlyChoiceIsUnchanged() {
+        Recipe cheapCraft = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)));
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(900, 1000), 200, quote(100, 100), 300, quote(50, 50));
+        CraftResult r = run(List.of(PARENT, cheapCraft), Map.of(), tp, BUYING, null);
+        assertEquals(Map.of(300, 1), r.missingToBuyOne, "cheaper item-only craft still beats the 100c purchase");
+        assertTrue(r.currencyTotal.isEmpty());
+    }
 }

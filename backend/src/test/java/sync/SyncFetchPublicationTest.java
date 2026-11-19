@@ -439,6 +439,45 @@ class SyncFetchPublicationTest {
         assertEquals("0", scalar("SELECT output_item_id FROM recipes WHERE recipe_id=1"));
     }
 
+    private static String currencyRecipe(int id, String currencyIngredient) {
+        return "{\"id\":" + id + ",\"type\":\"Refinement\",\"output_item_id\":20,\"output_item_count\":1,\"min_rating\":0,"
+                + "\"time_to_craft_ms\":1000,\"disciplines\":[\"Chef\"],\"flags\":[],\"chat_link\":\"[&A]\",\"ingredients\":["
+                + "{\"type\":\"Item\",\"id\":10,\"count\":1}" + (currencyIngredient == null ? "" : "," + currencyIngredient) + "]}";
+    }
+
+    @Test
+    void recipeSync_malformedCurrencyRequirementQuarantinesTheWholeRecipeAndValidOnePublishes() throws Exception {
+        String[] bad = {
+                "{\"type\":\"Currency\",\"count\":30}",
+                "{\"type\":\"Currency\",\"id\":61}",
+                "{\"type\":\"Currency\",\"id\":61,\"count\":0}",
+                "{\"type\":\"Currency\",\"id\":61,\"count\":-3}",
+                "{\"type\":\"Currency\",\"id\":0,\"count\":3}",
+                "{\"type\":\"Currency\",\"id\":61,\"count\":3000000000}",
+                "{\"type\":\"Currency\",\"id\":3000000000,\"count\":3}"};
+        StringBuilder body = new StringBuilder("[").append(currencyRecipe(1, "{\"type\":\"Currency\",\"id\":61,\"count\":30}"));
+        StringBuilder ids = new StringBuilder("[1");
+        for (int i = 0; i < bad.length; i++) {
+            body.append(',').append(currencyRecipe(100 + i, bad[i]));
+            ids.append(',').append(100 + i);
+        }
+        String detail = body.append(']').toString();
+        RecipeSync.fetcher = url -> {
+            if (url.equals(RecipeSync.CATALOG_URL)) return json(ids.append(']').toString());
+            if (url.contains("/v2/recipes?ids=")) return json(detail);
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+
+        assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"), "only the valid recipe publishes");
+        assertEquals("1", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=1 AND ref_id=61 AND count=30"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id>=100"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id>=100"));
+        assertEquals(String.valueOf(bad.length), scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+    }
+
     @Test
     void tpSync_malformedSinglePayloadIsSkippedForBothFallbackModes() throws Exception {
         tp(b -> new TpPriceApi.BatchResult(404, null, Set.of()), id -> json("{\"text\":\"missing id\"}"));

@@ -253,6 +253,7 @@ public class CraftingResolver {
             result.setOpportunityCostCopper(Math.addExact(result.getOpportunityCostCopper(),
                     chosenNeed.getOpportunityCostCopper()));
             if (chosenNeed.hasUnvaluedOwnedInput()) result.setUnvaluedOwnedInput(true);
+            if (chosenNeed.spendsUnpricedCurrency()) result.setSpendsUnpricedCurrency(true);
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
                 result.setBlockedReason(chosenNeed.getBlockedReason());
@@ -436,6 +437,7 @@ public class CraftingResolver {
                             ctx.wallet == null
                                     ? BlockedReason.WALLET_UNAVAILABLE : BlockedReason.INSUFFICIENT_CURRENCY);
                 }
+                craftResult.setSpendsUnpricedCurrency(true);
             }
 
             boolean allChildrenSatisfied = true;
@@ -529,7 +531,8 @@ public class CraftingResolver {
             ResolvedNeed attempt = tryCraft(itemId, quantity, ctx, state, parentDiscipline, recipe);
             boolean matches = sharesDiscipline(parentDiscipline, recipe.disciplinesText);
             boolean preferDiscipline = best != null && attempt.isFullySatisfied()
-                    && best.isFullySatisfied() && matches != bestMatches;
+                    && best.isFullySatisfied() && matches != bestMatches
+                    && attempt.spendsUnpricedCurrency() == best.spendsUnpricedCurrency();
             if (preferDiscipline ? matches : isBetterCraftAttempt(attempt, best)) {
                 best = attempt;
                 bestMatches = matches;
@@ -588,6 +591,11 @@ public class CraftingResolver {
         }
 
         if (candidateSatisfied) {
+            // A route with unpriced currency has only a partial copper cost: a fully valued route wins outright,
+            // and the copper figures are compared only between routes of the same valuation class.
+            if (candidate.spendsUnpricedCurrency() != currentBest.spendsUnpricedCurrency()) {
+                return !candidate.spendsUnpricedCurrency();
+            }
             return candidate.effectiveCostCopper() <= currentBest.effectiveCostCopper();
         }
 
@@ -604,6 +612,8 @@ public class CraftingResolver {
                 && craftEval.need.getQtyBlocked() == 0;
 
         if (buyValid && craftValid) {
+            // An unpriced-currency craft is not proven cheaper than a fully priced purchase: buying wins.
+            if (craftEval.need.spendsUnpricedCurrency()) return buyEval;
             // DOMAIN_SPEC.md section 22: choose the lowest total effective economic cost
             // (cash + opportunity cost), not the lowest immediate cash cost.
             return craftEval.need.effectiveCostCopper() <= buyEval.need.effectiveCostCopper()

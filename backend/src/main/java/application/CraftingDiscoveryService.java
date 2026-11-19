@@ -549,7 +549,7 @@ public class CraftingDiscoveryService {
         Map<Integer, Integer> wallet = null;
         if (walletAuthorized && scope != null && allRecipes.stream().anyMatch(r -> !r.currencies.isEmpty())) {
             try (java.sql.Connection con = repo.Db.open()) {
-                wallet = new repo.WalletRepository().load(con, scope).orElse(null);
+                wallet = new repo.WalletRepository().load(con, scope, clock.instant(), accountMaxAge).orElse(null);
             }
         }
 

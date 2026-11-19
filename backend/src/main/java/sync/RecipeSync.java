@@ -89,6 +89,17 @@ public final class RecipeSync {
                         continue;
                     }
 
+                    try {
+                        // Same strict typed ingredient validation as the full refresh: a recipe whose requirement is
+                        // malformed (missing/nonpositive/overflowing id or count) is quarantined whole.
+                        FullCatalogSupport.requireIngredients(r);
+                    } catch (IllegalStateException malformed) {
+                        System.out.println("Skipping recipe " + rr.recipeId() + ": malformed record");
+                        remoteIds.remove(rr.recipeId());
+                        skippedIds.add(rr.recipeId());
+                        continue;
+                    }
+
                     rows.add(rr);
 
                     if (rr.outputItem() > 0)

@@ -111,6 +111,24 @@ public final class ProfitInputSession implements AutoCloseable {
         return walletAuthorized;
     }
 
+    private volatile java.time.Instant walletEvaluatedAt;
+    private volatile java.time.Duration walletMaxAge;
+
+    /** The calculation's evaluation instant and the configured account max-age that decide wallet expiry. */
+    public ProfitInputSession withWalletFreshness(java.time.Instant evaluatedAt, java.time.Duration maxAge) {
+        this.walletEvaluatedAt = evaluatedAt;
+        this.walletMaxAge = maxAge;
+        return this;
+    }
+
+    public java.time.Instant walletEvaluatedAt() {
+        return walletEvaluatedAt;
+    }
+
+    public java.time.Duration walletMaxAge() {
+        return walletMaxAge;
+    }
+
     @Override
     public void close() {
         if (connection == null) return;

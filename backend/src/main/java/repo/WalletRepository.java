@@ -22,17 +22,27 @@ public class WalletRepository {
         return load(con, scope, java.time.Instant.now());
     }
 
-    /**
-     * As {@link #load(Connection, AccountScope)}. Age is not judged here: freshness is the configured account
-     * freshness policy's decision (it marks the WALLET source STALE in the calculation capture and admits a
-     * refresh), exactly as for the bank and materials. The last successful publication stays the data until then.
-     */
+    /** As {@link #load(Connection, AccountScope)} with no age limit (the last publication stays the data). */
     public Optional<Map<Integer, Integer>> load(Connection con, AccountScope scope, java.time.Instant ignoredNow)
             throws SQLException {
+        return load(con, scope, ignoredNow, null);
+    }
+
+    /**
+     * A wallet balance is only affordability evidence while fresh (DOMAIN_SPEC 2.1.0): a publication older than the
+     * configured account {@code maxAge} at the injected evaluation instant is unknown, i.e. empty, exactly like
+     * never published. The boundary matches the source freshness rule (stale only strictly after maxAge). A null
+     * {@code maxAge} applies no limit. Refresh demand is decided separately from the same marker and age.
+     */
+    public Optional<Map<Integer, Integer>> load(Connection con, AccountScope scope, java.time.Instant now,
+                                                java.time.Duration maxAge) throws SQLException {
         if (con == null) return Optional.empty();
         Optional<AccountSourceStateRepository.SourceState> marker =
                 new AccountSourceStateRepository().read(con, scope, AccountSyncStateRepository.WALLET);
         if (marker.isEmpty()) {
+            return Optional.empty();
+        }
+        if (maxAge != null && now != null && marker.get().completedAt().plus(maxAge).isBefore(now)) {
             return Optional.empty();
         }
         Map<Integer, Integer> balances = new HashMap<>();

@@ -400,6 +400,37 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void aWalletGrantedKeyRestrictedAwayFromTheWalletEndpointRefreshesWithoutWalletOnBothRoutes() throws Exception {
+        var s = session(A, "key-a");
+        // Same account, all grants incl. WALLET, but an endpoint restriction that excludes /v2/account/wallet.
+        Set<String> noWallet = new java.util.HashSet<>();
+        for (var op : application.access.AccountOperation.values()) noWallet.addAll(op.upstreamEndpoints());
+        noWallet.remove("/v2/account/wallet");
+        keys.put("key-restricted", new AccountProof(A, ALL, noWallet, null));
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-restricted")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+        mvc.perform(trigger("/api/sync/account", s, "key-restricted")).andExpect(status().isAccepted());
+        awaitRuns(2);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(1));
+    }
+
+    @Test
+    void aNarrowSessionPresentingAWalletWideKeyNeverRefreshesTheWalletOnBothRoutes() throws Exception {
+        AccountProof narrow = new AccountProof(A, Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES,
+                AccountGrant.CHARACTERS, AccountGrant.UNLOCKS, AccountGrant.PROGRESSION), Set.of(), null);
+        keys.put("key-narrow", narrow);
+        var s = sessions.establish(narrow);
+        keys.put("key-wide", new AccountProof(A, ALL, Set.of(), null));
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-wide")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+        mvc.perform(trigger("/api/sync/account", s, "key-wide")).andExpect(status().isAccepted());
+        awaitRuns(2);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(1));
+    }
+
+    @Test
     void theProfitRefreshExcludesLuck() throws Exception {
         var s = session(A, "key-a");
         mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a")).andExpect(status().isAccepted());

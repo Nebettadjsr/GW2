@@ -71,8 +71,34 @@ class WalletRepositoryTest {
     }
 
     @Test
-    void oldMarkerStillLoadsLastPublicationBecauseFreshnessPolicyOwnsStaleness() throws Exception {
+    void callWithoutAMaxAgeAppliesNoLimit() throws Exception {
         marker(A_ID, Instant.now().minus(java.time.Duration.ofDays(2)));
         assertEquals(Map.of(61, 309), new WalletRepository().load(con, AccountScope.of(A_ID)).orElseThrow());
+    }
+
+    private static final java.time.Duration MAX_AGE = java.time.Duration.ofMinutes(30);
+
+    @Test
+    void expiredWalletIsUnknownAtTheInjectedClockButBoundaryAgeIsStillFresh() throws Exception {
+        Instant published = Instant.parse("2026-11-19T10:00:00Z");
+        marker(A_ID, published);
+        WalletRepository repo = new WalletRepository();
+        AccountScope a = AccountScope.of(A_ID);
+        assertEquals(Map.of(61, 309), repo.load(con, a, published.plus(MAX_AGE), MAX_AGE).orElseThrow(),
+                "exactly maxAge old is not yet stale");
+        assertTrue(repo.load(con, a, published.plus(MAX_AGE).plusSeconds(1), MAX_AGE).isEmpty(),
+                "past maxAge the balance is unknown, never the old 309 Notes");
+    }
+
+    @Test
+    void freshPublishedEmptyWalletIsKnownZeroButNoPublicationIsUnknown() throws Exception {
+        try (Statement st = con.createStatement()) {
+            st.execute("DELETE FROM account_wallet WHERE account_id='" + A_ID + "'");
+        }
+        Instant now = Instant.parse("2026-11-19T10:00:00Z");
+        marker(A_ID, now);
+        WalletRepository repo = new WalletRepository();
+        assertEquals(Map.of(), repo.load(con, AccountScope.of(A_ID), now, MAX_AGE).orElseThrow());
+        assertTrue(repo.load(con, AccountScope.of(B_ID), now, MAX_AGE).isEmpty());
     }
 }
