@@ -462,16 +462,21 @@ public class CraftingResolver {
      */
     private ResolvedNeed tryForgeCoordinated(int itemId, int qtyRequested, Recipe recipe,
                                              PlannerContext ctx, PlanState state) {
+        // Candidates are determined BEFORE the shared attempt can consume any nested stock (rollback restores it).
+        List<String> owners = forgeOwners(recipe, ctx, state);
+        if (owners.isEmpty()) {
+            forgeSharedOnly++;
+            // No carried owner can affect this step: the shared attempt stands as-is, state untouched by trials.
+            return tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(null));
+        }
         int mark = state.mark();
         ResolvedNeed best = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(null));
         PlanState.Delta bestEffect = state.captureDelta(mark);
         state.rollbackTo(mark);
         // The unassigned attempt may be satisfied yet buy an input an owner carries: owners are compared before it is
         // accepted, but only those whose carried stock holds one of this step's own inputs (others repeat it exactly).
-        Set<Integer> relevant = carriedRelevantItems(recipe);
-        for (String owner : forgeOwners(ctx, state)) {
-            Map<Integer, Integer> carried = state.characterBoundInventory.get(owner);
-            if (carried == null || relevant.stream().noneMatch(id -> carried.getOrDefault(id, 0) > 0)) continue;
+        for (String owner : owners) {
+            forgeOwnerTrials++;
             ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, PlanState.forgeAssignee(owner));
             if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)
                     && (attempt.isFullySatisfied() || attempt.getQtySatisfied() > best.getQtySatisfied())
@@ -485,22 +490,46 @@ public class CraftingResolver {
         return best;
     }
 
+    /** Shared-attempt-only Forge steps (no relevant carried owner) and owner trials, for regression instrumentation. */
+    int forgeSharedOnly = 0;
+    int forgeOwnerTrials = 0;
+
     /**
-     * Actual carried (non-Bank) owners of this account's state, independent of the ordinary crafter roster: roster
-     * order first (stable ties), then any other carried owner by name. Owners are never pooled.
+     * Carried (non-Bank) owners whose CURRENT stock holds one of this step's own inputs/currency producers, independent
+     * of the ordinary crafter roster: roster order first (stable ties), then any other carried owner by name. Owners are
+     * never pooled. Uses the state's immutable initial item -> owner index, then verifies current quantities.
      */
-    private static List<String> forgeOwners(PlannerContext ctx, PlanState state) {
-        List<String> owners = new java.util.ArrayList<>();
+    private List<String> forgeOwners(Recipe recipe, PlannerContext ctx, PlanState state) {
+        int[] relevant = directRelevantItems(recipe);
+        List<String> found = null;
+        for (int id : relevant) {
+            for (String owner : state.initialCarriedOwnersOf(id)) {
+                if (state.carriedQuantity(owner, id) <= 0) continue;
+                if (found == null) found = new java.util.ArrayList<>();
+                if (!found.contains(owner)) found.add(owner);
+            }
+        }
+        if (found == null) return List.of();
+        List<String> owners = new java.util.ArrayList<>(found.size());
         for (var profile : ctx.coordinatedRoster) {
-            if (state.characterBoundInventory.containsKey(profile.name())) owners.add(profile.name());
+            if (found.contains(profile.name()) && !owners.contains(profile.name())) owners.add(profile.name());
         }
         List<String> others = new java.util.ArrayList<>();
-        for (String key : state.characterBoundInventory.keySet()) {
-            if (!key.startsWith(PlanState.BANK_PREFIX) && !owners.contains(key)) others.add(key);
-        }
+        for (String key : found) if (!owners.contains(key)) others.add(key);
         java.util.Collections.sort(others);
         owners.addAll(others);
         return owners;
+    }
+
+    private final Map<Recipe, int[]> directRelevantCache = new java.util.IdentityHashMap<>();
+
+    /** Immutable per-recipe fact: distinct direct input and currency-producer item ids (cached for this request). */
+    private int[] directRelevantItems(Recipe recipe) {
+        int[] cached = directRelevantCache.get(recipe);
+        if (cached != null) return cached;
+        int[] ids = carriedRelevantItems(recipe).stream().mapToInt(Integer::intValue).sorted().toArray();
+        directRelevantCache.put(recipe, ids);
+        return ids;
     }
 
     private final Map<Recipe, Set<Integer>> ownerClosureCache = new java.util.IdentityHashMap<>();

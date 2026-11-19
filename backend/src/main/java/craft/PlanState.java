@@ -31,6 +31,13 @@ public class PlanState {
     public final Map<Integer, Integer> inventory;
     private final Map<Integer, Integer> initialSellableInventory;
     private final Map<Integer, Integer> initialBoundTotals;
+    /**
+     * Immutable INITIAL owner facts, shared by every copy (never another account's data): sorted Bank keys and
+     * item -> carried (non-Bank) owners holding it initially. Consumption/rollback only ever lowers or restores
+     * quantities, so these stay a safe superset; callers must still check CURRENT journalled quantities.
+     */
+    private final java.util.List<String> initialBankKeys;
+    private final Map<Integer, java.util.List<String>> initialCarriedOwners;
 
     /**
      * Owned quantity that is account-bound or soulbound-and-usable-by-the-selected-character
@@ -209,6 +216,17 @@ public class PlanState {
         }
         this.visiting = new HashSet<>();
         this.dailyLeft = new HashMap<>();
+        java.util.List<String> bank = new java.util.ArrayList<>();
+        Map<Integer, java.util.List<String>> carried = new HashMap<>();
+        for (var e : this.characterBoundInventory.entrySet()) {
+            if (e.getKey().startsWith(BANK_PREFIX)) { bank.add(e.getKey()); continue; }
+            for (var item : e.getValue().entrySet()) {
+                if (item.getValue() > 0) carried.computeIfAbsent(item.getKey(), k -> new java.util.ArrayList<>()).add(e.getKey());
+            }
+        }
+        java.util.Collections.sort(bank);
+        this.initialBankKeys = java.util.List.copyOf(bank);
+        this.initialCarriedOwners = carried;
     }
 
     /**
@@ -219,6 +237,8 @@ public class PlanState {
         this.inventory = new HashMap<>(other.inventory);
         this.initialSellableInventory = other.initialSellableInventory;
         this.initialBoundTotals = other.initialBoundTotals;
+        this.initialBankKeys = other.initialBankKeys;
+        this.initialCarriedOwners = other.initialCarriedOwners;
         this.boundInventory = new HashMap<>(other.boundInventory);
         this.characterBoundInventory = new HashMap<>();
         for (var e : other.characterBoundInventory.entrySet()) {
@@ -555,11 +575,20 @@ public class PlanState {
         return used;
     }
 
+    /** Initial sorted Bank keys (superset of current ones; absent keys simply have no stock). */
     private java.util.List<String> bankKeys() {
-        java.util.List<String> keys = new java.util.ArrayList<>();
-        for (String k : characterBoundInventory.keySet()) if (k.startsWith(BANK_PREFIX)) keys.add(k);
-        java.util.Collections.sort(keys);
-        return keys;
+        return initialBankKeys;
+    }
+
+    /** Carried owners that held {@code itemId} initially (a superset: check current stock before use). */
+    java.util.List<String> initialCarriedOwnersOf(int itemId) {
+        return initialCarriedOwners.getOrDefault(itemId, java.util.List.of());
+    }
+
+    /** Current carried quantity of {@code itemId} for owner key {@code owner}. */
+    int carriedQuantity(String owner, int itemId) {
+        Map<Integer, Integer> stock = characterBoundInventory.get(owner);
+        return stock == null ? 0 : stock.getOrDefault(itemId, 0);
     }
 
     public record InventoryConsumption(int usedBound, int usedSellable) {
