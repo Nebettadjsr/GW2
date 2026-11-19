@@ -77,11 +77,23 @@ public class CraftingGraph {
 
     /** Name/ID search that also reaches the given extra (Mystic Forge) recipes, directly and as parents. */
     public Set<Integer> parentRecipeIdsForIngredientName(String searchText, Collection<Recipe> extraRecipes) {
+        return parentRecipeIdsForIngredientName(searchText, extraRecipes, Map.of());
+    }
+
+    /**
+     * As above, additionally matching {@code extraNames} (cached item names of Mystic Forge reference ids that no
+     * ordinary recipe mentions, e.g. a Stone that is only a Forge ingredient). The ordinary names are untouched.
+     */
+    public Set<Integer> parentRecipeIdsForIngredientName(String searchText, Collection<Recipe> extraRecipes,
+                                                         Map<Integer, String> extraNames) {
         if (searchText == null || searchText.isBlank()) return Set.of();
         String needle = searchText.trim().toLowerCase(Locale.ROOT);
         if (needle.isEmpty()) return Set.of();
         Set<Integer> seedItems = new HashSet<>();
         itemNames.forEach((itemId, name) -> {
+            if (name != null && name.toLowerCase(Locale.ROOT).contains(needle)) seedItems.add(itemId);
+        });
+        extraNames.forEach((itemId, name) -> {
             if (name != null && name.toLowerCase(Locale.ROOT).contains(needle)) seedItems.add(itemId);
         });
         if (needle.length() <= 10 && needle.chars().allMatch(c -> c >= '0' && c <= '9')) {

@@ -441,7 +441,7 @@ public class CraftingResolver {
      * A Forge step has no discipline/rating requirement, so every roster character may perform it.
      * The unassigned (shared-stock) attempt is preferred; only when it cannot fully supply the step
      * is each real character tried, because only the actual owner can use character-bound
-     * materials. One step never pools two owners' soulbound items.
+     * materials. Carried soulbound stock of different owners is never pooled; Bank-resident soulbound copies (any owner) are pooled, per the Wiki Bank rule.
      */
     private ResolvedNeed tryForgeCoordinated(int itemId, int qtyRequested, Recipe recipe,
                                              PlannerContext ctx, PlanState state) {

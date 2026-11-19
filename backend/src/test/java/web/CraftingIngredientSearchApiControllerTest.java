@@ -11,6 +11,7 @@ import repo.RecipeRepository;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -26,7 +27,7 @@ class CraftingIngredientSearchApiControllerTest {
         CraftingGraphCache cache = new CraftingGraphCache(new RecipeRepository()) {
             @Override public CraftingGraph load() { return graph; }
         };
-        var controller = new CraftingIngredientSearchApiController(cache);
+        var controller = new CraftingIngredientSearchApiController(cache, List::of);
 
         assertEquals(List.of(2, 5, 9), controller.search("cabbage").recipeIds());
         assertEquals(List.of(), controller.search("unmatched").recipeIds());
@@ -82,6 +83,49 @@ class CraftingIngredientSearchApiControllerTest {
         // Without the Forge catalog the ordinary result is unchanged.
         mvc(graph).perform(get("/api/crafting/ingredient-search").param("query", "cabbage"))
                 .andExpect(content().json("{\"recipeIds\":[2,9]}", true));
+    }
+
+    @Test
+    void forgeOnlyNamesSeedParentReachabilityColdWarmAndChangedMetadataWithOneBatchedReadPerRequest() throws Exception {
+        // Stone 20796 is referenced ONLY by the Forge recipe: the ordinary graph has no name for it.
+        CraftingGraph graph = new CraftingGraph(List.of(recipe(2, 200, 100)), Map.of(100, "Cabbage", 200, "Intermediate"));
+        Recipe forge = new Recipe(-1, 700, 1, 0, "", List.of(new Ingredient(20796, 3)), List.of(),
+                craft.RecipeSource.MYSTIC_FORGE);
+        Recipe forgeParent = new Recipe(-2, 800, 1, 0, "", List.of(new Ingredient(700, 1)), List.of(),
+                craft.RecipeSource.MYSTIC_FORGE);
+        CraftingGraphCache cache = new CraftingGraphCache(new RecipeRepository()) {
+            @Override public CraftingGraph load() { return graph; }
+        };
+        Map<Integer, String> stored = new java.util.HashMap<>();   // cold: no metadata yet
+        List<Set<Integer>> reads = new java.util.ArrayList<>();
+        var controller = new CraftingIngredientSearchApiController(cache, () -> List.of(forge, forgeParent), ids -> {
+            reads.add(ids);
+            return new java.util.HashMap<>(stored);
+        });
+
+        assertEquals(List.of(), controller.search("philosopher").recipeIds());           // cold
+        stored.put(20796, "Philosopher's Stone");                                          // metadata completed
+        assertEquals(List.of(-2, -1), controller.search("philosopher").recipeIds());     // direct + Forge parent
+        assertEquals(List.of(-2, -1), controller.search("PHILOSOPHER").recipeIds());     // warm
+        assertEquals(List.of(-2, -1), controller.search("20796").recipeIds());           // ID path unchanged
+        stored.put(20796, "Renamed Stone");                                                // changed metadata
+        assertEquals(List.of(), controller.search("philosopher").recipeIds());
+        assertEquals(List.of(-2, -1), controller.search("renamed").recipeIds());
+        assertEquals(List.of(2), controller.search("cabbage").recipeIds());               // ordinary unchanged
+        assertEquals(7, reads.size(), "exactly one batched read per request");
+        assertEquals(Set.of(700, 800, 20796), reads.get(0), "the batched read covers the catalog's positive ids");
+    }
+
+    @Test
+    void forgeOffMakesNoForgeNameRead() throws Exception {
+        CraftingGraph graph = new CraftingGraph(List.of(recipe(2, 200, 100)), Map.of(100, "Cabbage"));
+        CraftingGraphCache cache = new CraftingGraphCache(new RecipeRepository()) {
+            @Override public CraftingGraph load() { return graph; }
+        };
+        int[] reads = {0};
+        var controller = new CraftingIngredientSearchApiController(cache, List::of, ids -> { reads[0]++; return Map.of(); });
+        assertEquals(List.of(2), controller.search("cabbage").recipeIds());
+        assertEquals(0, reads[0]);
     }
 
     private static MockMvc mvc(CraftingGraph graph) {

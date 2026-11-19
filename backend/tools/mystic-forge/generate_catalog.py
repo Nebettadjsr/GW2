@@ -7,9 +7,16 @@ parent page) and source/verified-facts.json (promotion means) and writes the bun
   python3 backend/tools/mystic-forge/generate_catalog.py            # write catalog.json
   python3 backend/tools/mystic-forge/generate_catalog.py --check    # fail if catalog.json is stale
 
-Explicit live refresh (needs network, never used by tests): --refresh re-captures the two source files from the
-ArenaNet-hosted GW2 Wiki with finite timeouts, bounded retries and modest pagination. Any HTTP/JSON failure or a
-short/partial listing aborts BEFORE anything is written; captured files and the catalog are replaced atomically.
+Offline runs (default and --check) first require BOTH captured gzip files to match the hashes pinned in
+verified-facts.json ("capture"); a mismatch aborts without writing or blessing anything.
+
+Explicit live refresh (needs network, never used by tests or CI): --refresh re-captures the two source files from the
+ArenaNet-hosted GW2 Wiki with finite timeouts, bounded retries and modest pagination. Every requested title must come
+back exactly once (MediaWiki "normalized"/"redirects" mappings are applied explicitly); any HTTP/JSON failure, short
+or malformed batch aborts BEFORE any file is replaced. Both new captures are fully built and validated in memory and
+staged next to their targets first; the two final renames are sequential (each atomic), so this is NOT a multi-file
+atomic commit. Refresh never regenerates the catalog and never edits verified-facts.json: it prints the new hashes and
+a review step (re-verify the facts/means, update "capture", then run the generator).
 Source data is untrusted: it is only parsed, never executed or followed.
 """
 import argparse, gzip, hashlib, json, os, re, sys, tempfile, time, urllib.parse, urllib.request
@@ -49,10 +56,27 @@ def fields(template):
     return d
 
 
+ALIASES = {}  # verified Wiki redirect (lowercase) -> canonical page name (lowercase); see load_aliases()
+
+
+def load_aliases(path):
+    """Only the tracked, redirect-verified aliases; no singular/plural, fuzzy or other guessed mapping exists."""
+    data = json.load(open(path))
+    aliases = data["verifiedAliases"]
+    for k, v in aliases.items():
+        if k != k.lower() or v != v.lower() or k == v or v in aliases:
+            raise SystemExit("verified-aliases.json: entries must be lowercase, non-identity and not chained: %r" % k)
+    return aliases
+
+
+def canonical(name):
+    return ALIASES.get(name, name)
+
+
 def parse_ingredient(text):
     m = re.fullmatch(r"(\d+)\s+(.+)", text or "")
-    # "Name|Display" piped links name the page before the pipe; plural/alias wording stays unmatched on purpose.
-    return (int(m.group(1)), m.group(2).split("|")[0].strip().lower()) if m else None
+    # "Name|Display" piped links name the page before the pipe; only a verified redirect alias is mapped to its target.
+    return (int(m.group(1)), canonical(m.group(2).split("|")[0].strip().lower())) if m else None
 
 
 def one_int(v):
@@ -74,7 +98,7 @@ def smw_slots(printouts):
             return "duplicate ingredient slot index %d" % idx
         if qty <= 0 or iid <= 0:
             return "nonpositive ingredient quantity or id"
-        slots[idx] = (qty, iid, name.strip().lower())
+        slots[idx] = (qty, iid, canonical(name.strip().lower()))
     if sorted(slots) != [1, 2, 3, 4]:
         return "ingredient slot indices are not exactly 1..4"
     return slots
@@ -207,7 +231,7 @@ def build(raw, pages, facts, rawsha, tplsha):
             "rawRecipesSha256": rawsha, "pageTemplatesSha256": tplsha,
             "promotionMeansSource": facts["source"], "promotionMeansRevision": facts["revision"],
             "license": "Text/data contributed to the GW2 Wiki: GNU Free Documentation License 1.3 "
-                       "(see THIRD_PARTY_NOTICES.md); Guild Wars 2 game assets remain (c) ArenaNet.",
+                       "(see mystic-forge/NOTICE.md); Guild Wars 2 game assets remain (c) ArenaNet.",
         },
         "coverage": {
             "sourceRows": len(results), "includedRecipes": len(recipes), "fixedOutput": len(recipes) - ey,
@@ -258,6 +282,76 @@ def strip_templates(text):
         out.append(text[m.start():j]); i = j
 
 
+def map_batch(requested, response):
+    """Maps every requested title to exactly one returned page with revision content, or raises ValueError.
+
+    MediaWiki may report "normalized" (from -> to) and, when asked, "redirects" mappings; both are followed explicitly,
+    one hop each. A title that is missing, returned twice, returned unrequested, or lacks revision content is a
+    short/malformed batch and fails the whole refresh.
+    """
+    q = response.get("query") if isinstance(response, dict) else None
+    if not isinstance(q, dict) or not isinstance(q.get("pages"), (dict, list)):
+        raise ValueError("malformed batch: no query.pages")
+    returned = q["pages"].values() if isinstance(q["pages"], dict) else q["pages"]
+    by_title = {}
+    for p in returned:
+        if not isinstance(p, dict) or not isinstance(p.get("title"), str):
+            raise ValueError("malformed batch: page without a title")
+        if p["title"] in by_title:
+            raise ValueError("malformed batch: duplicate page %r" % p["title"])
+        by_title[p["title"]] = p
+    hop = {}
+    for key in ("normalized", "redirects"):
+        for m in q.get(key, []):
+            if not isinstance(m, dict) or not isinstance(m.get("from"), str) or not isinstance(m.get("to"), str):
+                raise ValueError("malformed batch: bad %s entry" % key)
+            if m["from"] in hop and hop[m["from"]] != m["to"]:
+                raise ValueError("malformed batch: conflicting %s mapping for %r" % (key, m["from"]))
+            hop[m["from"]] = m["to"]
+    mapped, used = {}, set()
+    for title in requested:
+        resolved = title
+        for _ in range(2):  # at most normalization then one redirect
+            resolved = hop.get(resolved, resolved)
+        page = by_title.get(resolved)
+        if page is None or "missing" in page or "invalid" in page:
+            raise ValueError("requested title %r was not returned (resolved %r)" % (title, resolved))
+        revs = page.get("revisions")
+        if not (isinstance(revs, list) and len(revs) == 1 and isinstance(revs[0].get("revid"), int)
+                and isinstance(revs[0].get("slots", {}).get("main", {}).get("*"), str)):
+            raise ValueError("requested title %r has no revision content" % title)
+        if resolved in used:
+            raise ValueError("two requested titles resolved to %r" % resolved)
+        used.add(resolved)
+        mapped[title] = (resolved, page)
+    if used != set(by_title):
+        raise ValueError("unrequested pages returned: %s" % sorted(set(by_title) - used))
+    return mapped
+
+
+def capture_pages(titles, fetch=fetch_json, pause=time.sleep):
+    pages = {}
+    for s in range(0, len(titles), PAGE):
+        batch = titles[s:s + PAGE]
+        j = fetch({"action": "query", "format": "json", "prop": "revisions", "rvprop": "ids|content",
+                   "rvslots": "main", "titles": "|".join(batch), "redirects": 1})
+        try:
+            mapped = map_batch(batch, j)
+        except ValueError as e:
+            raise SystemExit("refresh aborted, nothing written: %s" % e)
+        for title, (resolved, p) in mapped.items():
+            rev = p["revisions"][0]
+            text = rev["slots"]["main"]["*"]
+            pages[title] = {"revision": rev["revid"], "templates": strip_templates(text),
+                            "randomMentioned": bool(re.search(r"random", re.sub(r"<!--.*?-->", "", text, flags=re.S), re.I))}
+            if resolved != title:
+                pages[title]["resolvedTitle"] = resolved
+        pause(1)
+    if set(pages) != set(titles):
+        raise SystemExit("refresh aborted, nothing written: page coverage is not exact")
+    return pages
+
+
 def refresh():
     results, offset = {}, 0
     while True:
@@ -271,27 +365,62 @@ def refresh():
         offset = j["query-continue-offset"]
         time.sleep(1)
     titles = sorted({k.split("#")[0] for k in results})
-    pages = {}
-    for s in range(0, len(titles), PAGE):
-        j = fetch_json({"action": "query", "format": "json", "prop": "revisions", "rvprop": "ids|content",
-                        "rvslots": "main", "titles": "|".join(titles[s:s + PAGE]), "redirects": 0})
-        for p in j.get("query", {}).get("pages", {}).values():
-            revs = p.get("revisions")
-            if not revs:
-                continue
-            text = revs[0]["slots"]["main"]["*"]
-            pages[p["title"]] = {"revision": revs[0]["revid"],
-                                 "templates": strip_templates(text),
-                                 "randomMentioned": bool(re.search(r"random", re.sub(r"<!--.*?-->", "", text, flags=re.S), re.I))}
-        time.sleep(1)
-    if len(pages) < len(titles) * 0.9:
-        raise SystemExit("refresh aborted: only %d of %d pages captured" % (len(pages), len(titles)))
+    pages = capture_pages(titles)
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    atomic_write(os.path.join(SRC, "raw-recipes.json.gz"), gzip.compress(json.dumps({"query": {"results": results}}).encode(), mtime=0))
-    atomic_write(os.path.join(SRC, "page-templates.json.gz"), gzip.compress(json.dumps(
+    raw_bytes = gzip.compress(json.dumps({"query": {"results": results}}).encode(), mtime=0)
+    tpl_bytes = gzip.compress(json.dumps(
         {"source": "https://wiki.guildwars2.com/", "license": "GW2 Wiki contributors, GFDL 1.3; ArenaNet game data retains its rights",
-         "retrievedUtc": now, "pages": pages}).encode(), mtime=0))
-    print("refreshed %d rows / %d pages; update verified-facts.json hashes, then regenerate" % (len(results), len(pages)))
+         "retrievedUtc": now, "pages": pages}).encode(), mtime=0)
+    # Build and validate completely (dry run of the real generator) before ANY file is replaced.
+    facts = json.load(open(os.path.join(SRC, "verified-facts.json")))
+    pages_meta["retrievedUtc"] = now
+    build(json.loads(gzip.decompress(raw_bytes)), pages, facts, hashlib.sha256(raw_bytes).hexdigest(),
+          hashlib.sha256(tpl_bytes).hexdigest())
+    stage_and_replace([(os.path.join(SRC, "raw-recipes.json.gz"), raw_bytes),
+                       (os.path.join(SRC, "page-templates.json.gz"), tpl_bytes)])
+    print("refreshed %d rows / %d pages (catalog.json NOT regenerated, verified-facts.json NOT edited)" % (len(results), len(pages)))
+    print("rawRecipesSha256     %s" % hashlib.sha256(raw_bytes).hexdigest())
+    print("pageTemplatesSha256  %s" % hashlib.sha256(tpl_bytes).hexdigest())
+    print("REVIEW STEP: re-verify the promotion means / vendor facts and capture counts in verified-facts.json against the\n"
+          "new data, update its \"capture\" hashes deliberately, then run this tool without --refresh and commit the diff.")
+
+
+def stage_and_replace(items):
+    """Stage every file beside its target first; only then rename each. Sequential renames: not multi-file atomic."""
+    staged = []
+    try:
+        for path, data in items:
+            d = os.path.dirname(path)
+            fd, tmp = tempfile.mkstemp(dir=d)
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            staged.append((tmp, path))
+        for tmp, path in staged:
+            os.replace(tmp, path)
+        staged = []
+    finally:
+        for tmp, _ in staged:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+
+
+def verify_pins(facts):
+    """Both captured gzip files must equal the hashes pinned in verified-facts.json; never bless fresh hashes."""
+    cap = facts["capture"]
+    for name, key in (("raw-recipes.json.gz", "rawRecipesSha256"), ("page-templates.json.gz", "pageTemplatesSha256")):
+        actual = sha256(os.path.join(SRC, name))
+        if actual != cap.get(key):
+            sys.exit("%s hash %s does not match pinned %s (%s): stale/changed capture; review it and update "
+                     "verified-facts.json deliberately" % (name, actual, key, cap.get(key)))
+
+
+def compact_json(cat):
+    """Header objects pretty-printed; one line per recipe (keeps ~2000 recipes from becoming ~38k lines)."""
+    recipes = cat["recipes"]
+    head = {k: v for k, v in cat.items() if k != "recipes"}
+    body = json.dumps(head, indent=1, separators=(",", ": "))
+    lines = ",\n".join(" " + json.dumps(r, separators=(",", ":")) for r in recipes)
+    return (body[:-2] + ',\n "recipes": [\n' + lines + "\n ]\n}\n").encode()
 
 
 pages_meta = {}
@@ -300,17 +429,21 @@ pages_meta = {}
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
-    ap.add_argument("--refresh", action="store_true", help="live re-capture of the source files (network)")
+    ap.add_argument("--refresh", action="store_true", help="live re-capture of the source files (network); never regenerates")
     a = ap.parse_args()
+    ALIASES.clear()
+    ALIASES.update(load_aliases(os.path.join(SRC, "verified-aliases.json")))
     if a.refresh:
         refresh()
+        return
+    facts = json.load(open(os.path.join(SRC, "verified-facts.json")))
+    verify_pins(facts)
     raw = json.load(gzip.open(os.path.join(SRC, "raw-recipes.json.gz")))
     tpl = json.load(gzip.open(os.path.join(SRC, "page-templates.json.gz")))
-    facts = json.load(open(os.path.join(SRC, "verified-facts.json")))
     pages_meta["retrievedUtc"] = tpl["retrievedUtc"]
-    cat, _ = build(raw, tpl["pages"], facts,
-                   sha256(os.path.join(SRC, "raw-recipes.json.gz")), sha256(os.path.join(SRC, "page-templates.json.gz")))
-    data = (json.dumps(cat, indent=1, sort_keys=False, separators=(",", ": ")) + "\n").encode()
+    cat, _ = build(raw, tpl["pages"], facts, facts["capture"]["rawRecipesSha256"], facts["capture"]["pageTemplatesSha256"])
+    data = compact_json(cat)
+    json.loads(data)  # the compact form must stay valid JSON
     if a.check:
         if open(OUT, "rb").read() != data:
             sys.exit("catalog.json is stale; rerun without --check")

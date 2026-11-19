@@ -358,17 +358,14 @@ public final class TpSync {
         Set<Integer> itemIds;
         try (Connection con = Db.open()) {
             itemIds = new CraftingProfitItemCollector().collect(con, scope, forgeItemIds);
-            // Cold refresh: names/icons/flags for the Forge reference ids come through the same shared, batched
-            // item acquisition as every other id (never per row, never from the browser); only absent ids are fetched.
-            Set<Integer> missing = new HashSet<>(itemIds);
-            try (PreparedStatement ps = con.prepareStatement("SELECT item_id FROM items WHERE item_id = ANY (?)")) {
-                ps.setArray(1, con.createArrayOf("integer", itemIds.toArray()));
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) missing.remove(rs.getInt(1));
-                }
-            }
-            ItemSync.syncItemsByIds(missing);
         }
+        // Names/icons/flags for EVERY positive Forge reference id (fresh-quote and non-tradeable ones included -
+        // the collector only returns stale/missing tradeable quote ids) through the shared batched metadata
+        // completion: no database connection is held over the network, only incomplete rows are fetched, and a
+        // failed batch stays incomplete so the next refresh retries it. Best effort: it never blocks prices.
+        Set<Integer> positive = new HashSet<>();
+        for (Integer id : forgeItemIds) if (id != null && id > 0) positive.add(id);
+        IconSync.completeMissingMetadata(positive);
         syncTpPrices(itemIds);
     }
 
