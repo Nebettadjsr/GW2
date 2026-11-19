@@ -2,7 +2,7 @@ package craft;
 
 /**
  * The domain explanation of <em>one</em> execution of a selected recipe, resolved from the
- * calculation inputs it was given (DOMAIN_SPEC.md section 44, TARGET_ARCHITECTURE.md section 13.3).
+ * calculation inputs it was given (DOMAIN_SPEC.md section 44, ARCHITECTURE.md section 7).
  *
  * <p>The root requirement asks for {@code outputQuantity} units of {@code outputItemId} - the
  * recipe's own output count. It is not a trace of every craft a simulation could perform, not the

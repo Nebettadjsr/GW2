@@ -5,7 +5,7 @@
  * compares what the browser rendered against the very responses the two routes return: slot order,
  * the positions of the empty bank slots, item ids and counts, and the material category labels and
  * stack order. Nothing is mocked, nothing is written, and no synchronization is triggered — both
- * routes are GETs (CURRENT_ARCHITECTURE.md 5.12), and the script's own comparison read is a second
+ * routes are GETs (ARCHITECTURE.md section 3), and the script's own comparison read is a second
  * GET of the same route.
  *
  * The comparison is taken from the hooks the current screens render (STORY-WEB-029). Both screens
@@ -15,7 +15,7 @@
  * one item, and a material position that is not owned at all. Both omissions are therefore part of
  * what is compared, not gaps in it.
  *
- * It asserts no domain value and establishes no performance (TEST_STRATEGY / TARGET_ARCHITECTURE 33).
+ * It asserts no domain value and establishes no performance (TEST_STRATEGY performance evidence).
  *
  * Prerequisites, both started by hand:
  *   1. the backend    — `./mvnw spring-boot:run` in backend/
@@ -35,7 +35,7 @@ import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 const FRONTEND_URL = process.env.GW2_FRONTEND_URL ?? 'http://localhost:5173'
 const TIMEOUT_MS = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 60_000)
 
-/** The one route an item image may come from (TARGET_ARCHITECTURE.md 12.1). */
+/** The one route an item image may come from (ARCHITECTURE.md section 3). */
 const ICON_ROUTE = /^\/api\/items\/\d+\/icon\/[0-9a-f]{64}\.(png|jpg)$/
 
 /**
@@ -409,7 +409,7 @@ async function run() {
 
     // ------------------------------------------------------------- Overall
     // Images are this application's own delivery route and nothing else (STORY-WEB-010,
-    // TARGET_ARCHITECTURE.md 12.1). An entry without retained metadata renders the shared neutral
+    // ARCHITECTURE.md section 3). An entry without retained metadata renders the shared neutral
     // fallback, which is inline and asks for nothing.
     const images = await page.$$eval('img', (elements) =>
       elements.map((image) => ({

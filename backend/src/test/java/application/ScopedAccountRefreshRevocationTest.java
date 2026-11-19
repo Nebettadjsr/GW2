@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** STORY-SYNC-006 / TARGET_ARCHITECTURE §8.1: worker-side definitive key rejection revokes the originating session. */
+/** STORY-SYNC-006 / ARCHITECTURE.md section 5: worker-side definitive key rejection revokes the originating session. */
 class ScopedAccountRefreshRevocationTest {
 
     private static final String A = "11111111-1111-1111-1111-111111111111";

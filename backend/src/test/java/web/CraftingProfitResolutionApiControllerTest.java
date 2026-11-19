@@ -54,8 +54,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * HTTP contract tests for the Crafting Profit resolution-detail route (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.1/§13.3/§13.4, TEST_STRATEGY.md §11): required inputs, the effective
- * inputs echoed back, the complete envelope and recursive node shape, the §13.4 outcomes, and
+ * ARCHITECTURE.md section 7, TEST_STRATEGY.md): required inputs, the effective
+ * inputs echoed back, the complete envelope and recursive node shape, failure outcomes, and
  * request isolation at the boundary.
  *
  * <p>The application service is replaced by a stub that returns a supplied
@@ -272,7 +272,7 @@ class CraftingProfitResolutionApiControllerTest {
         assertEquals(declared, emitted);
     }
 
-    // ---------- the recursive node shape (§13.3) ----------
+    // ---------- the recursive node shape ----------
 
     @Test
     void theRequestedRecipesOwnRootKeepsItsQuantitiesMethodsCostsAndIngredientChildren()
@@ -567,7 +567,7 @@ class CraftingProfitResolutionApiControllerTest {
         assertTrue(body.length() < 4_000, "a cycle must terminate, not serialize a repeating structure");
     }
 
-    // ---------- §13.4 outcomes ----------
+    // ---------- detail failure outcomes ----------
 
     @Test
     void anUnavailableCalculationResultIsACompleted200WithNoTree() throws Exception {
@@ -602,7 +602,7 @@ class CraftingProfitResolutionApiControllerTest {
                 "the 404 must come from the calculation's own candidate set, not from a pre-check");
     }
 
-    // ---------- cached-result contract (STORY-APP-014, TARGET_ARCHITECTURE.md §9.1/§10.2) ----------
+    // ---------- cached-result contract (STORY-APP-014, ARCHITECTURE.md section 7) ----------
 
     @Test
     void theDetailResponseCarriesTheFreshnessOfTheInputsItExplained() throws Exception {

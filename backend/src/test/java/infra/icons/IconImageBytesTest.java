@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * What may become a cache entry (TARGET_ARCHITECTURE.md §12.1: a complete, nonempty, decodable
+ * What may become a cache entry (ARCHITECTURE.md section 3: a complete, nonempty, decodable
  * PNG/JPEG matching the extension, within the decoded-pixel bound). These are the checks that keep an
  * error page, a truncated download or a format substitution out of the persistent cache.
  */

@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The canonical-source rules of TARGET_ARCHITECTURE.md §12.1 (STORY-API-009): which retained metadata
+ * The canonical-source rules of ARCHITECTURE.md section 3 (STORY-API-009): which retained metadata
  * is acceptable, how it is canonicalized, and which key and extension it derives.
  *
  * <p>The expected keys are precomputed SHA-256 digests written out literally rather than recomputed

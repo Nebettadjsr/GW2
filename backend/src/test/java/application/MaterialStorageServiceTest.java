@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Application-layer orchestration tests (TARGET_ARCHITECTURE.md §25, STORY-APP-009) for
+ * Application-layer orchestration tests (ARCHITECTURE.md section 2, STORY-APP-009) for
  * {@link MaterialStorageService}: a fake {@link MaterialStorageRepository} replaces the live
  * PostgreSQL read, so these run without a database. They pin the grouping/ordering/empty-category
  * behavior moved verbatim out of {@code MaterialsView}, plus failure propagation - not the SQL

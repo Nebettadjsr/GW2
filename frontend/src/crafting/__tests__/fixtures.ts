@@ -479,7 +479,7 @@ export function echoedProfitResponse(
 }
 
 /**
- * Resolution-detail fixtures (`TARGET_ARCHITECTURE.md` 13.3).
+ * Resolution-detail fixtures (`ARCHITECTURE.md` section 7).
  *
  * The node values here are supplied transport facts, deliberately chosen so a browser that tried to
  * work anything out would disagree with them: inclusive costs are not the sum of their children,

@@ -254,7 +254,7 @@ record concrete gaps and verification in the GitHub issue or pull request. Asses
 screen during implementation; a planning assessment based on documentation is not a visual
 inspection.
 
-Verify supported desktop layouts, the capability boundary and public-reading exceptions,
+Verify supported desktop layouts, the informational narrow-width notice with tool content still visible and horizontally scrollable, and public-reading exceptions,
 keyboard navigation, visible focus, meaningful status/error states and selected details.
 Use controlled values that reveal accidental frontend recalculation. Retain real-browser
 journeys for native event/focus/navigation and integrated request wiring; unit tests alone

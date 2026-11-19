@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Application-layer tests for {@link CraftingProfitService#resolveDetail} (STORY-APP-012,
- * TARGET_ARCHITECTURE.md §13.1/§13.2). Companion to
+ * ARCHITECTURE.md section 7). Companion to
  * {@link CraftingDiscoveryResolutionDetailTest}; this suite covers what is specific to the
  * coordinated Profit path - the roster built from the chosen scope, the three-way
  * sellable/account-bound/character-bound inventory split, and character assignment - with the same
@@ -521,7 +521,7 @@ class CraftingProfitResolutionDetailTest {
         return node.children().get(0);
     }
 
-    // ---------- Fake/in-memory adapters (TARGET_ARCHITECTURE.md §25) ----------
+    // ---------- Fake/in-memory adapters (ARCHITECTURE.md section 2) ----------
 
     private static class Fakes {
         List<Recipe> visible = List.of();

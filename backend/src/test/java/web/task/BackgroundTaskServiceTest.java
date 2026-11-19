@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * observed at points the test controls. Where a terminal state has to be waited for, it is waited for
  * with a bounded poll that fails loudly instead of a fixed sleep.
  *
- * <p>Every documented property of the facility is asserted here, since {@code CURRENT_ARCHITECTURE.md}
+ * <p>Every documented property of the facility is asserted here, since {@code ARCHITECTURE.md}
  * describes them as facts: the admission rule, the exactly-once execution, the state transitions, the
  * recorded cause, the retention bound and the unknown-identifier answer.
  */

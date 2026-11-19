@@ -76,6 +76,25 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
   all settings, account/scope, catalog/quote generations and implementation identity,
   with bounded lifetime and memory. No useful hit rate or speedup is established.
 
+## Other open follow-ups
+
+- **Legacy branding images are packaged without a runtime caller.**
+  `backend/src/main/resources/images` includes originals (for example the two
+  `ChatGPT Image ...` PNGs and `favicon.zip`) that no runtime code references (inference
+  from a source search, not a measured size finding). Originals are preserved; artifact
+  validation of the packaged jar is needed before moving or excluding any file
+  (see [#345](https://github.com/Nebettadjsr/GW2/issues/345)).
+- **Trading Post warning wording overstates the API limit.**
+  `TradingPostPriceDisclaimer.vue` says the GW2 API provides no order-book depth, but
+  `commerce/listings` documents price levels with quantities. This tool uses best unit
+  quotes from `commerce/prices` without quantity-aware execution. Correction is scoped in
+  [#360](https://github.com/Nebettadjsr/GW2/issues/360); no new fetch or algorithm is requested.
+- **One optional icon-tree smoke timeout ([#347](https://github.com/Nebettadjsr/GW2/issues/347)) has an unproven cause.** A single
+  first-run timeout was followed by passing reruns. Stricter readiness checks and failure
+  diagnostics were added; this is hardening, not a confirmed product defect or a proven
+  fix. Treat it as a residual optional-check risk and do not restart repeated smoke
+  investigation without new evidence.
+
 Graph-generation reuse and narrower evaluation roots belong to KP-30 above. Actual
 measurements stay in the relevant issue/CI evidence; these are opportunities, not claims
 about production capacity or completed optimizations.

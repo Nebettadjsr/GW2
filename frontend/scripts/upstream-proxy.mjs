@@ -1,6 +1,6 @@
 /**
  * A counting HTTPS forward proxy, used only as *evidence* in the live icon checks
- * (`STORY-WEB-010`, `TARGET_ARCHITECTURE.md` 12.1).
+ * (`STORY-WEB-010`, `ARCHITECTURE.md` section 3).
  *
  * The backend is started with `-Dhttps.proxyHost/-Dhttps.proxyPort` pointing here, so every upstream
  * image fetch it makes has to open a CONNECT tunnel through this process. That turns "the backend

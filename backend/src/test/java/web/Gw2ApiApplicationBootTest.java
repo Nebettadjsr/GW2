@@ -34,14 +34,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Proves the Spring Boot entry point is genuinely runnable on this Java/Maven setup
  * (STORY-API-001 acceptance criterion 1): the context starts, an embedded server binds a port, and
  * the crafting calculation endpoints are wired to their application use cases — Discovery to a
- * per-request service factory, and Profit to the cached-result use case and the shared refresh
+ * per-request service factory, and Profit to the cached-input use case and the shared refresh
  * coordinators STORY-APP-014 introduced.
  *
  * <p>Deliberately does not call the endpoints - that would need the real database. Transport
  * behavior is covered by {@link CraftingProfitApiControllerTest} and
  * {@link CraftingDiscoveryApiControllerTest}, scoped parity by {@code support.fixture.*HttpParityTest}. The
- * service factory and the cached use case are never invoked here, so no connection is opened. The narrowly scoped
- * account-Luck schema initialization is disabled for this wiring-only test; normal startup runs it.
+ * service factory and the cached use case are never invoked here, so no connection is opened. The versioned schema
+ * gate lives in {@code Gw2ApiApplication.main}, which this Spring-context wiring test does not call, so
+ * no schema is initialized here (managed startup runs it before the context exists).
  *
  * <p>STORY-API-003 added the account synchronization trigger, the shared task-status route and the task
  * facility they use, STORY-API-004 the global one and STORY-API-005 the price-refresh one; this test
@@ -159,8 +160,8 @@ class Gw2ApiApplicationBootTest {
 
     /**
      * STORY-API-008: the two resolution-detail operations must be reachable at exactly the paths
-     * TARGET_ARCHITECTURE.md §13.1 fixes, in the real context rather than only in a standalone
-     * MockMvc setup. Still no call is made, so no connection is opened.
+     * the Profit/Discovery controllers and the browser client use, in the real context rather than
+     * only in a standalone MockMvc setup. Still no call is made, so no connection is opened.
      */
     @Test
     void theResolutionDetailRoutesAreMappedAtTheirDecidedPaths() {

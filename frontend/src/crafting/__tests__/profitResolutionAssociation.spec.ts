@@ -33,7 +33,7 @@ const completedSyncApi: SyncApi = {
 }
 
 /**
- * The resolution-context association rules of `TARGET_ARCHITECTURE.md` 10.2, driven through the real screen.
+ * The resolution-context association rules of `ARCHITECTURE.md` section 7, driven through the real screen.
  *
  * A detail belongs to a feature, a recipe, the effective calculation inputs and a local request
  * generation. These tests are about which answers may be displayed and which requests are issued at

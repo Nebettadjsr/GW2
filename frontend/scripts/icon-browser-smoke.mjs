@@ -1,5 +1,5 @@
 /**
- * Real-browser check of the shared item image (`TARGET_ARCHITECTURE.md` 12.1, AR-005;
+ * Real-browser check of the shared item image (`ARCHITECTURE.md` section 3, AR-005;
  * `STORY-WEB-010`).
  *
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`), so every

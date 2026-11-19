@@ -7,7 +7,7 @@
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): every
  * answer comes from this process, so no backend, database or GW2 API is involved and nothing can be
  * synchronized. It therefore evidences structure, layout, interaction and what the page sends —
- * never real data, and never page-load performance (`TARGET_ARCHITECTURE.md` 33).
+ * never real data, and never page-load performance (`TEST_STRATEGY.md` performance evidence).
  *
  * Since STORY-WEB-028 one candidate's answer carries a root the resolver supplied from stock, so the
  * root-sourcing sentence is rendered and read here as well as suppressed where it would only restate

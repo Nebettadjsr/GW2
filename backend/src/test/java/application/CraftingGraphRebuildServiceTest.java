@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Application-layer orchestration test (TARGET_ARCHITECTURE.md §25, STORY-APP-005) for
+ * Application-layer orchestration test (ARCHITECTURE.md section 2, STORY-APP-005) for
  * {@link CraftingGraphRebuildService}: a fake {@link CraftingGraphCache} subclass replaces the
  * real database-backed rebuild, so this runs without PostgreSQL. Proves delegation to the
  * existing cache rebuild happens exactly once and that its failure propagates unchanged, without

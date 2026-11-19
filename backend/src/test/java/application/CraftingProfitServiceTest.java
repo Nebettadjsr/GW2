@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Application-layer orchestration tests (TARGET_ARCHITECTURE.md §25, STORY-APP-001) for
+ * Application-layer orchestration tests (ARCHITECTURE.md section 2, STORY-APP-001) for
  * {@link CraftingProfitService}: fake/in-memory adapters replace every repository and the
  * crafting-graph cache, so these run without PostgreSQL, while the real {@link CraftingPlanner}
  * (wrapped to record its inputs) still performs the actual domain calculation - this suite proves
@@ -260,7 +260,7 @@ class CraftingProfitServiceTest {
         assertThrows(SQLException.class, () -> service.reload(DiscChoice.all(), settings(false, false)));
     }
 
-    // ---------- Fake/in-memory adapters (TARGET_ARCHITECTURE.md §25) ----------
+    // ---------- Fake/in-memory adapters (ARCHITECTURE.md section 2) ----------
 
     /** {@code recipes} is mutable so a test can change what the "cache file" contains between two reload() calls. */
     private static class FakeCraftingGraphCache extends CraftingGraphCache {

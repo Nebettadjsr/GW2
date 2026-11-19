@@ -7,7 +7,7 @@
  * and no synchronization can be started. The real App restores and proves a synthetic retained key
  * through `controlledAccountSession.mjs`, which also rejects unexpected routes/methods/raw keys and
  * blocks off-origin requests; Home is public and must read nothing. It therefore evidences structure, layout and interaction —
- * never real data, and never page-load performance (TARGET_ARCHITECTURE 33).
+ * never real data, and never page-load performance (TEST_STRATEGY performance evidence).
  *
  * Usage:  npm run build && npm run smoke:layout
  * Environment:

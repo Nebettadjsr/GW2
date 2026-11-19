@@ -1,6 +1,6 @@
 /**
- * Live integration evidence for the shared item image (`STORY-WEB-010`, `TARGET_ARCHITECTURE.md`
- * 12.1) — a real browser, the real backend, the real user database and real ArenaNet images.
+ * Live integration evidence for the shared item image (`STORY-WEB-010`, `ARCHITECTURE.md`
+ * section 3) — a real browser, the real backend, the real user database and real ArenaNet images.
  *
  * Nothing here is a fixture. What it establishes, and how:
  *

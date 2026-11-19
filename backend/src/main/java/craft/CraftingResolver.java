@@ -267,7 +267,7 @@ public class CraftingResolver {
             if (craftMark >= 0) state.rollbackTo(craftMark);
 
             if (tracing && craftEval != null) {
-                // TARGET_ARCHITECTURE.md section 13.3: a blocked requirement still shows the
+                // ARCHITECTURE.md section 7: a blocked requirement still shows the
                 // ingredient requirements of the craft path that was attempted for it. The attempt's
                 // state changes are rolled back above; only its explanatory facts survive, and this
                 // node's own quantities and costs below remain those of the blocked requirement.

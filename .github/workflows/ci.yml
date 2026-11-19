@@ -96,15 +96,15 @@ jobs:
           DATABASE_URL: jdbc:postgresql://localhost:5432/gw2ci
           DATABASE_USER: gw2ci
           DATABASE_PASSWORD: gw2ci
-          # repo.AppConfig reads this at class-initialization time, so the suite
-          # needs the key to be *set*. No test in the default Surefire run makes
-          # a live Guild Wars 2 API call (docs/TEST_STRATEGY.md §14, §31.4), so a
-          # placeholder is correct here. Never put a real key in this file.
+          # Retained placeholder; browser account operations supply their own transient key.
+          # No test in the default suite makes a live Guild Wars 2 API call
+          # (docs/TEST_STRATEGY.md §14, §31.4). Never put a real key in this file.
           GW2_API_KEY: ci-placeholder-no-live-api-calls
           ICON_CACHE_DIR: ${{ runner.temp }}/gw2-icons
-        # The default Surefire run: *Test classes only. *IT classes (Layer 4
-        # live GW2 API smoke, real-database equivalence
-        # checks) stay excluded by their naming convention, exactly as locally.
+        # The default Surefire run: backend/pom.xml includes Test*, *Test, *Tests,
+        # *TestCase and *Properties. *IT classes (Layer 4 live GW2 API smoke,
+        # real-database equivalence checks) are outside those include patterns, not
+        # an explicit excludes element, exactly as locally.
         working-directory: backend
         run: ./mvnw -B -ntp test jacoco:report
 

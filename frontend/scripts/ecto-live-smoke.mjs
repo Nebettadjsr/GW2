@@ -420,7 +420,7 @@ async function liveBody(pending, path) {
 }
 
 try {
-  // 1. What the live inputs cost, measured rather than assumed (TARGET_ARCHITECTURE.md 23).
+  // 1. What the live inputs cost, measured rather than assumed (ARCHITECTURE.md section 7).
   await awaitAccountReadModel()
   const measurements = await measureInputs()
   record(

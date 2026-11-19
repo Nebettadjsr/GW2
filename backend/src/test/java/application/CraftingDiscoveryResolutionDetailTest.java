@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Application-layer tests for {@link CraftingDiscoveryService#resolveDetail} (STORY-APP-012,
- * TARGET_ARCHITECTURE.md §13.1/§13.2): fake/in-memory adapters replace every repository and the
+ * ARCHITECTURE.md section 7): fake/in-memory adapters replace every repository and the
  * crafting-graph cache, while the real {@link CraftingPlanner} and the real
  * {@link craft.SingleCraftExplainer} do the actual work. What is asserted here is orchestration -
  * one fresh load per operation, candidate-set membership, request-local isolation and captured
@@ -462,7 +462,7 @@ class CraftingDiscoveryResolutionDetailTest {
         }
     }
 
-    // ---------- Fake/in-memory adapters (TARGET_ARCHITECTURE.md §25) ----------
+    // ---------- Fake/in-memory adapters (ARCHITECTURE.md section 2) ----------
 
     /**
      * One bundle of fakes per service. Every loader counts its calls and can be told to answer
