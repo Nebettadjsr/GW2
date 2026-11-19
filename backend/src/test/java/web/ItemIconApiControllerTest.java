@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * HTTP contract tests for the item-image endpoint (STORY-API-009, TARGET_ARCHITECTURE.md §12.1,
+ * HTTP contract tests for the item-image endpoint (STORY-API-009, ARCHITECTURE.md section 3,
  * TEST_STRATEGY.md §11): the success and failure statuses, the exact caching headers, conditional
  * requests, and that the route is an asset endpoint rather than a file server.
  *

@@ -2,7 +2,7 @@ import type { AccountApi } from '@/api/accountApi'
 import type { BankContents, MaterialStorage } from '@/api/types'
 
 /**
- * Controlled responses for the account-read screens (`CURRENT_ARCHITECTURE.md` 5.12).
+ * Controlled responses for the account-read screens (`ARCHITECTURE.md` section 3).
  *
  * The values are deliberately awkward: the categories are not in alphabetical order, the stacks are
  * not ordered by count or item id, the same item id appears in two categories, and both a supplied

@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Layer 2 PostgreSQL integration test (docs/TEST_STRATEGY.md §31.2) for the icon-<em>metadata</em>
- * refresh of {@code IconSync} (STORY-API-009 and STORY-SYNC-004, TARGET_ARCHITECTURE.md §12.1).
+ * refresh of {@code IconSync} (STORY-API-009 and STORY-SYNC-004, ARCHITECTURE.md section 3).
  *
  * <p>What §12.1 requires and the original null-only backfill did not establish:
  * <ul>

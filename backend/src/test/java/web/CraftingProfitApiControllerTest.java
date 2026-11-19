@@ -488,7 +488,7 @@ class CraftingProfitApiControllerTest {
                 .andExpect(jsonPath("$.rows.length()").value(0));
     }
 
-    // ---------- cached-result contract (STORY-APP-014, TARGET_ARCHITECTURE.md §9.1) ----------
+    // ---------- cached-result contract (STORY-APP-014, ARCHITECTURE.md section 7) ----------
 
     @Test
     void expiredInputsStillAnswerTwoHundredWithTheResultAndAProvisionalEnvelope() throws Exception {

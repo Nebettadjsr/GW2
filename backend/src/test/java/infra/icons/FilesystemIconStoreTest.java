@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The persistent cache's own guarantees (TARGET_ARCHITECTURE.md §12.1, STORY-API-009): what counts as
+ * The persistent cache's own guarantees (ARCHITECTURE.md section 3, STORY-API-009): what counts as
  * an entry, how a write becomes visible, what a second writer may not do, and that a restart reuses
  * what is on disk.
  *

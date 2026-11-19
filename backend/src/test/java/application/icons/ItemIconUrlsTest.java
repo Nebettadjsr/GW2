@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The application-relative icon URL both sides of the contract use (TARGET_ARCHITECTURE.md §12.1,
+ * The application-relative icon URL both sides of the contract use (ARCHITECTURE.md section 3,
  * STORY-API-009): what a read emits for retained metadata, and what the endpoint accepts back.
  *
  * <p>The round trip is asserted explicitly: a URL this class formats must parse back into the same item,

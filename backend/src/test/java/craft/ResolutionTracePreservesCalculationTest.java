@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 /**
  * Trace recording is opt-in and must change nothing: an ordinary table calculation resolves exactly
  * as before and builds no semantic tree at all, while a traced resolution reaches the same economic
- * outcome and the same accepted planning state (TARGET_ARCHITECTURE.md sections 13.3/13.5).
+ * outcome and the same accepted planning state (ARCHITECTURE.md section 7/13.5).
  */
 class ResolutionTracePreservesCalculationTest {
 

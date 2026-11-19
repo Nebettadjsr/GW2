@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Application-layer orchestration tests (TARGET_ARCHITECTURE.md §25, STORY-APP-005) for
+ * Application-layer orchestration tests (ARCHITECTURE.md section 2, STORY-APP-005) for
  * {@link GlobalDataRefreshService}: a fake {@link GlobalDataRefreshGateway} and a fake
  * {@link CraftingGraphRebuildService} (backed by a recording {@link CraftingGraphCache} subclass)
  * replace the live GW2 API/database calls, so these run without HTTP or PostgreSQL. Proves the

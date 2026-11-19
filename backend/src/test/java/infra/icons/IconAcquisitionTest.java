@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * How a miss becomes exactly one committed entry (TARGET_ARCHITECTURE.md §12.1, STORY-API-009):
+ * How a miss becomes exactly one committed entry (ARCHITECTURE.md section 3, STORY-API-009):
  * coalescing, the disk recheck, publication before success, the bounded failure suppression and what
  * must never be persisted.
  *

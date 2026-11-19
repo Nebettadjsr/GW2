@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * Domain entry point for explaining one execution of a selected recipe
- * (TARGET_ARCHITECTURE.md section 10.2, DOMAIN_SPEC.md section 44).
+ * (ARCHITECTURE.md section 7, DOMAIN_SPEC.md section 44).
  *
  * <p>It runs the authoritative resolver - the same {@link RecipeSimulator}/{@link CraftingResolver}
  * that produces the economic results, with the same eligibility, binding, valuation and
@@ -41,7 +41,7 @@ public final class SingleCraftExplainer {
 
     /**
      * Explains one craft on the individual-character path used by Crafting Discovery
-     * (CURRENT_ARCHITECTURE.md section 5.2), whose inputs match
+     * (ARCHITECTURE.md section 7), whose inputs match
      * {@link CraftingPlanner#evaluateAll(List, Map, Map, Map, CraftingSettings, Set)}.
      *
      * @param recipe            the selected recipe; its output count is what the root requests.
@@ -68,7 +68,7 @@ public final class SingleCraftExplainer {
 
     /**
      * Explains one craft on the coordinated-roster path used by Crafting Profit
-     * (CURRENT_ARCHITECTURE.md section 5.1), whose inputs match
+     * (ARCHITECTURE.md section 7), whose inputs match
      * {@link CraftingPlanner#evaluateAllCoordinated(List, Map, Map, Map, List, Map,
      * CraftingSettings, Set)}. Each craft step is assigned to an eligible roster character exactly
      * as the table calculation assigns it, and the assignment is part of the explanation.
@@ -133,7 +133,7 @@ public final class SingleCraftExplainer {
         }
 
         // The first craft was attempted and rejected: its reasons are still an explanation
-        // (TARGET_ARCHITECTURE.md section 10.2), unlike the absence of a result.
+        // (ARCHITECTURE.md section 7), unlike the absence of a result.
         ResolvedNeed rejected = simulation.getBlockedAttempt();
         if (rejected != null) {
             return explanationOf(recipe, toNode(rejected, simulation.getBlockedReason()), recipe.outputCount);

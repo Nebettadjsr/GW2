@@ -17,7 +17,7 @@ import java.util.List;
  * missingQuantity}. {@code craftedQuantity} is the produced quantity <em>used here</em>, which is
  * less than {@code producedQuantity} when a recipe's batch size overshoots the requirement.
  *
- * <p>Cost semantics (DOMAIN_SPEC.md sections 11, 21 and 23, TARGET_ARCHITECTURE.md section 13.3):
+ * <p>Cost semantics (DOMAIN_SPEC.md sections 11, 21 and 23, ARCHITECTURE.md section 7):
  * the three cost fields are copper amounts for this requirement <em>including</em> its descendants,
  * so an ancestor's cost must never be summed with its children's again. They are {@code null} when
  * the requirement was not fully satisfied and therefore has no complete value - which is different

@@ -139,7 +139,7 @@ public class CraftingPlanner {
      * {@link #evaluateAll(List, Map, Map, Map, CraftingSettings, Set)} computes that recipe's
      * entry: the same context, the same fresh {@link PlanState} built from the supplied initial
      * inventory, and the same per-recipe evaluation - including its heuristic skip. Provided for
-     * the selected-recipe detail operation (TARGET_ARCHITECTURE.md section 13.2), which needs one
+     * the selected-recipe detail operation (ARCHITECTURE.md section 7), which needs one
      * row rather than a whole table; it is an entry point, not a second set of rules.
      */
     public CraftResult evaluateOne(Recipe recipe,

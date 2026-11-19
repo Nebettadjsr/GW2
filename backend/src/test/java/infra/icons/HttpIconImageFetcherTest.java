@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The upstream image adapter against a controlled local HTTP fixture (TARGET_ARCHITECTURE.md §12.1,
+ * The upstream image adapter against a controlled local HTTP fixture (ARCHITECTURE.md section 3,
  * TEST_STRATEGY.md §31.2): which responses may become bytes, which may not, and what the request
  * itself is allowed to contain.
  *

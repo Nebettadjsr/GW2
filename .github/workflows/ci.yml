@@ -102,9 +102,10 @@ jobs:
           # placeholder is correct here. Never put a real key in this file.
           GW2_API_KEY: ci-placeholder-no-live-api-calls
           ICON_CACHE_DIR: ${{ runner.temp }}/gw2-icons
-        # The default Surefire run: *Test classes only. *IT classes (Layer 4
-        # live GW2 API smoke, real-database equivalence
-        # checks) stay excluded by their naming convention, exactly as locally.
+        # The default Surefire run: backend/pom.xml includes Test*, *Test, *Tests,
+        # *TestCase and *Properties. *IT classes (Layer 4 live GW2 API smoke,
+        # real-database equivalence checks) are outside those include patterns, not
+        # an explicit excludes element, exactly as locally.
         working-directory: backend
         run: ./mvnw -B -ntp test jacoco:report
 

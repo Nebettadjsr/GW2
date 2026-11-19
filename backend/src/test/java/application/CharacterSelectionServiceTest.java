@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Application-layer orchestration tests (TARGET_ARCHITECTURE.md §25, STORY-APP-010) for
+ * Application-layer orchestration tests (ARCHITECTURE.md section 2, STORY-APP-010) for
  * {@link CharacterSelectionService}: a fake {@link CharacterRepository} replaces the live
  * PostgreSQL read, so these run without a database. They prove scope delegation, the returned rows
  * and their order, the empty result and failure propagation - not the SQL itself (that stays unchanged

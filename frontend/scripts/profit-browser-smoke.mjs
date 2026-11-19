@@ -28,7 +28,7 @@
  * Runs the built frontend against a *controlled* API boundary (`scripts/stubOrigin.mjs`): every
  * answer comes from this process, so no backend, database or GW2 API is involved and nothing can be
  * synchronized. It therefore evidences structure, layout and interaction — never real data, and never
- * page-load performance (`TARGET_ARCHITECTURE.md` 33).
+ * page-load performance (`TEST_STRATEGY.md` performance evidence).
  *
  * Usage:  npm run build && npm run smoke:profit
  * Environment:
@@ -237,7 +237,7 @@ function everyKnownRow() {
 }
 
 /**
- * A resolution node with this script's defaults filled in (`TARGET_ARCHITECTURE.md` 13.3).
+ * A resolution node with this script's defaults filled in (`ARCHITECTURE.md` section 7).
  *
  * The values are deliberately awkward for a browser that tried to work anything out: a parent's
  * inclusive cost is not the sum of its children's, `producedQuantity` exceeds `craftedQuantity`, and

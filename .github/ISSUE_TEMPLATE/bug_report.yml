@@ -44,7 +44,6 @@ body:
       label: Where did this happen?
       options:
         - Browser frontend
-        - JavaFX desktop UI
         - Backend / HTTP API
         - Synchronization
         - Crafting calculation

@@ -8,7 +8,7 @@
  * does not mock anything and it does not assert any domain value: a compared value is whatever the
  * backend sent, never one this script worked out. A mocked check cannot establish that the real
  * connection works, and this check cannot establish performance
- * (TEST_STRATEGY / TARGET_ARCHITECTURE 33).
+ * (TEST_STRATEGY performance evidence).
  *
  * Read-only: it opens the page, selects a row and changes the scope. No synchronization is triggered
  * and nothing is written.

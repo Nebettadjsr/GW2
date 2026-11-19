@@ -13,7 +13,7 @@ import {
 
 /**
  * Rendering and state checks for the Materials screen against controlled responses
- * (`CURRENT_ARCHITECTURE.md` 5.12). Nothing here reaches a backend or a browser.
+ * (`ARCHITECTURE.md` section 3). Nothing here reaches a backend or a browser.
  */
 const mounted: Array<ReturnType<typeof mount>> = []
 afterEach(() => { mounted.splice(0).forEach((wrapper) => wrapper.unmount()) })

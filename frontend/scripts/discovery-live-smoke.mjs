@@ -10,7 +10,7 @@
  * live synchronization: if the database is empty the run fails and says so rather than filling it.
  *
  * It asserts no domain value — every expected number is a value the response supplied, formatted the
- * way the page formats it — and establishes no performance (`TARGET_ARCHITECTURE.md` 33). It prints
+ * way the page formats it — and establishes no performance (`TEST_STRATEGY.md` performance evidence). It prints
  * recipe and calculation evidence only, never account inventories or credentials.
  *
  * Prerequisites, both started by hand:
@@ -215,7 +215,7 @@ async function checkDetail(result, table, candidate) {
     'The detail request sent a separate inventory character'
   )
   assert.equal(body.recipeId, candidate.recipeId)
-  // `TARGET_ARCHITECTURE.md` 13.4: the browser only accepts a detail whose echoed calculation is the
+  // `ARCHITECTURE.md` section 7: the browser only accepts a detail whose echoed calculation is the
   // one on screen, so these two are what tie this tree to the table above it.
   assert.deepEqual(body.calculation.scope, table.scope)
   assert.deepEqual(body.calculation.settings, table.settings)

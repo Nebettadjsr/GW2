@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * Application-layer orchestration tests (TARGET_ARCHITECTURE.md §25, STORY-APP-006) for
+ * Application-layer orchestration tests (ARCHITECTURE.md section 2, STORY-APP-006) for
  * {@link TradingPostPriceRefreshService}: a fake {@link TradingPostPriceRefreshGateway} replaces
  * the live GW2 API/database calls, so these run without HTTP or PostgreSQL. Proves each
  * distinctly-scoped variant delegates to its own gateway call and that a failure propagates

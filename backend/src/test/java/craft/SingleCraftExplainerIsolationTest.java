@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * TARGET_ARCHITECTURE.md section 13.2: an explanation works from the inputs it was handed, must not
+ * ARCHITECTURE.md section 7: an explanation works from the inputs it was handed, must not
  * mutate them, and must not carry state into the next explanation.
  */
 class SingleCraftExplainerIsolationTest {

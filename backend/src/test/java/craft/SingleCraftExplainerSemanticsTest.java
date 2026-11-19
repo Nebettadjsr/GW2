@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Semantic coverage for the single-craft explanation
- * (TARGET_ARCHITECTURE.md section 13.3, DOMAIN_SPEC.md sections 10-12, 17, 21, 42 and 48):
+ * (ARCHITECTURE.md section 7, DOMAIN_SPEC.md sections 10-12, 17, 21, 42 and 48):
  * the facts it exposes must be the ones the authoritative resolver actually decided.
  *
  * <p>Database-independent: every recipe, inventory pool and quote is supplied directly.

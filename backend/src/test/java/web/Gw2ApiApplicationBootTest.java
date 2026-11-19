@@ -159,7 +159,7 @@ class Gw2ApiApplicationBootTest {
 
     /**
      * STORY-API-008: the two resolution-detail operations must be reachable at exactly the paths
-     * TARGET_ARCHITECTURE.md §13.1 fixes, in the real context rather than only in a standalone
+     * ARCHITECTURE.md section 7 fixes, in the real context rather than only in a standalone
      * MockMvc setup. Still no call is made, so no connection is opened.
      */
     @Test

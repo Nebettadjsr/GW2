@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The delivery boundary's decisions (TARGET_ARCHITECTURE.md §12.1, STORY-API-009): the order of route
+ * The delivery boundary's decisions (ARCHITECTURE.md section 3, STORY-API-009): the order of route
  * validation, disk, metadata and upstream, and which outcome each situation produces.
  *
  * <p>Disposable cache root, a stub metadata read and a controlled fetcher, so every test states exactly

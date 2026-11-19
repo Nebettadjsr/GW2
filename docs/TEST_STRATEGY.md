@@ -74,7 +74,6 @@ They test business rules without:
 - PostgreSQL,
 - HTTP,
 - Docker,
-- JavaFX,
 - frontend code,
 - live GW2 API calls.
 
@@ -1410,8 +1409,8 @@ checks. Application-service tests (`BankContentsServiceTest`, `MaterialStorageSe
 propagation through injected in-memory repositories; they do not call a no-scope read, because none exists.
 
 **Owner-data checks (explicit runs only).** Any check against the developer's real database (§34) is separately
-scoped, named `*IT` so Surefire's default patterns exclude them (§36.2), and not automatic acceptance. Such a run
-boots the real application on a random port with no schema override, so it reads that database exactly as the running application does. The retired owner-database equivalence suites' assertions now live in the default parity tests above, and the withdrawn one-off page-budget timing probes (`CraftingProfitApiRealDbPerfIT`, `CraftingDiscoveryApiRealDbPerfIT`: unauthenticated, owner-data, STORY-API-001/002 JavaFX budgets) were removed rather than adapted; a future timing probe must use explicit authenticated scoped requests. The bullets below describe what an explicit owner-data run must still do.
+scoped, named `*IT`, which `backend/pom.xml`'s default Surefire include patterns (`Test*`, `*Test`, `*Tests`, `*TestCase`, `*Properties`) do not select; there is no explicit excludes element (§36.2), and not automatic acceptance. Such a run
+boots the real application on a random port with no schema override, so it reads that database exactly as the running application does. The retired owner-database equivalence suites' assertions now live in the default parity tests above, and the withdrawn one-off page-budget timing probes (`CraftingProfitApiRealDbPerfIT`, `CraftingDiscoveryApiRealDbPerfIT`: unauthenticated, owner-data, STORY-API-001/002 budgets) were removed rather than adapted; a future timing probe must use explicit authenticated scoped requests. The bullets below describe what an explicit owner-data run must still do.
 
 - **Timing, when the issue requires it** (§34): measure from issuing the HTTP request to holding the complete response body. Report startup versus repeat scope, row count, response size, settings, data scale and environment. A backend-only observation does not prove a browser navigation-to-complete-page requirement.
 - **Result equivalence**: for each settings combination, call the endpoint over HTTP and call the same application-service method in process with identical inputs, then compare every row field by field — count, order, each authoritative value, blocked state and both missing-material maps. This is what proves a mapping preserves results on real data; fixture-based contract tests cannot. Both runs must be read-only, with no synchronization in between.
@@ -1464,9 +1463,9 @@ attempt.
 Backend, frontend and workflow-check jobs run on pushes, pull requests and explicit CI dispatch. A coverage report job summarizes the product reports:
 
 - **Backend** — `./mvnw -B -ntp test jacoco:report` on `ubuntu-latest`,
-  against a `postgres:17` service container. Surefire's default patterns still
-  select `*Test` classes only, so every `*IT` class stays excluded exactly as it
-  is locally. The build has no platform-specific classifier, so the same command
+  against a `postgres:17` service container. Surefire's default include patterns (`Test*`, `*Test`, `*Tests`,
+  `*TestCase`, `*Properties`) do not match `*IT`, so every `*IT` class stays
+  outside the default run exactly as it is locally. The build has no platform-specific classifier, so the same command
   runs on a developer machine and on the Linux runner.
 - **Frontend** — `npm ci`, Vitest coverage with `npm run test:coverage -- --reporter=default --reporter=github-actions`, and the type-checking `npm run build`. STORY-COV-006 adds the locked Chromium installation and `npm run smoke:ci` after that build, as a separately named step inside the existing required frontend job (§12.5). Its failure fails that job; keep journey outcomes separate from code-coverage percentages. Upload available journey results/failure artifacts with `if: always()`.
 - **Workflow checks** — actionlint validates the workflows; `python -m unittest discover -s .github/scripts` runs the helper and configuration tests, with native Nginx supplied where required.

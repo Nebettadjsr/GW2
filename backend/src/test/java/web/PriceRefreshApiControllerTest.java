@@ -248,7 +248,7 @@ class PriceRefreshApiControllerTest {
      * unfinished profit refresh refuses only another profit refresh. The discovery variant is
      * unaffected and the two tasks stay separately identifiable through the one shared status route.
      * This is the facility's existing per-key rule applied, not a claim that the two concurrent
-     * refreshes cannot interact — what they share is recorded in {@code CURRENT_ARCHITECTURE.md} §5.9.
+     * refreshes cannot interact — what they share is recorded in {@code ARCHITECTURE.md} section 6.
      */
     @Test
     void anUnfinishedProfitRefreshDoesNotBlockTheDiscoveryVariant() throws Exception {

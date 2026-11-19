@@ -1,6 +1,6 @@
 /**
  * Read-only check that the browser really receives the Crafting Profit freshness envelope the
- * backend delivers (STORY-WEB-034, `TARGET_ARCHITECTURE.md` 9.1, STORY-APP-014's HTTP contract).
+ * backend delivers (STORY-WEB-034, `ARCHITECTURE.md` section 7, STORY-APP-014's HTTP contract).
  *
  * The controlled-origin checks (`smoke:profit`, `smoke:profit:refresh`) prove the page's behaviour
  * against responses this repository writes. They cannot prove that the shape those responses

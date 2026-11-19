@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * HTTP contract tests for the Crafting Discovery resolution-detail route (STORY-API-008,
- * TARGET_ARCHITECTURE.md §13.1/§13.3/§13.4, TEST_STRATEGY.md §11).
+ * ARCHITECTURE.md section 7, TEST_STRATEGY.md §11).
  *
  * <p>The envelope, node shape and shared validation rules are the same as Profit's and are covered in
  * depth by {@link CraftingProfitResolutionApiControllerTest}; what is asserted here is what is

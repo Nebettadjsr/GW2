@@ -202,7 +202,7 @@ public class ResolvedNeed {
 
     /**
      * The facts a semantic explanation needs that the economic result itself does not carry
-     * (DOMAIN_SPEC.md section 44, TARGET_ARCHITECTURE.md section 13.3): which recipe the resolver
+     * (DOMAIN_SPEC.md section 44, ARCHITECTURE.md section 7): which recipe the resolver
      * actually selected for this requirement, how many times it was executed and how much that
      * produced, which character was assigned to it, whether consumed owned quantity had no
      * modellable value, and the craft attempt whose ingredient requirements explain this node.

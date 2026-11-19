@@ -3,7 +3,7 @@ import { ApiRequestError } from '../http'
 import { UNUSABLE_STATUS_URL_CODE, syncApi } from '../syncApi'
 
 /**
- * Route and body checks for the synchronization client (`CURRENT_ARCHITECTURE.md` 5.7–5.9).
+ * Route and body checks for the synchronization client (`ARCHITECTURE.md` section 6).
  *
  * `fetch` is stubbed, so these establish what the browser would send and how it reads the answer —
  * not that a backend accepted it.

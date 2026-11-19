@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * {@link CraftingPlanner#evaluateOne} / {@link CraftingPlanner#evaluateOneCoordinated} are the
- * selected-recipe entry points the detail operation of TARGET_ARCHITECTURE.md section 13.2 needs.
+ * selected-recipe entry points the detail operation of ARCHITECTURE.md section 7 needs.
  * They must be the table calculation restricted to one recipe, not a second set of rules, so every
  * assertion here compares them against the corresponding {@code evaluateAll*} entry rather than
  * against hand-computed economics (STORY-APP-012).

@@ -15,7 +15,7 @@ import {
 } from './fixtures'
 
 /**
- * Rendering of the backend's resolution answer (`TARGET_ARCHITECTURE.md` 13.3/13.4).
+ * Rendering of the backend's resolution answer (`ARCHITECTURE.md` section 7).
  *
  * Every assertion here is about a value the fixture supplied reaching the screen unchanged. No test
  * recomputes a domain result: the fixtures' inclusive costs are deliberately not the sums of their
