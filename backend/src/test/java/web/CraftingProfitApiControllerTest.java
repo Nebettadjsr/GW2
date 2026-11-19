@@ -853,7 +853,8 @@ class CraftingProfitApiControllerTest {
         // The routes call the scoped entry points (STORY-API-011); the recorded behaviour is the
         // same ordinary calculation, so the scoped forms delegate to the established fakes.
         @Override
-        public ProfitOutcome profit(model.AccountScope scope, DiscChoice choice, CraftingSettings settings)
+        public ProfitOutcome profit(model.AccountScope scope, DiscChoice choice, CraftingSettings settings,
+                KeyedAdmission keyed, application.access.AccountContext readContext)
                 throws Exception {
             assertEquals(ACCOUNT_CONTEXT.accountId(), scope.id().toString());
             return profit(choice, settings);
@@ -861,7 +862,8 @@ class CraftingProfitApiControllerTest {
 
         @Override
         public ResolutionOutcome resolution(model.AccountScope scope, int recipeId, DiscChoice choice,
-                                            CraftingSettings settings, String basedOnCalculationId)
+                                            CraftingSettings settings, String basedOnCalculationId,
+                KeyedAdmission keyed, application.access.AccountContext readContext)
                 throws Exception {
             assertEquals(ACCOUNT_CONTEXT.accountId(), scope.id().toString());
             throw new AssertionError("the table controller test never requests resolution detail");

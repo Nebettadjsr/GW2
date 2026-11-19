@@ -61,6 +61,9 @@ class CraftingGraphCacheFailureBoundaryTest {
             return List.copyOf(recipes);
         }
         @Override public int countRecipes() { return recipes.size(); }
+        @Override public int countRecipeCurrencyRequirements() {
+            return recipes.stream().mapToInt(r -> r.currencies.size()).sum();
+        }
         @Override public int countRecipeIngredients() {
             return recipes.stream().mapToInt(r -> r.ingredients.size()).sum();
         }

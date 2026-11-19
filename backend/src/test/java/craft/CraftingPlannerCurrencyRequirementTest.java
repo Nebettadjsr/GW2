@@ -55,6 +55,14 @@ class CraftingPlannerCurrencyRequirementTest {
     }
 
     @Test
+    void fullyPublishedEmptyWalletIsKnownZeroNotUnknown() {
+        CraftResult r = jade(Map.of());
+        assertEquals(0, r.craftableCount);
+        assertEquals("KNOWN", r.walletState);
+        assertEquals(craft.BlockedReason.INSUFFICIENT_CURRENCY, r.blockedReason);
+    }
+
+    @Test
     void currencyIdIsNeverTreatedAsItemId() {
         // Item 61 stock must not satisfy currency 61.
         Map<Integer, Integer> stock = new java.util.HashMap<>(SCREENSHOT_STOCK);

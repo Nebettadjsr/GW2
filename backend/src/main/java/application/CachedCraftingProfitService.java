@@ -190,14 +190,23 @@ public class CachedCraftingProfitService {
 
     public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
                                 KeyedAdmission keyed) throws Exception {
+        return profit(scope, choice, settings, keyed, keyed == null ? null : keyed.context());
+    }
+
+    /**
+     * @param readContext the already validated request context, independent of optional keyed refresh
+     *                    admission: it alone decides whether the cached wallet may be read (grant and endpoint).
+     */
+    public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
+                                KeyedAdmission keyed, application.access.AccountContext readContext) throws Exception {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingProfitService.ProfitData data = null;
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(keyed))) {
-            captured = capture(session, scope, walletAuthorized(keyed));
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(readContext))) {
+            captured = capture(session, scope, walletAuthorized(readContext));
             if (captured.usable()) {
                 data = profitServices.apply(session).reload(choice, settings);
             }
@@ -226,14 +235,25 @@ public class CachedCraftingProfitService {
                                         CraftingSettings settings,
                                         String basedOnCalculationId,
                                         KeyedAdmission keyed) throws Exception {
+        return resolution(scope, recipeId, choice, settings, basedOnCalculationId, keyed,
+                keyed == null ? null : keyed.context());
+    }
+
+    public ResolutionOutcome resolution(AccountScope scope,
+                                        int recipeId,
+                                        DiscChoice choice,
+                                        CraftingSettings settings,
+                                        String basedOnCalculationId,
+                                        KeyedAdmission keyed,
+                                        application.access.AccountContext readContext) throws Exception {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingResolutionDetail detail = null;
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(keyed))) {
-            captured = capture(session, scope, walletAuthorized(keyed));
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(readContext))) {
+            captured = capture(session, scope, walletAuthorized(readContext));
             if (captured.usable()) {
                 detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
             }
@@ -247,9 +267,8 @@ public class CachedCraftingProfitService {
         return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null, scope, keyed));
     }
 
-    private static boolean walletAuthorized(KeyedAdmission keyed) {
-        return keyed != null && keyed.context() != null
-                && keyed.context().permits(application.access.AccountOperation.WALLET_READ);
+    private static boolean walletAuthorized(application.access.AccountContext context) {
+        return context != null && context.permits(application.access.AccountOperation.WALLET_READ);
     }
 
     /**

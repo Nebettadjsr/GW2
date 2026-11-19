@@ -46,6 +46,7 @@ public class RecipeRepository {
                                           Set<Integer> unlockedByAnyCharacter) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
         Map<Integer, List<CurrencyRequirement>> currencies = loadCurrencyRequirements(con);
+        Set<Integer> unsupported = loadUnsupportedRecipeIds(con);
 
         String sqlAll = """
         SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines,
@@ -77,6 +78,7 @@ public class RecipeRepository {
         try (ps; ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
+                if (unsupported.contains(recipeId)) continue;
 
                 // AutoLearned recipes are not listed in unlock facts; the flag itself is the knowledge.
                 boolean known = rs.getBoolean("auto_learned") || RecipeKnowledgePolicy.isKnownAccountWide(
@@ -108,6 +110,7 @@ public class RecipeRepository {
     public List<Recipe> loadAllRecipes(Connection con) throws SQLException {
         Map<Integer, List<Ingredient>> ingredientsByRecipe = loadIngredientsByRecipe(con);
         Map<Integer, List<CurrencyRequirement>> currencies = loadCurrencyRequirements(con);
+        Set<Integer> unsupported = loadUnsupportedRecipeIds(con);
 
         String sql = """
         SELECT recipe_id, output_item_id, output_item_count,min_rating, disciplines
@@ -122,6 +125,7 @@ public class RecipeRepository {
 
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
+                if (unsupported.contains(recipeId)) continue;
                 out.add(mapRecipe(rs, recipeId, ingredientsByRecipe, currencies));
             }
         }
@@ -147,6 +151,25 @@ public class RecipeRepository {
             }
         }
         return map;
+    }
+
+    /**
+     * Recipes carrying a requirement kind this application cannot honour (for example a guild upgrade).
+     * They are quarantined from every load, so a legacy cached row can never be used as a free item-only recipe.
+     */
+    public Set<Integer> loadUnsupportedRecipeIds(Connection con) throws SQLException {
+        Set<Integer> ids = new java.util.HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(
+                """
+                SELECT recipe_id FROM recipe_non_item_requirements WHERE kind <> 'Currency'
+                UNION
+                SELECT recipe_id FROM recipes
+                WHERE jsonb_typeof(guild_ingredients) = 'array' AND jsonb_array_length(guild_ingredients) > 0
+                """);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+        return ids;
     }
 
     /** Maps the current {@code recipes} row (id column already read) with its ingredients; one mapping for every read. */

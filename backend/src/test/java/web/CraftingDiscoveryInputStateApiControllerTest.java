@@ -183,7 +183,7 @@ class CraftingDiscoveryInputStateApiControllerTest {
             super(null, null, null, null, null);
         }
 
-        @Override public CraftingDiscoveryService forScope(model.AccountScope scope) { return this; }
+        @Override public CraftingDiscoveryService forScope(model.AccountScope scope, boolean walletAuthorized) { return this; }
         @Override public InputState inputState() { return state; }
         @Override public void verifySelectedCharacter(DiscChoice choice) { }
         @Override public void recordAuthorizedUse() { activity++; }

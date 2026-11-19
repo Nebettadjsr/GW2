@@ -499,7 +499,7 @@ class CraftingDiscoveryApiControllerTest {
         }
 
         @Override
-        public CraftingDiscoveryService forScope(model.AccountScope scope) {
+        public CraftingDiscoveryService forScope(model.AccountScope scope, boolean walletAuthorized) {
             return this;
         }
 

@@ -34,6 +34,7 @@ class CraftingGraphCacheSearchTest {
             @Override public List<Recipe> loadAllRecipes() { return List.copyOf(recipes); }
             @Override public int countRecipes() { return recipes.size(); }
             @Override public int countRecipeIngredients() { return 1; }
+            @Override public int countRecipeCurrencyRequirements() { return 0; }
         };
         ItemRepository itemRepo = new ItemRepository() {
             @Override public Map<Integer, ItemInfo> loadItems(java.util.Set<Integer> ids) {

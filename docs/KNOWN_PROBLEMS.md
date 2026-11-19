@@ -57,13 +57,13 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 ## KP-33 Recipe sync uses the legacy unpinned API profile
 
-**Observed:** `sync.RecipeSync` requests `/v2/recipes` without a `v=` schema version. The default catalog omits some modern recipes (for example Jade recipe 13839, present under `v=2022-03-09T02:00:00.000Z` with typed Item/Currency ingredients), and `RecipeParser` reads only legacy `item_id` ingredients. The automatic owner API compatibility check reports this as attention (`KNOWN_COVERAGE_GAP`, shown as "Needs update" on the compact card), not as an upstream break.
+**Observed (before #372):** `sync.RecipeSync` requested `/v2/recipes` without a `v=` schema version. The default catalog omits some modern recipes (for example Jade recipe 13839, present under `v=2022-03-09T02:00:00.000Z` with typed Item/Currency ingredients). Sync, validation and the owner API compatibility check now use the pinned version; the default-schema Jade probe is informational.
 
 **Risk:** recipes that exist only under newer schemas are invisible or have no readable ingredients. The check samples a small fixed public set; authenticated account endpoint payloads are not live-verified.
 
 **Update (#372):** recipe sync now pins one schema version for catalog and details; typed Item/Currency requirements are stored apart (`recipe_non_item_requirements`). Structurally valid records with a known unsupported kind (`GuildUpgrade`, e.g. recipe 13324) are skipped in both the safe and the full sync, never published as free; unknown/malformed kinds still fail the full sync. No guild-upgrade acquisition planner exists. AutoLearned recipes (e.g. 13839) are known without unlock rows; level/discipline/account boundaries still apply and they are not Discovery candidates. Wallet balances join the calculation identity/freshness (WALLET source) only for requests with the wallet grant, using the configured account freshness policy; currencies consumed only after the first craft stay visible via the union of per-craft and total currency.
 
-**Original follow-up:** a separately approved story must choose and migrate to an explicit supported schema version; the check never switches production versions itself. Currency valuation is owned by #372 (see DOMAIN_SPEC 2.1.0); production sync stays unpinned until that migration so Jade-class recipes are not yet synced. The parser and storage already accept the typed shape.
+**Remaining:** because skipped unsupported recipes are deleted from the cache, the safe sync's unchanged-id shortcut sees them as a permanent difference and re-downloads details on every run while any exist. Currency valuation follows DOMAIN_SPEC 2.1.0.
 
 Evidence: `sync/RecipeSync.java`, `parser/RecipeParser.java`, `api/ApiCompatibilityChecker.java`.
 

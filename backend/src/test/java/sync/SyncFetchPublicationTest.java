@@ -112,7 +112,9 @@ class SyncFetchPublicationTest {
     }
 
     private static String idsOf(String url) {
-        return url.substring(url.indexOf("ids=") + 4);
+        String ids = url.substring(url.indexOf("ids=") + 4);
+        int query = ids.indexOf('&'); // recipe detail URLs carry the pinned schema version after the ids
+        return query < 0 ? ids : ids.substring(0, query);
     }
 
     private static String itemJson(int id) {
@@ -185,7 +187,7 @@ class SyncFetchPublicationTest {
     // ------------------------------------------------------------------ RecipeSync
 
     private static JsonNode recipesFixture(String url) {
-        if (url.endsWith("/v2/recipes")) return json("[1, 2, 2, 0]");
+        if (url.equals(RecipeSync.CATALOG_URL)) return json("[1, 2, 2, 0]");
         if (url.contains("/v2/recipes?ids=")) {
             return json("""
                 [{"id":1,"type":"Refinement","output_item_id":20,"output_item_count":2,"min_rating":100,"time_to_craft_ms":1000,
@@ -201,6 +203,35 @@ class SyncFetchPublicationTest {
                     .collect(Collectors.joining(",", "[", "]")));
         }
         throw new AssertionError("unexpected " + url);
+    }
+
+    @Test
+    void recipeSync_skippedGuildUpgradeRecipeRemovesItsLegacyCachedRowInsteadOfLeavingAFreeRecipe() throws Exception {
+        // A legacy cache: the guild recipe row exists and its ingredients were already cleared.
+        exec("INSERT INTO items (item_id, name) VALUES (30, 'stale')");
+        exec("INSERT INTO recipes (recipe_id, type, output_item_id) VALUES (13324, 'GuildConsumable', 30)");
+        RecipeSync.fetcher = url -> {
+            urls.add(url);
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1, 13324]");
+            if (url.contains("/v2/recipes?ids=")) {
+                return json("""
+                    [{"id":1,"type":"Refinement","output_item_id":20,"output_item_count":1,"min_rating":0,"time_to_craft_ms":1000,
+                      "disciplines":["Chef"],"flags":[],"chat_link":"[&A]","ingredients":[{"type":"Item","id":10,"count":1}]},
+                     {"id":13324,"type":"GuildConsumable","output_item_id":30,"output_item_count":1,"min_rating":0,"time_to_craft_ms":1000,
+                      "disciplines":["Chef"],"flags":[],"chat_link":"[&B]",
+                      "ingredients":[{"type":"Item","id":70926,"count":1},{"type":"Item","id":74982,"count":4},
+                                     {"type":"GuildUpgrade","id":721,"count":8}]}]
+                    """);
+            }
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+
+        assertNull(scalar("SELECT 1 FROM recipes WHERE recipe_id=13324"), "never usable as item-only");
+        assertNull(scalar("SELECT 1 FROM recipe_ingredients WHERE recipe_id=13324"));
+        assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"));
     }
 
     @Test
@@ -231,7 +262,7 @@ class SyncFetchPublicationTest {
         int count = SyncConstants.HTTP_IDS_BATCH * 2 + 1;
         RecipeSync.fetcher = url -> {
             urls.add(url);
-            if (url.endsWith("/v2/recipes")) return json(range(1, count).toString());
+            if (url.equals(RecipeSync.CATALOG_URL)) return json(range(1, count).toString());
             return json(java.util.Arrays.stream(idsOf(url).split(",")).map(Integer::parseInt)
                     .map(id -> "{\"id\":" + id + ",\"type\":\"Refinement\",\"output_item_id\":" + (10000 + id)
                             + ",\"output_item_count\":6,\"ingredients\":[{\"item_id\":" + (20000 + id) + ",\"count\":5}]}")
@@ -257,7 +288,7 @@ class SyncFetchPublicationTest {
         exec("INSERT INTO recipe_catalog_publication (complete) VALUES (TRUE)");
         RecipeSync.fetcher = url -> {
             urls.add(url);
-            if (url.endsWith("/v2/recipes")) return json("[1,2]");
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1,2]");
             throw new AssertionError("no detail fetch expected: " + url);
         };
 
@@ -275,7 +306,7 @@ class SyncFetchPublicationTest {
         assertThrows(IOException.class, RecipeSync::syncAllRecipesGlobalSafe);
 
         RecipeSync.fetcher = url -> {
-            if (url.endsWith("/v2/recipes")) return json("[1]");
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1]");
             throw new IOException("detail timeout");
         };
         assertThrows(IOException.class, RecipeSync::syncAllRecipesGlobalSafe);
@@ -320,7 +351,7 @@ class SyncFetchPublicationTest {
         assertEquals("10,11,20,21", scalar("SELECT string_agg(item_id::text, ',' ORDER BY item_id) FROM items"));
 
         urls.clear();
-        RecipeSync.fetcher = url -> { urls.add(url); if (url.endsWith("/v2/recipes")) return json("[1,2]"); throw new AssertionError(url); };
+        RecipeSync.fetcher = url -> { urls.add(url); if (url.equals(RecipeSync.CATALOG_URL)) return json("[1,2]"); throw new AssertionError(url); };
         assertFalse(RecipeSync.syncAllRecipesGlobalSafe(), "completed catalog takes the fast path");
         assertEquals(1, urls.size());
     }
@@ -344,7 +375,7 @@ class SyncFetchPublicationTest {
 
     @Test
     void recipeSync_missingOutputAndInvalidIngredientsDoNotRequestItemZero() throws Exception {
-        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]")
+        RecipeSync.fetcher = url -> url.equals(RecipeSync.CATALOG_URL) ? json("[1]")
                 : json("[{\"id\":1,\"ingredients\":[{\"item_id\":0,\"count\":1}]}]");
         ItemSync.fetcher = url -> { throw new AssertionError("no valid item IDs to fetch: " + url); };
 

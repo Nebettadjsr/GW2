@@ -508,7 +508,8 @@ class MaterialReservationInventoryPostgresTest {
         private LocalCalculation() { super(null, null, null, null, null, null, null, null); }
 
         @Override
-        public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings) throws Exception {
+        public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
+                KeyedAdmission keyed, application.access.AccountContext readContext) throws Exception {
             try (ProfitInputSession session = ProfitInputSession.open(scope)) {
                 return new ProfitOutcome(service(session).reload(choice, settings), null);
             }
@@ -516,7 +517,8 @@ class MaterialReservationInventoryPostgresTest {
 
         @Override
         public ResolutionOutcome resolution(AccountScope scope, int recipeId, DiscChoice choice,
-                                             CraftingSettings settings, String basedOnCalculationId) throws Exception {
+                                             CraftingSettings settings, String basedOnCalculationId,
+                KeyedAdmission keyed, application.access.AccountContext readContext) throws Exception {
             try (ProfitInputSession session = ProfitInputSession.open(scope)) {
                 return new ResolutionOutcome(service(session).resolveDetail(recipeId, choice, settings),
                         CONSISTENCY_FRESH_CALCULATION, null);

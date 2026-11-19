@@ -143,7 +143,8 @@ public class CraftingDiscoveryApiController {
             @RequestBody(required = false) CraftingDiscoveryRequest request) throws Exception {
 
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(request);
-        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http));
+        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http),
+                RequestAccountContext.required(http).permits(application.access.AccountOperation.WALLET_READ));
         InputGate inputs = gate(http, service, effective.toDiscChoice());
         if (inputs.pending()) return pendingTable(effective, service, admitRefresh(http, inputs));
         refreshQuotes(RequestAccountContext.scopeOf(http));
@@ -199,7 +200,8 @@ public class CraftingDiscoveryApiController {
         int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
         CraftingDiscoveryApiMapper.Effective effective = CraftingDiscoveryApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
-        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http));
+        var service = discoveryServiceFactory.get().forScope(RequestAccountContext.scopeOf(http),
+                RequestAccountContext.required(http).permits(application.access.AccountOperation.WALLET_READ));
         InputGate inputs = gate(http, service, effective.toDiscChoice());
         var calculation = new CraftingDiscoveryResolutionResponse.CalculationDto(
                 effective.scope(), effective.settings());

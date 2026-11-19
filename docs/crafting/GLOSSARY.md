@@ -41,6 +41,10 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
   valid earlier crafts. Normal tables omit generic state labels; tree messages stay item-specific (§42).
 - **Craftable count** — how many times a recipe can be executed under the current settings,
   determined by a full recursive simulation, not just direct ingredients (§28).
+- **Currency cost / conditional margin** — a recipe can spend wallet currencies such as Research Notes
+  (for example 30 per Piece of Dragon Jade). Currencies are listed separately and not priced in gold, so the
+  gold margin shown is *conditional* (marked `*`), not a guaranteed profit. An unavailable wallet means the
+  craftable count is unknown; an empty published wallet means none can be afforded.
 - **Coordinated plan** — a Crafting Profit plan spanning multiple characters, where different steps
   may be assigned to different eligible characters (§2.2.1).
 - **Transferable intermediate** — a crafted intermediate item that is not soulbound, and can

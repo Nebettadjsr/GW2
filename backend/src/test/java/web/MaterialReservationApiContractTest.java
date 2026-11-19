@@ -312,7 +312,8 @@ class MaterialReservationApiContractTest {
         private RecordingService() { super(null, null, null, null, null, null, null, null); }
 
         @Override
-        public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings) {
+        public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
+                KeyedAdmission keyed, application.access.AccountContext readContext) {
             calls.add(settings);
             return new ProfitOutcome(new CraftingProfitService.ProfitData(List.of(), List.of(),
                     Map.of(), Map.of(), Map.of()), null);
@@ -320,7 +321,8 @@ class MaterialReservationApiContractTest {
 
         @Override
         public ResolutionOutcome resolution(AccountScope scope, int recipeId, DiscChoice choice,
-                                             CraftingSettings settings, String basedOnCalculationId) {
+                                             CraftingSettings settings, String basedOnCalculationId,
+                KeyedAdmission keyed, application.access.AccountContext readContext) {
             calls.add(settings);
             Recipe recipe = new Recipe(7, 100, 1, 0, "Artificer", List.of(new Ingredient(200, 1)));
             CraftResult row = new CraftResult(100, "Artificer", 0, Map.of(), Map.of(), 0, 0, 0, 0, 0, null);

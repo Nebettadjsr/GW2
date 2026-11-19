@@ -428,11 +428,12 @@ public class CraftingResolver {
             // rollback restores the pool together with every other resource this attempt touched.
             for (CurrencyRequirement currency : recipe.currencies) {
                 long needed = (long) currency.count() * times;
-                Integer balance = ctx.wallet == null ? null : ctx.wallet.get(currency.currencyId());
+                // A fully published wallet without this currency's row is a known zero; only a null wallet is unknown.
+                Integer balance = ctx.wallet == null ? null : ctx.wallet.getOrDefault(currency.currencyId(), 0);
                 boolean enforce = ctx.walletMode == PlannerContext.WalletMode.ENFORCED;
                 if (!state.spendCurrency(currency.currencyId(), needed, balance, enforce)) {
                     return limitBlocked(craftResult, qtyRequested,
-                            ctx.wallet == null || balance == null
+                            ctx.wallet == null
                                     ? BlockedReason.WALLET_UNAVAILABLE : BlockedReason.INSUFFICIENT_CURRENCY);
                 }
             }

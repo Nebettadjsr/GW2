@@ -78,6 +78,9 @@ public final class RecipeSync {
                     if (RecipeParser.hasUnsupportedRequirement(r)) {
                         // Unsupported ingredient type: never publish a recipe with a silently dropped requirement.
                         System.out.println("Skipping recipe " + rr.recipeId() + ": unsupported ingredient type");
+                        // Also drop any legacy cached row for it (removeDeletedRecipes below): otherwise its
+                        // cleared ingredients would leave an old guild recipe usable as a free item-only recipe.
+                        remoteIds.remove(rr.recipeId());
                         continue;
                     }
 

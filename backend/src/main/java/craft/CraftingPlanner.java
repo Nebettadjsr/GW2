@@ -48,6 +48,8 @@ public class CraftingPlanner {
 
     /** A planner spending from this account wallet (currency id to balance); {@code null} means unknown. */
     public CraftingPlanner withWallet(Map<Integer, Integer> wallet) {
+        // Unchanged wallet (typically still unknown) keeps this very planner, like withVendorValues does.
+        if (java.util.Objects.equals(wallet, this.wallet)) return this;
         return new CraftingPlanner(vendorValues, reuseSimulationState, wallet == null ? null : Map.copyOf(wallet));
     }
 

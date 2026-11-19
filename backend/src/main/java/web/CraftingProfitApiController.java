@@ -82,11 +82,9 @@ public class CraftingProfitApiController {
 
         requireSameOriginWhenKeyed(http);
         var keyed = keyedAdmission(http);
-        CachedCraftingProfitService.ProfitOutcome outcome = keyed == null
-                ? profitService.profit(RequestAccountContext.scopeOf(http), effective.toDiscChoice(),
-                        effective.toCraftingSettings())
-                : profitService.profit(RequestAccountContext.scopeOf(http), effective.toDiscChoice(),
-                        effective.toCraftingSettings(), keyed);
+        CachedCraftingProfitService.ProfitOutcome outcome = profitService.profit(
+                RequestAccountContext.scopeOf(http), effective.toDiscChoice(), effective.toCraftingSettings(),
+                keyed, RequestAccountContext.required(http));
 
         if (!outcome.hasResult()) {
             return ResponseEntity.status(HttpStatus.ACCEPTED)
@@ -123,12 +121,10 @@ public class CraftingProfitApiController {
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
 
         var keyed = keyedAdmission(http);
-        CachedCraftingProfitService.ResolutionOutcome outcome = keyed == null
-                ? profitService.resolution(RequestAccountContext.scopeOf(http), recipeId,
-                        effective.toDiscChoice(), effective.toCraftingSettings(), body.basedOnCalculationId())
-                : profitService.resolution(RequestAccountContext.scopeOf(http), recipeId,
-                        effective.toDiscChoice(), effective.toCraftingSettings(), body.basedOnCalculationId(),
-                        keyed);
+        CachedCraftingProfitService.ResolutionOutcome outcome = profitService.resolution(
+                RequestAccountContext.scopeOf(http), recipeId, effective.toDiscChoice(),
+                effective.toCraftingSettings(), body.basedOnCalculationId(), keyed,
+                RequestAccountContext.required(http));
 
         CraftingProfitResolutionResponse.CalculationDto calculation =
                 new CraftingProfitResolutionResponse.CalculationDto(effective.scope(), effective.settings());
