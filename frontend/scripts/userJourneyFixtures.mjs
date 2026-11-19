@@ -1,11 +1,64 @@
 import assert from 'node:assert/strict'
-import { bankSnapshot, materials, tableResponse, detailResponse, TABLE, DETAIL } from './reservationBrowserFixtures.mjs'
+import { bankSnapshot, materials, tableResponse, detailResponse, scopeOf, node, DEFAULTS, TABLE, DETAIL } from './reservationBrowserFixtures.mjs'
 
 export const KEY_A = 'synthetic-journey-key-A'
 export const KEY_B = 'synthetic-journey-key-B'
 export const BAD_KEY = 'synthetic-journey-refused-key'
 export const ACCOUNT_A = '00000000-0000-4000-8000-000000000243'
 export const ACCOUNT_B = '00000000-0000-4000-8000-000000000244'
+export const FORGE_FIXED = -3105801
+export const FORGE_VARIABLE = -3105802
+export const forgeStorageKey = account => `gw2.craftingForge.v1.${account}`
+
+const NOTE_ESTIMATE = { perCraftNotes: 1, totalNotes: 1, perCraftCopper: 2, totalCopper: 2, basisRecipeId: 5001,
+  variants: [{ recipeId: 5001, outputName: 'Research Note', notesPerBatch: 100, batchCostCopper: 200, per100NotesCopper: 200, basis: true,
+    ingredients: [{ itemId: 19721, name: 'Glob of Ectoplasm', count: 1, unitPriceCopper: 200, totalCopper: 200, iconUrl: null }] }] }
+const NOTE_COSTS = { walletState: 'KNOWN', goldMarginIsConditional: true, economicsFromHypotheticalCraft: false,
+  costs: [{ currencyId: 61, name: 'Research Note', perCraft: 1, total: 1 }], estimate: NOTE_ESTIMATE }
+
+/** Literal backend answers: the browser only displays these; it derives no Forge economics. */
+function forgeRow(base, recipeId, name, yieldFacts) {
+  return { ...base, recipeId, outputItemId: Math.abs(recipeId), outputName: name, disciplines: '', minRating: 0, craftableCount: 19,
+    totalSellValueCopper: 3684, totalProfitCopper: 1831, profitCopper: 96, blockedReason: 'NONE', expectedYield: yieldFacts }
+}
+const FIXED_YIELD = { source: 'MYSTIC_FORGE', estimated: false, expectedOutputPerCraft: null, minOutput: 1, maxOutput: 1,
+  expectedSellableUnitsTotal: null, guaranteedSellableUnitsTotal: null, reusedSeedUnits: 0 }
+const VARIABLE_YIELD = { source: 'MYSTIC_FORGE', estimated: true, expectedOutputPerCraft: '18.92', minOutput: 10, maxOutput: 40,
+  expectedSellableUnitsTotal: '36.84', guaranteedSellableUnitsTotal: 19, reusedSeedUnits: 1 }
+
+function forgeTable(input, id) {
+  const response = tableResponse(input, id)
+  response.rows[0] = { ...response.rows[0], currencyCosts: NOTE_COSTS }
+  if (response.settings.allowMysticForge === true) {
+    const base = response.rows[0]
+    response.rows.unshift(forgeRow(base, FORGE_FIXED, 'Mystic Crystal', FIXED_YIELD), forgeRow(base, FORGE_VARIABLE, 'Gossamer Scrap', VARIABLE_YIELD))
+  }
+  response.rowCount = response.rows.length
+  return response
+}
+
+function forgeDetail(input) {
+  const settings = { ...DEFAULTS, ...input.calculation.settings }
+  const row = forgeTable({ settings, scope: input.calculation.scope }, 'forge-detail').rows.find(candidate => candidate.recipeId === input.recipeId)
+  assert.ok(row, `Forge detail requested for a row the table did not offer: ${input.recipeId}`)
+  if (input.recipeId === 11) return { ...detailResponse(input), row }
+  let tree = null
+  if (input.recipeId === FORGE_VARIABLE) {
+    tree = node({ itemId: 19745, itemName: 'Gossamer Scrap', requestedQuantity: 19, craftedQuantity: 19, recipeId: FORGE_VARIABLE, craftCount: 2,
+      producedQuantity: 19, methods: ['CRAFT'], effectiveCostCopper: 1300, effectiveUnitCostCopper: 68, effectiveUnitCostApproximate: true,
+      forgeStep: { source: 'MYSTIC_FORGE', expectedOutputPerCraft: '18.92', minOutput: 10, maxOutput: 40, batches: 2, grossProduced: 20,
+        reusedSeed: 1, guaranteedProducedTotal: 19, expectedProducedTotal: '36.84', usedQuantity: 0, surplusQuantity: 0 },
+      children: [node({ itemId: 20796, itemName: "Philosopher's Stone", requestedQuantity: 10, boughtQuantity: 10, methods: ['BUY'],
+        effectiveCostCopper: 100,
+        forgeStep: { source: 'VENDOR', expectedOutputPerCraft: null, minOutput: 10, maxOutput: 10, batches: 1, grossProduced: 10,
+          reusedSeed: 0, guaranteedProducedTotal: 10, expectedProducedTotal: null, usedQuantity: 10, surplusQuantity: 0 },
+        currencies: [{ currencyId: 23, name: 'Spirit Shard', quantity: 1, fromWallet: 1, walletBalance: 5, iconUrl: null }] })] })
+  }
+  return { recipeId: input.recipeId, status: 'CALCULATED', calculation: { scope: scopeOf(input.calculation.scope), settings },
+    consistency: 'FRESH_CALCULATION', calculatedAt: '2026-11-15T20:00:00Z', row,
+    treeStatus: tree === null ? 'UNAVAILABLE' : 'AVAILABLE', treeBasis: 'SELECTED_RESULT_OUTPUT_QUANTITY', tree }
+}
+
 export const storageKey = account => `gw2.materialProtection.v1.${account}`
 
 /** Strict scripted HTTP boundary. All quantities/economics are backend answers, not derived here. */
@@ -21,6 +74,7 @@ export function createJourneyBackend() {
   let heldBank = null
   let heldTask = null
   let holdProfit = false
+  let forgeMode = false
   let heldProfit = null
 
   function snapshot(owner = account) {
@@ -100,6 +154,7 @@ export function createJourneyBackend() {
           heldProfit = () => sendJson(200, value)
           return
         }
+        if (forgeMode) return sendJson(200, path === TABLE ? forgeTable(input, 'forge-table') : forgeDetail(input))
         return sendJson(200, path === TABLE ? tableResponse(input, 'journey-result') : detailResponse(input))
       }
       assert.equal(request.method, 'GET')
@@ -151,6 +206,7 @@ export function createJourneyBackend() {
 
   return { answerApi, calls, proofs, failures,
     staleBank() { stale = true },
+    useForgeFixtures() { forgeMode = true },
     holdNextBank() { holdBank = true },
     hasHeldBank: () => heldBank !== null,
     hasHeldTask: () => heldTask !== null,
