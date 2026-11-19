@@ -44,9 +44,15 @@ public final class CraftingProfitItemCollector {
      * the aggregate counts and instants cannot distinguish one interior quote changing from nothing
      * changing, and a calculation that read a different quote is a different calculation.
      */
+    private static final String ESTIMATE_RECIPE_IDS = craft.ResearchNoteEstimate.VARIANT_RECIPE_IDS.stream()
+            .map(String::valueOf).collect(java.util.stream.Collectors.joining(", "));
+
     private static final String RELEVANT_TRADEABLE_ITEMS_TEMPLATE = """
 WITH craftable_recipes AS (
 %1$s
+  UNION
+  -- The Research Note estimate prices both producer recipes from the captured quotes whatever the account knows.
+  SELECT recipe_id FROM recipes WHERE recipe_id IN (%2$s)
 ),
 relevant_items AS (
   SELECT r.output_item_id AS item_id
@@ -98,7 +104,7 @@ relevant_tradeable AS (
      * <p>Two bind parameters, both the account GUID, in the order the two unlock sources appear.
      */
     static final String SCOPED_RELEVANT_TRADEABLE_ITEMS =
-            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(SCOPED_RECIPE_KNOWLEDGE);
+            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(SCOPED_RECIPE_KNOWLEDGE, ESTIMATE_RECIPE_IDS);
 
     /**
      * The same definition over shared data only: no account row enters it, so the
@@ -106,7 +112,7 @@ relevant_tradeable AS (
      * registry neither empties it nor makes it infer an account.
      */
     static final String GLOBAL_RELEVANT_TRADEABLE_ITEMS =
-            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(EVERY_SHARED_RECIPE);
+            RELEVANT_TRADEABLE_ITEMS_TEMPLATE.formatted(EVERY_SHARED_RECIPE, ESTIMATE_RECIPE_IDS);
 
     private static final String SELECT_STALE = """
 SELECT item_id FROM relevant_tradeable tp

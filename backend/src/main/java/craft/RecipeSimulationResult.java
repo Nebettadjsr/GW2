@@ -20,6 +20,7 @@ public class RecipeSimulationResult {
     private int opportunityCostTotal;
     private boolean unvaluedOwnedInput;
     private boolean unpricedCurrency;
+    private final java.util.Set<Integer> unpricedCurrencyIds = new java.util.TreeSet<>();
     private long walletNoteUnitsTotal;
     private Map<Integer, Integer> currencyTotal = Map.of();
     private Map<Integer, Integer> currencyFirstCraft = Map.of();
@@ -105,6 +106,16 @@ public class RecipeSimulationResult {
 
     public void markUnpricedCurrency() {
         unpricedCurrency = true;
+    }
+
+    /** Marks the given currencies (by currency id) as spent without a gold valuation. */
+    public void markUnpricedCurrencies(java.util.Collection<Integer> currencyIds) {
+        unpricedCurrency = true;
+        unpricedCurrencyIds.addAll(currencyIds);
+    }
+
+    public java.util.Set<Integer> unpricedCurrencyIds() {
+        return unpricedCurrencyIds;
     }
 
     public void markUnvaluedOwnedInput() {

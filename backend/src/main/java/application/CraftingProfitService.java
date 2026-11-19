@@ -362,6 +362,7 @@ public class CraftingProfitService {
         enriched.currencyTotal = cr.currencyTotal;
         enriched.walletState = cr.walletState;
         enriched.unpricedCurrency = cr.unpricedCurrency;
+        enriched.unpricedCurrencyIds = cr.unpricedCurrencyIds;
         enriched.estimatedNotesPerCraft = cr.estimatedNotesPerCraft;
         enriched.estimatedNotesTotal = cr.estimatedNotesTotal;
         enriched.estimatedNotesCostPerCraftCopper = cr.estimatedNotesCostPerCraftCopper;

@@ -14,6 +14,7 @@ describe('CraftingProfitTable currency rows', () => {
       walletState: 'UNKNOWN',
       goldMarginIsConditional: true,
       economicsFromHypotheticalCraft: false,
+      unpricedCurrencyIds: [61],
       costs: [{ currencyId: 61, name: 'Research Note', perCraft: 30, total: 300 }]
     }
     const gain = mountRows([{ ...profitableRow, totalProfitCopper: 5000, profitCopper: 500, currencyCosts }])
@@ -38,6 +39,23 @@ describe('CraftingProfitTable currency rows', () => {
     }
     const wrapper = mountRows([{ ...profitableRow, currencyCosts }])
     expect(wrapper.find('[data-test="currency-conditional"]').exists()).toBe(false)
+  })
+
+  it('names only the currencies whose cost is excluded, not estimated Research Notes', () => {
+    const currencyCosts = {
+      walletState: 'KNOWN',
+      goldMarginIsConditional: true,
+      economicsFromHypotheticalCraft: false,
+      unpricedCurrencyIds: [50],
+      costs: [
+        { currencyId: 61, name: 'Research Note', perCraft: 30, total: 300 },
+        { currencyId: 50, name: 'Festival Token', perCraft: 1, total: 10 }
+      ]
+    }
+    const wrapper = mountRows([{ ...profitableRow, currencyCosts }])
+    const title = wrapper.find('[data-test="currency-conditional"]').attributes('title')
+    expect(title).toContain('Festival Token')
+    expect(title).not.toContain('Research Note')
   })
 
   it('keeps item-only rows unchanged', () => {

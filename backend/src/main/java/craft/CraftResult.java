@@ -51,6 +51,11 @@ public class CraftResult {
      * produced by priced crafting batches already charged in the costs.
      */
     public boolean unpricedCurrency;
+    /**
+     * The currency ids (never item ids) behind {@link #unpricedCurrency}; consumed currencies not listed here were
+     * valued (crafted batches or the approved Research Note estimate). Empty when nothing is unpriced.
+     */
+    public java.util.Set<Integer> unpricedCurrencyIds = java.util.Set.of();
 
     /**
      * Currency (by currency id, never item id) one craft consumes including nested crafts; empty for

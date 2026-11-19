@@ -105,6 +105,7 @@ public class CraftingResolver {
         root.setOpportunityCostCopper(craftNeed.getOpportunityCostCopper());
         if (craftNeed.hasUnvaluedOwnedInput()) root.setUnvaluedOwnedInput(true);
         if (craftNeed.spendsUnpricedCurrency()) root.setSpendsUnpricedCurrency(true);
+        craftNeed.unpricedCurrencyIds().forEach(root::addUnpricedCurrency);
         root.absorbWalletNotes(craftNeed);
         for (ResolvedNeed child : craftNeed.getChildren()) root.addChild(child);
         root.determineMode();
@@ -256,6 +257,7 @@ public class CraftingResolver {
                     chosenNeed.getOpportunityCostCopper()));
             if (chosenNeed.hasUnvaluedOwnedInput()) result.setUnvaluedOwnedInput(true);
             if (chosenNeed.spendsUnpricedCurrency()) result.setSpendsUnpricedCurrency(true);
+            chosenNeed.unpricedCurrencyIds().forEach(result::addUnpricedCurrency);
             result.absorbWalletNotes(chosenNeed);
 
             if (chosenNeed.getBlockedReason() != BlockedReason.NONE) {
@@ -494,7 +496,7 @@ public class CraftingResolver {
                 // wallet currency (and Notes without a complete estimate) stays unpriced.
                 if (!enforce && covered < needed) {
                     // Hypothetical missing units are neither wallet nor produced: they remain unpriced.
-                    craftResult.setSpendsUnpricedCurrency(true);
+                    craftResult.addUnpricedCurrency(currencyId);
                 }
                 if (fromWallet > 0) {
                     ResearchNoteEstimate noteEstimate = currencyId == CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID
@@ -502,7 +504,7 @@ public class CraftingResolver {
                     if (noteEstimate != null && noteEstimate.available()) {
                         craftResult.addWalletNotes(Math.toIntExact(fromWallet), noteEstimate);
                     } else {
-                        craftResult.setSpendsUnpricedCurrency(true);
+                        craftResult.addUnpricedCurrency(currencyId);
                     }
                 }
             }

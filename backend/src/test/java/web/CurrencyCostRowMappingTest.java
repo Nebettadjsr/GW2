@@ -46,6 +46,7 @@ class CurrencyCostRowMappingTest {
         assertEquals("Research Note", c.costs().get(0).name());
         assertEquals(30, c.costs().get(0).perCraft());
         assertEquals(300, c.costs().get(0).total());
+        assertEquals(List.of(61), c.unpricedCurrencyIds(), "wallet Notes without an estimate are unpriced");
         assertTrue(row.profitCopper() > 0);
     }
 

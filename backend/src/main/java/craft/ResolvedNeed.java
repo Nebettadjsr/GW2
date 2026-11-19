@@ -20,6 +20,7 @@ public class ResolvedNeed {
     /** An owned sellable quantity here (or below) could not be valued at all (DOMAIN_SPEC.md 11.2). */
     private boolean unvaluedOwnedInput;
     private boolean spendsUnpricedCurrency;
+    private final java.util.Set<Integer> unpricedCurrencyIds = new java.util.TreeSet<>();
     /** Research Notes paid from the captured wallet here (or below), valued by {@link #noteEstimate}. */
     private int walletNoteUnits;
     private ResearchNoteEstimate noteEstimate;
@@ -202,6 +203,7 @@ public class ResolvedNeed {
         this.opportunityCostCopper = Math.addExact(this.opportunityCostCopper, child.getOpportunityCostCopper());
         this.unvaluedOwnedInput |= child.unvaluedOwnedInput;
         this.spendsUnpricedCurrency |= child.spendsUnpricedCurrency;
+        this.unpricedCurrencyIds.addAll(child.unpricedCurrencyIds);
         if (child.walletNoteUnits > 0) addWalletNotes(child.walletNoteUnits, child.noteEstimate);
     }
 
@@ -215,6 +217,17 @@ public class ResolvedNeed {
 
     public void setSpendsUnpricedCurrency(boolean spends) {
         this.spendsUnpricedCurrency = spends;
+    }
+
+    /** Marks one specific currency (by currency id) as spent without a gold valuation. */
+    public void addUnpricedCurrency(int currencyId) {
+        this.spendsUnpricedCurrency = true;
+        this.unpricedCurrencyIds.add(currencyId);
+    }
+
+    /** The currency ids whose consumption in this route (itself or nested) has no gold valuation. */
+    public java.util.Set<Integer> unpricedCurrencyIds() {
+        return unpricedCurrencyIds;
     }
 
     /**

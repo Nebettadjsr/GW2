@@ -9,6 +9,8 @@ import java.util.List;
  *                           or failed: neither zero nor unlimited)
  * @param goldMarginIsConditional true while a consumed currency stays unpriced; {@code profitCopper} is then the known gold margin after
  *                           Trading Post fees and known material costs, <em>before</em> the unpriced currencies
+ * @param unpricedCurrencyIds the consumed currency ids whose cost is NOT included in the margin (the only ones a
+ *                           warning may name); consumed currencies not listed were valued (crafted or estimated)
  * @param economicsFromHypotheticalCraft the wallet blocked every real craft, so the per-craft figures describe
  *                           one hypothetical craft (the output quote and material costs stay valid)
  */
@@ -16,11 +18,12 @@ public record CurrencyCostsDto(String walletState,
                                boolean goldMarginIsConditional,
                                boolean economicsFromHypotheticalCraft,
                                List<CurrencyCostDto> costs,
-                               NoteEstimateDto estimate) {
+                               NoteEstimateDto estimate,
+                               List<Integer> unpricedCurrencyIds) {
 
     public CurrencyCostsDto(String walletState, boolean goldMarginIsConditional,
                             boolean economicsFromHypotheticalCraft, List<CurrencyCostDto> costs) {
-        this(walletState, goldMarginIsConditional, economicsFromHypotheticalCraft, costs, null);
+        this(walletState, goldMarginIsConditional, economicsFromHypotheticalCraft, costs, null, List.of());
     }
 
     /**

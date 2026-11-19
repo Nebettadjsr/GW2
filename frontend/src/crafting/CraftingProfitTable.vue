@@ -49,7 +49,11 @@ const displayRows = computed(() =>
     profit: formatSignedCopper(row.profitCopper),
     // Only while a consumed currency still has no gold value (wallet-owned units): crafted units are charged in the costs.
     noteEstimated: row.currencyCosts?.estimate != null,
-    conditionalCurrencies: row.currencyCosts?.goldMarginIsConditional === true ? row.currencyCosts.costs.map((c) => c.name) : [],
+    conditionalCurrencies: row.currencyCosts?.goldMarginIsConditional === true
+      ? row.currencyCosts.costs
+          .filter((c) => (row.currencyCosts?.unpricedCurrencyIds ?? []).includes(c.currencyId))
+          .map((c) => c.name)
+      : [],
     profitTone: moneyTone(row.profitCopper),
     sellValue: formatCopper(row.totalSellValueCopper),
     total: formatSignedCopper(row.totalProfitCopper),

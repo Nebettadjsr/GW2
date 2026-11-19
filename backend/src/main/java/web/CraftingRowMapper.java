@@ -127,7 +127,8 @@ final class CraftingRowMapper {
                     CURRENCY_NAMES.getOrDefault(id, "Currency " + id), perCraft, total.getOrDefault(id, 0)));
         }
         return new CurrencyCostsDto(result.walletState, result.unpricedCurrency, result.economicsFromHypotheticalCraft,
-                costs, toEstimate(result, items, detail));
+                costs, toEstimate(result, items, detail),
+                result.unpricedCurrencyIds == null ? List.of() : result.unpricedCurrencyIds.stream().sorted().toList());
     }
 
     private static CurrencyCostsDto.NoteEstimateDto toEstimate(CraftResult result,

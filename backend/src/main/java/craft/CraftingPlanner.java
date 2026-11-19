@@ -347,6 +347,13 @@ public class CraftingPlanner {
         if (!result.currencyPerCraft.isEmpty() || !result.currencyTotal.isEmpty()) {
             result.walletState = ctx.wallet == null ? "UNKNOWN" : "KNOWN";
             result.unpricedCurrency = sim.spendsUnpricedCurrency() || firstCraft == null;
+            java.util.Set<Integer> unpriced = new java.util.TreeSet<>(sim.unpricedCurrencyIds());
+            // No real craft: every consumed currency is hypothetical and stays unpriced.
+            if (firstCraft == null) {
+                unpriced.addAll(result.currencyPerCraft.keySet());
+                unpriced.addAll(result.currencyTotal.keySet());
+            }
+            result.unpricedCurrencyIds = java.util.Set.copyOf(unpriced);
             if (notesOne > 0 || notesTotal > 0) {
                 result.estimatedNotesPerCraft = notesOne;
                 result.estimatedNotesTotal = Math.toIntExact(notesTotal);

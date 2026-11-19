@@ -309,4 +309,26 @@ class CraftingProfitItemCollectorTest {
         assertEquals(before.newestFetchedAt(), after.newestFetchedAt());
         assertNotEquals(before.quoteVersion(), after.quoteVersion());
     }
+
+    @Test
+    void researchNoteEstimateProducerRecipesAreRelevantWithoutAnyRecipeKnowledge() throws Exception {
+        try (Statement statement = con.createStatement()) {
+            statement.execute("INSERT INTO recipes (recipe_id, output_item_id) VALUES (15120, 58), (15131, 59)");
+            statement.execute("INSERT INTO recipe_ingredients (recipe_id, item_id) VALUES (15120, 54), (15131, 55)");
+            statement.execute("INSERT INTO tp_tradeable_items (item_id) VALUES (54), (55)");
+        }
+        CraftingProfitItemCollector collector = new CraftingProfitItemCollector();
+
+        assertTrue(collector.collect(con, SCOPE).containsAll(Set.of(54, 55)),
+                "estimate ingredients are requested while unquoted");
+        assertTrue(collector.collect(con, AccountScope.of(OTHER)).containsAll(Set.of(54, 55)),
+                "account-independent");
+        CraftingProfitItemCollector.Coverage before = collector.coverage(con, SCOPE);
+        assertTrue(before.missingItems() >= 2);
+        try (Statement statement = con.createStatement()) {
+            statement.execute("INSERT INTO tp_prices (item_id, buy_quantity, buy_unit_price, sell_quantity, "
+                    + "sell_unit_price, fetched_at) VALUES (54, 1, 100, 1, 200, now())");
+        }
+        assertNotEquals(before.quoteVersion(), collector.coverage(con, SCOPE).quoteVersion());
+    }
 }

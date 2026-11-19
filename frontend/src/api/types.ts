@@ -97,6 +97,8 @@ export interface CurrencyCosts {
   costs: CurrencyCost[]
   /** Present only while wallet Research Notes were valued by the approved estimate. */
   estimate?: NoteEstimate | null
+  /** Consumed currency ids whose cost is NOT in the margin; the only ones a warning may name. */
+  unpricedCurrencyIds?: number[]
 }
 
 export interface NoteEstimateLine {
