@@ -1,3 +1,4 @@
 *.cmd text eol=crlf
 /backend/mvnw text eol=lf
 *.sh text eol=lf
+/backend/src/main/resources/mystic-forge/catalog.json text eol=lf

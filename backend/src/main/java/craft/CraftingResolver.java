@@ -83,7 +83,14 @@ public class CraftingResolver {
         // bought finished output and alternative recipes for the same output never satisfy it; only
         // its ingredients go through ordinary owned/buy/craft acquisition.
         int mark = state.mark();
-        ResolvedNeed craftNeed = tryCraft(recipe.outputItemId, recipe.outputCount, ctx, state, null, recipe);
+        ResolvedNeed craftNeed = state.isWorkExhausted()
+                ? blockedNeed(recipe.outputItemId, recipe.outputCount, BlockedReason.WORK_LIMIT, recipe, null)
+                : tryCraft(recipe.outputItemId, recipe.outputCount, ctx, state, null, recipe);
+        if (craftNeed.getQtyBlocked() == 0 && state.isWorkExhausted()) {
+            // Budget ran out while this plan was being assembled: some alternatives were never evaluated, so
+            // even a satisfied-looking plan is not an exact answer. Reject it as limited.
+            craftNeed = blockedNeed(recipe.outputItemId, recipe.outputCount, BlockedReason.WORK_LIMIT, recipe, null);
+        }
         // Same node shape as an ordinary requirement resolved by crafting, so rows and trees agree.
         ResolvedNeed root = new ResolvedNeed(recipe.outputItemId, recipe.outputCount);
         if (craftNeed.getQtyBlocked() > 0) {
@@ -340,6 +347,7 @@ public class CraftingResolver {
 
             BlockedReason craftReason = craftEval == null ? BlockedReason.NONE : craftEval.need.getBlockedReason();
             if (!ctx.settings.allowBuying && craftReason != BlockedReason.MATERIAL_LIMIT
+                    && craftReason != BlockedReason.WORK_LIMIT
                     && craftReason != BlockedReason.VALUE_RANGE
                     && craftReason != BlockedReason.WALLET_UNAVAILABLE
                     && craftReason != BlockedReason.INSUFFICIENT_CURRENCY) {
@@ -498,6 +506,10 @@ public class CraftingResolver {
         if (Thread.currentThread().isInterrupted()) {
             throw new java.util.concurrent.CancellationException("crafting calculation interrupted");
         }
+        // Deterministic per-root work budget: never rolled back, so no retry or alternative can evade it.
+        if (!state.chargeWork()) {
+            return blockedNeed(itemId, qtyRequested, BlockedReason.WORK_LIMIT, recipe, assignedCharacter);
+        }
         // cycle protection
         if (state.isVisiting(itemId)) {
             return blockedNeed(itemId, qtyRequested, BlockedReason.CYCLE_DETECTED, recipe, assignedCharacter);
@@ -604,7 +616,8 @@ public class CraftingResolver {
                         Math.toIntExact(craftedUnits), Math.toIntExact(needed - covered), balance));
 
                 if (producerBlocked || (enforce && covered < needed)) {
-                    if (producerReason == BlockedReason.MATERIAL_LIMIT || producerReason == BlockedReason.VALUE_RANGE) {
+                    if (producerReason == BlockedReason.MATERIAL_LIMIT || producerReason == BlockedReason.VALUE_RANGE
+                            || producerReason == BlockedReason.WORK_LIMIT) {
                         return limitBlocked(craftResult, qtyRequested, producerReason);
                     }
                     return limitBlocked(craftResult, qtyRequested,
@@ -654,7 +667,8 @@ public class CraftingResolver {
                         unsatisfiedChildReason = child.getBlockedReason();
                     }
                     if (child.getBlockedReason() == BlockedReason.MATERIAL_LIMIT
-                            || child.getBlockedReason() == BlockedReason.VALUE_RANGE) {
+                            || child.getBlockedReason() == BlockedReason.VALUE_RANGE
+                            || child.getBlockedReason() == BlockedReason.WORK_LIMIT) {
                         unsatisfiedChildReason = child.getBlockedReason();
                         break; // this attempt can never be accepted; do not expand later siblings
                     }

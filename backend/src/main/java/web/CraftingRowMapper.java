@@ -77,6 +77,9 @@ final class CraftingRowMapper {
                     iconUrl(recipe.outputItemId, items), false, null, forgeHint(recipe, null));
         }
 
+        // WORK_LIMIT with no accepted craft: the plan's costs were never established, so they are unknown (null),
+        // not zero. The output quote and revenue stay; any fully accepted prefix keeps its exact figures.
+        boolean unknownEconomics = result.blockedReason == craft.BlockedReason.WORK_LIMIT && result.craftableCount == 0;
         return new CraftingRowDto(
                 recipe.recipeId,
                 recipe.outputItemId,
@@ -86,13 +89,13 @@ final class CraftingRowMapper {
                 recipe.minRating,
                 true,
                 result.craftableCount,
-                result.buyCostCopper,
-                result.matsSellValueCopper,
-                result.totalMatsSellValueCopper,
+                unknownEconomics ? null : result.buyCostCopper,
+                unknownEconomics ? null : result.matsSellValueCopper,
+                unknownEconomics ? null : result.totalMatsSellValueCopper,
                 result.revenueCopper,
-                result.profitCopper,
-                result.totalSellValueCopper,
-                result.totalProfitCopper,
+                unknownEconomics ? null : result.profitCopper,
+                unknownEconomics ? null : result.totalSellValueCopper,
+                unknownEconomics ? null : result.totalProfitCopper,
                 result.blockedReason == null ? null : result.blockedReason.name(),
                 toQuote(tp.get(recipe.outputItemId)),
                 toMissing(result.missingToBuy, result.materialPurchaseCosts, items, tp),

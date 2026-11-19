@@ -84,6 +84,38 @@ public class PlanState {
     /** DOMAIN_SPEC.md: most units of one material item ID one candidate recipe plan may require. */
     public static final int MAX_MATERIAL_UNITS = 2_500;
 
+    /**
+     * Deterministic bound on speculative craft-step attempts ({@code tryCraftAssigned} calls) one root may make,
+     * across every rollback, nested ordinary/Forge candidate, owner trial and seed-preserving alternative.
+     * It counts attempts, never time, so the outcome is reproducible. Exhaustion is a limited outcome
+     * ({@link BlockedReason#WORK_LIMIT}), never an exact result.
+     */
+    public static final int MAX_WORK_UNITS = 50_000;
+
+    // Work spent by this root. Deliberately NOT journalled: rollback must not refund speculative work.
+    private int workUsed = 0;
+    private int workLimit = MAX_WORK_UNITS;
+    private boolean workRefused = false;
+
+    /** Charges one attempt; false (and permanently exhausted) once the budget is spent. */
+    boolean chargeWork() {
+        if (workRefused) return false;
+        if (workUsed >= workLimit) {
+            workRefused = true;
+            return false;
+        }
+        workUsed++;
+        return true;
+    }
+
+    /** True once an attempt was refused: some alternatives were never evaluated, so the plan is limited. */
+    boolean isWorkExhausted() { return workRefused; }
+
+    int workUsed() { return workUsed; }
+
+    /** Starts a fresh budget for the next root evaluated on a reused worker state. */
+    void resetWork(int limit) { workUsed = 0; workLimit = limit; workRefused = false; }
+
     // Required units per material item ID in this plan, owned and purchased alike. Journalled.
     private final Map<Integer, Integer> demand = new HashMap<>();
 
@@ -188,6 +220,9 @@ public class PlanState {
         this.demand.putAll(other.demand);
         this.currencySpent.putAll(other.currencySpent);
         this.currencyProduced.putAll(other.currencyProduced);
+        this.workUsed = other.workUsed;
+        this.workLimit = other.workLimit;
+        this.workRefused = other.workRefused;
     }
 
     /**

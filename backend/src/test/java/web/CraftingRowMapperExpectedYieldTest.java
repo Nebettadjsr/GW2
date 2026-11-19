@@ -38,4 +38,18 @@ class CraftingRowMapperExpectedYieldTest {
         CraftingRowDto row = CraftingRowMapper.toRow(r, null, Map.of(), Map.of());
         assertNull(row.expectedYield());
     }
+
+    @Test
+    void workLimitWithNoAcceptedCraftReportsUnknownEconomicsNotZero() {
+        Recipe r = new Recipe(1, 10, 1, 0, "Chef", List.of(new Ingredient(11, 1)));
+        CraftResult limited = new CraftResult(10, "Chef", 0, Map.of(), Map.of(), 0, 0, 0, 900, 900, 0, null,
+                BlockedReason.WORK_LIMIT, 0, Map.of(), Map.of());
+        Map<Integer, PriceQuote> tp = Map.of(10, new PriceQuote(900, 1000));
+        CraftingRowDto row = CraftingRowMapper.toRow(r, limited, Map.of(), tp);
+        assertEquals("WORK_LIMIT", row.blockedReason());
+        assertNull(row.profitCopper());
+        assertNull(row.totalProfitCopper());
+        assertNull(row.buyCostCopper());
+        assertNotNull(row.outputPrice(), "the actual output quote is retained");
+    }
 }

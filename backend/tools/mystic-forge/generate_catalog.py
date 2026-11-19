@@ -46,7 +46,8 @@ def atomic_write(path, data: bytes):
 
 
 def sha256(path):
-    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
 def fields(template):
@@ -61,7 +62,8 @@ ALIASES = {}  # verified Wiki redirect (lowercase) -> canonical page name (lower
 
 def load_aliases(path):
     """Only the tracked, redirect-verified aliases; no singular/plural, fuzzy or other guessed mapping exists."""
-    data = json.load(open(path))
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
     aliases = data["verifiedAliases"]
     for k, v in aliases.items():
         if k != k.lower() or v != v.lower() or k == v or v in aliases:
@@ -372,7 +374,8 @@ def refresh():
         {"source": "https://wiki.guildwars2.com/", "license": "GW2 Wiki contributors, GFDL 1.3; ArenaNet game data retains its rights",
          "retrievedUtc": now, "pages": pages}).encode(), mtime=0)
     # Build and validate completely (dry run of the real generator) before ANY file is replaced.
-    facts = json.load(open(os.path.join(SRC, "verified-facts.json")))
+    with open(os.path.join(SRC, "verified-facts.json"), encoding="utf-8") as f:
+        facts = json.load(f)
     pages_meta["retrievedUtc"] = now
     build(json.loads(gzip.decompress(raw_bytes)), pages, facts, hashlib.sha256(raw_bytes).hexdigest(),
           hashlib.sha256(tpl_bytes).hexdigest())
@@ -436,7 +439,8 @@ def main():
     if a.refresh:
         refresh()
         return
-    facts = json.load(open(os.path.join(SRC, "verified-facts.json")))
+    with open(os.path.join(SRC, "verified-facts.json"), encoding="utf-8") as f:
+        facts = json.load(f)
     verify_pins(facts)
     raw = json.load(gzip.open(os.path.join(SRC, "raw-recipes.json.gz")))
     tpl = json.load(gzip.open(os.path.join(SRC, "page-templates.json.gz")))
@@ -445,7 +449,9 @@ def main():
     data = compact_json(cat)
     json.loads(data)  # the compact form must stay valid JSON
     if a.check:
-        if open(OUT, "rb").read() != data:
+        with open(OUT, "rb") as f:
+            current = f.read()
+        if current != data:
             sys.exit("catalog.json is stale; rerun without --check")
         print("catalog.json is current")
     else:

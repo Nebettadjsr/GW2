@@ -27,6 +27,14 @@ public class CraftingPlanner {
         this(Map.of(), reuseSimulationState);
     }
 
+    /** Per-root speculative work budget; tests lower it to exercise exhaustion with small graphs. */
+    private int workLimit = PlanState.MAX_WORK_UNITS;
+
+    CraftingPlanner withWorkLimit(int limit) {
+        this.workLimit = limit;
+        return this;
+    }
+
     private CraftingPlanner(Map<Integer, Integer> vendorValues, boolean reuseSimulationState) {
         this(vendorValues, reuseSimulationState, null);
     }
@@ -243,6 +251,7 @@ public class CraftingPlanner {
             RecipeSimulator recipeSimulator
     ) {
         RecipeSimulationResult sim;
+        baseState.resetWork(workLimit);
 
         // A disabled inventory or buying source does not disable recursive crafting. In
         // particular, direct-price profitability estimates cannot safely prove a recipe
@@ -396,7 +405,7 @@ public class CraftingPlanner {
         return reason == BlockedReason.WALLET_UNAVAILABLE || reason == BlockedReason.INSUFFICIENT_CURRENCY;
     }
 
-    private Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,
+    static Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,
                                                               Map<Integer, int[]> vendor,
                                                               Map<Integer, PriceQuote> tp,
                                                               CraftingSettings settings) {
@@ -413,8 +422,15 @@ public class CraftingPlanner {
             }
             PriceQuote quote = tp.get(entry.getKey());
             Integer unit = quote == null ? null : settings.listingBuy ? quote.buyUnit : quote.sellUnit;
-            Integer total = unit == null ? null : Math.multiplyExact(unit, entry.getValue());
-            costs.put(entry.getKey(), new MaterialPurchaseCost(unit, total));
+            int vendorUnits = vendorBought == null ? 0 : vendorBought[0];
+            int vendorCash = vendorBought == null ? 0 : vendorBought[1];
+            // Mixed sourcing: exact vendor cash plus ONLY the remaining TP-bought units at the TP quote. Units paid
+            // purely in wallet currency add no cash here (their currency cost stays reported separately).
+            Integer total = unit == null ? null
+                    : Math.addExact(vendorCash, Math.multiplyExact(unit, entry.getValue() - vendorUnits));
+            Integer shownUnit = vendorUnits > 0 && total != null
+                    ? Integer.valueOf((int) Math.ceil((double) total / entry.getValue())) : unit;
+            costs.put(entry.getKey(), new MaterialPurchaseCost(shownUnit, total));
         }
         return Map.copyOf(costs);
     }
