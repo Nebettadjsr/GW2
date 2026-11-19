@@ -6,7 +6,7 @@ import craft.CraftingGraph;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
 import craft.Ingredient;
-import craft.MysticForgeCatalog;
+import parser.MysticForgeCatalogLoader;
 import craft.Node;
 import craft.PlannerContext;
 import craft.PriceQuote;
@@ -230,7 +230,7 @@ public class CraftingProfitService {
         if (settings != null && settings.allowMysticForge) {
             // Forge recipes are a separate, setting-gated source: negative ids never collide with ordinary
             // ids or account unlocks, and the toggle-off path above is untouched.
-            List<Recipe> forge = MysticForgeCatalog.bundled().recipes();
+            List<Recipe> forge = MysticForgeCatalogLoader.bundled().recipes();
             if (!forge.isEmpty()) {
                 visibleRecipes = concat(visibleRecipes, forge);
                 allRecipes = concat(allRecipes, forge);

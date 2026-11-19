@@ -68,20 +68,20 @@ class MysticForgeCatalogParserTest {
 
     @Test
     void normalizedCatalogDropsInvalidRecipesAndFingerprintTracksContent() throws Exception {
-        MysticForgeCatalog a = MysticForgeCatalog.fromJson(new ObjectMapper().readTree(
+        MysticForgeCatalog a = MysticForgeCatalogLoader.fromJson(new ObjectMapper().readTree(
                 "{\"recipes\":[{\"forgeId\":3105801,\"outputItemId\":31058,\"outputCount\":1,\"ingredients\":[[20852,1],[19976,100]]},"
                         + "{\"forgeId\":0,\"outputItemId\":1,\"outputCount\":1,\"ingredients\":[[1,1]]},"
                         + "{\"forgeId\":5,\"outputItemId\":1,\"outputCount\":1,\"ingredients\":[]}]}"));
         assertEquals(1, a.recipes().size());
         assertEquals(-3105801, a.recipes().getFirst().recipeId);
-        MysticForgeCatalog b = MysticForgeCatalog.fromJson(new ObjectMapper().readTree(
+        MysticForgeCatalog b = MysticForgeCatalogLoader.fromJson(new ObjectMapper().readTree(
                 "{\"recipes\":[{\"forgeId\":3105801,\"outputItemId\":31058,\"outputCount\":1,\"ingredients\":[[20852,1],[19976,99]]}]}"));
         assertNotEquals(a.fingerprint(), b.fingerprint());
     }
 
     @Test
     void bundledSnapshotLoadsWithoutInventingRecipes() {
-        assertNotNull(MysticForgeCatalog.bundled());
-        MysticForgeCatalog.bundled().recipes().forEach(r -> assertTrue(r.recipeId < 0 && r.isMysticForge()));
+        assertNotNull(MysticForgeCatalogLoader.bundled());
+        MysticForgeCatalogLoader.bundled().recipes().forEach(r -> assertTrue(r.recipeId < 0 && r.isMysticForge()));
     }
 }

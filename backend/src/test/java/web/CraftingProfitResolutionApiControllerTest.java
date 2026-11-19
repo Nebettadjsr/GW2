@@ -732,11 +732,12 @@ class CraftingProfitResolutionApiControllerTest {
     void aNonPositiveRecipeIdIsRejectedWithoutStartingACalculation() throws Exception {
         mockMvc.perform(resolution("{\"recipeId\": 0, \"calculation\": {}}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("recipeId must be a positive integer"));
+                .andExpect(jsonPath("$.message").value("recipeId must be a positive recipe ID or a valid Mystic Forge identity"));
 
-        mockMvc.perform(resolution("{\"recipeId\": -7, \"calculation\": {}}"))
+        mockMvc.perform(resolution("{\"recipeId\": -1000000000, \"calculation\": {}}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("recipeId must be a positive integer"));
+                .andExpect(jsonPath("$.message").value(
+                        "recipeId must be a positive recipe ID or a valid Mystic Forge identity"));
 
         assertEquals(0, factory.created.size());
     }

@@ -83,6 +83,27 @@ final class CraftingResolutionMapper {
     }
 
     /**
+     * Profit-route recipe identity: a positive ArenaNet recipe ID or a nonzero Mystic Forge identity
+     * (negated wiki forge id). Whether the ID exists in the request's own calculation is decided later
+     * (404 RECIPE_NOT_IN_CALCULATION); Discovery keeps {@link #requireRecipeId} (positive only).
+     *
+     * @throws ApiValidationException if it is absent, zero, or outside the bounded forge identity range
+     */
+    static int requireProfitRecipeId(Integer recipeId) {
+        if (recipeId == null) {
+            throw new ApiValidationException(
+                    "recipeId is required: resolution detail explains one explicitly selected recipe");
+        }
+        if (recipeId == 0 || recipeId < -MAX_FORGE_IDENTITY) {
+            throw new ApiValidationException(
+                    "recipeId must be a positive recipe ID or a valid Mystic Forge identity");
+        }
+        return recipeId;
+    }
+
+    private static final int MAX_FORGE_IDENTITY = 999_999_999;
+
+    /**
      * The nested calculation: required on both detail routes, because the caller is expected to send
      * the effective inputs the table response echoed rather than rely on defaults a second time.
      * Its individual members keep each table contract's own optional-with-defaults
