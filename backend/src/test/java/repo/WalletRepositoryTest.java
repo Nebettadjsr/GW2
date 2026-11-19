@@ -71,8 +71,8 @@ class WalletRepositoryTest {
     }
 
     @Test
-    void staleMarkerIsUnknown() throws Exception {
-        marker(A_ID, Instant.now().minus(WalletRepository.MAX_AGE).minusSeconds(60));
-        assertTrue(new WalletRepository().load(con, AccountScope.of(A_ID)).isEmpty());
+    void oldMarkerStillLoadsLastPublicationBecauseFreshnessPolicyOwnsStaleness() throws Exception {
+        marker(A_ID, Instant.now().minus(java.time.Duration.ofDays(2)));
+        assertEquals(Map.of(61, 309), new WalletRepository().load(con, AccountScope.of(A_ID)).orElseThrow());
     }
 }

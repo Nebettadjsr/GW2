@@ -104,15 +104,21 @@ final class CraftingRowMapper {
      * that is not positive, because no nonnegative currency value can then make the craft profitable.
      */
     private static CurrencyCostsDto toCurrencyCosts(CraftResult result) {
-        if (result.currencyPerCraft == null || result.currencyPerCraft.isEmpty()) return null;
-        boolean single = result.currencyPerCraft.size() == 1;
+        Map<Integer, Integer> first = result.currencyPerCraft == null ? Map.of() : result.currencyPerCraft;
+        Map<Integer, Integer> total = result.currencyTotal == null ? Map.of() : result.currencyTotal;
+        // Union: a currency only later executions consume (first craft used an owned intermediate) still counts.
+        java.util.TreeSet<Integer> ids = new java.util.TreeSet<>(first.keySet());
+        ids.addAll(total.keySet());
+        if (ids.isEmpty()) return null;
+        boolean single = ids.size() == 1;
         List<CurrencyCostsDto.CurrencyCostDto> costs = new ArrayList<>();
-        result.currencyPerCraft.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
-            Integer breakEven = single && result.profitCopper > 0 ? result.profitCopper / e.getValue() : null;
-            costs.add(new CurrencyCostsDto.CurrencyCostDto(e.getKey(),
-                    CURRENCY_NAMES.getOrDefault(e.getKey(), "Currency " + e.getKey()), e.getValue(),
-                    result.currencyTotal.getOrDefault(e.getKey(), 0), breakEven));
-        });
+        for (int id : ids) {
+            int perCraft = first.getOrDefault(id, 0);
+            // Break-even basis is always the first craft's gold margin over the first craft's units.
+            Integer breakEven = single && perCraft > 0 && result.profitCopper > 0 ? result.profitCopper / perCraft : null;
+            costs.add(new CurrencyCostsDto.CurrencyCostDto(id,
+                    CURRENCY_NAMES.getOrDefault(id, "Currency " + id), perCraft, total.getOrDefault(id, 0), breakEven));
+        }
         return new CurrencyCostsDto(result.walletState, true, result.economicsFromHypotheticalCraft, costs);
     }
 

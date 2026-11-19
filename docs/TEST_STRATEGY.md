@@ -1150,3 +1150,7 @@ rules are in the [development workflow](../agent/DEVELOPMENT_WORKFLOW.md).
 
 A story's Definition of Done must not demand a full local regression run: it names the tests that must
 exist and pass, and the gate proves the rest of the repository still passes with them.
+
+## Currency, AutoLearned and typed-sync regressions (#372)
+
+`FullCatalogSyncTest` covers typed Item/Currency with equal numeric ids, the pinned unsupported `GuildUpgrade` record (skipped, not fatal), rejection of arbitrary kinds, and payload -> stored recipe -> `RecipeRepository` AutoLearned eligibility. `CurrencyCostRowMappingTest` covers currency consumed only after the first craft. `CraftingProfitTableCurrency.spec.ts` covers the conditional-cost marker. Frontend suites were not runnable in the authoring environment (no installed dependencies); CI runs them.

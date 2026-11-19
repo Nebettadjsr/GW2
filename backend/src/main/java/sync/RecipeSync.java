@@ -163,11 +163,23 @@ public final class RecipeSync {
                         RecipeParser.RecipeRow::recipeId, "recipes");
                 List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
                 List<RecipeParser.RequirementRow> requirementRows = new ArrayList<>();
+                // Structurally valid records with a known unsupported requirement kind (e.g. GuildUpgrade) are
+                // never published - no free/omitted requirement - but must not abort the supported catalog.
+                Set<Integer> unsupportedIds = new HashSet<>();
                 for (JsonNode r : root) {
+                    if (RecipeParser.hasUnsupportedRequirement(r)) {
+                        unsupportedIds.add(r.path("id").asInt());
+                        continue;
+                    }
                     requirementRows.addAll(RecipeParser.parseNonItemRequirements(r));
                     var ingredients = RecipeParser.parseIngredients(r);
                     ingredientRows.addAll(ingredients);
                     for (var ing : ingredients) if (ing.itemId() > 0) neededItemIds.add(ing.itemId());
+                }
+                if (!unsupportedIds.isEmpty()) {
+                    rows = new ArrayList<>(rows);
+                    rows.removeIf(rr -> unsupportedIds.contains(rr.recipeId()));
+                    remoteIds.removeAll(unsupportedIds);
                 }
                 for (var rr : rows) if (rr.outputItem() > 0) neededItemIds.add(rr.outputItem());
 

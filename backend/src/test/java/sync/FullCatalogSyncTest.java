@@ -78,8 +78,13 @@ class FullCatalogSyncTest {
         return IntStream.rangeClosed(from, to).boxed().map(String::valueOf).collect(Collectors.joining(",", "[", "]"));
     }
 
+    /** The pinned-schema catalog URL carries a version query but no ids parameter. */
+    private static boolean isRecipeCatalog(String url) {
+        return url.contains("/v2/recipes") && !url.contains("ids=");
+    }
+
     private static List<Integer> requested(String url) {
-        return java.util.Arrays.stream(url.substring(url.indexOf("ids=") + 4).split(",")).map(Integer::valueOf).toList();
+        return java.util.Arrays.stream(url.substring(url.indexOf("ids=") + 4).replaceAll("&.*$", "").split(",")).map(Integer::valueOf).toList();
     }
 
     private static String itemJson(int id, String name) {
@@ -167,7 +172,7 @@ class FullCatalogSyncTest {
     private void recipeUpstream(int recipeCount, java.util.function.IntFunction<String> recipe) {
         RecipeSync.fetcher = url -> {
             urls.add(url);
-            if (url.endsWith("/v2/recipes")) return json(ids(1, recipeCount));
+            if (isRecipeCatalog(url)) return json(ids(1, recipeCount));
             return json(requested(url).stream().map(i -> recipe.apply(i)).collect(Collectors.joining(",", "[", "]")));
         };
         ItemSync.fetcher = url -> { urls.add(url); return itemsFor(url, "I"); };
@@ -202,14 +207,64 @@ class FullCatalogSyncTest {
 
     @Test
     void fullRecipes_missingOrDuplicateDetailRejected() throws Exception {
-        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1,2]")
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1,2]")
                 : json("[" + recipeJson(1, 10, 11) + "]");
         ItemSync.fetcher = url -> itemsFor(url, "I");
         assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
         assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
-        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1,2]")
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1,2]")
                 : json("[" + recipeJson(1, 10, 11) + "," + recipeJson(1, 10, 11) + "]");
         assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+    }
+
+    private static String typedRecipe(int id, int out, String ingredientsJson) {
+        return "{\"id\":" + id + ",\"type\":\"Refinement\",\"output_item_id\":" + out + ",\"output_item_count\":1,\"min_rating\":0,"
+                + "\"time_to_craft_ms\":1,\"disciplines\":[\"Artificer\"],\"flags\":[\"AutoLearned\"],\"chat_link\":\"[&A]\","
+                + "\"ingredients\":" + ingredientsJson + "}";
+    }
+
+    @Test
+    void fullRecipes_typedItemAndCurrencyWithEqualIds_andKnownUnsupportedGuildUpgradeSkippedNotFatal() throws Exception {
+        String supported = typedRecipe(13839, 97487,
+                "[{\"type\":\"Item\",\"id\":61,\"count\":4},{\"type\":\"Currency\",\"id\":61,\"count\":30}]");
+        String guild = typedRecipe(13324, 70000,
+                "[{\"type\":\"Item\",\"id\":70926,\"count\":1},{\"type\":\"Item\",\"id\":74982,\"count\":4},"
+                        + "{\"type\":\"GuildUpgrade\",\"id\":721,\"count\":8}]");
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (13324, 'stale-free')");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[13839,13324]") : json("[" + supported + "," + guild + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertNotNull(scalar("SELECT 1 FROM recipes WHERE recipe_id=13839"));
+        assertNull(scalar("SELECT 1 FROM recipes WHERE recipe_id=13324"), "unsupported recipe is never published or kept free");
+        assertNull(scalar("SELECT 1 FROM recipe_ingredients WHERE recipe_id=13324"));
+        assertEquals("1", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id=13839 AND item_id=61 AND count=4"));
+        assertEquals("1", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=13839 AND kind='Currency' AND ref_id=61 AND count=30"));
+
+        // Public payload -> stored recipe -> repository eligibility: AutoLearned is known with no unlock rows.
+        String acct = "10000000-0000-0000-0000-0000000000ee";
+        exec("INSERT INTO account_registry (account_id) VALUES ('" + acct + "')");
+        var scope = model.AccountScope.of(acct);
+        var repo = new repo.RecipeRepository();
+        try (Connection con = Db.open()) {
+            var known = repo.loadRecipes(con, scope, "Artificer");
+            assertEquals(List.of(13839), known.stream().map(r -> r.recipeId).toList());
+            assertEquals(1, known.get(0).currencies.size());
+            assertEquals(61, known.get(0).currencies.get(0).currencyId());
+            assertTrue(repo.loadKnownRecipeIds(con, scope).contains(13839));
+            assertEquals(List.of(), repo.loadRecipes(con, scope, "Weaponsmith"), "discipline boundary retained");
+            assertEquals(List.of(), repo.loadMissingDiscoverableRecipeIdsForCharacter(con, scope, "x", "Artificer"),
+                    "AutoLearned is not a Discovery candidate");
+        }
+    }
+
+    @Test
+    void fullRecipes_arbitraryUnknownRequirementKindStillRejected() throws Exception {
+        String bad = typedRecipe(5, 10, "[{\"type\":\"Mystery\",\"id\":1,\"count\":1}]");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[5]") : json("[" + bad + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
     }
 
     // ------------------------------------------------------------------ trading post
@@ -397,13 +452,13 @@ class FullCatalogSyncTest {
         };
         ItemSync.fetcher = url -> itemsFor(url, "I");
         for (String rec : bad) {
-            RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]") : json("[" + rec + "]");
+            RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json("[" + rec + "]");
             assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()), rec);
             assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"), rec);
         }
         assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients"));
         // guild upgrade recipe (no item output, no ingredients array) is a legitimate documented shape
-        RecipeSync.fetcher = url -> url.endsWith("/v2/recipes") ? json("[1]") : json(
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1]") : json(
                 "[{\"id\":1,\"type\":\"GuildConsumable\",\"output_upgrade_id\":3,\"min_rating\":0,\"time_to_craft_ms\":1,"
                         + "\"guild_ingredients\":[{\"upgrade_id\":2,\"count\":1}]}]");
         RecipeSync.syncAllRecipesFull(TaskDeadline.start());

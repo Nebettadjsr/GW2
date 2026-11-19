@@ -17,6 +17,9 @@ import java.util.function.ToIntFunction;
 public final class FullCatalogSupport {
     private FullCatalogSupport() {}
 
+    /** Structurally valid requirement kinds this application knows but cannot plan (recipe is skipped, never free). */
+    static final Set<String> KNOWN_UNSUPPORTED_KINDS = Set.of("GuildUpgrade");
+
     /** One finite upstream ID snapshot: a non-empty array of distinct positive integers. */
     static List<Integer> parseIdSnapshot(JsonNode root, String what) {
         if (root == null || !root.isArray()) throw new IllegalStateException(what + " id snapshot is not an array");
@@ -123,7 +126,10 @@ public final class FullCatalogSupport {
                     if (i.isObject() && i.hasNonNull("type")) {
                         kind = i.get("type").isTextual() ? i.get("type").asText() : "";
                         idField = "id";
-                        if (!"Item".equals(kind) && !"Currency".equals(kind)) { ok = false; break; }
+                        if (!"Item".equals(kind) && !"Currency".equals(kind) && !KNOWN_UNSUPPORTED_KINDS.contains(kind)) {
+                            ok = false;
+                            break;
+                        }
                     } else {
                         kind = "Item";
                         idField = "item_id";

@@ -77,6 +77,17 @@ public final class CalculationInputVersions {
     private final CalculationFreshness.PriceCoverage coverage;
     private final Duration accountMaxAge;
     private final Instant evaluatedAt;
+    /** True when the request may read the wallet: the WALLET source then joins identity and freshness. */
+    private boolean walletTracked;
+
+    /**
+     * Includes the optional wallet source in this capture's identity and freshness (only when the request is
+     * authorized to read it). It never makes a calculation unusable: item-only access keeps working without it.
+     */
+    public CalculationInputVersions withWalletTracked(boolean tracked) {
+        this.walletTracked = tracked;
+        return this;
+    }
 
     public CalculationInputVersions(Map<String, Instant> accountVersions,
                                     CalculationFreshness.PriceCoverage coverage,
@@ -150,7 +161,7 @@ public final class CalculationInputVersions {
     /** Per-source state, in a stable order so two captures of one generation report identically. */
     public List<CalculationFreshness.SourceFreshness> accountSources() {
         List<CalculationFreshness.SourceFreshness> states = new ArrayList<>();
-        for (String source : orderedSources()) {
+        for (String source : orderedSources(walletTracked)) {
             Instant fetchedAt = accountVersions.get(source);
             states.add(new CalculationFreshness.SourceFreshness(source, fetchedAt, stateOf(fetchedAt)));
         }
@@ -193,7 +204,7 @@ public final class CalculationInputVersions {
         // happen to have completed at the same instants are different input generations, and a
         // detail computed for one must never be reported as explaining the other's row.
         material.append("account=").append(accountId).append(';');
-        for (String source : orderedSources()) {
+        for (String source : orderedSources(walletTracked)) {
             material.append(source).append('=').append(accountVersions.get(source))
                     .append('#').append(accountGenerations.get(source)).append(';');
         }
@@ -207,8 +218,9 @@ public final class CalculationInputVersions {
         return digest(material.toString());
     }
 
-    private static List<String> orderedSources() {
+    private static List<String> orderedSources(boolean withWallet) {
         List<String> ordered = new ArrayList<>(REQUIRED_ACCOUNT_SOURCES);
+        if (withWallet) ordered.add(AccountSyncStateRepository.WALLET);
         ordered.sort(String::compareTo);
         return ordered;
     }

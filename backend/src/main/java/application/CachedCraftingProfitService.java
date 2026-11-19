@@ -197,7 +197,7 @@ public class CachedCraftingProfitService {
         verifyProof(keyed);
         verifyCharacter(scope, choice);
         try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(keyed))) {
-            captured = capture(session, scope);
+            captured = capture(session, scope, walletAuthorized(keyed));
             if (captured.usable()) {
                 data = profitServices.apply(session).reload(choice, settings);
             }
@@ -233,7 +233,7 @@ public class CachedCraftingProfitService {
         verifyProof(keyed);
         verifyCharacter(scope, choice);
         try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(keyed))) {
-            captured = capture(session, scope);
+            captured = capture(session, scope, walletAuthorized(keyed));
             if (captured.usable()) {
                 detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
             }
@@ -263,10 +263,13 @@ public class CachedCraftingProfitService {
     }
 
     /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
-    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope) throws SQLException {
+    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet)
+            throws SQLException {
         Instant evaluatedAt = clock.instant();
+        Set<String> sources = new java.util.LinkedHashSet<>(CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
+        if (wallet) sources.add(repo.AccountSyncStateRepository.WALLET);
         Map<String, AccountSourceStateRepository.SourceState> states = accountSourceStates.read(
-                session.connection(), scope, CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);
+                session.connection(), scope, sources);
 
         Map<String, Instant> versions = new LinkedHashMap<>();
         Map<String, Long> generations = new LinkedHashMap<>();
@@ -277,7 +280,7 @@ public class CachedCraftingProfitService {
 
         CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
-                evaluatedAt);
+                evaluatedAt).withWalletTracked(wallet);
     }
 
     /**

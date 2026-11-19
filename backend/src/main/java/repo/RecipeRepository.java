@@ -48,13 +48,15 @@ public class RecipeRepository {
         Map<Integer, List<CurrencyRequirement>> currencies = loadCurrencyRequirements(con);
 
         String sqlAll = """
-        SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines
+        SELECT r.recipe_id, r.output_item_id, r.output_item_count, r.min_rating, r.disciplines,
+               ('AutoLearned' = ANY(r.flags)) AS auto_learned
         FROM recipes r
         ORDER BY r.recipe_id
     """;
 
         String sqlDisc = """
-        SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines
+        SELECT r.recipe_id, r.output_item_id, r.output_item_count,r.min_rating, r.disciplines,
+               ('AutoLearned' = ANY(r.flags)) AS auto_learned
         FROM recipes r
         WHERE ? = ANY(r.disciplines)
         ORDER BY r.recipe_id
@@ -76,7 +78,8 @@ public class RecipeRepository {
             while (rs.next()) {
                 int recipeId = rs.getInt("recipe_id");
 
-                boolean known = RecipeKnowledgePolicy.isKnownAccountWide(
+                // AutoLearned recipes are not listed in unlock facts; the flag itself is the knowledge.
+                boolean known = rs.getBoolean("auto_learned") || RecipeKnowledgePolicy.isKnownAccountWide(
                         accountUnlocked.contains(recipeId),
                         unlockedByAnyCharacter.contains(recipeId));
                 if (!known) continue;
@@ -253,6 +256,11 @@ public class RecipeRepository {
     public Set<Integer> loadKnownRecipeIds(Connection con, model.AccountScope scope) throws SQLException {
         Set<Integer> ids = loadAccountUnlockedRecipeIds(con, scope);
         ids.addAll(loadAnyCharacterUnlockedRecipeIds(con, scope));
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT recipe_id FROM recipes WHERE 'AutoLearned' = ANY(flags)");
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
         return Set.copyOf(ids);
     }
 

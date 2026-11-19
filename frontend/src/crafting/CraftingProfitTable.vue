@@ -47,10 +47,12 @@ const displayRows = computed(() =>
     ownMaterials: formatCopper(row.matsSellValueCopper),
     unvalued: row.unvaluedOwnedInput === true,
     profit: formatSignedCopper(row.profitCopper),
-    profitTone: moneyTone(row.profitCopper),
+    // A row with unpriced currency spending is never an unconditional green profit.
+    conditionalCurrencies: (row.currencyCosts?.costs ?? []).map((c) => c.name),
+    profitTone: row.currencyCosts?.costs.length ? 'none' : moneyTone(row.profitCopper),
     sellValue: formatCopper(row.totalSellValueCopper),
     total: formatSignedCopper(row.totalProfitCopper),
-    totalTone: moneyTone(row.totalProfitCopper)
+    totalTone: row.currencyCosts?.costs.length ? 'none' : moneyTone(row.totalProfitCopper)
   }))
 )
 
@@ -178,12 +180,19 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
         </td>
         <td class="numeric" data-test="profit-per-craft">
           <span :class="`money money--${row.profitTone}`">{{ row.profit }}</span>
+          <span
+            v-if="row.conditionalCurrencies.length"
+            class="unvalued-note"
+            data-test="currency-conditional"
+            :title="`Gold margin before unpriced currency costs: ${row.conditionalCurrencies.join(', ')}`"
+          > + {{ row.conditionalCurrencies.join(', ') }}</span>
         </td>
         <td class="numeric is-total" data-test="total-sell-value">
           <span class="money">{{ row.sellValue }}</span>
         </td>
         <td class="numeric is-total" data-test="total-profit">
           <span :class="`money money--${row.totalTone}`">{{ row.total }}</span>
+          <span v-if="row.conditionalCurrencies.length" class="unvalued-note">*</span>
         </td>
       </tr>
     </tbody>

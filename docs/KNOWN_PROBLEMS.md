@@ -61,7 +61,9 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 **Risk:** recipes that exist only under newer schemas are invisible or have no readable ingredients. The check samples a small fixed public set; authenticated account endpoint payloads are not live-verified.
 
-**Follow-up:** a separately approved story must choose and migrate to an explicit supported schema version; the check never switches production versions itself. Currency valuation is owned by #372 (see DOMAIN_SPEC 2.1.0); production sync stays unpinned until that migration so Jade-class recipes are not yet synced. The parser and storage already accept the typed shape.
+**Update (#372):** recipe sync now pins one schema version for catalog and details; typed Item/Currency requirements are stored apart (`recipe_non_item_requirements`). Structurally valid records with a known unsupported kind (`GuildUpgrade`, e.g. recipe 13324) are skipped in both the safe and the full sync, never published as free; unknown/malformed kinds still fail the full sync. No guild-upgrade acquisition planner exists. AutoLearned recipes (e.g. 13839) are known without unlock rows; level/discipline/account boundaries still apply and they are not Discovery candidates. Wallet balances join the calculation identity/freshness (WALLET source) only for requests with the wallet grant, using the configured account freshness policy; currencies consumed only after the first craft stay visible via the union of per-craft and total currency.
+
+**Original follow-up:** a separately approved story must choose and migrate to an explicit supported schema version; the check never switches production versions itself. Currency valuation is owned by #372 (see DOMAIN_SPEC 2.1.0); production sync stays unpinned until that migration so Jade-class recipes are not yet synced. The parser and storage already accept the typed shape.
 
 Evidence: `sync/RecipeSync.java`, `parser/RecipeParser.java`, `api/ApiCompatibilityChecker.java`.
 

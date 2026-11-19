@@ -333,7 +333,7 @@ public class CraftingPlanner {
         }
         result.currencyPerCraft = Map.copyOf(perCraft);
         result.currencyTotal = hypothetical ? Map.of() : sim.getCurrencyTotal();
-        if (!result.currencyPerCraft.isEmpty()) {
+        if (!result.currencyPerCraft.isEmpty() || !result.currencyTotal.isEmpty()) {
             result.walletState = ctx.wallet == null ? "UNKNOWN" : "KNOWN";
         }
         return result;

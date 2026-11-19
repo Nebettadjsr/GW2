@@ -64,4 +64,25 @@ class CurrencyCostRowMappingTest {
         CraftingRowDto row = row(Map.of(97487, new PriceQuote(1, 2), 97102, new PriceQuote(500, 600)), Map.of(61, 309));
         assertNull(row.currencyCosts().costs().get(0).breakEvenCopperPerUnit());
     }
+
+    /** PR #375 P1: the first craft consumes an owned intermediate, later crafts need Notes. */
+    @Test
+    void currencyConsumedOnlyAfterFirstCraftIsStillShownWithTotalAndNoFirstCraftBreakEven() throws Exception {
+        Recipe top = new Recipe(1, 1000, 1, 0, "Artificer", List.of(new Ingredient(2000, 1)));
+        Recipe inter = new Recipe(2, 2000, 1, 0, "Artificer", List.of(new Ingredient(3000, 1)),
+                List.of(new CurrencyRequirement(61, 30)));
+        Map<Integer, PriceQuote> tp = Map.of(1000, new PriceQuote(10_000, 12_000));
+        CraftResult r = new CraftingPlanner().withWallet(Map.of(61, 100))
+                .evaluateAll(List.of(top, inter), Map.of(2000, 1, 3000, 10), Map.of(), tp, OWN, Set.of(1, 2)).get(1);
+        assertTrue(r.craftableCount >= 2, "second craft must be possible via the intermediate recipe");
+        assertTrue(r.currencyPerCraft.isEmpty(), "first craft consumes the owned intermediate");
+        CraftingRowDto row = CraftingRowMapper.toRow(top, r, Map.of(), tp);
+        var c = row.currencyCosts();
+        assertNotNull(c, "total currency must not disappear");
+        assertEquals("KNOWN", c.walletState());
+        assertEquals(1, c.costs().size());
+        assertEquals(0, c.costs().get(0).perCraft());
+        assertEquals(30 * (r.craftableCount - 1), c.costs().get(0).total());
+        assertNull(c.costs().get(0).breakEvenCopperPerUnit());
+    }
 }

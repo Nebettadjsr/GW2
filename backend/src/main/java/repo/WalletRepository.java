@@ -22,16 +22,17 @@ public class WalletRepository {
         return load(con, scope, java.time.Instant.now());
     }
 
-    /** A published wallet older than this is no longer trusted: a refresh that keeps failing leaves it unknown. */
-    public static final java.time.Duration MAX_AGE = java.time.Duration.ofMinutes(30);
-
-    /** As {@link #load(Connection, AccountScope)} with an explicit clock; a stale marker means unknown. */
-    public Optional<Map<Integer, Integer>> load(Connection con, AccountScope scope, java.time.Instant now)
+    /**
+     * As {@link #load(Connection, AccountScope)}. Age is not judged here: freshness is the configured account
+     * freshness policy's decision (it marks the WALLET source STALE in the calculation capture and admits a
+     * refresh), exactly as for the bank and materials. The last successful publication stays the data until then.
+     */
+    public Optional<Map<Integer, Integer>> load(Connection con, AccountScope scope, java.time.Instant ignoredNow)
             throws SQLException {
         if (con == null) return Optional.empty();
         Optional<AccountSourceStateRepository.SourceState> marker =
                 new AccountSourceStateRepository().read(con, scope, AccountSyncStateRepository.WALLET);
-        if (marker.isEmpty() || marker.get().completedAt().plus(MAX_AGE).isBefore(now)) {
+        if (marker.isEmpty()) {
             return Optional.empty();
         }
         Map<Integer, Integer> balances = new HashMap<>();
