@@ -90,6 +90,28 @@ class CraftingPlannerCurrencyRequirementTest {
     }
 
     @Test
+    void currencySpentOnlyByLaterCraftsOfANestedRecipeIsStillConsumedAndReported() {
+        // Parent needs 2 intermediates and has no currency itself; the intermediate costs 30 notes.
+        // Two intermediates are owned: the first parent craft spends 0 notes, the second crafts 2 -> 60.
+        Recipe inter = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Recipe parent = new Recipe(1, 100, 1, 0, "Artificer", List.of(ingredient(200, 2)));
+        Map<Integer, Integer> stock = Map.of(200, 2, 300, 100);
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(5000, 6000));
+
+        CraftResult enough = new CraftingPlanner().withWallet(Map.of(NOTE, 60))
+                .evaluateAll(List.of(parent, inter), stock, Map.of(), tp, OWN_ONLY, Set.of(1, 2)).get(1);
+        assertEquals(2, enough.craftableCount);
+        assertEquals(60, enough.currencyTotal.getOrDefault(NOTE, 0));
+        assertEquals("KNOWN", enough.walletState);
+
+        CraftResult short59 = new CraftingPlanner().withWallet(Map.of(NOTE, 59))
+                .evaluateAll(List.of(parent, inter), stock, Map.of(), tp, OWN_ONLY, Set.of(1, 2)).get(1);
+        assertEquals(1, short59.craftableCount, "the accepted prefix is kept; the failed second craft restores the pool");
+        assertEquals(0, short59.currencyTotal.getOrDefault(NOTE, 0));
+    }
+
+    @Test
     void itemOnlyRecipesNeedNoWalletAndReportNoCurrency() {
         Recipe plain = new Recipe(5, 500, 1, 0, "Artificer", List.of(ingredient(600, 1)));
         CraftResult r = new CraftingPlanner().withWallet(null)

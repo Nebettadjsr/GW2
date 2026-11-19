@@ -36,6 +36,6 @@ public class AccountAccessWebConfig implements WebMvcConfigurer {
         registry.addInterceptor(interceptor).addPathPatterns("/api/account/**", "/api/crafting/profit", "/api/crafting/profit/resolution",
                 "/api/crafting/selector-options", "/api/sync/account", "/api/crafting/discovery", "/api/crafting/discovery/resolution", "/api/sync/account/crafting-profit", "/api/sync/account/luck",
                 "/api/sync/account/character-equipment-tabs", "/api/sync/account/character-build-tabs", "/api/sync/account/bank",
-                "/api/sync/account/materials", "/api/sync/account/characters");
+                "/api/sync/account/materials", "/api/sync/account/wallet", "/api/sync/account/characters");
     }
 }

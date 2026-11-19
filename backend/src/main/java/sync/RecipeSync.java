@@ -45,7 +45,11 @@ public final class RecipeSync {
         try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement("SELECT recipe_id FROM recipes"); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) localIds.add(rs.getInt(1));
         }
-        if (!IdListDiff.between(localIds, remoteIds).changed() && isPublicationComplete()) return false;
+        // Complete observed catalog: stored ids plus ids the last complete publication knowingly skipped.
+        Set<Integer> observed = new HashSet<>(localIds);
+        observed.addAll(loadSkippedIds());
+        if (!IdListDiff.between(observed, remoteIds).changed() && isPublicationComplete()) return false;
+        Set<Integer> skippedIds = new HashSet<>();
 
         // Recipe batches commit before items/ingredients are fetched (no transaction spans HTTP),
         // so record the unfinished state first; only a full run marks it complete again.
@@ -81,6 +85,7 @@ public final class RecipeSync {
                         // Also drop any legacy cached row for it (removeDeletedRecipes below): otherwise its
                         // cleared ingredients would leave an old guild recipe usable as a free item-only recipe.
                         remoteIds.remove(rr.recipeId());
+                        skippedIds.add(rr.recipeId());
                         continue;
                     }
 
@@ -134,7 +139,7 @@ public final class RecipeSync {
 
         syncRecipeIngredients(fetchedBatches, TaskDeadline.NONE);
         removeDeletedRecipes(remoteIds, TaskDeadline.NONE);
-        markPublication(true);
+        markPublication(true, TaskDeadline.NONE, skippedIds);
         return true;
     }
 
@@ -149,6 +154,7 @@ public final class RecipeSync {
         deadline.check();
         List<Integer> ids = FullCatalogSupport.parseIdSnapshot(fetcher.get(CATALOG_URL), "recipes");
         Set<Integer> remoteIds = new HashSet<>(ids);
+        Set<Integer> skippedIds = new HashSet<>();
 
         markPublication(false, deadline);
 
@@ -183,6 +189,7 @@ public final class RecipeSync {
                     rows = new ArrayList<>(rows);
                     rows.removeIf(rr -> unsupportedIds.contains(rr.recipeId()));
                     remoteIds.removeAll(unsupportedIds);
+                    skippedIds.addAll(unsupportedIds);
                 }
                 for (var rr : rows) if (rr.outputItem() > 0) neededItemIds.add(rr.outputItem());
 
@@ -211,8 +218,19 @@ public final class RecipeSync {
         deadline.check();
         removeDeletedRecipes(remoteIds, deadline);
         deadline.check();
-        markPublication(true, deadline);
+        markPublication(true, deadline, skippedIds);
         deadline.check();
+    }
+
+    private static Set<Integer> loadSkippedIds() throws SQLException {
+        try (Connection con = Db.open();
+             PreparedStatement ps = con.prepareStatement("SELECT skipped_recipe_ids FROM recipe_catalog_publication");
+             ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) return Set.of();
+            Array array = rs.getArray(1);
+            if (array == null) return Set.of();
+            return new HashSet<>(Arrays.asList((Integer[]) array.getArray()));
+        }
     }
 
     private static boolean isPublicationComplete() throws SQLException {
@@ -234,12 +252,18 @@ public final class RecipeSync {
     /** Publication flag write inside one transaction limited to the remaining task budget. */
     private static void markPublication(boolean complete, TaskDeadline deadline)
             throws SQLException, InterruptedException {
+        markPublication(complete, deadline, null);
+    }
+
+    /** {@code skipped} is stored only for a complete publication; an unfinished marker never claims a catalog. */
+    private static void markPublication(boolean complete, TaskDeadline deadline, Set<Integer> skipped)
+            throws SQLException, InterruptedException {
         deadline.check();
         try (Connection con = Db.open()) {
             con.setAutoCommit(false);
             try {
                 deadline.limitTransaction(con);
-                writePublication(con, complete);
+                writePublication(con, complete, skipped);
                 deadline.check();
                 con.commit();
             } catch (Exception ex) {
@@ -249,13 +273,17 @@ public final class RecipeSync {
         }
     }
 
-    private static void writePublication(Connection con, boolean complete) throws SQLException {
+    private static void writePublication(Connection con, boolean complete, Set<Integer> skipped) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("""
-                     INSERT INTO recipe_catalog_publication (singleton, complete, updated_at)
-                     VALUES (TRUE, ?, now())
-                     ON CONFLICT (singleton) DO UPDATE SET complete = EXCLUDED.complete, updated_at = now()
+                     INSERT INTO recipe_catalog_publication (singleton, complete, updated_at, skipped_recipe_ids)
+                     VALUES (TRUE, ?, now(), ?)
+                     ON CONFLICT (singleton) DO UPDATE SET complete = EXCLUDED.complete, updated_at = now(),
+                         skipped_recipe_ids = CASE WHEN EXCLUDED.complete THEN EXCLUDED.skipped_recipe_ids
+                                                   ELSE recipe_catalog_publication.skipped_recipe_ids END
                      """)) {
             ps.setBoolean(1, complete);
+            ps.setArray(2, con.createArrayOf("int4",
+                    (complete && skipped != null ? skipped : Set.<Integer>of()).toArray(Integer[]::new)));
             ps.executeUpdate();
         }
     }

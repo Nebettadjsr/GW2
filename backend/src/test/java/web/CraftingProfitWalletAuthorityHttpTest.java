@@ -52,7 +52,12 @@ class CraftingProfitWalletAuthorityHttpTest {
     private boolean walletPublished = true;
 
     private MockMvc mvc() {
-        CachedCraftingProfitService service = new CachedCraftingProfitService(
+        return MockMvcBuilders.standaloneSetup(new CraftingProfitApiController(service(), new web.access.AccountAccessHttp("")))
+                .setControllerAdvice(new ApiExceptionHandler()).build();
+    }
+
+    private CachedCraftingProfitService service() {
+        return new CachedCraftingProfitService(
                 scope -> ProfitInputSession.detached(scope),
                 session -> new CraftingProfitService(null, null, null, null, null, null, null, session) {
                     @Override public ProfitData reload(repo.DiscChoice choice, craft.CraftingSettings settings) {
@@ -75,8 +80,37 @@ class CraftingProfitWalletAuthorityHttpTest {
                     @Override public void syncTpPricesForProfit(AccountScope scope) { }
                 }), null),
                 null, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofMinutes(15));
-        return MockMvcBuilders.standaloneSetup(new CraftingProfitApiController(service, new web.access.AccountAccessHttp("")))
-                .setControllerAdvice(new ApiExceptionHandler()).build();
+    }
+
+    private CachedCraftingProfitService.KeyedAdmission keyedWithProof(AccountContext session, AccountContext proved) {
+        var keyed = new CachedCraftingProfitService.KeyedAdmission(session, "sid", "key-not-used");
+        keyed.proof().set(new application.access.AccountAccessService.KeyedProof(proved));
+        return keyed;
+    }
+
+    @Test
+    void aPresentedNarrowKeyNeverBorrowsTheWideSessionsWalletAuthority() throws Exception {
+        AccountContext wide = context(withWallet(), Set.of());
+        AccountContext narrow = new AccountContext(wide.accountId(), BASE, Set.of(), "ctx", NOW.plusSeconds(3600));
+        var settings = new craft.CraftingSettings(true, false, 0, true, false, true);
+
+        var outcome = service().profit(AccountScope.of(wide.accountId()), repo.DiscChoice.all(), settings,
+                keyedWithProof(wide, narrow), wide);
+
+        assertEquals(List.of(false), walletAuthorizedAtCalculation);
+        assertFalse(sourcesRead.get(0).contains(AccountSyncStateRepository.WALLET), "no wallet marker or read");
+        assertTrue(outcome.hasResult(), "the item-only result stays usable");
+    }
+
+    @Test
+    void aPresentedKeyWhoseProvedScopeCoversTheWalletKeepsTheWalletOfAWalletAuthorizedSession() throws Exception {
+        AccountContext wide = context(withWallet(), Set.of());
+        var settings = new craft.CraftingSettings(true, false, 0, true, false, true);
+
+        service().profit(AccountScope.of(wide.accountId()), repo.DiscChoice.all(), settings,
+                keyedWithProof(wide, wide), wide);
+
+        assertEquals(List.of(true), walletAuthorizedAtCalculation);
     }
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder keyless(AccountContext ctx) {

@@ -63,7 +63,7 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 **Update (#372):** recipe sync now pins one schema version for catalog and details; typed Item/Currency requirements are stored apart (`recipe_non_item_requirements`). Structurally valid records with a known unsupported kind (`GuildUpgrade`, e.g. recipe 13324) are skipped in both the safe and the full sync, never published as free; unknown/malformed kinds still fail the full sync. No guild-upgrade acquisition planner exists. AutoLearned recipes (e.g. 13839) are known without unlock rows; level/discipline/account boundaries still apply and they are not Discovery candidates. Wallet balances join the calculation identity/freshness (WALLET source) only for requests with the wallet grant, using the configured account freshness policy; currencies consumed only after the first craft stay visible via the union of per-craft and total currency.
 
-**Remaining:** because skipped unsupported recipes are deleted from the cache, the safe sync's unchanged-id shortcut sees them as a permanent difference and re-downloads details on every run while any exist. Currency valuation follows DOMAIN_SPEC 2.1.0.
+**Fixed (#372):** the safe sync compares the upstream catalog with stored ids plus the skipped unsupported ids recorded in `recipe_catalog_publication.skipped_recipe_ids`, written only together with `complete = true`; an unchanged catalog with skipped recipes is skipped on the next run, a changed one or an unfinished publication still syncs. Currency valuation follows DOMAIN_SPEC 2.1.0.
 
 Evidence: `sync/RecipeSync.java`, `parser/RecipeParser.java`, `api/ApiCompatibilityChecker.java`.
 

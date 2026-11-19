@@ -234,6 +234,60 @@ class SyncFetchPublicationTest {
         assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"));
     }
 
+    private static final String GUILD_AND_PLAIN = """
+            [{"id":1,"type":"Refinement","output_item_id":20,"output_item_count":1,"min_rating":0,"time_to_craft_ms":1000,
+              "disciplines":["Chef"],"flags":[],"chat_link":"[&A]","ingredients":[{"type":"Item","id":10,"count":1}]},
+             {"id":13324,"type":"GuildConsumable","output_item_id":30,"output_item_count":1,"min_rating":0,"time_to_craft_ms":1000,
+              "disciplines":["Chef"],"flags":[],"chat_link":"[&B]",
+              "ingredients":[{"type":"Item","id":70926,"count":1},{"type":"GuildUpgrade","id":721,"count":8}]}]
+            """;
+
+    @Test
+    void recipeSync_unchangedCatalogWithASkippedGuildRecipeIsSkippedOnTheSecondRun() throws Exception {
+        RecipeSync.fetcher = url -> {
+            urls.add(url);
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1, 13324]");
+            if (url.contains("/v2/recipes?ids=")) return json(GUILD_AND_PLAIN);
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("13324", scalar("SELECT skipped_recipe_ids[1] FROM recipe_catalog_publication"));
+
+        urls.clear();
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe(), "an unchanged observed catalog is not re-synced");
+        assertEquals(List.of(RecipeSync.CATALOG_URL), urls, "no detail or item fetch on the second run");
+
+        urls.clear();
+        RecipeSync.fetcher = url -> {
+            urls.add(url);
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1, 13324, 13325]");
+            if (url.contains("/v2/recipes?ids=")) return json(GUILD_AND_PLAIN);
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "a changed upstream catalog triggers a sync");
+        assertTrue(urls.size() > 1);
+    }
+
+    @Test
+    void recipeSync_interruptedSyncNeverPublishesTheSkippedCatalogAsComplete() throws Exception {
+        RecipeSync.fetcher = url -> {
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1, 13324]");
+            if (url.contains("/v2/recipes?ids=")) return json(GUILD_AND_PLAIN);
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        ItemSync.fetcher = url -> { throw new IOException("items down"); };
+        assertThrows(IOException.class, RecipeSync::syncAllRecipesGlobalSafe);
+
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("0", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+        urls.clear();
+        RecipeSync.fetcher = url -> { urls.add(url); return url.equals(RecipeSync.CATALOG_URL) ? json("[1, 13324]") : json(GUILD_AND_PLAIN); };
+        ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "an unfinished publication still syncs");
+    }
+
     @Test
     void recipeSync_changedCatalogPublishesRecipesItemsIngredientsAndRemovesDeleted() throws Exception {
         exec("INSERT INTO items (item_id, name) VALUES (30, 'stale')");

@@ -189,6 +189,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
         return path.equals("/api/sync/account") || path.equals("/api/sync/account/crafting-profit")
                 || path.equals("/api/sync/account/bank")
                 || path.equals("/api/sync/account/materials")
+                || path.equals("/api/sync/account/wallet")
                 || path.equals("/api/sync/account/characters")
                 || path.equals("/api/sync/account/luck")
                 || path.equals("/api/sync/account/character-equipment-tabs")

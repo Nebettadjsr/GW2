@@ -205,8 +205,9 @@ public class CachedCraftingProfitService {
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(readContext))) {
-            captured = capture(session, scope, walletAuthorized(readContext));
+        boolean wallet = walletAuthorized(readContext, keyed);
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
+            captured = capture(session, scope, wallet);
             if (captured.usable()) {
                 data = profitServices.apply(session).reload(choice, settings);
             }
@@ -252,8 +253,9 @@ public class CachedCraftingProfitService {
 
         verifyProof(keyed);
         verifyCharacter(scope, choice);
-        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(walletAuthorized(readContext))) {
-            captured = capture(session, scope, walletAuthorized(readContext));
+        boolean wallet = walletAuthorized(readContext, keyed);
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
+            captured = capture(session, scope, wallet);
             if (captured.usable()) {
                 detail = profitServices.apply(session).resolveDetail(recipeId, choice, settings);
             }
@@ -267,8 +269,13 @@ public class CachedCraftingProfitService {
         return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null, scope, keyed));
     }
 
-    private static boolean walletAuthorized(application.access.AccountContext context) {
-        return context != null && context.permits(application.access.AccountOperation.WALLET_READ);
+    /** Validated session authority; a presented key must additionally have proved its own wallet scope. */
+    private static boolean walletAuthorized(application.access.AccountContext context, KeyedAdmission keyed) {
+        if (context == null || !context.permits(application.access.AccountOperation.WALLET_READ)) return false;
+        if (keyed == null) return true;
+        var proof = keyed.proof().get();
+        return proof != null && proof.credentialScope() != null
+                && proof.credentialScope().permits(application.access.AccountOperation.WALLET_READ);
     }
 
     /**
