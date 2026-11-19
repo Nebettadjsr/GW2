@@ -445,7 +445,9 @@ public class CraftingResolver {
                 long spent = state.currencySpent(currencyId);
                 long ownedLeft = balance == null ? 0 : Math.max(0, balance - spent);
                 long producedLeft = state.currencyProduced(currencyId) - Math.max(0, spent - (balance == null ? 0 : balance));
-                long fromWallet = enforce ? Math.min(needed, ownedLeft) : needed;
+                // Hypothetical (IGNORED) evaluation bypasses affordability only: ownership is never invented, so
+                // units beyond the captured shared balance stay missing and unpriced.
+                long fromWallet = Math.min(needed, ownedLeft);
                 long fromProduced = enforce ? Math.min(needed - fromWallet, Math.max(0, producedLeft)) : 0;
                 long toProduce = needed - fromWallet - fromProduced;
                 long craftedUnits = 0;
@@ -477,7 +479,7 @@ public class CraftingResolver {
                         Math.toIntExact(needed), Math.toIntExact(fromWallet), Math.toIntExact(fromProduced),
                         Math.toIntExact(craftedUnits), Math.toIntExact(needed - covered), balance));
 
-                if (producerBlocked || covered < needed) {
+                if (producerBlocked || (enforce && covered < needed)) {
                     if (producerReason == BlockedReason.MATERIAL_LIMIT || producerReason == BlockedReason.VALUE_RANGE) {
                         return limitBlocked(craftResult, qtyRequested, producerReason);
                     }
@@ -490,6 +492,10 @@ public class CraftingResolver {
                 // Only wallet units keep a deferred (unpriced) valuation; crafted units are charged by their batches.
                 // Wallet Research Notes are valued by the captured-quote estimate when one exists; every other
                 // wallet currency (and Notes without a complete estimate) stays unpriced.
+                if (!enforce && covered < needed) {
+                    // Hypothetical missing units are neither wallet nor produced: they remain unpriced.
+                    craftResult.setSpendsUnpricedCurrency(true);
+                }
                 if (fromWallet > 0) {
                     ResearchNoteEstimate noteEstimate = currencyId == CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID
                             ? ctx.researchNoteEstimate() : null;

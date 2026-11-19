@@ -219,4 +219,60 @@ class ResearchNoteEstimateTest {
         assertEquals(2_000_000_000, r.estimatedNotesCostTotalCopper);
         assertEquals(BlockedReason.VALUE_RANGE, r.blockedReason);
     }
+
+    @Test
+    void hypotheticalBlockedRowNeverInventsOwnedNotesAndStaysConditional() {
+        // Wallet 0, valid producer quotes but production unavailable (own-only, no producer inputs owned).
+        CraftResult r = run(CONSUMER, tp(quote(100, 100), null), Map.of(NOTE, 0), Map.of(97102, 100), OWN_ONLY);
+        assertEquals(0, r.craftableCount, "real craft count stays zero");
+        assertEquals(0, r.estimatedNotesPerCraft);
+        assertEquals(0, r.estimatedNotesCostPerCraftCopper);
+        assertEquals(0, r.estimatedNotesTotal);
+        assertNull(r.noteEstimate);
+        assertTrue(r.unpricedCurrency, "the whole 30-Note demand is missing and unpriced");
+        assertEquals(Map.of(NOTE, 30), r.currencyPerCraft, "full currency demand stays visible");
+    }
+
+    @Test
+    void hypotheticalPartialWalletEstimatesOnlyTheCoveredPortion() {
+        // 10 of 30 required: A = 400c per 150 Notes, so 10 Notes = ceil(10 * 400 / 150) = 27c; 20 stay unpriced.
+        CraftResult r = run(CONSUMER, tp(quote(100, 100), null), Map.of(NOTE, 10), Map.of(97102, 100), OWN_ONLY);
+        assertEquals(0, r.craftableCount);
+        assertEquals(10, r.estimatedNotesPerCraft, "only the covered 10 of 30 are estimated");
+        assertEquals(27, r.estimatedNotesCostPerCraftCopper);
+        assertEquals(0, r.estimatedNotesTotal, "hypothetical rows carry zero real totals");
+        assertEquals(0, r.estimatedNotesCostTotalCopper);
+        assertTrue(r.unpricedCurrency, "the missing 20 Notes keep the margin conditional");
+        assertEquals(Map.of(NOTE, 30), r.currencyPerCraft);
+    }
+
+    @Test
+    void hypotheticalUnknownWalletInventsNoOwnership() {
+        CraftResult r = new CraftingPlanner()
+                .evaluateAll(List.of(CONSUMER, PRR_A, PRR_B), Map.of(97102, 100), Map.of(),
+                        tp(quote(100, 100), null), OWN_ONLY, Set.of(CONSUMER.recipeId, 15120, 15131))
+                .get(CONSUMER.recipeId);
+        assertEquals(0, r.craftableCount);
+        assertEquals(0, r.estimatedNotesTotal);
+        assertEquals(0, r.estimatedNotesCostTotalCopper);
+        assertTrue(r.unpricedCurrency);
+    }
+
+    @Test
+    void hypotheticalNestedDemandDoesNotReuseTheSameWalletUnits() {
+        // Outer needs 2 inner crafts (30 Notes each) from a 40-Note wallet: only 40 Notes are ever owned.
+        int mid = 5000;
+        Recipe outer = new Recipe(13860, 6000, 1, 400, "Artificer", List.of(ingredient(mid, 2)));
+        Recipe inner = new Recipe(13861, mid, 1, 400, "Artificer", List.of(ingredient(97102, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Map<Integer, PriceQuote> prices = tp(quote(100, 100), null);
+        prices.put(6000, quote(5000, 6000));
+        CraftResult r = new CraftingPlanner().withWallet(Map.of(NOTE, 40)).evaluateAll(
+                List.of(outer, inner, PRR_A), Map.of(97102, 100), Map.of(), prices, OWN_ONLY,
+                Set.of(13860, 13861, 15120)).get(13860);
+        assertEquals(0, r.craftableCount);
+        assertEquals(40, r.estimatedNotesPerCraft, "40 owned units counted once, not 60");
+        assertEquals(0, r.estimatedNotesTotal);
+        assertTrue(r.unpricedCurrency);
+    }
 }
