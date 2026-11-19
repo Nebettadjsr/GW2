@@ -288,6 +288,37 @@ function materialQuoteText(item: MissingItem): string {
           rather than free. This profit is not reliable.
         </p>
 
+        <section
+          v-if="row.currencyCosts && row.currencyCosts.costs.length"
+          class="value-note"
+          data-test="detail-currency-costs"
+        >
+          <h4>Currency costs (not priced in gold)</h4>
+          <ul>
+            <li
+              v-for="cost in row.currencyCosts.costs"
+              :key="cost.currencyId"
+              data-test="detail-currency-cost"
+            >
+              {{ cost.name }}: {{ cost.perCraft }} per craft, {{ cost.total }} in total
+              <span v-if="cost.breakEvenCopperPerUnit != null" data-test="detail-currency-breakeven">
+                — break-even at {{ formatCopper(cost.breakEvenCopperPerUnit) }} per unit
+              </span>
+            </li>
+          </ul>
+          <p data-test="detail-currency-margin-note">
+            The gold margin shown is before these currency costs, so it is conditional, not a
+            guaranteed profit.
+          </p>
+          <p v-if="row.currencyCosts.walletState !== 'KNOWN'" data-test="detail-wallet-unknown">
+            Wallet balance unavailable (no wallet permission, never refreshed or stale), so the
+            craftable count cannot be confirmed.
+          </p>
+          <p v-if="row.currencyCosts.economicsFromHypotheticalCraft" data-test="detail-hypothetical">
+            No craft is currently possible; figures describe one hypothetical craft.
+          </p>
+        </section>
+
         <!-- TP prices -->
         <div
           class="tp-prices"

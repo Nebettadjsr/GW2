@@ -84,6 +84,7 @@ Recipes may consume currencies (for example 30 Research Notes for Piece of Drago
 - Wallet balance decides whether a craft can be afforded; valuation decides its economic cost. An unavailable wallet is unknown, never zero or unlimited, and must not disable item-only workflows.
 - An unpriced currency is never valued at zero. A gold margin with unpriced currencies is conditional, not a complete profit. If exactly one currency is unpriced and the known margin is positive, the break-even gold value per unit is the margin divided by its per-craft quantity; with several unpriced currencies each is listed without one invented rate. A nonpositive known margin cannot become profitable by valuing currencies non-negatively.
 - Currency quantities and gold valuation basis stay separate, so a valuation never changes wallet demand. A currency is never valued from the recipe being evaluated.
+- The cached wallet is read only for a request whose proved key context permits `WALLET_READ`; a missing marker or a marker older than 30 minutes (`WalletRepository.MAX_AGE`) is unknown, not zero. Item-only recipes and keys without the wallet grant are unaffected.
 - Implemented so far: typed non-item requirements are parsed and stored (`recipe_non_item_requirements`), and recipes having any are excluded from item-only costing so they are never costed as free. The currency-aware planner, wallet and UI are not yet delivered.
 
 ## 2.1.1 Crafting Profit result presentation

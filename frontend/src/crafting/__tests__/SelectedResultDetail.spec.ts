@@ -416,3 +416,34 @@ describe('unvalued owned input (DOMAIN_SPEC.md 11.2)', () => {
     expect(wrapper.find('[data-test="detail-unvalued-owned-input"]').exists()).toBe(false)
   })
 })
+
+describe('currency costs (issue 372)', () => {
+  const jade = {
+    ...profitableRow,
+    currencyCosts: {
+      walletState: 'KNOWN',
+      goldMarginIsConditional: true,
+      economicsFromHypotheticalCraft: false,
+      costs: [{ currencyId: 61, name: 'Research Note', perCraft: 30, total: 300, breakEvenCopperPerUnit: 500 }]
+    }
+  }
+
+  it('shows the 30 Research Notes, totals, break-even and the conditional margin note', () => {
+    const wrapper = detailOf(jade)
+    const text = wrapper.find('[data-test="detail-currency-costs"]').text()
+    expect(text).toContain('Research Note: 30 per craft, 300 in total')
+    expect(wrapper.find('[data-test="detail-currency-breakeven"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="detail-currency-margin-note"]').text()).toContain('before these currency costs')
+    expect(wrapper.find('[data-test="detail-wallet-unknown"]').exists()).toBe(false)
+  })
+
+  it('says the wallet is unavailable instead of showing zero', () => {
+    const wrapper = detailOf({ ...jade, currencyCosts: { ...jade.currencyCosts, walletState: 'UNKNOWN' } })
+    expect(wrapper.find('[data-test="detail-wallet-unknown"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="detail-currency-costs"]').text()).toContain('30 per craft')
+  })
+
+  it('renders nothing for item-only rows', () => {
+    expect(detailOf(profitableRow).find('[data-test="detail-currency-costs"]').exists()).toBe(false)
+  })
+})

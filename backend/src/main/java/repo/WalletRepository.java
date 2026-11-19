@@ -19,8 +19,19 @@ public class WalletRepository {
      * rows are read, and the marker and rows come from the caller's one snapshot.
      */
     public Optional<Map<Integer, Integer>> load(Connection con, AccountScope scope) throws SQLException {
+        return load(con, scope, java.time.Instant.now());
+    }
+
+    /** A published wallet older than this is no longer trusted: a refresh that keeps failing leaves it unknown. */
+    public static final java.time.Duration MAX_AGE = java.time.Duration.ofMinutes(30);
+
+    /** As {@link #load(Connection, AccountScope)} with an explicit clock; a stale marker means unknown. */
+    public Optional<Map<Integer, Integer>> load(Connection con, AccountScope scope, java.time.Instant now)
+            throws SQLException {
         if (con == null) return Optional.empty();
-        if (new AccountSourceStateRepository().read(con, scope, AccountSyncStateRepository.WALLET).isEmpty()) {
+        Optional<AccountSourceStateRepository.SourceState> marker =
+                new AccountSourceStateRepository().read(con, scope, AccountSyncStateRepository.WALLET);
+        if (marker.isEmpty() || marker.get().completedAt().plus(MAX_AGE).isBefore(now)) {
             return Optional.empty();
         }
         Map<Integer, Integer> balances = new HashMap<>();

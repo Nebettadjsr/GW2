@@ -77,6 +77,26 @@ export interface CraftingRow {
    * profit shown is not a confident figure.
    */
   unvaluedOwnedInput?: boolean
+  /** Exact unpriced currency spending; absent/null for item-only recipes. */
+  currencyCosts?: CurrencyCosts | null
+}
+
+export interface CurrencyCost {
+  currencyId: number
+  name: string
+  perCraft: number
+  total: number
+  /** Gold per unit at which the craft breaks even; only for one unpriced currency and a positive margin. */
+  breakEvenCopperPerUnit: number | null
+}
+
+export interface CurrencyCosts {
+  /** KNOWN, or UNKNOWN when no wallet balance is available (never zero, never unlimited). */
+  walletState: string
+  /** The gold margin is before these unpriced currency costs. */
+  goldMarginIsConditional: boolean
+  economicsFromHypotheticalCraft: boolean
+  costs: CurrencyCost[]
 }
 
 /** The scope the backend actually calculated with, after it applied its own defaults. */
