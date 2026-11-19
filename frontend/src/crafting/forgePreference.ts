@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { connection } from '@/api/accountSession'
+import { connection, registerDeletionCleanup } from '@/api/accountSession'
 
 /**
  * Browser-local "Allow Mystic Forge recipes" preference, one record per backend-verified account GUID.
@@ -12,6 +12,7 @@ const SCHEMA_VERSION = 1
 export interface ForgePreferenceStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
+  removeItem?(key: string): void
 }
 
 function browserStorage(): ForgePreferenceStorage | null {
@@ -50,6 +51,19 @@ export function createForgePreference(options: {
   }
 
   return {
+    /**
+     * Account-data deletion: removes only this GUID's stored record and memory shadow (other accounts are kept).
+     * Disconnecting alone never calls this, and the shadow is dropped even if storage cannot be written.
+     */
+    forgetAccount(accountId: string): void {
+      shadow.delete(accountId)
+      try {
+        storage?.removeItem?.(FORGE_PREFERENCE_KEY_PREFIX + accountId)
+      } catch {
+        // Blocked storage: the memory shadow is already gone and the record is unreadable-or-default.
+      }
+      version.value++
+    },
     /** The preference of the CURRENT verified account; false while no account is verified. */
     current(): boolean {
       void version.value
@@ -80,3 +94,6 @@ let shared: ForgePreference | null = null
 export function useForgePreference(): ForgePreference {
   return (shared ??= createForgePreference())
 }
+
+// Successful account-data deletion removes this GUID's secret-free preference (same authority as material protection).
+registerDeletionCleanup(accountId => useForgePreference().forgetAccount(accountId))

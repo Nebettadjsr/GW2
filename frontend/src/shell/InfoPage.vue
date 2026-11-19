@@ -68,6 +68,9 @@ const heading = computed(() => ({
           <a href="https://github.com/Nebettadjsr/GW2/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT licence</a>:
           you may use, copy, change and share it, including commercially, while keeping the required
           copyright and licence notice. Third-party code and game assets retain their own terms.
+          The bundled Mystic Forge recipe data comes from the
+          <a href="https://wiki.guildwars2.com/wiki/Guild_Wars_2_Wiki:Copyrights" target="_blank" rel="noopener noreferrer">Guild Wars 2 Wiki</a>
+          and stays under its contributors' GFDL 1.3 terms, not the MIT licence; game assets remain ArenaNet's.
         </p>
         <p>
           Found a bug or have an improvement in mind? Open a
@@ -246,9 +249,9 @@ const heading = computed(() => ({
       <section class="info-page__section" aria-labelledby="storage-preferences">
         <h2 id="storage-preferences">Local storage · your saved selections</h2>
         <ul>
-          <li><strong>What:</strong> <code>gw2.materialProtection.v1.&lt;account ID&gt;</code> stores saved Bank/Materials exclusions and their Crafting Profit setting, separately for each account.</li>
+          <li><strong>What:</strong> <code>gw2.materialProtection.v1.&lt;account ID&gt;</code> stores saved Bank/Materials exclusions and their Crafting Profit setting, separately for each account. <code>gw2.craftingForge.v1.&lt;account ID&gt;</code> stores only whether Allow Mystic Forge recipes is on for that account; it holds no API key.</li>
           <li><strong>Why:</strong> to remember the selections and settings you save in this browser.</li>
-          <li><strong>How long:</strong> until changed or cleared; there is no automatic expiry. Disconnect keeps them. Delete cached data clears this account's saved selections in this browser. Other browsers and devices keep their own copies.</li>
+          <li><strong>How long:</strong> until changed or cleared; there is no automatic expiry. Disconnect keeps them. Delete cached data clears this account's saved selections and Forge setting in this browser. Other browsers and devices keep their own copies.</li>
         </ul>
       </section>
 

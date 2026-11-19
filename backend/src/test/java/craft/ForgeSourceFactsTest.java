@@ -26,9 +26,17 @@ class ForgeSourceFactsTest {
 
     @Test
     void rootTwoBatchesReuseOneSeedAndReportNetNotGross() {
-        CraftTraceNode root = new SingleCraftExplainer().explainCoordinatedResult(promotion(), List.of(promotion()),
-                Map.of(X, 1, OTHER, 10), Map.of(), Map.of(), List.of(),
-                Map.of(X, new PriceQuote(100, 100)), settings(false), Set.of(XR), 2).root();
+        SingleCraftExplanation explanation = new SingleCraftExplainer().explainCoordinatedResult(promotion(),
+                List.of(promotion()), Map.of(X, 1, OTHER, 10), Map.of(), Map.of(), List.of(),
+                Map.of(X, new PriceQuote(100, 100)), settings(false), Set.of(XR), 2);
+        CraftTraceNode root = explanation.root();
+        // Selected root quantities are the net sellable 19, not the gross 20, and still partition exactly.
+        assertEquals(19, explanation.outputQuantity());
+        assertEquals(19, root.requestedQuantity());
+        assertEquals(19, root.craftedQuantity());
+        assertEquals(19, root.producedQuantity());
+        assertEquals(root.requestedQuantity(), root.inventoryQuantity() + root.craftedQuantity()
+                + root.boughtQuantity() + root.missingQuantity());
         CraftTraceNode.SourceFacts f = root.source();
         assertNotNull(f);
         assertEquals("MYSTIC_FORGE", f.kind());

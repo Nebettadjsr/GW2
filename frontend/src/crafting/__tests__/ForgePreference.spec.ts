@@ -12,7 +12,8 @@ function memoryStorage(initial: Record<string, string> = {}) {
   return {
     data,
     getItem: (key: string) => data.get(key) ?? null,
-    setItem: (key: string, value: string) => { data.set(key, value) }
+    setItem: (key: string, value: string) => { data.set(key, value) },
+    removeItem: (key: string) => { data.delete(key) }
   }
 }
 
@@ -93,5 +94,33 @@ describe('forge row presentation (backend values only)', () => {
     expect(isForgeRow(profitableRow)).toBe(false)
     expect(sourceLabel(profitableRow)).toBe(profitableRow.disciplines)
     expect(yieldSummary(profitableRow)).toBeNull()
+  })
+})
+
+describe('forge preference account-data deletion', () => {
+  it('forgetAccountRemovesOnlyThatAccountsStoredKeyAndShadowWhileOthersSurvive', () => {
+    const storage = memoryStorage()
+    let account = 'guid-a'
+    const pref = createForgePreference({ storage, accountId: () => account })
+    pref.set(true)
+    account = 'guid-b'
+    pref.set(true)
+
+    pref.forgetAccount('guid-a')
+
+    expect([...storage.data.keys()]).toEqual([FORGE_PREFERENCE_KEY_PREFIX + 'guid-b'])
+    expect(pref.current()).toBe(true)
+    account = 'guid-a'
+    expect(pref.current()).toBe(false)
+    // A reload cannot resurrect it either.
+    expect(createForgePreference({ storage, accountId: () => 'guid-a' }).current()).toBe(false)
+  })
+
+  it('forgetAccountDropsTheShadowEvenWhenStorageCannotRemove', () => {
+    const storage = memoryStorage()
+    storage.removeItem = () => { throw new Error('blocked') }
+    const pref = createForgePreference({ storage, accountId: () => 'guid-a' })
+    pref.set(true)
+    expect(() => pref.forgetAccount('guid-a')).not.toThrow()
   })
 })

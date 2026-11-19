@@ -140,9 +140,11 @@ public final class SingleCraftExplainer {
             List<CraftTraceNode> roots = accepted.stream()
                     .map(craft -> toNode(craft, BlockedReason.NONE, recipesById, ledger))
                     .toList();
-            return explanationOf(recipe,
-                    withRootSeedReuse(combineNodes(roots, ledger), simulation.getReusedSeedUnits()),
-                    Math.multiplyExact(recipe.outputCount, simulation.getCraftCount()));
+            CraftTraceNode root = withRootSeedReuse(combineNodes(roots, ledger), simulation.getReusedSeedUnits());
+            // The selected root quantity is the net sellable output, coherent with the row and the source facts.
+            return explanationOf(recipe, root, root.source() != null && root.source().reusedSeed() > 0
+                    ? root.producedQuantity()
+                    : Math.multiplyExact(recipe.outputCount, simulation.getCraftCount()));
         }
 
         // The first craft was attempted and rejected: its reasons are still an explanation
@@ -421,9 +423,12 @@ public final class SingleCraftExplainer {
                 f.expectedPerBatch().multiply(java.math.BigDecimal.valueOf(f.batches()))
                         .subtract(java.math.BigDecimal.valueOf(reused)),
                 Math.min(f.used(), net), Math.max(0, net - Math.min(f.used(), net)));
-        return new CraftTraceNode(root.itemId(), root.requestedQuantity(), root.inventoryQuantity(),
-                root.craftedQuantity(), root.boughtQuantity(), root.missingQuantity(), root.recipeId(),
-                root.craftCount(), root.producedQuantity(), root.characterName(), root.methods(), root.states(),
+        // The reused units were produced and consumed inside the plan: the root's requested/crafted/produced
+        // quantities are the net sellable ones, keeping requested = inventory + crafted + bought + missing.
+        int removed = Math.min(reusedBetweenBatches, root.craftedQuantity());
+        return new CraftTraceNode(root.itemId(), root.requestedQuantity() - removed, root.inventoryQuantity(),
+                root.craftedQuantity() - removed, root.boughtQuantity(), root.missingQuantity(), root.recipeId(),
+                root.craftCount(), root.producedQuantity() - removed, root.characterName(), root.methods(), root.states(),
                 root.blockedReasons(), root.cashCostCopper(), root.opportunityCostCopper(),
                 root.effectiveCostCopper(), root.children(), root.currencies(), adjusted);
     }
