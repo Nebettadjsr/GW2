@@ -386,6 +386,20 @@ class AccountSyncApiControllerTest {
     }
 
     @Test
+    void aWalletSessionPresentingAnItemOnlyKeyStillRefreshesItemSourcesWithoutWallet() throws Exception {
+        var s = session(A, "key-a");
+        AccountProof itemOnly = new AccountProof(A, Set.of(AccountGrant.ACCOUNT, AccountGrant.INVENTORIES,
+                AccountGrant.CHARACTERS, AccountGrant.UNLOCKS, AccountGrant.PROGRESSION), Set.of(), null);
+        keys.put("key-item", itemOnly);
+        mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-item")).andExpect(status().isAccepted());
+        awaitRuns(1);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, MATERIALS]", runs.get(0));
+        mvc.perform(trigger("/api/sync/account", s, "key-item")).andExpect(status().isAccepted());
+        awaitRuns(2);
+        assertEquals(A + ":[ACCOUNT_RECIPES, BANK, CHARACTERS, LUCK, MATERIALS]", runs.get(1));
+    }
+
+    @Test
     void theProfitRefreshExcludesLuck() throws Exception {
         var s = session(A, "key-a");
         mvc.perform(trigger("/api/sync/account/crafting-profit", s, "key-a")).andExpect(status().isAccepted());

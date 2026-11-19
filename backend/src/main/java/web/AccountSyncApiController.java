@@ -111,14 +111,14 @@ public class AccountSyncApiController {
     public ResponseEntity<?> syncAccount(HttpServletRequest request,
                                          @RequestBody(required = false) Map<String, Object> body) {
         SyncRequestValidation.rejectAnyRequestField(ACCOUNT_SYNC_PATH, body);
-        return admit(request, withWalletWhenGranted(request, FULL_SOURCES));
+        return admit(request, FULL_SOURCES, false, true);
     }
 
     @PostMapping(path = "/account/crafting-profit", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> syncCraftingProfitData(HttpServletRequest request,
                                                     @RequestBody(required = false) Map<String, Object> body) {
         SyncRequestValidation.rejectAnyRequestField("/api/sync/account/crafting-profit", body);
-        return admit(request, withWalletWhenGranted(request, PROFIT_SOURCES));
+        return admit(request, PROFIT_SOURCES, false, true);
     }
 
     @PostMapping(path = "/account/wallet", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -126,18 +126,6 @@ public class AccountSyncApiController {
                                         @RequestBody(required = false) Map<String, Object> body) {
         SyncRequestValidation.rejectAnyRequestField("/api/sync/account/wallet", body);
         return admit(request, Set.of(AccountSyncStateRepository.WALLET));
-    }
-
-    /**
-     * The wallet is optional: only a key holding the {@code wallet} grant adds it, so an item-only key still
-     * refreshes every other source and never needs (or fails for lack of) that permission.
-     */
-    private static Set<String> withWalletWhenGranted(HttpServletRequest request, Set<String> sources) {
-        var context = RequestAccountContext.required(request);
-        if (!context.permits(application.access.AccountOperation.WALLET_READ)) return sources;
-        Set<String> withWallet = new LinkedHashSet<>(sources);
-        withWallet.add(AccountSyncStateRepository.WALLET);
-        return withWallet;
     }
 
     @PostMapping(path = "/account/bank", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -188,10 +176,20 @@ public class AccountSyncApiController {
     }
 
     private ResponseEntity<?> admit(HttpServletRequest request, Set<String> sources) {
-        return admit(request, sources, false);
+        return admit(request, sources, false, false);
     }
 
     private ResponseEntity<?> admit(HttpServletRequest request, Set<String> sources, boolean needsParent) {
+        return admit(request, sources, needsParent, false);
+    }
+
+    /**
+     * {@code optionalWallet} adds WALLET only when both the session and the presented key's own proven
+     * credential scope permit it, so an item-only key still refreshes every other source.
+     */
+    private ResponseEntity<?> admit(HttpServletRequest request, Set<String> requested, boolean needsParent,
+                                    boolean optionalWallet) {
+        Set<String> sources = requested;
         if (!http.isSameOrigin(request)) {
             return error(HttpStatus.FORBIDDEN, "ORIGIN_REJECTED",
                     "This request did not come from this application's own origin");
@@ -205,7 +203,17 @@ public class AccountSyncApiController {
         String sessionId = AccountAccessHttp.presentedSessionId(request).orElseThrow();
         ScopedAccountRefreshCoordinator.Admission admission;
         try {
-            if (needsParent) {
+            if (optionalWallet) {
+                var proof = coordinator.verify(context, sessionId, apiKey, requested);
+                if (context.permits(application.access.AccountOperation.WALLET_READ)
+                        && proof.credentialScope() != null
+                        && proof.credentialScope().permits(application.access.AccountOperation.WALLET_READ)) {
+                    sources = new LinkedHashSet<>(requested);
+                    sources.add(AccountSyncStateRepository.WALLET);
+                }
+                admission = coordinator.requireAfterBoundedWait(context, sessionId, apiKey, sources, RECHECK_BOUND,
+                        proof);
+            } else if (needsParent) {
                 var proof = coordinator.verify(context, sessionId, apiKey, sources);
                 boolean published;
                 try {
