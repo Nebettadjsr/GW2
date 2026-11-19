@@ -64,7 +64,7 @@ describe('systemApi', () => {
     expect(recover).not.toHaveBeenCalled()
   })
 
-  it('sendsTheApiCompatibilityReadAndStartThroughTheAccountTransportWithLeaseHeaders', async () => {
+  it('sendsTheApiCompatibilityReadThroughTheAccountTransportWithLeaseHeaders', async () => {
     const stub = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ state: 'NOT_CHECKED' }), {
       status: 200, headers: { 'Content-Type': 'application/json' }
     })))
@@ -73,22 +73,21 @@ describe('systemApi', () => {
     const isCurrent = vi.fn(() => true)
     installAccountTransport(transport({ begin: begin as AccountTransport['begin'], isCurrent }))
     await systemApi.readApiCompatibility()
-    await systemApi.startApiCompatibilityCheck()
     const calls = stub.mock.calls as unknown as Array<[string, RequestInit]>
     expect(calls.map((c) => [c[0], c[1].method])).toEqual([
-      ['/api/system/api-compatibility', 'GET'], ['/api/system/api-compatibility/check', 'POST']])
+      ['/api/system/api-compatibility', 'GET']])
     for (const c of calls) {
       const h = c[1].headers as Record<string, string>
       expect(h['X-Account-Context']).toBe('ctx-a')
       expect(h['X-GW2-API-Key']).toBeUndefined()
     }
-    expect(begin.mock.calls).toEqual([[false], [false]])
+    expect(begin.mock.calls).toEqual([[false]])
     expect(isCurrent).toHaveBeenCalled()
   })
 
   it('rejectsACompatibilityAnswerArrivingAfterTheAccountChanged', async () => {
     stubFetch(200, { state: 'NOT_CHECKED' })
     installAccountTransport(transport({ isCurrent: () => false }))
-    await expect(systemApi.startApiCompatibilityCheck()).rejects.toMatchObject({ code: ACCOUNT_CHANGED_CODE })
+    await expect(systemApi.readApiCompatibility()).rejects.toMatchObject({ code: ACCOUNT_CHANGED_CODE })
   })
 })

@@ -19,10 +19,7 @@ function complete(overall: 'OK' | 'ATTENTION' | 'UNAVAILABLE' | 'MISMATCH', stal
       recipeProfile: 'legacy default (unpinned)',
       versions: [{ version: '2022-03-09T02:00:00.000Z', description: 'Change ingredients', reviewed: true }],
       newerVersions: ['2026-12-01T00:00:00.000Z'],
-      probes: [
-        { id: 'item', label: 'Item detail', endpoint: '/v2/items/{id}', profile: 'default (unpinned)', status: 'OK', code: 'COMPATIBLE', detail: 'Consumed fields have the expected types.' },
-        { id: 'jade-default', label: 'Jade recipe, current default', endpoint: '/v2/recipes/13839', profile: 'legacy default (unpinned)', status: 'ATTENTION', code: 'KNOWN_COVERAGE_GAP', detail: 'Known app coverage gap, not an upstream mismatch.' }
-      ]
+      probes: [{ id: 'item', label: 'Item detail', endpoint: '/v2/items/{id}', profile: 'default', status: 'OK', code: 'COMPATIBLE', detail: 'ok' }]
     }
   }
 }
@@ -34,6 +31,7 @@ function mount(): VueWrapper {
   return w
 }
 const sel = (id: string) => `[data-test="${id}"]`
+const state = (w: VueWrapper) => w.find(sel('api-compat-state')).text()
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -48,91 +46,90 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('OwnerApiCompatibility', () => {
-  it('showsNotCheckedHonestlyWithScopeAndLinks_andReadsOnlyTheCache', async () => {
-    const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValue(NOT_CHECKED)
-    const start = vi.spyOn(systemApi, 'startApiCompatibilityCheck')
+describe('OwnerApiCompatibility (compact status card)', () => {
+  it('showsOnlyTitleStatusAndLastChecked_withNoButtonLinksOrTechnicalDetail', async () => {
+    vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValue(complete('OK'))
     const w = mount()
     await flushPromises()
-    expect(w.find(sel('api-compat-state')).text()).toBe('Not checked')
-    expect(w.find(sel('api-compat-check')).text()).toBe('Check API compatibility')
-    expect(w.find(sel('api-compat-scope')).text()).toContain('authenticated account endpoint payloads are not live-verified')
-    expect(w.find(sel('api-compat-directory-link')).attributes('href')).toContain('/v2.json')
-    expect(w.find(sel('api-compat-changelog-link')).attributes('href')).toContain('API:Changelog')
-    expect(w.find(sel('api-compat-summary')).exists()).toBe(false)
-    expect(start).not.toHaveBeenCalled()
-    expect(read).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(read).toHaveBeenCalledTimes(1) // no timer polling while nothing runs
+    expect(w.find('h3').text()).toBe('GW2 API')
+    expect(state(w)).toBe('Good')
+    expect(w.find(sel('api-compat-state')).classes()).toContain('status--success')
+    expect(w.find(sel('api-compat-checked-at')).text()).not.toBe('—')
+    expect(w.find('button').exists()).toBe(false)
+    expect(w.find('a').exists()).toBe(false)
+    expect(w.find('details').exists()).toBe(false)
+    expect(w.find('ul').exists()).toBe(false)
+    expect(w.find('article').classes()).toEqual(expect.arrayContaining(['panel', 'status-card']))
+    expect(w.text()).not.toMatch(/Jade|schema|probe|2026-12-01|legacy|unpinned/i)
   })
 
-  it('actionToRunningToResult_pollsCacheAndDisablesTheButtonWhileRunning', async () => {
+  it('attentionAndMismatchSayNeedsUpdate_butNeverGood', async () => {
+    const read = vi.spyOn(systemApi, 'readApiCompatibility')
+    for (const overall of ['ATTENTION', 'MISMATCH'] as const) {
+      read.mockResolvedValue(complete(overall))
+      const w = mount()
+      await flushPromises()
+      expect(state(w)).toBe('Needs update')
+      expect(w.find(sel('api-compat-state')).classes()).not.toContain('status--success')
+      expect(w.find(sel('api-compat-checked-at')).text()).not.toBe('—')
+    }
+  })
+
+  it('neutralStatesForNotCheckedRunningUnavailableAndStale_neverLookSuccessful', async () => {
+    const read = vi.spyOn(systemApi, 'readApiCompatibility')
+    const cases: Array<[() => void, string]> = [
+      [() => read.mockResolvedValue(NOT_CHECKED), 'Not checked'],
+      [() => read.mockResolvedValue(RUNNING), 'Checking…'],
+      [() => read.mockResolvedValue(complete('UNAVAILABLE')), 'Unavailable'],
+      [() => read.mockResolvedValue(complete('OK', true)), 'Not checked'],
+      [() => read.mockRejectedValue(new ApiRequestError('down', 'X', 502)), 'Unavailable']
+    ]
+    for (const [arrange, text] of cases) {
+      arrange()
+      const w = mount()
+      await flushPromises()
+      expect(state(w)).toBe(text)
+      expect(w.find(sel('api-compat-state')).classes()).toContain('status--unknown')
+      expect(w.find('button').exists()).toBe(false)
+      w.unmount()
+    }
+    // Without a valid result there is no time to show.
+    read.mockResolvedValue(NOT_CHECKED)
+    const w = mount()
+    await flushPromises()
+    expect(w.find(sel('api-compat-checked-at')).text()).toBe('—')
+  })
+
+  it('updatesFromCachedReadsWhileStayingMounted_withoutAnyStartRequest', async () => {
     const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValueOnce(NOT_CHECKED)
-    const start = vi.spyOn(systemApi, 'startApiCompatibilityCheck').mockResolvedValue(RUNNING)
     const w = mount()
     await flushPromises()
-    await w.find(sel('api-compat-check')).trigger('click')
-    await flushPromises()
-    expect(start).toHaveBeenCalledTimes(1)
-    expect(w.find(sel('api-compat-state')).text()).toBe('Running…')
-    expect(w.find(sel('api-compat-check')).attributes('disabled')).toBeDefined()
-    await w.find(sel('api-compat-check')).trigger('click')
-    expect(start).toHaveBeenCalledTimes(1)
-    read.mockResolvedValueOnce(RUNNING).mockResolvedValueOnce(complete('ATTENTION'))
-    await vi.advanceTimersByTimeAsync(2000)
-    expect(w.find(sel('api-compat-state')).text()).toBe('Running…')
-    await vi.advanceTimersByTimeAsync(2000)
-    expect(w.find(sel('api-compat-state')).text()).toBe('Needs attention')
-    expect(w.find(sel('api-compat-checked-at')).text()).toBe('2026-11-19 10:00 UTC')
-    expect(w.find(sel('api-compat-profile')).text()).toBe('legacy default (unpinned)')
-    expect(w.find(sel('api-compat-newer')).text()).toContain('2026-12-01')
-    expect(w.find(sel('api-compat-probe-jade-default')).text()).toContain('KNOWN_COVERAGE_GAP'.length ? 'ATTENTION' : '')
-    expect(w.find(sel('api-compat-probe-jade-default')).text()).toContain('not an upstream mismatch')
-    expect(w.find(sel('api-compat-check')).attributes('disabled')).toBeUndefined()
-    const reads = read.mock.calls.length
-    await vi.advanceTimersByTimeAsync(20_000)
-    expect(read.mock.calls.length).toBe(reads) // polling stops once complete
+    expect(state(w)).toBe('Not checked')
+    read.mockResolvedValueOnce(RUNNING)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(state(w)).toBe('Checking…')
+    read.mockResolvedValueOnce(complete('ATTENTION'))
+    await vi.advanceTimersByTimeAsync(2_000) // faster cadence only while a check is running
+    expect(state(w)).toBe('Needs update')
+    read.mockResolvedValueOnce(complete('OK'))
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(state(w)).toBe('Good')
+    expect(read).toHaveBeenCalledTimes(4)
+    expect(Object.keys(systemApi)).not.toContain('startApiCompatibilityCheck') // the browser has no start path
   })
 
-  it('unavailableAndStaleResultsNeverLookSuccessful', async () => {
-    const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValue(complete('UNAVAILABLE'))
+  it('confirmedDenialClearsTheCardAndAsksTheOwnerBoundaryToWithdraw', async () => {
+    const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValueOnce(complete('OK'))
     const w = mount()
     await flushPromises()
-    expect(w.find(sel('api-compat-state')).text()).toBe('Could not be fully checked')
-    expect(w.find(sel('api-compat-state')).classes()).not.toContain('api-compat__state--ok')
-    read.mockResolvedValue(complete('OK', true))
-    const stale = mount()
-    await flushPromises()
-    expect(stale.find(sel('api-compat-state')).text()).toContain('stale')
-    expect(stale.find(sel('api-compat-state')).classes()).not.toContain('api-compat__state--ok')
-    read.mockRejectedValue(new ApiRequestError('down', 'X', 502))
-    const failed = mount()
-    await flushPromises()
-    expect(failed.find(sel('api-compat-state')).text()).toBe('Not checked')
-    expect(failed.find(sel('api-compat-error')).exists()).toBe(true)
-  })
-
-  it('duplicateConflictIsExplainedAndReReadsTheCachedState', async () => {
-    const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValue(NOT_CHECKED)
-    vi.spyOn(systemApi, 'startApiCompatibilityCheck').mockRejectedValue(new ApiRequestError('busy', 'SYNC_ALREADY_RUNNING', 409))
-    const w = mount()
-    await flushPromises()
-    await w.find(sel('api-compat-check')).trigger('click')
-    await flushPromises()
-    expect(w.find(sel('api-compat-error')).text()).toContain('already running')
-    expect(read).toHaveBeenCalledTimes(2)
-  })
-
-  it('confirmedDenialClearsResultsAndAsksTheOwnerBoundaryToWithdraw', async () => {
-    vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValueOnce(complete('OK'))
-    vi.spyOn(systemApi, 'startApiCompatibilityCheck').mockRejectedValue(new ApiRequestError('no', 'OWNER_REQUIRED', 403))
-    const w = mount()
-    await flushPromises()
-    expect(w.find(sel('api-compat-summary')).exists()).toBe(true)
-    await w.find(sel('api-compat-check')).trigger('click')
-    await flushPromises()
+    expect(state(w)).toBe('Good')
+    read.mockRejectedValue(new ApiRequestError('no', 'OWNER_REQUIRED', 403))
+    await vi.advanceTimersByTimeAsync(30_000)
     expect(w.emitted('denied')).toHaveLength(1)
-    expect(w.find(sel('api-compat-summary')).exists()).toBe(false)
+    expect(state(w)).toBe('Not checked')
+    const calls = read.mock.calls.length
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(read.mock.calls.length).toBe(calls)
   })
 
   it('accountSwitchDiscardsALateAnswerAndUnmountStopsPolling', async () => {
@@ -144,35 +141,23 @@ describe('OwnerApiCompatibility', () => {
     await flushPromises()
     late.resolve(complete('OK'))
     await flushPromises()
-    expect(w.find(sel('api-compat-summary')).exists()).toBe(false)
-    expect(w.find(sel('api-compat-state')).text()).toBe('Not checked')
+    expect(state(w)).toBe('Not checked')
 
     read.mockResolvedValue(RUNNING)
     connection.generation = 3
     await flushPromises()
     const calls = read.mock.calls.length
     w.unmount()
-    await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(120_000)
     expect(read.mock.calls.length).toBe(calls)
   })
 
-  it('preStartReadResolvingAfterStartNeverOverwritesTheNewerRunningState', async () => {
-    for (const old of [NOT_CHECKED, complete('OK')]) {
-      const late = deferred<ApiCompatibilityView>()
-      const read = vi.spyOn(systemApi, 'readApiCompatibility').mockReturnValueOnce(late.promise)
-      vi.spyOn(systemApi, 'startApiCompatibilityCheck').mockResolvedValue(RUNNING)
-      const w = mount()
-      await w.find(sel('api-compat-check')).trigger('click')
-      await flushPromises()
-      expect(w.find(sel('api-compat-state')).text()).toBe('Running…')
-      late.resolve(old) // the older GET answers after POST returned RUNNING
-      await flushPromises()
-      expect(w.find(sel('api-compat-state')).text()).toBe('Running…')
-      read.mockResolvedValueOnce(complete('ATTENTION'))
-      await vi.advanceTimersByTimeAsync(2000) // polling was not stopped by the stale answer
-      expect(w.find(sel('api-compat-state')).text()).toBe('Needs attention')
-      w.unmount()
-      vi.restoreAllMocks()
-    }
+  it('doesNotReadWhileDisconnected', async () => {
+    connection.phase = 'disconnected'
+    const read = vi.spyOn(systemApi, 'readApiCompatibility').mockResolvedValue(complete('OK'))
+    const w = mount()
+    await flushPromises()
+    expect(read).not.toHaveBeenCalled()
+    expect(state(w)).toBe('Not checked')
   })
 })

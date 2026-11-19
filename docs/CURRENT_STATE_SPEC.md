@@ -129,7 +129,7 @@ availability, exhaustive multi-account validation or production capacity.
 | Ectoplasm Salvage | Browser expected-yield/Luck calculation from backend quotes and account facts. |
 | Bank / Materials | Whole-tile toggle, autosave, finite reservations, right-click actions and cached item names. |
 | Characters | Lazy selected-character reads, roster sorts, bag layouts, equipment and read-only saved Builds tabs. |
-| System Status | Connection, own-account sources/full refresh and generic health; owner catalogs/activity/downloads and the on-demand public-API compatibility check (cached latest result only, fixed public sample; account endpoints not live-verified). |
+| System Status | Connection, own-account sources/full refresh and generic health; owner catalogs/activity/downloads and a compact automatic GW2 API status card (Good/Needs update/Last checked; backend checks after startup and every six hours, cached latest result only, fixed public sample; account endpoints not live-verified). |
 
 Bank and Materials preferences are separate. Bank stack selection is independent; numeric targets
 distribute in ascending slot order and preserve the saved item amount after rearrangement.

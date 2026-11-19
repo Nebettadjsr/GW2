@@ -1,4 +1,4 @@
-import { getAttachment, getJson, postJson } from './http'
+import { getAttachment, getJson } from './http'
 
 /** Stored shared rows; figures are null (never zero) when state is UNAVAILABLE. */
 export interface DatasetSummary {
@@ -127,10 +127,6 @@ export const systemApi = {
   /** Owner-only cached result; never causes an ArenaNet request. */
   readApiCompatibility(): Promise<ApiCompatibilityView> {
     return getJson<ApiCompatibilityView>('/system/api-compatibility')
-  },
-  /** Owner-only; admits one bounded check (409 while one is already running). */
-  startApiCompatibilityCheck(): Promise<ApiCompatibilityView> {
-    return postJson<ApiCompatibilityView>('/system/api-compatibility/check', {})
   },
   /** Owner-only summary; read on explicit request, never polled. */
   readOperationsSummary(): Promise<OperationsSummary> {

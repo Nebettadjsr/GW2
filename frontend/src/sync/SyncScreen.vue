@@ -372,6 +372,7 @@ function operation(key: SyncOperationKey): SyncOperationView {
           @trigger="onTrigger(control.key)"
           @retry-status="onRetryStatus(control.key)"
         />
+        <OwnerApiCompatibility @denied="withdrawOwner('not-owner', true)" />
       </div>
       <article class="status-card" data-test="owner-diagnostics">
         <p v-if="ownerDetails.lastFailure" class="status-card__error notice notice--error" data-test="global-last-failure">{{ ownerDetails.lastFailure }}</p>
@@ -387,7 +388,6 @@ function operation(key: SyncOperationKey): SyncOperationView {
         </details>
       </article>
     </section>
-    <OwnerApiCompatibility v-if="ownerState === 'owner' && ownerDetails" @denied="withdrawOwner('not-owner', true)" />
     <OwnerActivity v-if="ownerState === 'owner' && ownerDetails" :active-last60-minutes="ownerDetails.accounts?.activeLast60Minutes ?? null" @denied="withdrawOwner('not-owner', true)" />
     </template>
   </div>

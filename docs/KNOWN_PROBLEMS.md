@@ -57,7 +57,7 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 ## KP-33 Recipe sync uses the legacy unpinned API profile
 
-**Observed:** `sync.RecipeSync` requests `/v2/recipes` without a `v=` schema version. The default catalog omits some modern recipes (for example Jade recipe 13839, present under `v=2022-03-09T02:00:00.000Z` with typed Item/Currency ingredients), and `RecipeParser` reads only legacy `item_id` ingredients. The owner "API compatibility" check reports this as attention (`KNOWN_COVERAGE_GAP`), not as an upstream break.
+**Observed:** `sync.RecipeSync` requests `/v2/recipes` without a `v=` schema version. The default catalog omits some modern recipes (for example Jade recipe 13839, present under `v=2022-03-09T02:00:00.000Z` with typed Item/Currency ingredients), and `RecipeParser` reads only legacy `item_id` ingredients. The automatic owner API compatibility check reports this as attention (`KNOWN_COVERAGE_GAP`, shown as "Needs update" on the compact card), not as an upstream break.
 
 **Risk:** recipes that exist only under newer schemas are invisible or have no readable ingredients. The check samples a small fixed public set; authenticated account endpoint payloads are not live-verified.
 

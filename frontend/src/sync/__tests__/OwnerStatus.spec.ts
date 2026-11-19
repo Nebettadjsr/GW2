@@ -66,7 +66,6 @@ describe('System Status owner projection', () => {
     expect(has(wrapper, 'sync-trigger-ACCOUNT_SYNC')).toBe(true)
     expect(has(wrapper, 'owner-admin')).toBe(false)
     expect(has(wrapper, 'api-compat')).toBe(false)
-    expect(has(wrapper, 'api-compat-check')).toBe(false)
     expect(systemApi.readApiCompatibility).not.toHaveBeenCalled()
     OWNER_TRIGGERS.forEach((key) => expect(has(wrapper, `sync-trigger-${key}`)).toBe(false))
     expect(has(wrapper, 'owner-status-unavailable')).toBe(false)
@@ -85,7 +84,8 @@ describe('System Status owner projection', () => {
     pending.resolve(DETAILS)
     await settle()
     expect(has(wrapper, 'owner-admin')).toBe(true)
-    expect(has(wrapper, 'api-compat-check')).toBe(true)
+    expect(has(wrapper, 'api-compat')).toBe(true)
+    expect(wrapper.find('[data-test="owner-admin"] .status-grid [data-test="api-compat"]').exists()).toBe(true) // same grid as Items/Recipes
     OWNER_TRIGGERS.forEach((key) => expect(has(wrapper, `sync-trigger-${key}`)).toBe(true))
     expect(wrapper.find('[data-test="global-last-failure"]').text()).toBe('upstream 503')
     wrapper.unmount()

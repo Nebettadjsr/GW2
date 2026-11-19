@@ -197,7 +197,15 @@ GUID. Blank grants nobody; malformed values fail startup. Detailed system/catalo
 global mutations and their task observations are authorized on the backend before accessing
 privileged data. Generic health contains no hidden owner payload.
 
+The backend runs the check automatically (`web.ApiCompatibilityScheduler`, `@Scheduled` like the global refresh):
+initial delay `gw2.api-compatibility.initial-delay-ms` (default 60 s) and fixed delay
+`gw2.api-compatibility.interval-ms` (default six hours), through the same admission as the manual action so
+a duplicate is skipped; test contexts defer it via `src/test/resources/config/application.properties`.
+The browser shows only a compact "GW2 API" card in the owner catalog grid (Good / Needs update / neutral
+Checking, Not checked, Unavailable, plus Last checked) that polls the cached read and has no start control.
+
 `GET /api/system/api-compatibility` (cached result only) and `POST /api/system/api-compatibility/check`
+(retained for CLI/testing; the browser never calls it)
 are owner-authorized before any read or work; the POST also requires a same Origin and is admitted
 once at a time through the existing `BackgroundTasks` port's administrative admission (a duplicate is 409;
 the application service does not import the web task package). A checker failure publishes a sanitized
@@ -208,7 +216,7 @@ whole-check bound checked between requests; each request is itself bounded by th
 body (`api.PublicApiTransport`). Item fields, the ordinary recipe (production full-refresh validator)
 and the Jade canary identity/Research Notes currency 61 are verified, not just their type. The checker compares consumed fields/types and the real `RecipeParser`, reads `/v2.json?v=latest` against
 an explicit reviewed version baseline, and classifies probes OK/ATTENTION/UNAVAILABLE/MISMATCH. Only the
-latest result lives in process memory (not-checked after restart; stale after 24 hours); no scheduler,
+latest result lives in process memory (not-checked after restart until the automatic run completes; stale after 24 hours); no
 history, account endpoint, mutation or automatic API-version migration exists.
 
 `DELETE /api/account/data` takes the process-local per-GUID lifecycle gate, refuses unfinished
