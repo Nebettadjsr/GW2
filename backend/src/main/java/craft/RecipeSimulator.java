@@ -139,7 +139,12 @@ public class RecipeSimulator {
                 break;
             }
 
-            if (!aggregatesRepresentable(recipe, ctx, result.getCraftCount() + 1,
+            int prospectiveReused = result.getReusedSeedUnits();
+            if (recipe.hasExpectedYield() && recipe.selfSeedUnits() > 0) {
+                int consumedNow = Math.max(0, surplusBefore - state.surplusOf(recipe.outputItemId));
+                prospectiveReused += Math.min(consumedNow, result.seedCreditOutstanding());
+            }
+            if (!aggregatesRepresentable(recipe, ctx, result.getCraftCount() + 1, prospectiveReused,
                     nextBuyTotal, Math.addExact(result.getOpportunityCostTotal(), rr.getOpportunityCostCopper())
                             + noteCostTotal)) {
                 // Keep the batches already accepted; only this one would push a revenue/profit
@@ -211,7 +216,7 @@ public class RecipeSimulator {
      * the result reports, evaluated exactly in long arithmetic. Reject an unrepresentable per-craft
      * revenue here too, so standalone explanations and planner rows report the same VALUE_RANGE.
      */
-    private static boolean aggregatesRepresentable(Recipe recipe, PlannerContext ctx, int crafts,
+    private static boolean aggregatesRepresentable(Recipe recipe, PlannerContext ctx, int crafts, int reusedSeed,
                                                    long buyTotal, long opportunityTotal) {
         int revenueOne;
         try {
@@ -219,10 +224,32 @@ public class RecipeSimulator {
         } catch (ArithmeticException outOfRange) {
             return false;
         }
-        long feeOne = revenueOne > 0 ? TradingPostFeePolicy.feeOn(revenueOne) : 0;
-        long sellTotal = (long) revenueOne * crafts;
-        long profit = sellTotal - feeOne * crafts - buyTotal - opportunityTotal;
+        long sellTotal;
+        long feeTotal;
+        if (recipe.hasExpectedYield()) {
+            // The exact aggregate the planner reports: one floor over (crafts x mean - reused seed), one fee.
+            try {
+                sellTotal = expectedSellTotal(recipe, ctx, crafts, reusedSeed);
+            } catch (ArithmeticException outOfRange) {
+                return false;
+            }
+            feeTotal = fits(sellTotal) && sellTotal > 0 ? TradingPostFeePolicy.feeOn(sellTotal) : 0;
+        } else {
+            long feeOne = revenueOne > 0 ? TradingPostFeePolicy.feeOn(revenueOne) : 0;
+            sellTotal = (long) revenueOne * crafts;
+            feeTotal = feeOne * crafts;
+        }
+        long profit = sellTotal - feeTotal - buyTotal - opportunityTotal;
         return fits(sellTotal) && fits(profit);
+    }
+
+    /** Exact gross expected sell value (copper) for {@code crafts} batches less reused seed units; floored once. */
+    static long expectedSellTotal(Recipe recipe, PlannerContext ctx, int crafts, int reusedSeed) {
+        Integer unit = CostEvaluator.outputUnit(recipe, ctx.tp, ctx.settings);
+        if (unit == null) return 0;
+        java.math.BigDecimal units = recipe.expectedYield.mean().multiply(java.math.BigDecimal.valueOf(crafts))
+                .subtract(java.math.BigDecimal.valueOf(reusedSeed));
+        return ExpectedYield.floorCopper(units, unit);
     }
 
     private static Map<Integer, Integer> difference(Map<Integer, Integer> after, Map<Integer, Integer> before) {

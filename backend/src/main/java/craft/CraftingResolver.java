@@ -333,8 +333,11 @@ public class CraftingResolver {
         }
 
         // Mystic Forge steps need no crafter: never assign (or invent) a character.
-        if (!ctx.isCoordinated() || recipe.isMysticForge()) {
+        if (!ctx.isCoordinated()) {
             return tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, null);
+        }
+        if (recipe.isMysticForge()) {
+            return tryForgeCoordinated(itemId, qtyRequested, recipe, ctx, state);
         }
 
         // DOMAIN_SPEC.md section 2.2.1: coordinated multi-character planning - a recipe may only
@@ -371,6 +374,34 @@ public class CraftingResolver {
             state.rollbackTo(mark);
         }
 
+        state.applyDelta(bestEffect);
+        return best;
+    }
+
+    /**
+     * A Forge step has no discipline/rating requirement, so every roster character may perform it.
+     * The unassigned (shared-stock) attempt is preferred; only when it cannot fully supply the step
+     * is each real character tried, because only the actual owner can use character-bound
+     * materials. One step never pools two owners' soulbound items.
+     */
+    private ResolvedNeed tryForgeCoordinated(int itemId, int qtyRequested, Recipe recipe,
+                                             PlannerContext ctx, PlanState state) {
+        int mark = state.mark();
+        ResolvedNeed best = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, null);
+        if (best.isFullySatisfied()) {
+            return best;
+        }
+        PlanState.Delta bestEffect = state.captureDelta(mark);
+        state.rollbackTo(mark);
+        for (var profile : ctx.coordinatedRoster) {
+            ResolvedNeed attempt = tryCraftAssigned(itemId, qtyRequested, recipe, ctx, state, profile.name());
+            if (isBetterCraftAttempt(attempt, best, ctx.minimizeBuyCost)
+                    && (attempt.isFullySatisfied() || attempt.getQtySatisfied() > best.getQtySatisfied())) {
+                best = attempt;
+                bestEffect = state.captureDelta(mark);
+            }
+            state.rollbackTo(mark);
+        }
         state.applyDelta(bestEffect);
         return best;
     }
