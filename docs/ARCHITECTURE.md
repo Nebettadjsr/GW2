@@ -243,7 +243,7 @@ terminal path and errors carry no upstream credential/body text.
 
 | Work | Source/trigger | Default policy |
 | --- | --- | --- |
-| Account freshness | Per-source publication markers, feature demand | 15-minute maximum age; Bank/Materials/Characters refresh only their needed sources. The optional `WALLET` source is added only when the validated request context permits `WALLET_READ` (independent of whether a raw key accompanies the read); it joins calculation identity/freshness but never makes a calculation pending. |
+| Account freshness | Per-source publication markers, feature demand | 15-minute maximum age; Bank/Materials/Characters refresh only their needed sources. The optional `WALLET` source is added only when the validated request context permits `WALLET_READ` (independent of whether a raw key accompanies the read); it joins calculation identity/freshness but never makes a calculation pending. Discovery tracks it the same way (unpublished = explicit unknown requested for refresh, expired = stale), never as a mandatory source, and a keyed read also needs the key's own proven wallet scope. |
 | Profit account inputs | Bank, Materials, account recipes, Characters | Excludes Luck and optional equipment/build tabs. |
 | Trading Post | Feature-relevant item IDs, shared cache | Reuse quotes younger than ten minutes; batch missing/stale IDs on demand. |
 | Global metadata | Scheduler and owner action, one shared service | Six-hour fixed delay, one-minute initial delay; cheap ID lists first. |

@@ -225,10 +225,17 @@ public class CraftingDiscoveryService {
      * Source state of the account's Discovery inputs: {@code missing} were never published (no
      * calculation is possible), {@code stale} were published but expired (still usable).
      */
-    public record InputState(java.util.Set<String> missing, java.util.Set<String> stale) {
+    public record InputState(java.util.Set<String> missing, java.util.Set<String> stale,
+                             java.util.Set<String> optionalUnpublished) {
+        public InputState(java.util.Set<String> missing, java.util.Set<String> stale) {
+            this(missing, stale, java.util.Set.of());
+        }
+
+        /** Required missing/stale sources plus the optional wallet when authorized and unpublished. */
         public java.util.Set<String> needingRefresh() {
             java.util.Set<String> all = new java.util.TreeSet<>(missing);
             all.addAll(stale);
+            all.addAll(optionalUnpublished);
             return all;
         }
     }
@@ -250,7 +257,19 @@ public class CraftingDiscoveryService {
                 }
             }
         }
-        return new InputState(missing, stale);
+        // Optional wallet: tracked only with authority. Unpublished is an explicit unknown (never pending,
+        // never blocking item-only rows); an expired publication is stale like any other source.
+        java.util.Set<String> optional = new java.util.TreeSet<>();
+        if (walletAuthorized) {
+            try (java.sql.Connection con = repo.Db.open()) {
+                var state = new repo.AccountSourceStateRepository().read(con, scope, repo.AccountSyncStateRepository.WALLET);
+                if (state.isEmpty()) optional.add(repo.AccountSyncStateRepository.WALLET);
+                else if (accountMaxAge != null && state.get().completedAt().plus(accountMaxAge).isBefore(clock.instant())) {
+                    stale.add(repo.AccountSyncStateRepository.WALLET);
+                }
+            }
+        }
+        return new InputState(missing, stale, optional);
     }
 
     /** Records ordinary authorized use (activity only, never freshness) for a request that calculated nothing. */

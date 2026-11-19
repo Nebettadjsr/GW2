@@ -179,8 +179,8 @@ whether deletion committed. Late replies cannot disconnect a newer explicit conn
 
 | Scope | Main records |
 | --- | --- |
-| Shared game/economy | Items, recipes/ingredients/publication, ordered materials, TP-tradeable IDs and quotes. |
-| Account | Registry/activity, per-source generations, bank, material quantities, recipes and Luck. |
+| Shared game/economy | Items, recipes/item ingredients, pinned typed non-item requirements (`recipe_non_item_requirements`, Currency ids kept apart from Item ids; unsupported kinds are never loaded), AutoLearned flag, publication, ordered materials, TP-tradeable IDs and quotes. |
+| Account | Registry/activity, per-source generations, bank, material quantities, recipes, wallet balances (optional `WALLET` source) and Luck. |
 | Character | Roster/crafting/recipes/items/bags, bag publication, equipment/build tabs and coverage. |
 | Shared character references | Equipment details/stats and specialization/trait/skill/pet/legend metadata. |
 | Filesystem | Derived graph, downloaded images and bounded activity CSV/index files. |

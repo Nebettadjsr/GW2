@@ -112,6 +112,27 @@ class CraftingPlannerCurrencyRequirementTest {
     }
 
     @Test
+    void notesSpentWhileExploringAFailedAlternativeAreRestoredForTheFeasibleOne() {
+        // Item 200 has two recipes, each costing 30 notes. The first needs item 400 (none owned, not buyable) and
+        // fails after its note requirement was explored; the second is feasible. Wallet 30: the failed attempt must
+        // give its notes back, so the alternate succeeds and exactly 30 are spent (not 60, not 0).
+        Recipe failing = new Recipe(2, 200, 1, 0, "Artificer", List.of(ingredient(400, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Recipe feasible = new Recipe(3, 200, 1, 0, "Artificer", List.of(ingredient(300, 1)),
+                List.of(new CurrencyRequirement(NOTE, 30)));
+        Recipe parent = new Recipe(1, 100, 1, 0, "Artificer", List.of(ingredient(200, 1)));
+        Map<Integer, Integer> stock = Map.of(300, 5);
+        Map<Integer, PriceQuote> tp = Map.of(100, quote(5000, 6000));
+        for (List<Recipe> order : List.of(List.of(parent, failing, feasible), List.of(parent, feasible, failing))) {
+            CraftResult r = new CraftingPlanner().withWallet(Map.of(NOTE, 30))
+                    .evaluateAll(order, stock, Map.of(), tp, OWN_ONLY, Set.of(1, 2, 3)).get(1);
+            assertEquals(1, r.craftableCount, "feasible alternate crafts after the failed attempt: " + order);
+            assertEquals(30, r.currencyTotal.getOrDefault(NOTE, 0), "exact aggregate spending, no double spend");
+            assertEquals("KNOWN", r.walletState);
+        }
+    }
+
+    @Test
     void itemOnlyRecipesNeedNoWalletAndReportNoCurrency() {
         Recipe plain = new Recipe(5, 500, 1, 0, "Artificer", List.of(ingredient(600, 1)));
         CraftResult r = new CraftingPlanner().withWallet(null)
