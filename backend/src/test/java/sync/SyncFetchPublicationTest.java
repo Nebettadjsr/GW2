@@ -531,6 +531,32 @@ class SyncFetchPublicationTest {
     }
 
     @Test
+    void recipeSync_emptyItemRequirementsAreQuarantinedAndRetriedWithTheSameCatalog() throws Exception {
+        exec("INSERT INTO items (item_id, name) VALUES (10, 'Old item')");
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");
+        exec("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (300, 10, 99)");
+        exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (300, 'Currency', 61, 30)");
+        String empty = "{\"id\":300,\"type\":\"Refinement\",\"output_item_id\":20,\"output_item_count\":1,\"ingredients\":[]}";
+        RecipeSync.fetcher = url -> json(url.equals(RecipeSync.CATALOG_URL) ? "[300]" : "[" + empty + "]");
+        ItemSync.fetcher = url -> json("[" + itemJson(10) + "," + itemJson(20) + "]");
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("0", scalar("SELECT count(*) FROM recipes WHERE recipe_id=300"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id=300"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_non_item_requirements WHERE recipe_id=300"));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("0", scalar("SELECT cardinality(skipped_recipe_ids) FROM recipe_catalog_publication"));
+
+        RecipeSync.fetcher = url -> json(url.equals(RecipeSync.CATALOG_URL) ? "[300]"
+                : "[" + currencyRecipe(300, "{\"type\":\"Currency\",\"id\":61,\"count\":60}") + "]");
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "the unchanged catalog must retry corrected requirements");
+        assertEquals("1", scalar("SELECT count FROM recipe_ingredients WHERE recipe_id=300 AND item_id=10"));
+        assertEquals("61:60", scalar("SELECT ref_id||':'||count FROM recipe_non_item_requirements WHERE recipe_id=300"));
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe());
+    }
+
+    @Test
     void recipeSync_omittedOrUnparseableDetailRecordsAreQuarantinedNotClearedToFree() throws Exception {
         exec("INSERT INTO recipes (recipe_id, type) VALUES (300, 'Old')");
         exec("INSERT INTO recipe_non_item_requirements (recipe_id, kind, ref_id, count) VALUES (300, 'Currency', 61, 30)");
