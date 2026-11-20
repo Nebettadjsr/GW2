@@ -101,6 +101,9 @@ public class MysticForgeApiController {
         // planner). This request never waits for it; the client rereads while "completing" is true.
         boolean completing = false;
         if (priceRefresh != null) {
+            // A failed completeness/quote check or failed admission is unknown, never "complete": it is reported as
+            // completing so the client's bounded rereads (and manual Retry) repair it without a raw error.
+            boolean checkFailed = false;
             // Same canonical completeness policy as IconSync/project path (name, type, rarity, icon, forge flag,
             // gear subtype). Short read, connection closed before admission; a failed read skips that demand only.
             Set<Integer> positive = new HashSet<>();
@@ -109,22 +112,22 @@ public class MysticForgeApiController {
             try {
                 demand.addAll(items.incompleteMetadataIds(positive));
             } catch (Exception metadataReadFailure) {
-                // truthful: only quote demand (if any) is admitted
+                checkFailed = true; // unknown, not complete; quote demand (if any) is still admitted
             }
             // Complete metadata is not a current quote: stale/missing tradeable quotes get the same scoped demand.
             try {
                 demand.addAll(tp.staleOrMissingTradeable(positive));
             } catch (Exception quoteReadFailure) {
-                // truthful: only metadata demand (if any) is admitted
+                checkFailed = true; // unknown, not complete; metadata demand (if any) is still admitted
             }
             if (!demand.isEmpty()) {
                 try {
                     priceRefresh.requireItems(demand, null);
-                    completing = true;
                 } catch (RuntimeException admissionFailure) {
-                    completing = false; // truthful: nothing was admitted; the cached catalogue is still served
+                    checkFailed = true; // nothing was admitted: still pending so the bounded reread retries admission
                 }
             }
+            completing = checkFailed || !demand.isEmpty();
         }
         return new Catalogue(c.status(), c.source(), c.license(), c.recipes().size(), ForgeReferenceRecipes.all().size(), rows,
                 completing);

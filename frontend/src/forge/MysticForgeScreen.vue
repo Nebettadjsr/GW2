@@ -121,6 +121,11 @@ async function back(): Promise<void> {
 
     <div v-if="detail" class="forge-detail" data-test="forge-detail">
       <button type="button" data-test="forge-back" @click="back()">← All Mystic Forge recipes</button>
+      <p v-if="f.catalogueStalled.value || (f.catalogueError.value && f.catalogue.value?.completing === true)" role="status"
+        data-test="forge-detail-catalogue-retry">
+        Recipe details are still being completed in the background{{ f.catalogueStalled.value ? ', but automatic checking has stopped' : '' }}.
+        Your selection, target and settings are kept.
+        <button type="button" data-test="forge-detail-catalogue-retry-button" @click="f.retryCatalogue()">Retry</button></p>
       <header v-if="row" class="forge-detail__title">
         <ItemIcon :icon-url="row.iconUrl" :item-id="row.outputItemId" :size="40" loading="eager" />
         <h2>{{ row.name ?? `Item ${row.outputItemId}` }}</h2>

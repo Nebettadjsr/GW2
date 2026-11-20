@@ -123,7 +123,13 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
       }
     } catch (cause) {
       const text = message(cause)
-      if (mine === catalogueToken && active && text !== null) catalogueError.value = text
+      if (mine === catalogueToken && active && text !== null) {
+        catalogueError.value = text
+        // A failed reread of a still-completing cached catalogue stays inside the same bounded completion:
+        // re-arm (never resetting the counter) or stop with the stalled Retry visible.
+        const previous = catalogue.value
+        if (previous !== null && previous.completing === true) { catalogueTimer = null; scheduleCatalogueReread(previous) }
+      }
     } finally {
       if (mine === catalogueToken) catalogueLoading.value = false
     }

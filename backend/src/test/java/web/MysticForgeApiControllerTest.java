@@ -197,6 +197,44 @@ class MysticForgeApiControllerTest {
         assertEquals(0, tasks2.size(), "repeated fresh/nontradeable reads admit no work");
     }
 
+    /** A failed metadata/quote check is unknown, never complete: the cached rows are served and the client keeps rereading. */
+    @Test
+    void failedMetadataOrQuoteCheckIsReportedAsPendingNotComplete() throws Exception {
+        Recipe bow = new Recipe(-1, 500, 1, 0, "", List.of(new Ingredient(1, 2)), List.of(), RecipeSource.MYSTIC_FORGE);
+        for (boolean metadataFails : new boolean[] {true, false}) {
+            var tasks = new application.BackgroundTasks() {
+                @Override public String submit(String op, Work w) { return "t"; }
+                @Override public java.util.Optional<Status> find(String id) { return java.util.Optional.empty(); }
+            };
+            var coordinator = new application.TradingPostRefreshCoordinator(
+                    new application.TradingPostPriceRefreshService(new sync.TradingPostPriceRefreshGateway() {
+                        @Override public void syncTpPricesForIds(Set<Integer> ids) { }
+                    }), tasks);
+            var items = new ItemRepository() {
+                @Override public Map<Integer, ItemInfo> loadItems(Set<Integer> ids) {
+                    Map<Integer, ItemInfo> m = new HashMap<>();
+                    for (int id : ids) m.put(id, new ItemInfo(id, "Item " + id, null, 0, "Weapon", "LongBow"));
+                    return m;
+                }
+                @Override public Set<Integer> incompleteMetadataIds(Set<Integer> ids) {
+                    if (metadataFails) throw new IllegalStateException("db down");
+                    return Set.of();
+                }
+            };
+            var controller = new MysticForgeApiController(null, null, () -> new MysticForgeCatalog(List.of(bow), 0, "test"), items,
+                    new TpPriceRepository() {
+                        @Override public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Set<Integer> ids) { return Map.of(); }
+                        @Override public Set<Integer> staleOrMissingTradeable(Set<Integer> ids) {
+                            if (!metadataFails) throw new IllegalStateException("db down");
+                            return Set.of();
+                        }
+                    }, coordinator);
+            var out = controller.recipes();
+            assertTrue(out.completing(), "metadataFails=" + metadataFails);
+            assertFalse(out.recipes().isEmpty(), "cached rows are still served");
+        }
+    }
+
     /** Owner decision: Forge always counts all owned stock (no protection/reservation flag); only the six menu settings are added. */
     @Test
     void projectRequestCarriesOnlyRecipeTargetAndTheSixMenuSettings() {

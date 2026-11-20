@@ -564,6 +564,66 @@ describe('vendor shopping and bounded catalogue completion', () => {
     w.unmount()
   })
 
+  function failingColdApi(failFrom: number, failTo: number, counter: { calls: number }): MysticForgeApi {
+    const cold = (r: ForgeRecipeRow) => r.recipeId === -1 ? { ...r, itemType: null, itemSubtype: null, category: 'OTHER' as const } : r
+    return {
+      async loadCatalogue() {
+        counter.calls++
+        if (counter.calls >= failFrom && counter.calls <= failTo) throw new Error('catalogue unavailable')
+        const warm = counter.calls > failTo
+        return { ...catalogue, completing: !warm, recipes: warm ? catalogue.recipes : catalogue.recipes.map(cold) }
+      },
+      loadProject(recipeId, target, settings) {
+        projectCalls.push({ recipeId, target, settings })
+        return Promise.resolve(project(target, settings ? { settings } : {}))
+      }
+    }
+  }
+
+  it('a rejected reread during an open cold OTHER detail re-arms bounded completion and the selectors appear without Back', async () => {
+    const counter = { calls: 0 }
+    const w = mount(MysticForgeScreen, { props: { api: failingColdApi(2, 2, counter) }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(5100) // call 2 rejects
+    await flushPromises()
+    expect(w.find('[data-test="forge-detail-catalogue-retry"]').exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(5100) // automatic retry succeeds
+    await flushPromises()
+    expect(counter.calls).toBe(3)
+    for (const id of ['price', 'use-own', 'value-own', 'daily', 'promotions', 'reduce']) {
+      expect(w.find(`[data-test="forge-setting-${id}"]`).exists()).toBe(true)
+    }
+    expect(w.find('[data-test="forge-detail-catalogue-retry"]').exists()).toBe(false)
+    expect(projectCalls).toHaveLength(1)
+    w.unmount()
+  })
+
+  it('repeated reread failures stop at the bound and offer Retry inside the open detail, which recovers there', async () => {
+    const counter = { calls: 0 }
+    const w = mount(MysticForgeScreen, { props: { api: failingColdApi(2, 8, counter) }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+    await flushPromises()
+    for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(5100)
+    expect(counter.calls).toBe(6) // the bound of 6 schedules is shared with the re-arm on opening: no endless polling
+    expect(w.find('[data-test="forge-settings"]').exists()).toBe(false)
+    expect(w.find('[data-test="forge-catalogue-stalled"]').exists()).toBe(true)
+    await w.get('[data-test="forge-detail-catalogue-retry-button"]').trigger('click')
+    await flushPromises()
+    expect(counter.calls).toBe(7) // manual Retry resets the bound
+    await vi.advanceTimersByTimeAsync(5100)
+    await flushPromises()
+    expect(counter.calls).toBe(8) // still failing, automatic bounded retry
+    await vi.advanceTimersByTimeAsync(5100)
+    await flushPromises()
+    expect(counter.calls).toBe(9)
+    expect(w.find('[data-test="forge-setting-price"]').exists()).toBe(true)
+    expect(projectCalls).toHaveLength(1)
+    w.unmount()
+  })
+
   it('resumes a completing catalogue whose timer was cancelled by opening a detail once the user goes Back', async () => {
     const counter = { calls: 0 }
     const w = mount(MysticForgeScreen, { props: { api: completingApi(counter, 3) }, attachTo: document.body })
