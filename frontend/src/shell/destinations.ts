@@ -9,6 +9,7 @@ export type DestinationId =
   | 'home'
   | 'crafting'
   | 'discovery'
+  | 'forge'
   | 'ecto'
   | 'synchronization'
   | 'bank'
@@ -31,6 +32,7 @@ export const DESTINATIONS: readonly Destination[] = [
   { id: 'home', path: '/welcome', label: 'Home' },
   { id: 'crafting', path: '#/crafting', label: 'Crafting Profit' },
   { id: 'discovery', path: '#/discovery', label: 'Crafting Discovery' },
+  { id: 'forge', path: '#/mystic-forge', label: 'Mystic Forge' },
   { id: 'ecto', path: '#/ecto', label: 'Ecto Salvage' },
   { id: 'synchronization', path: '#/synchronization', label: 'System Status' },
   { id: 'bank', path: '#/bank', label: 'Bank' },

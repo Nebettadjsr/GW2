@@ -170,6 +170,7 @@ describe('App shell', () => {
       '/welcome',
       '#/crafting',
       '#/discovery',
+      '#/mystic-forge',
       '#/ecto',
       '#/synchronization',
       '#/bank',

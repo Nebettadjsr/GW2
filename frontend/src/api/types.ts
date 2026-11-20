@@ -896,3 +896,125 @@ export interface CharacterInventoryResponse {
   contents?: InventoryContents
   bags?: InventoryBag[]
 }
+
+/* ---- Mystic Forge (web.dto.MysticForgeDtos); backend values only, no frontend domain arithmetic. ---- */
+export type ForgeOutcome = 'FIXED' | 'EXPECTED' | 'REFERENCE_RANDOM'
+
+export interface ForgeRecipeRow {
+  recipeId: number
+  outputItemId: number
+  name: string | null
+  iconUrl: string | null
+  itemType: string | null
+  itemSubtype: string | null
+  category: 'WEAPONS' | 'ARMOR' | 'MATERIALS' | 'OTHER'
+  outcome: ForgeOutcome
+  outputCount: number
+  expectedMean: string | null
+  expectedMax: number | null
+  /** Instant sell (= highest bid) per output unit. */
+  buyUnitCopper: number | null
+  /** Listing sell (= lowest ask) per output unit. */
+  sellUnitCopper: number | null
+  sourcePage: string | null
+  sourceRevision: number | null
+  wikiUrl: string | null
+  ingredientKinds: number
+}
+
+export interface ForgeCatalogue {
+  status: string
+  source: string
+  license: string
+  recipeCount: number
+  referenceCount: number
+  recipes: ForgeRecipeRow[]
+}
+
+export interface ForgeItem { itemId: number; name: string | null; iconUrl: string | null; wikiUrl: string | null }
+
+export interface ForgeNode {
+  item: ForgeItem
+  needed: number
+  fromOwned: number
+  fromSurplus: number
+  toCraft: number
+  toAcquire: number
+  recipeId: number | null
+  recipeSource: string | null
+  crafts: number
+  minRating: number
+  disciplines: string | null
+  cutoff: string | null
+  children: ForgeNode[]
+  recipeKnown: boolean | null
+  performable: boolean
+  assignedCharacter: string | null
+  hint: string | null
+}
+
+export interface ForgeCurrency {
+  currencyId: number
+  name: string
+  iconUrl: string | null
+  wikiUrl: string | null
+  needed: number
+  owned: number | null
+  missing: number | null
+}
+
+export interface ForgeSeed {
+  externalSeedUnits: number
+  reusedSeedUnits: number
+  grossGuaranteedOutput: number
+  netGuaranteedOutput: number
+  grossExpectedOutput: string
+  netExpectedOutput: string
+}
+
+export interface ForgeEconomics {
+  outputUnitSellCopper: number | null
+  expectedGrossProceedsCopper: number | null
+  feeCopper: number | null
+  expectedNetProceedsCopper: number | null
+  knownShoppingCopper: number
+  goldInputCopper: number
+  currencyInputs: ForgeCurrency[]
+  unpricedInputs: ForgeItem[]
+  marginOnShoppingCopper: number | null
+  marginCopper: number | null
+  conditional: boolean
+  fixedOutput: boolean
+}
+
+export interface ForgeShoppingLine {
+  item: ForgeItem
+  needed: number
+  fromOwned: number
+  toAcquire: number
+  unitCopper: number | null
+  knownCopper: number | null
+}
+
+export interface ForgeProject {
+  recipeId: number
+  output: ForgeItem | null
+  outcome: ForgeOutcome | null
+  targetKind: 'OUTPUT_QUANTITY' | 'BATCHES' | null
+  requestedTarget: number
+  batches: number
+  guaranteedOutput: number | null
+  complete: boolean
+  incompleteReason: string | null
+  walletKnown: boolean
+  knownGoldCopper: number
+  goldCostPartial: boolean
+  unpricedItems: ForgeItem[]
+  tree: ForgeNode | null
+  shopping: ForgeShoppingLine[]
+  currencies: ForgeCurrency[]
+  note: string | null
+  seed: ForgeSeed | null
+  economics: ForgeEconomics | null
+  freshness: CalculationFreshness | null
+}

@@ -682,6 +682,9 @@ function materialQuoteText(item: MissingItem): string {
 }
 .expected-note {
   display: block;
+  min-width: 0;
+  white-space: normal; /* the parent .numeric cell is nowrap; the note wraps on its own line */
+  text-align: left;
   overflow-wrap: anywhere;
 }
 </style>
