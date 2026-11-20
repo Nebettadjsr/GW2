@@ -167,20 +167,42 @@ public class MysticForgeApiController {
         int recipeId = request.recipeId();
         if (recipeId >= 0) throw new ApiValidationException("recipeId must identify a Mystic Forge recipe");
 
+        craft.ForgeSettings settings = settings(request);
         String key = web.access.AccountAccessHttp.presentedApiKey(http);
         var keyed = key == null ? null : new CachedCraftingProfitService.KeyedAdmission(
                 web.access.RequestAccountContext.required(http),
                 web.access.AccountAccessHttp.presentedSessionId(http).orElseThrow(), key);
-        var outcome = profitService.forgeProject(web.access.RequestAccountContext.scopeOf(http), recipeId, target, keyed,
+        var outcome = profitService.forgeProject(web.access.RequestAccountContext.scopeOf(http), recipeId, target, settings, keyed,
                 web.access.RequestAccountContext.required(http));
         if (outcome.unknownRecipe()) throw new ApiValidationException("unknown Mystic Forge recipe");
         var freshness = CalculationFreshnessMapper.toDto(outcome.freshness());
         if (!outcome.hasResult()) {
             // No source ever synchronized: never an empty plan that reads as "nothing needed".
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(new Project(recipeId, null, null, null, target, 0, null, false, "account data not yet available",
-                    false, 0, true, List.of(), null, List.of(), List.of(), null, null, null, null, freshness));
+                    false, 0, true, List.of(), null, List.of(), List.of(), null, null, null, null, freshness,
+                    settingsDto(settings), null, null, 0, null));
         }
         return ResponseEntity.ok(toProject(outcome.data(), freshness));
+    }
+
+    static craft.ForgeSettings settings(ProjectRequest r) {
+        var d = craft.ForgeSettings.DEFAULT;
+        return new craft.ForgeSettings(
+                enumOf(craft.ForgeSettings.PriceMode.class, r.priceMode(), d.priceMode(), "priceMode"),
+                r.useOwn() == null ? d.useOwn() : r.useOwn(), r.valueOwn() == null ? d.valueOwn() : r.valueOwn(),
+                enumOf(craft.ForgeSettings.DailyMode.class, r.daily(), d.daily(), "daily"),
+                r.promotions() == null ? d.promotions() : r.promotions(),
+                enumOf(craft.ForgeSettings.ReduceMode.class, r.reduce(), d.reduce(), "reduce"));
+    }
+
+    private static <E extends Enum<E>> E enumOf(Class<E> type, String value, E fallback, String field) {
+        if (value == null) return fallback;
+        try { return Enum.valueOf(type, value); }
+        catch (IllegalArgumentException e) { throw new ApiValidationException(field + " is not a supported value"); }
+    }
+
+    static SettingsDto settingsDto(craft.ForgeSettings s) {
+        return new SettingsDto(s.priceMode().name(), s.useOwn(), s.valueOwn(), s.daily().name(), s.promotions(), s.reduce().name());
     }
 
     static Project toProject(CraftingProfitService.ForgeProjectData d, CalculationFreshnessDto freshness) {
@@ -243,13 +265,43 @@ public class MysticForgeApiController {
                     n.estimateIssue(), n.estimate().basisRecipeId(), CraftingRowMapper.variantDtos(n.estimate(), info),
                     n.ownedContainers(), n.ownedNotes(), n.acquireContainers(), n.uncoveredNotes(), n.producerLocked());
         }
+        OwnValueDto ownValue = null;
+        if (p.ownValue() != null) {
+            List<Item> unknownOwn = new ArrayList<>();
+            p.ownValue().unpricedItemIds().forEach(id -> unknownOwn.add(item(id, info)));
+            ownValue = new OwnValueDto(p.ownValue().knownCopper(), unknownOwn);
+        }
+        CloverEstimateDto cloverDto = p.clover() == null ? null
+                : new CloverEstimateDto(p.clover().missing(), p.clover().attempts(), p.clover().percent());
         String outcome = d.referenceOnly() ? "REFERENCE_RANDOM" : d.batchTarget() ? "EXPECTED" : "FIXED";
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
                 d.requestedTarget(), p.batches(), d.referenceOnly() || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
                 d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !p.complete() || partialLine, unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
-                cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness);
+                cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness, settingsDto(p.settings()), ownValue, cloverDto,
+                p.rootOwned(), comparison(d, p, ownValue));
+    }
+
+    private static ComparisonDto comparison(CraftingProfitService.ForgeProjectData d, ForgeProjectPlanner.Project p, OwnValueDto own) {
+        if (d.referenceOnly() || d.batchTarget()) return null; // random/batch outputs claim no purchasable output quantity
+        PriceQuote q = d.tp().get(p.outputItemId());
+        boolean orderMode = p.settings().priceMode() == craft.ForgeSettings.PriceMode.BUY_ORDER;
+        Integer buy = q == null ? null : orderMode ? q.buyUnit : q.sellUnit;
+        Long unitBuy = buy == null || buy <= 0 ? null : (long) buy;
+        Long unitSell = q == null || q.buyUnit == null || q.buyUnit <= 0 ? null : (long) q.buyUnit;
+        Long total = null, savings = null;
+        boolean ownUnknown = own != null && !own.unpricedItems().isEmpty();
+        boolean conditional = !p.currencies().isEmpty() || !p.unpricedItemIds().isEmpty() || ownUnknown || p.clover() != null || !p.complete();
+        try {
+            if (unitBuy != null) {
+                total = ForgeProjectPlanner.mul(unitBuy, d.requestedTarget());
+                if (p.complete() && p.unpricedItemIds().isEmpty() && !ownUnknown) {
+                    savings = total - ForgeProjectPlanner.add(p.knownCopper(), own == null ? 0 : own.knownCopper());
+                }
+            }
+        } catch (ArithmeticException overflow) { total = null; savings = null; }
+        return new ComparisonDto(unitBuy, unitSell, total, savings, conditional, own == null);
     }
 
     private static NodeDto node(ForgeProjectPlanner.Node n, Map<Integer, ItemRepository.ItemInfo> info, boolean referenceRoot) {

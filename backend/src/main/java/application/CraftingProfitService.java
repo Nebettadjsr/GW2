@@ -221,11 +221,15 @@ public class CraftingProfitService {
             throw new RuntimeException("Failed to load crafting graph cache", e);
         }
         producers.addAll(MysticForgeCatalogLoader.bundled().recipes());
-        producers.addAll(craft.VendorAcquisitions.recipes());
+        producers.addAll(craft.VendorAcquisitions.forgeProjectRecipes());
         return producers;
     }
 
     public ForgeProjectData planForgeProject(int recipeId, long target) throws SQLException {
+        return planForgeProject(recipeId, target, craft.ForgeSettings.DEFAULT);
+    }
+
+    public ForgeProjectData planForgeProject(int recipeId, long target, craft.ForgeSettings settings) throws SQLException {
         craft.ForgeReferenceRecipes.Reference ref = craft.ForgeReferenceRecipes.byId(recipeId);
         Recipe root = ref != null ? ref.asPlanningTarget()
                 : MysticForgeCatalogLoader.bundled().recipes().stream().filter(r -> r.recipeId == recipeId).findFirst().orElse(null);
@@ -254,8 +258,8 @@ public class CraftingProfitService {
 
         boolean batchTarget = ref != null || root.hasExpectedYield();
         craft.ForgeProjectPlanner.Project project = batchTarget
-                ? planner.plan(root, target, true, inventory, context, wallet, tp)
-                : planner.planOutput(root, target, inventory, context, wallet, tp);
+                ? planner.plan(root, target, true, inventory, context, wallet, tp, settings)
+                : planner.plan(root, target, false, inventory, context, wallet, tp, settings);
         Set<Integer> shown = new HashSet<>();
         shown.add(root.outputItemId);
         for (Ingredient i : root.ingredients) shown.add(i.itemId);

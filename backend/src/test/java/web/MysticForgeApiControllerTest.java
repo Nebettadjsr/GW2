@@ -197,12 +197,12 @@ class MysticForgeApiControllerTest {
         assertEquals(0, tasks2.size(), "repeated fresh/nontradeable reads admit no work");
     }
 
-    /** Owner decision: Forge always counts all owned stock, so the request carries no protection/reservation payload. */
+    /** Owner decision: Forge always counts all owned stock (no protection/reservation flag); only the six menu settings are added. */
     @Test
-    void projectRequestCarriesOnlyRecipeAndTarget() {
+    void projectRequestCarriesOnlyRecipeTargetAndTheSixMenuSettings() {
         var names = java.util.Arrays.stream(web.dto.MysticForgeDtos.ProjectRequest.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName).toList();
-        assertEquals(List.of("recipeId", "target"), names);
+        assertEquals(List.of("recipeId", "target", "priceMode", "useOwn", "valueOwn", "daily", "promotions", "reduce"), names);
     }
 
     /** Validation happens before any account work: the (null) service is never reached for an invalid request. */

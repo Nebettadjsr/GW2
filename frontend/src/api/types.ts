@@ -1030,6 +1030,31 @@ export interface ForgeProject {
   economics: ForgeEconomics | null
   notes: ForgeNotes | null
   freshness: CalculationFreshness | null
+  settings: ForgeSettings
+  ownValue: { knownCopper: number; unpricedItems: ForgeItem[] } | null
+  clover: { missing: number; attempts: number; percent: number } | null
+  rootOwned: number
+  comparison: ForgeComparison | null
+}
+
+/** The calculation menu; the backend plans with and echoes exactly these values. */
+export interface ForgeSettings {
+  priceMode: 'INSTANT_BUY' | 'BUY_ORDER'
+  useOwn: boolean
+  valueOwn: boolean
+  daily: 'CRAFT' | 'BUY'
+  promotions: boolean
+  reduce: 'NO' | 'YES' | 'TRADABLE' | 'UNTRADABLE'
+}
+
+/** Backend comparison; null amounts are unknown, never zero. */
+export interface ForgeComparison {
+  unitBuyCopper: number | null
+  unitSellCopper: number | null
+  outputBuyTotalCopper: number | null
+  savingsCopper: number | null
+  conditional: boolean
+  excludesOwnValue: boolean
 }
 
 /** Research Notes of the selected how-to; null walletUsed/shortfall = wallet unknown (no production promised). */

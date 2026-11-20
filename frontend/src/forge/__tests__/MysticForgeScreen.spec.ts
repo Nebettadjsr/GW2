@@ -42,20 +42,22 @@ function project(target: number, o: Partial<ForgeProject> = {}): ForgeProject {
     note: null, seed: null,
     economics: { outputUnitSellCopper: 100, expectedGrossProceedsCopper: 3684, feeCopper: 553, expectedNetProceedsCopper: 3131, knownShoppingCopper: 1300,
       goldInputCopper: 1300, currencyInputs: [], unpricedInputs: [], marginOnShoppingCopper: null, marginCopper: -1831, conditional: true, fixedOutput: false },
-    notes: null, freshness: null, ...o
+    notes: null, freshness: null,
+    settings: { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' },
+    ownValue: null, clover: null, rootOwned: 0, comparison: null, ...o
   }
 }
 
-let projectCalls: { recipeId: number; target: number }[]
+let projectCalls: { recipeId: number; target: number; settings?: unknown }[]
 let catalogueCalls: number
 let pendingProject: ((p: ForgeProject) => void)[]
 function fakeApi(manual = false): MysticForgeApi {
   return {
     async loadCatalogue() { catalogueCalls++; return catalogue },
-    loadProject(recipeId, target) {
-      projectCalls.push({ recipeId, target })
+    loadProject(recipeId, target, settings) {
+      projectCalls.push({ recipeId, target, settings })
       if (manual) return new Promise((resolve) => { pendingProject.push(resolve) })
-      return Promise.resolve(project(target))
+      return Promise.resolve(project(target, settings ? { settings } : {}))
     }
   }
 }
@@ -85,25 +87,41 @@ describe('navigation and helpers', () => {
 })
 
 describe('equipment detail layout', () => {
-  it('keeps calculation choices visual, with accessible reduction help and the amount still connected', async () => {
+  it('applies each calculation choice through the backend after the debounce, keeps them across Back, and the amount stays connected', async () => {
     const w = await mounted()
     await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
     await flushPromises()
-    expect(w.get('[data-test="forge-settings"]').text()).toContain('Settings preview · only Amount applies')
-    await w.get('[data-test="forge-preview-material-price"]').setValue('Buy order')
-    await w.get('[data-test="forge-settings"]').findAll('select')[1]!.setValue('No')
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(projectCalls).toEqual([{ recipeId: -1, target: 1 }])
+    expect(w.get('[data-test="forge-settings"]').text()).not.toContain('preview')
+    await w.get('[data-test="forge-setting-price"]').setValue('BUY_ORDER')
+    await w.get('[data-test="forge-setting-use-own"]').setValue('NO')
+    await w.get('[data-test="forge-setting-reduce"]').setValue('TRADABLE')
+    expect(projectCalls).toHaveLength(1) // nothing posts before the debounce
+    await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1)
+    expect(projectCalls).toHaveLength(2)
+    expect(projectCalls.at(-1)).toEqual({ recipeId: -1, target: 1, settings: { priceMode: 'BUY_ORDER', useOwn: false, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'TRADABLE' } })
+    await w.get('[data-test="forge-setting-daily"]').setValue('BUY')
+    await w.get('[data-test="forge-setting-promotions"]').setValue('NO')
+    await w.get('[data-test="forge-setting-value-own"]').setValue('NO')
+    await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1)
+    expect(projectCalls.at(-1)!.settings).toEqual({ priceMode: 'BUY_ORDER', useOwn: false, valueOwn: false, daily: 'BUY', promotions: false, reduce: 'TRADABLE' })
     const help = w.get('button[aria-controls="forge-reduction-help"]')
     await help.trigger('click')
-    expect(help.attributes('aria-expanded')).toBe('true')
-    expect(w.get('#forge-reduction-help').text()).toContain('Tradable only')
-    expect(w.get('#forge-reduction-help').text()).toContain('Untradable only')
     await help.trigger('keydown', { key: 'Escape' })
     expect(w.find('#forge-reduction-help').exists()).toBe(false)
     await w.get('[data-test="forge-target"]').setValue('2')
     await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1)
-    expect(projectCalls.at(-1)).toEqual({ recipeId: -1, target: 2 })
+    expect(projectCalls.at(-1)).toMatchObject({ recipeId: -1, target: 2, settings: { daily: 'BUY' } })
+    w.unmount()
+  })
+
+  it('never paints an answer planned with other settings', async () => {
+    const w = await mounted(true)
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+    await flushPromises()
+    await w.get('[data-test="forge-setting-price"]').setValue('BUY_ORDER')
+    pendingProject.shift()!(project(1)) // late answer for the default settings
+    await flushPromises()
+    expect(w.find('[data-test="forge-known-gold"]').exists()).toBe(false)
     w.unmount()
   })
 
@@ -121,36 +139,36 @@ describe('equipment detail layout', () => {
     expect(w.get('[data-test="forge-owned-line"]').get('strong').text()).toBe('4')
     expect(w.get('[data-test="forge-shopping-line"]').get('strong').text()).toBe('5')
     const steps = w.findAll('[data-test="forge-crafting-step"]')
-    expect(steps).toHaveLength(3)
-    expect(steps[0]!.text()).toContain('Acquire5Ancient Wood Log')
-    expect(steps[1]!.text()).toContain('Craft3Locked Plank')
-    expect(steps[1]!.text()).toContain('Recipe not unlocked')
-    expect(steps[2]!.text()).toContain('Craft1Sunrise Longbow')
+    expect(steps).toHaveLength(2) // the Trading Post leaf only repeats Shopping, so it is no step
+    expect(w.get('[data-test="forge-crafting-steps"]').text()).not.toContain('Acquire')
+    expect(steps[0]!.text()).toContain('Craft3Locked Plank')
+    expect(steps[0]!.text()).toContain('Recipe not unlocked')
+    expect(steps[1]!.text()).toContain('Craft1Sunrise Longbow')
     expect(w.get('[data-test="forge-shopping-currency"]').text()).toContain('wallet unknown')
     w.unmount()
   })
 
-  it('shows Clover and Obsidian acquisition guidance without pretending that Clover output is guaranteed', async () => {
-    const clover = node({ item: item(19675, 'Mystic Clover'), needed: 2, toAcquire: 2 })
-    const obsidian = node({ item: item(19925, 'Obsidian Shard'), needed: 3, toAcquire: 3 })
+  it('shows the estimated Clover attempt and a useful Obsidian merchant step, never a generic acquire step', async () => {
+    const stone = node({ item: item(20796, 'Philosopher\'s Stone'), needed: 6, toAcquire: 6 })
+    const clover = node({ item: item(19675, 'Mystic Clover'), needed: 2, toAcquire: 2, children: [stone],
+      hint: 'Estimated: Mystic Forge one-Clover attempt, about 31% chance per attempt - 7 attempts to cover 2 missing Clovers; not guaranteed' })
+    const obsidian = node({ item: item(19925, 'Obsidian Shard'), needed: 3, toAcquire: 3, recipeId: -1_000_019_925, recipeSource: 'VENDOR', crafts: 3, produced: 3,
+      hint: 'Tactician Deathstrider, Temple of Balthazar: 2,100 Karma each.' })
     const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) {
       return project(target, { tree: node({ item: item(101, 'Sunrise Longbow'), recipeId: -1, crafts: 1, produced: 1, toAcquire: 0, children: [clover, obsidian] }),
-        shopping: [clover, obsidian].map(n => ({ item: n.item, needed: n.needed, fromOwned: 0, toAcquire: n.toAcquire,
-          unitCopper: null, knownCopper: null, source: 'TRADING_POST', purchases: 0, currencyCosts: [], hint: null })) })
+        clover: { missing: 2, attempts: 7, percent: 31 } })
     } }
     const w = mount(MysticForgeScreen, { props: { api } })
     await flushPromises()
     await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
     await flushPromises()
-    const shopping = w.get('[data-test="forge-shopping"]')
-    expect(shopping.text()).toContain('Tactician Deathstrider')
-    expect(shopping.text()).toContain('Mystic Forge / other sources')
-    expect(shopping.findAll('[data-test="forge-shopping-line"] strong').map(n => n.text())).toEqual(['2', '3'])
     const steps = w.findAll('[data-test="forge-crafting-step"]')
-    expect(steps[0]!.text()).toContain('Acquire2Mystic Clover')
-    expect(steps[0]!.text()).toContain('outcome is random')
-    expect(steps[0]!.get('a[href*="#Acquisition"]').attributes('href')).toBe('https://wiki.guildwars2.com/wiki/Mystic_Clover#Acquisition')
+    expect(steps[0]!.text()).toContain('estimated')
+    expect(steps[0]!.text()).toContain('not guaranteed')
+    expect(steps[1]!.text()).toContain('Tactician Deathstrider')
     expect(steps[1]!.text()).toContain('2,100 Karma each')
+    expect(w.get('[data-test="forge-crafting-steps"]').text()).not.toContain('Acquire')
+    expect(w.get('[data-test="forge-clover-estimate"]').text()).toContain('7 Mystic Forge attempts')
     w.unmount()
   })
 
@@ -198,7 +216,7 @@ describe('selected project', () => {
     const w = await mounted()
     await w.findAll('[data-test="forge-row"]').find((r) => r.text().includes('Sunrise Longbow'))!.trigger('click')
     await flushPromises()
-    expect(projectCalls).toEqual([{ recipeId: -1, target: 1 }])
+    expect(projectCalls).toEqual([{ recipeId: -1, target: 1, settings: { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' } }])
     expect(w.get('[data-test="forge-known-gold"]').text()).toContain('77g 77s 0c')
     expect(w.get('[data-test="forge-known-gold"]').text()).toContain('partial')
     expect(w.get('[data-test="forge-unpriced"]').text()).toContain('Gift of Fortune')
@@ -220,7 +238,7 @@ describe('selected project', () => {
     await input.setValue('25')
     vi.advanceTimersByTime(TARGET_DEBOUNCE_MS + 1)
     await flushPromises()
-    expect(projectCalls).toEqual([{ recipeId: -3, target: 25 }])
+    expect(projectCalls).toEqual([{ recipeId: -3, target: 25, settings: { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' } }])
   })
   it('discards a late answer for an earlier target and for a closed selection', async () => {
     const w = await mounted(true)

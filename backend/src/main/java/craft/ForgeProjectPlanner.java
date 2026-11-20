@@ -114,11 +114,24 @@ public final class ForgeProjectPlanner {
                         long ownedContainers, long ownedNotes, long acquireContainers, long uncoveredNotes,
                         boolean producerLocked) { }
 
+    /** Opportunity value of consumed owned intermediates at the selected quote: known subtotal plus unpriced remainder. */
+    public record OwnValue(long knownCopper, List<Integer> unpricedItemIds) { }
+
+    /**
+     * Planning estimate for Mystic Clovers produced by the owner-selected one-Clover Forge attempt (about 31% per
+     * attempt, verified on the Mystic Clover wiki page): never owned stock, never guaranteed output.
+     */
+    public record CloverEstimate(long missing, long attempts, int percent) { }
+
     public record Project(int recipeId, int outputItemId, long batches, long guaranteedOutput,
                           List<CraftStep> steps, List<ItemLine> items, List<CurrencyLine> currencies,
                           Node tree, long knownCopper, List<Integer> unpricedItemIds, boolean complete, String incompleteReason,
                           Seed seed, Economics economics, Notes notes,
-                          List<VendorPurchase> vendorPurchases) { }
+                          List<VendorPurchase> vendorPurchases, ForgeSettings settings, OwnValue ownValue,
+                          CloverEstimate clover, long rootOwned) { }
+
+    public static final int MYSTIC_CLOVER = 19675;
+    public static final int CLOVER_PERCENT = 31;
 
     private final Map<Integer, Recipe> producerByItem = new java.util.HashMap<>();
     private final Map<Integer, Recipe> noteRecipes = new TreeMap<>();
@@ -163,6 +176,10 @@ public final class ForgeProjectPlanner {
                 ids.add(i.itemId);
                 Recipe p = producerByItem.get(i.itemId);
                 if (p != null && !seen.contains(p.recipeId)) queue.add(p);
+                if (i.itemId == MYSTIC_CLOVER) {
+                    Recipe ref = ForgeReferenceRecipes.all().get(0).asPlanningTarget();
+                    if (!seen.contains(ref.recipeId)) queue.add(ref); // the estimated attempt's inputs are priced path items
+                }
             }
         }
         ids.removeIf(id -> id <= 0);
@@ -187,12 +204,18 @@ public final class ForgeProjectPlanner {
      */
     public Project plan(Recipe target, long quantity, boolean batchTarget, Inventory inv, Context ctx,
                         Map<Integer, Long> wallet, Map<Integer, PriceQuote> prices) {
+        return plan(target, quantity, batchTarget, inv, ctx, wallet, prices, ForgeSettings.DEFAULT);
+    }
+
+    public Project plan(Recipe target, long quantity, boolean batchTarget, Inventory inv, Context ctx,
+                        Map<Integer, Long> wallet, Map<Integer, PriceQuote> prices, ForgeSettings settings) {
         if (target == null || !target.isMysticForge()) throw new IllegalArgumentException("target must be a Mystic Forge recipe");
         if (quantity <= 0) throw new IllegalArgumentException("batches must be positive");
-        Run run = new Run(new PlanState(inv.sellable(), inv.accountBound(), inv.characterBound()), prices, ctx);
+        Run run = new Run(new PlanState(inv.sellable(), inv.accountBound(), inv.characterBound()), prices, ctx, settings);
         long batches = 0;
         long netOut = -1; // batch target: NET guaranteed output (seed reuse deducted); -1 until computed
         Node tree = null;
+        long rootOwnedOut = 0;
         Notes notes = null;
         try {
             long outUnits;
@@ -205,6 +228,7 @@ public final class ForgeProjectPlanner {
             } else {
                 outUnits = quantity;
                 rootOwned = run.consumeRoot(target.outputItemId, quantity);
+                rootOwnedOut = rootOwned;
                 batches = Math.ceilDiv(quantity - rootOwned, (long) target.outputCount);
                 if (rootOwned > 0) run.fromOwned.merge(target.outputItemId, rootOwned, ForgeProjectPlanner::add);
                 run.demand.merge(target.outputItemId, quantity, ForgeProjectPlanner::add);
@@ -238,7 +262,7 @@ public final class ForgeProjectPlanner {
             int id = e.getKey();
             long missing = run.leaf.getOrDefault(id, 0L);
             long have = run.fromOwned.getOrDefault(id, 0L);
-            Long unit = unitPrice(prices.get(id));
+            Long unit = unitPrice(prices.get(id), settings.priceMode());
             if (missing > 0 && unit != null) {
                 try { copper = add(copper, mul(unit, missing)); }
                 catch (ArithmeticException ex) { run.stop("gold cost exceeds the supported range"); }
@@ -269,12 +293,28 @@ public final class ForgeProjectPlanner {
         if (run.reason == null && (target.hasExpectedYield() || !batchTarget)) {
             try {
                 if (target.hasExpectedYield()) seed = seedOf(target, batches);
-                econ = economics(target, batches, seed, prices, copper);
+                econ = economics(target, batches, seed, prices, copper, settings);
             } catch (ArithmeticException e) { seed = null; econ = null; run.stop("quantity exceeds the supported range"); }
         }
         if (run.reason != null) out = -1; // a stopped run (including late economics overflow) promises no guaranteed output
+        OwnValue ownValue = null;
+        if (settings.valueOwn()) {
+            long known = 0;
+            List<Integer> unknown = new ArrayList<>();
+            try {
+                for (var e : run.fromOwned.entrySet()) {
+                    if (e.getKey() == target.outputItemId || e.getValue() <= 0) continue; // the root output is not an input
+                    Long unit = unitPrice(prices.get(e.getKey()), settings.priceMode());
+                    if (unit == null) unknown.add(e.getKey()); else known = add(known, mul(unit, e.getValue()));
+                }
+            } catch (ArithmeticException ex) { run.stop("own-material value exceeds the supported range"); out = -1; }
+            java.util.Collections.sort(unknown);
+            ownValue = new OwnValue(known, List.copyOf(unknown));
+        }
+        CloverEstimate clover = run.cloverMissing > 0 ? new CloverEstimate(run.cloverMissing, run.cloverAttempts, CLOVER_PERCENT) : null;
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
-                tree, copper, unpriced, run.reason == null, run.reason, seed, econ, notes, List.copyOf(vendorPurchases));
+                tree, copper, unpriced, run.reason == null, run.reason, seed, econ, notes, List.copyOf(vendorPurchases),
+                settings, ownValue, clover, rootOwnedOut);
     }
 
     /**
@@ -368,8 +408,13 @@ public final class ForgeProjectPlanner {
     }
 
     /** Cost side of the Trading Post: the lowest listing (ask, sell_unit_price). */
-    private static Long unitPrice(PriceQuote q) {
-        return q != null && q.sellUnit != null && q.sellUnit > 0 ? (long) q.sellUnit : null;
+    private static Long unitPrice(PriceQuote q) { return unitPrice(q, ForgeSettings.PriceMode.INSTANT_BUY); }
+
+    /** Instant buy = ask (sell_unit_price); Buy order = bid (buy_unit_price). A missing quote is unknown, never free. */
+    private static Long unitPrice(PriceQuote q, ForgeSettings.PriceMode mode) {
+        if (q == null) return null;
+        Integer v = mode == ForgeSettings.PriceMode.BUY_ORDER ? q.buyUnit : q.sellUnit;
+        return v != null && v > 0 ? (long) v : null;
     }
 
     /** Instant-sell side of the Trading Post: the highest bid (buy_unit_price). */
@@ -402,7 +447,7 @@ public final class ForgeProjectPlanner {
      * once, currencies kept separate and never converted to gold), else it is listed as unpriced. A self-seed counts
      * only the external units. Proceeds use the bid; the 15% fee is applied once over the gross, half-up. Range overflow propagates (ArithmeticException) so the caller stops the run instead of returning a complete-looking null.
      */
-    private Economics economics(Recipe r, long batches, Seed seed, Map<Integer, PriceQuote> prices, long shopping) {
+    private Economics economics(Recipe r, long batches, Seed seed, Map<Integer, PriceQuote> prices, long shopping, ForgeSettings settings) {
         long gold = 0;
         Map<Integer, Long> currency = new TreeMap<>();
         List<Integer> unpricedInputs = new ArrayList<>();
@@ -416,7 +461,7 @@ public final class ForgeProjectPlanner {
             boolean seedInput = seed != null && i.itemId == r.outputItemId;
             long qty = seedInput ? seed.externalSeedUnits() : mul((long) i.count, batches);
             if (qty <= 0) continue;
-            Long ask = unitPrice(prices.get(i.itemId));
+            Long ask = unitPrice(prices.get(i.itemId), settings.priceMode());
             Recipe vendor = producerByItem.get(i.itemId);
             if (ask != null) gold = add(gold, mul(ask, qty));
             else if (vendor != null && vendor.isVendor()) {
@@ -463,8 +508,12 @@ public final class ForgeProjectPlanner {
         int nodes;
         String reason;
 
-        Run(PlanState state, Map<Integer, PriceQuote> prices, Context ctx) {
-            this.state = state; this.prices = prices; this.ctx = ctx;
+        final ForgeSettings settings;
+        long cloverMissing;
+        long cloverAttempts;
+
+        Run(PlanState state, Map<Integer, PriceQuote> prices, Context ctx, ForgeSettings settings) {
+            this.state = state; this.prices = prices; this.ctx = ctx; this.settings = settings;
         }
 
         long crafted(int outputItemId) {
@@ -476,6 +525,7 @@ public final class ForgeProjectPlanner {
 
         /** Takes owned stock through the shared binding rules for {@code assignee}; returns units used. */
         long consume(int itemId, long qty, String assignee) {
+            if (!settings.useOwn()) return 0; // intermediates are planned without owned stock
             int ask = (int) Math.min(Integer.MAX_VALUE, qty);
             return ask <= 0 ? 0 : state.consumeInventoryWithBinding(itemId, ask, assignee).total();
         }
@@ -483,7 +533,13 @@ public final class ForgeProjectPlanner {
         /** Owned goal output counts once from actual output ownership, independent of the input assignee. */
         long consumeRoot(int itemId, long qty) {
             int ask = (int) Math.min(Integer.MAX_VALUE, qty);
-            return ask <= 0 ? 0 : state.consumeOwnedOutput(itemId, ask).total();
+            if (ask <= 0) return 0;
+            return switch (settings.reduce()) {
+                case NO -> 0;
+                case YES -> state.consumeOwnedOutput(itemId, ask).total();
+                case TRADABLE -> state.consumeSellableOutput(itemId, ask);
+                case UNTRADABLE -> state.consumeBoundOutput(itemId, ask);
+            };
         }
 
         /** Deterministic eligible character holding the most relevant stock; null when none can perform it. */
@@ -573,9 +629,14 @@ public final class ForgeProjectPlanner {
             long spare = Math.min(surplus.getOrDefault(itemId, 0L), unmet);
             if (spare > 0) { surplus.merge(itemId, -spare, Long::sum); unmet -= spare; } // conserved craft surplus, not owned stock
             if (unmet == 0) return new Node(itemId, qty, use, spare, 0, 0, null, null, 0, 0, "", null, List.of(), null, true, null, null, 0, 0);
+            if (itemId == MYSTIC_CLOVER && !seedLeaf) return cloverEstimate(itemId, qty, use, spare, unmet, depth, path);
             Recipe p = seedLeaf ? null
                     : itemId == CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID && noteProducer != null ? noteProducer
                     : producerByItem.get(itemId);
+            // Daily Buy: the shortfall is purchased at the selected price, never recursively crafted.
+            if (p != null && settings.daily() == ForgeSettings.DailyMode.BUY && DailyCrafts.isDailyOutput(itemId)) p = null;
+            // Promotions: optional material-promotion producers only (the selected root is not expanded here).
+            if (p != null && !settings.promotions() && p.isMysticForge()) p = null;
             if (p == null || path.contains(p.recipeId)) {
                 leaf.merge(itemId, unmet, ForgeProjectPlanner::add);
                 String cut = p == null ? null : "cycle: this item's producer is already being expanded above";
@@ -598,8 +659,27 @@ public final class ForgeProjectPlanner {
             if (extra > 0 && reason == null) surplus.merge(itemId, extra, ForgeProjectPlanner::add);
             return new Node(itemId, qty, use, spare, unmet, 0, p.recipeId, p.source, crafts, p.minRating,
                     p.disciplinesText, reason, kids, known, performable, who,
-                    p.isVendor() ? VendorAcquisitions.hintFor(p.outputItemId) : null,
+                    p.isVendor() ? (VendorAcquisitions.merchantStep(p.outputItemId) != null ? VendorAcquisitions.merchantStep(p.outputItemId) : VendorAcquisitions.hintFor(p.outputItemId))
+                            : DailyCrafts.isDailyOutput(itemId) ? "Daily/time-gated output: not every batch is available today" : null,
                     mul(crafts, (long) p.outputCount), extra);
+        }
+
+        /** Estimated, never guaranteed: ceil(missing / 31%) one-Clover Forge attempts, inputs charged once. */
+        Node cloverEstimate(int itemId, long qty, long use, long spare, long unmet, int depth, Set<Integer> path) {
+            long attempts = Math.ceilDiv(mul(unmet, 100L), (long) CLOVER_PERCENT);
+            cloverMissing = add(cloverMissing, unmet);
+            cloverAttempts = Math.ceilDiv(mul(cloverMissing, 100L), (long) CLOVER_PERCENT); // rounded up once, aggregate
+            long delta = cloverAttempts - Math.ceilDiv(mul(cloverMissing - unmet, 100L), (long) CLOVER_PERCENT);
+            List<Node> kids = new ArrayList<>();
+            if (depth > MAX_DEPTH || ++nodes > MAX_NODES) { stop("planning bound reached"); return null; }
+            for (Ingredient i : ForgeReferenceRecipes.all().get(0).ingredients()) {
+                Node n = need(i.itemId, mul((long) i.count, delta), depth + 1, path, null, false);
+                if (n != null) kids.add(n);
+            }
+            return new Node(itemId, qty, use, spare, 0, unmet, null, null, 0, 0, "", reason, kids, null, true, null,
+                    "Estimated: Mystic Forge one-Clover attempt (1 Obsidian Shard, 1 Mystic Coin, 1 Glob of Ectoplasm, 6 Philosopher's Stones), about "
+                            + CLOVER_PERCENT + "% chance per attempt - " + attempts + " attempts to cover " + unmet + " missing Clovers; not guaranteed",
+                    0, 0);
         }
     }
 }

@@ -147,7 +147,7 @@ async function back(): Promise<void> {
         <p v-if="project.incompleteReason" role="status" class="forge-note" data-test="forge-incomplete">{{ project.incompleteReason }}</p>
       </template>
 
-      <ForgeEquipmentDetail v-if="equipmentDetail && row" :key="row.recipeId" :row="row" :project="project">
+      <ForgeEquipmentDetail v-if="equipmentDetail && row" :key="row.recipeId" :row="row" :project="project" :settings="f.settings.value" @update:settings="f.setSettings($event)">
         <template #amount>
           <label class="forge-target forge-target--equipment">Amount
             <input type="text" inputmode="numeric" :value="f.targetText.value" data-test="forge-target"

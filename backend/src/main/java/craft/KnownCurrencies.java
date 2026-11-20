@@ -6,7 +6,7 @@ import java.util.Map;
 public final class KnownCurrencies {
 
     private static final Map<Integer, String> NAMES = Map.of(
-            23, "Spirit Shards", 61, "Research Note", 50, "Festival Token", 78, "Fine Rift Essence",
+            2, "Karma", 23, "Spirit Shards", 61, "Research Note", 50, "Festival Token", 78, "Fine Rift Essence",
             79, "Rare Rift Essence", 80, "Masterwork Rift Essence");
 
     private KnownCurrencies() {}

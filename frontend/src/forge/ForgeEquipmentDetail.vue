@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ForgeNode, ForgeNotes, ForgeProject, ForgeRecipeRow, NoteEstimate } from '@/api/types'
+import type { ForgeNode, ForgeNotes, ForgeProject, ForgeRecipeRow, ForgeSettings, NoteEstimate } from '@/api/types'
 import { formatCopper } from '@/crafting/formatCopper'
 import ResearchNoteEstimatePopup from '@/crafting/ResearchNoteEstimatePopup.vue'
 import ItemIcon from '@/items/ItemIcon.vue'
@@ -8,8 +8,11 @@ import ForgeCraftingSteps from './ForgeCraftingSteps.vue'
 import MysticForgeNode from './MysticForgeNode.vue'
 import { forgeAcquisitionHint } from './forgeAcquisitionHints'
 
-const props = defineProps<{ row: ForgeRecipeRow; project: ForgeProject | null }>()
-const previewSettings = ref({ materialPrice: 'Instant buy', useOwn: 'Yes', valueOwn: 'Yes', daily: 'Craft', promotions: 'Allow', reduce: 'Yes' })
+const props = defineProps<{ row: ForgeRecipeRow; project: ForgeProject | null; settings: ForgeSettings }>()
+const emit = defineEmits<{ 'update:settings': [patch: Partial<ForgeSettings>] }>()
+function pick(event: Event): string { return (event.target as HTMLSelectElement).value }
+function yesNo(event: Event): boolean { return pick(event) === 'YES' }
+const comparison = computed(() => props.project?.comparison ?? null)
 const reductionHelp = ref(false)
 const owned = computed(() => {
   const result: { node: ForgeNode; key: string; usedFor: string | null }[] = []
@@ -33,22 +36,21 @@ function noteEstimate(notes: ForgeNotes): NoteEstimate {
 <template>
   <div class="equipment-grid" data-test="forge-equipment-layout">
     <section class="project-box settings-box" data-test="forge-settings">
-      <div class="box-heading"><h3>Calculation settings</h3><span class="muted">Settings preview · only Amount applies</span></div>
+      <div class="box-heading"><h3>Calculation settings</h3><span class="muted">Applied by the server to this project only</span></div>
       <div class="settings-grid">
-        <label>Material price<select v-model="previewSettings.materialPrice" data-test="forge-preview-material-price"><option>Instant buy</option><option>Buy order</option></select></label>
-        <label>Use own materials<select v-model="previewSettings.useOwn"><option>Yes</option><option>No</option></select></label>
-        <label>Value own materials<select v-model="previewSettings.valueOwn"><option>Yes</option><option>No</option></select></label>
-        <label>Daily cooldowns<select v-model="previewSettings.daily"><option>Craft</option><option>Buy</option></select></label>
-        <label>Mystic Forge promotions<select v-model="previewSettings.promotions"><option>Allow</option><option>Do not allow</option></select></label>
+        <label>Material price<select :value="settings.priceMode" data-test="forge-setting-price" @change="emit('update:settings', { priceMode: pick($event) as ForgeSettings['priceMode'] })"><option value="INSTANT_BUY">Instant buy</option><option value="BUY_ORDER">Buy order</option></select></label>
+        <label>Use own materials<select :value="settings.useOwn ? 'YES' : 'NO'" data-test="forge-setting-use-own" @change="emit('update:settings', { useOwn: yesNo($event) })"><option value="YES">Yes</option><option value="NO">No</option></select></label>
+        <label>Value own materials<select :value="settings.valueOwn ? 'YES' : 'NO'" data-test="forge-setting-value-own" @change="emit('update:settings', { valueOwn: yesNo($event) })"><option value="YES">Yes</option><option value="NO">No</option></select></label>
+        <label>Daily cooldowns<select :value="settings.daily" data-test="forge-setting-daily" @change="emit('update:settings', { daily: pick($event) as ForgeSettings['daily'] })"><option value="CRAFT">Craft</option><option value="BUY">Buy</option></select></label>
+        <label>Mystic Forge promotions<select :value="settings.promotions ? 'YES' : 'NO'" data-test="forge-setting-promotions" @change="emit('update:settings', { promotions: yesNo($event) })"><option value="YES">Allow</option><option value="NO">Do not allow</option></select></label>
         <div class="reduction-control">
-          <label for="forge-reduce-preview">Reduce amount by owned items</label>
+          <label for="forge-reduce">Reduce amount by owned items</label>
           <div class="reduction-input">
-            <select id="forge-reduce-preview" v-model="previewSettings.reduce"><option>No</option><option>Yes</option><option>Tradable only</option><option>Untradable only</option></select>
+            <select id="forge-reduce" :value="settings.reduce" data-test="forge-setting-reduce" @change="emit('update:settings', { reduce: pick($event) as ForgeSettings['reduce'] })"><option value="NO">No</option><option value="YES">Yes</option><option value="TRADABLE">Tradable only</option><option value="UNTRADABLE">Untradable only</option></select>
             <div class="help" @keydown.esc="reductionHelp = false">
               <button type="button" aria-label="Explain reducing the amount by owned items" :aria-expanded="reductionHelp" aria-controls="forge-reduction-help" @click="reductionHelp = !reductionHelp">?</button>
               <div v-if="reductionHelp" id="forge-reduction-help" class="help-panel">
                 <dl><dt>No</dt><dd>Craft the full amount entered.</dd><dt>Yes</dt><dd>Reduce it by the items already owned.</dd><dt>Tradable only</dt><dd>Count owned items that can be sold.</dd><dt>Untradable only</dt><dd>Count account-bound and soulbound items.</dd></dl>
-                <p class="muted">Preview only. These choices are not applied yet.</p>
               </div>
             </div>
           </div>
@@ -62,15 +64,16 @@ function noteEstimate(notes: ForgeNotes): NoteEstimate {
         <h3>Costs &amp; comparison</h3>
         <dl class="cost-lines">
           <dt>Remaining gold cost</dt><dd class="money--loss numeric" data-test="forge-known-gold">{{ money(project.knownGoldCopper) }}<small v-if="project.goldCostPartial">partial<template v-if="!project.complete"> · the plan is incomplete</template></small></dd>
-          <dt>Own materials value</dt><dd class="muted" title="Material valuation is not connected in this layout preview.">—</dd>
+          <dt>Own materials value<small v-if="project.ownValue?.unpricedItems.length">{{ project.ownValue.unpricedItems.length }} owned item kinds unpriced</small></dt><dd class="money--loss numeric" data-test="forge-own-value">{{ project.ownValue ? money(project.ownValue.knownCopper) : 'Not valued' }}</dd>
           <dt>Own currencies value</dt><dd class="money--loss numeric">{{ project.notes?.walletUsed ? money(project.notes.estimateCopper) : '—' }}<ResearchNoteEstimatePopup v-if="project.notes?.walletUsed && project.notes.estimateCopper !== null" :estimate="noteEstimate(project.notes)" /></dd>
-          <dt class="cost-separator">Buy on Trading Post<small>per item · instant buy</small></dt><dd class="cost-separator money--loss numeric">{{ money(row.sellUnitCopper) }}</dd>
-          <dt>Sell on Trading Post<small>per item · instant sell</small></dt><dd class="money--gain numeric">{{ money(row.buyUnitCopper) }}</dd>
-          <dt class="cost-separator">Savings compared to buying</dt><dd class="cost-separator muted">—</dd>
-          <dt class="cost-total">{{ economics?.conditional ? 'Conditional margin' : 'Profit' }}<small>after 15% TP fees</small></dt>
+          <dt class="cost-separator">Buy on Trading Post<small>per item · {{ project.settings.priceMode === 'BUY_ORDER' ? 'buy order' : 'instant buy' }}</small></dt><dd class="cost-separator money--loss numeric" data-test="forge-unit-buy">{{ money(comparison?.unitBuyCopper) }}</dd>
+          <dt>Sell on Trading Post<small>per item · instant sell</small></dt><dd class="money--gain numeric">{{ money(comparison?.unitSellCopper) }}</dd>
+          <dt>Buying the whole amount<small>project total</small></dt><dd class="money--loss numeric">{{ money(comparison?.outputBuyTotalCopper) }}</dd>
+          <dt class="cost-separator">Savings compared to buying<small v-if="comparison?.excludesOwnValue">cash only · excludes own-material value</small><small v-else-if="comparison?.conditional">conditional · currencies or estimates excluded</small></dt><dd class="cost-separator numeric" data-test="forge-savings" :class="{ muted: comparison?.savingsCopper == null }">{{ signed(comparison?.savingsCopper ?? null) }}</dd>
+          <dt class="cost-total">{{ economics?.conditional || !project.settings.valueOwn ? 'Conditional margin' : 'Profit' }}<small>after 15% TP fees{{ project.settings.valueOwn ? '' : ' · excludes own-material value' }}</small></dt>
           <dd class="cost-total numeric" data-test="forge-margin" :class="{ 'money--gain': economics?.marginCopper != null && economics.marginCopper >= 0, 'money--loss': economics?.marginCopper != null && economics.marginCopper < 0 }">{{ signed(economics?.marginCopper ?? null) }}</dd>
         </dl>
-        <p class="muted">Own-material valuation and comparison totals will follow.</p>
+        <p v-if="project.clover" class="muted" data-test="forge-clover-estimate">Estimated: {{ project.clover.attempts }} Mystic Forge attempts for {{ project.clover.missing }} missing Clovers (about {{ project.clover.percent }}% each); not guaranteed.</p>
         <p v-if="project.guaranteedOutput !== null" class="output-note" data-test="forge-output">Guaranteed output: {{ project.guaranteedOutput }}</p>
         <details v-if="project.notes" class="notes-detail" data-test="forge-notes">
           <summary>Research Notes · {{ project.notes.needed }} needed</summary>
@@ -85,7 +88,7 @@ function noteEstimate(notes: ForgeNotes): NoteEstimate {
 
       <section class="project-box owned-box" data-test="forge-owned">
         <div class="box-heading"><h3>Using from your account</h3><span class="count">{{ owned.length }}</span></div>
-        <p class="muted">Including reserved materials.</p>
+        <p class="muted">{{ settings.useOwn ? 'Including reserved materials.' : 'Own materials are not used.' }}</p>
         <div class="box-list">
           <ul class="item-list">
             <li v-for="entry in owned" :key="entry.key" data-test="forge-owned-line">

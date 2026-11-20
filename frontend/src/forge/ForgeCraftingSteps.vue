@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import type { ForgeNode } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
-import { forgeAcquisitionHint } from './forgeAcquisitionHints'
 
 const props = defineProps<{ tree: ForgeNode | null }>()
 
@@ -11,7 +10,11 @@ const steps = computed(() => {
   const result: { node: ForgeNode; key: string }[] = []
   function visit(node: ForgeNode, key: string): void {
     node.children.forEach((child, index) => visit(child, `${key}.${index}`))
-    if ((node.recipeId !== null && node.crafts > 0) || node.toAcquire > 0) result.push({ node, key })
+    // Real crafting/Forge operations, merchant visits that say where and for what, and the estimated Clover attempt.
+    // A bare "buy it" leaf only repeats Shopping and is never a step.
+    const crafting = node.recipeId !== null && node.crafts > 0 && (node.recipeSource !== 'VENDOR' || node.hint !== null)
+    const estimated = node.recipeId === null && node.toAcquire > 0 && node.hint !== null && node.children.length > 0
+    if (crafting || estimated) result.push({ node, key })
   }
   if (props.tree) visit(props.tree, 'root')
   return result
@@ -20,14 +23,14 @@ const steps = computed(() => {
 function action(node: ForgeNode): string {
   if (node.recipeSource === 'VENDOR') return 'Buy'
   if (node.recipeId !== null) return 'Craft'
-  return forgeAcquisitionHint(node.item.itemId)?.action ?? 'Acquire'
+  return 'Forge attempts (estimated)'
 }
 
 function location(node: ForgeNode): string {
   if (node.recipeSource === 'VENDOR') return node.hint ?? 'Merchant'
   if (node.recipeId !== null && node.recipeId < 0) return 'Mystic Forge'
   if (node.recipeId !== null) return node.assignedCharacter ?? node.disciplines ?? 'Crafting station'
-  return forgeAcquisitionHint(node.item.itemId)?.source ?? 'Trading Post / acquisition'
+  return 'Mystic Forge · random outcome, not guaranteed'
 }
 </script>
 
@@ -38,7 +41,7 @@ function location(node: ForgeNode): string {
       <div class="step-content">
         <div class="step-output">
           <span>{{ action(step.node) }}</span>
-          <strong class="numeric">{{ step.node.recipeId !== null ? step.node.produced : step.node.toAcquire }}</strong>
+          <strong class="numeric">{{ step.node.recipeId !== null ? step.node.produced : (step.node.crafts || step.node.toAcquire) }}</strong>
           <ItemIcon :icon-url="step.node.item.iconUrl" :item-id="step.node.item.itemId" :size="28" />
           <a v-if="step.node.item.wikiUrl" :href="step.node.item.wikiUrl" target="_blank" rel="noopener noreferrer">{{ step.node.item.name ?? `Item ${step.node.item.itemId}` }}</a>
           <span v-else>{{ step.node.item.name ?? `Item ${step.node.item.itemId}` }}</span>
@@ -52,11 +55,7 @@ function location(node: ForgeNode): string {
             <span v-else>{{ ingredient.item.name ?? `Item ${ingredient.item.itemId}` }}</span>
           </li>
         </ul>
-        <p v-if="step.node.recipeId === null && forgeAcquisitionHint(step.node.item.itemId)" class="step-hint">
-          {{ forgeAcquisitionHint(step.node.item.itemId)?.detail }}
-          <a :href="forgeAcquisitionHint(step.node.item.itemId)?.href" target="_blank" rel="noopener noreferrer">Acquisition options ↗</a>
-        </p>
-        <p v-else-if="step.node.hint" class="step-hint">{{ step.node.hint }}</p>
+        <p v-if="step.node.hint" class="step-hint">{{ step.node.hint }}</p>
         <p v-if="step.node.newSurplus > 0" class="step-hint">{{ step.node.newSurplus }} extra batch units available for later steps.</p>
         <p v-if="step.node.recipeKnown === false" class="step-warning">Recipe not unlocked</p>
         <p v-else-if="step.node.recipeId !== null && step.node.recipeId > 0 && !step.node.performable" class="step-warning">No eligible crafting character</p>
@@ -64,7 +63,7 @@ function location(node: ForgeNode): string {
       </div>
     </li>
   </ol>
-  <p v-else class="muted">No crafting or acquisition steps in this plan.</p>
+  <p v-else class="muted">No crafting steps in this plan; see Shopping for what to acquire.</p>
 </template>
 
 <style scoped>

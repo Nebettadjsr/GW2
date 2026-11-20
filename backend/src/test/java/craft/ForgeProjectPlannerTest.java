@@ -200,7 +200,7 @@ class ForgeProjectPlannerTest {
     }
 
     @Test
-    void cloverReferenceRecipesAreNeverProducersAndNestedCloverDemandStaysAnAcquireLeaf() {
+    void cloverReferenceRecipesAreNeverProducersAndNestedCloverIsAnEstimatedForgeAttemptNotAnOwnedOrGuaranteedUnit() {
         var refs = ForgeReferenceRecipes.all();
         assertEquals(2, refs.size());
         assertEquals(List.of(19925, 19976, 19721, 20796), refs.get(0).ingredients().stream().map(i -> i.itemId).toList());
@@ -212,7 +212,9 @@ class ForgeProjectPlannerTest {
         Recipe needsClover = forge(3, WEAPON + 2, 1, List.of(new Ingredient(19675, 77)), List.of());
         var pl = new ForgeProjectPlanner(List.of(needsClover, plate));
         var p = pl.plan(needsClover, 1, Map.of(), Map.of(), Map.of());
-        assertEquals(77, line(p, 19675).missing());
+        // Owner-superseded (#378): nested Clover is an explicit ESTIMATE (ceil(77/0.31)=249 attempts), never owned/guaranteed.
+        assertEquals(0, line(p, 19675).missing());
+        assertEquals(249, p.clover().attempts());
         assertTrue(p.steps().stream().noneMatch(s -> s.outputItemId() == 19675));
         // A reference target plans only its inputs and claims no output units from the random outcome.
         var refPlan = pl.plan(refs.get(0).asPlanningTarget(), 1, Map.of(19925, 1L), Map.of(), Map.of());

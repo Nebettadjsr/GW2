@@ -22,8 +22,8 @@ class MysticForgeErrorContractHttpTest {
     private MockMvc mvc(boolean unknown, ScopedAccountRefreshCoordinator.Reason rejection) {
         CachedCraftingProfitService service = new CachedCraftingProfitService(null, null, null, null, null, null, null, null) {
             @Override
-            public ForgeProjectOutcome forgeProject(AccountScope scope, int recipeId, long target, KeyedAdmission keyed,
-                                                    application.access.AccountContext readContext) {
+            public ForgeProjectOutcome forgeProject(AccountScope scope, int recipeId, long target, craft.ForgeSettings settings,
+                                                    KeyedAdmission keyed, application.access.AccountContext readContext) {
                 calls.incrementAndGet();
                 if (rejection != null) throw new ScopedAccountRefreshCoordinator.Rejected(rejection);
                 return new ForgeProjectOutcome(null, unknown, null);
@@ -44,6 +44,14 @@ class MysticForgeErrorContractHttpTest {
     void unknownNegativeRecipeIsStructured400NotA500() throws Exception {
         mvc(true, null).perform(req("{\"recipeId\":-987654321,\"target\":1}")).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void unsupportedMenuSettingValuesAreStructured400() throws Exception {
+        for (String bad : new String[] {"\"priceMode\":\"WAIT\"", "\"daily\":\"WAIT\"", "\"reduce\":\"ALL\""}) {
+            mvc(false, null).perform(req("{\"recipeId\":-1,\"target\":1," + bad + "}")).andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        }
     }
 
     @Test

@@ -283,6 +283,11 @@ public class CachedCraftingProfitService {
      */
     public ForgeProjectOutcome forgeProject(AccountScope scope, int recipeId, long target, KeyedAdmission keyed,
                                             application.access.AccountContext readContext) throws Exception {
+        return forgeProject(scope, recipeId, target, craft.ForgeSettings.DEFAULT, keyed, readContext);
+    }
+
+    public ForgeProjectOutcome forgeProject(AccountScope scope, int recipeId, long target, craft.ForgeSettings settings,
+                                            KeyedAdmission keyed, application.access.AccountContext readContext) throws Exception {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingProfitService.ForgeProjectData data = null;
@@ -301,8 +306,8 @@ public class CachedCraftingProfitService {
             // whole catalogue.
             java.util.Set<Integer> pathIds = service.forgeProjectItemIds(recipeId);
             if (pathIds == null) pathIds = java.util.Set.of();
-            captured = capture(session, scope, wallet, null, recipeId, pathIds);
-            if (captured.usable()) data = service.planForgeProject(recipeId, target);
+            captured = capture(session, scope, wallet, null, recipeId, pathIds, settings);
+            if (captured.usable()) data = service.planForgeProject(recipeId, target, settings);
         }
         return new ForgeProjectOutcome(data, false, describe(requestId, captured, data != null, scope, keyed));
     }
@@ -329,13 +334,13 @@ public class CachedCraftingProfitService {
     /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
     private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet,
                                              CraftingSettings settings) throws SQLException {
-        return capture(session, scope, wallet, settings, null, null);
+        return capture(session, scope, wallet, settings, null, null, null);
     }
 
     /** {@code projectPathIds} non-null = a Forge project source: price coverage/identity over exactly those ids. */
     private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet,
                                              CraftingSettings settings, Integer projectRecipeId,
-                                             java.util.Set<Integer> projectPathIds)
+                                             java.util.Set<Integer> projectPathIds, craft.ForgeSettings forgeSettings)
             throws SQLException {
         Instant evaluatedAt = clock.instant();
         session.withWalletFreshness(evaluatedAt, accountMaxAge);
@@ -356,7 +361,7 @@ public class CachedCraftingProfitService {
                     priceCoverage.readExplicit(session.connection(), scope, projectPathIds);
             String identity = "project=" + projectRecipeId + "|" + parser.MysticForgeCatalogLoader.bundled().fingerprint()
                     + "|" + craft.VendorAcquisitions.fingerprint() + "|" + craft.ForgeReferenceRecipes.fingerprint()
-                    + "|ids=" + projectPathIds;
+                    + "|ids=" + projectPathIds + (forgeSettings == null ? "" : "|" + forgeSettings.fingerprint());
             boolean metadataGap = priceCoverage.metadataIncomplete(session.connection(), projectPathIds);
             return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
                     evaluatedAt).withWalletTracked(wallet).withProject(identity, projectPathIds)

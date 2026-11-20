@@ -582,6 +582,21 @@ public class PlanState {
         return new InventoryConsumption(used + usedAccountBound, usedSellable);
     }
 
+    /** Tradable-only root reduction: sellable stock alone. */
+    public int consumeSellableOutput(int itemId, int qtyWanted) {
+        return consumeInventory(itemId, qtyWanted);
+    }
+
+    /** Untradable-only root reduction: character/Bank-bound then account-bound stock, never sellable stock. */
+    public int consumeBoundOutput(int itemId, int qtyWanted) {
+        int used = 0;
+        for (String key : new java.util.TreeSet<>(characterBoundInventory.keySet())) {
+            if (used >= qtyWanted) break;
+            used += consumeCharacterStock(key, itemId, qtyWanted - used);
+        }
+        return used + consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - used);
+    }
+
     private int consumeCharacterStock(String key, int itemId, int wanted) {
         Map<Integer, Integer> stock = characterBoundInventory.get(key);
         if (stock == null) return 0;

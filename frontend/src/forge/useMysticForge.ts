@@ -2,7 +2,11 @@ import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { connection } from '@/api/accountSession'
 import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
 import type { MysticForgeApi } from '@/api/mysticForgeApi'
-import type { ForgeCatalogue, ForgeProject, ForgeRecipeRow } from '@/api/types'
+import type { ForgeCatalogue, ForgeProject, ForgeRecipeRow, ForgeSettings } from '@/api/types'
+
+export const DEFAULT_FORGE_SETTINGS: ForgeSettings = {
+  priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES'
+}
 
 export type ForgeTab = 'ALL' | 'WEAPONS' | 'ARMOR' | 'MATERIALS' | 'OTHER'
 export const FORGE_TABS: readonly { id: ForgeTab; label: string }[] = [
@@ -54,6 +58,8 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   const visibleLimit = ref(INITIAL_VISIBLE)
   const selectedRecipeId = ref<number | null>(null)
   const targetText = ref('1')
+  /** Menu choices survive Back within the session; an account change resets them (no cross-account leakage). */
+  const settings = ref<ForgeSettings>({ ...DEFAULT_FORGE_SETTINGS })
   const project = shallowRef<ForgeProject | null>(null)
   const projectLoading = ref(false)
   const projectError = ref<string | null>(null)
@@ -91,7 +97,10 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   const currentProject = computed(() => {
     const p = project.value
     if (p === null) return null
-    return p.requestedTarget === parseTarget(targetText.value) ? p : null
+    // Only an answer for this exact target AND these exact settings is current; a stale one never paints.
+    const s = p.settings
+    const same = s === undefined || (Object.keys(settings.value) as (keyof ForgeSettings)[]).every((k) => s[k] === settings.value[k])
+    return p.requestedTarget === parseTarget(targetText.value) && same ? p : null
   })
   const selectedRow = computed(() => rows.value.find((row) => row.recipeId === selectedRecipeId.value) ?? null)
 
@@ -164,7 +173,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     if (!isReread) { rereads = 0; sourceRecoveries = 0; projectLoading.value = true; stalled.value = false; sourceError.value = null }
     projectError.value = null
     try {
-      const loaded = await api.loadProject(recipeId, target)
+      const loaded = await api.loadProject(recipeId, target, { ...settings.value })
       if (mine !== token || !active || generation !== connection.generation) return
       const unavailable = hasNoResult(loaded)
       pending.value = unavailable
@@ -313,6 +322,12 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     debounce = setTimeout(() => { debounce = null; void loadProject() }, TARGET_DEBOUNCE_MS)
   }
 
+  /** A menu change recalculates only the selected project after the same debounce; earlier answers are invalidated. */
+  function setSettings(patch: Partial<ForgeSettings>): void {
+    settings.value = { ...settings.value, ...patch }
+    setTarget(targetText.value)
+  }
+
   /** Deactivation discards anything still in flight; activation rereads the open project. */
   function deactivate(): void {
     active = false
@@ -353,6 +368,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     // A selected project belongs to the replaced account: close it rather than silently planning it for another.
     selectedRecipeId.value = null
     targetText.value = '1'
+    settings.value = { ...DEFAULT_FORGE_SETTINGS }
     projectError.value = null
     if (!active || disposed) return
     void loadCatalogue()
@@ -362,7 +378,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
 
   return {
     catalogue, catalogueLoading, catalogueError, catalogueStalled, retryCatalogue, tab, query, visibleLimit, filtered, visible, selectedRecipeId,
-    selectedRow, targetText, project, currentProject, projectLoading, projectError, pending, sourceRefreshing, sourceError, stalled, retry, loadCatalogue, open, back, setTarget,
+    selectedRow, targetText, settings, setSettings, project, currentProject, projectLoading, projectError, pending, sourceRefreshing, sourceError, stalled, retry, loadCatalogue, open, back, setTarget,
     activate, deactivate, setTab, setQuery, showMore
   }
 }

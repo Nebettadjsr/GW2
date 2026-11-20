@@ -15,7 +15,30 @@ public final class MysticForgeDtos {
     public record Catalogue(String status, String source, String license, int recipeCount, int referenceCount,
                             List<RecipeRow> recipes, boolean completing) { }
 
-    public record ProjectRequest(Integer recipeId, Long target) { }
+    /** Optional menu settings (null = default); unknown values are rejected, never guessed. */
+    public record ProjectRequest(Integer recipeId, Long target, String priceMode, Boolean useOwn, Boolean valueOwn,
+                                 String daily, Boolean promotions, String reduce) {
+        public ProjectRequest(Integer recipeId, Long target) { this(recipeId, target, null, null, null, null, null, null); }
+    }
+
+    /** The effective settings the backend actually planned with. */
+    public record SettingsDto(String priceMode, boolean useOwn, boolean valueOwn, String daily, boolean promotions,
+                              String reduce) { }
+
+    /** Opportunity value of consumed owned materials: known subtotal and the items that could not be priced. */
+    public record OwnValueDto(long knownCopper, List<Item> unpricedItems) { }
+
+    /** Estimated (never guaranteed) Mystic Clover Forge attempts: missing Clovers, rounded-up attempts, percent chance. */
+    /**
+     * Backend comparison of buying the requested output with the plan. Unit quotes are per item at the selected price
+     * mode (buy = ask/bid, sell = bid); totals are for the whole project. A null amount is unknown, never zero.
+     * {@code conditional}: currencies, unpriced parts or an estimate remain outside the gold figures;
+     * {@code excludesOwnValue}: own-material value is switched off, so savings are cash-only, not economic profit.
+     */
+    public record ComparisonDto(Long unitBuyCopper, Long unitSellCopper, Long outputBuyTotalCopper, Long savingsCopper,
+                                boolean conditional, boolean excludesOwnValue) { }
+
+    public record CloverEstimateDto(long missing, long attempts, int percent) { }
 
     public record Item(int itemId, String name, String iconUrl, String wikiUrl) { }
 
@@ -68,5 +91,7 @@ public final class MysticForgeDtos {
                           Long guaranteedOutput, boolean complete, String incompleteReason, boolean walletKnown,
                           long knownGoldCopper, boolean goldCostPartial, List<Item> unpricedItems, NodeDto tree,
                           List<ShoppingDto> shopping, List<CurrencyDto> currencies, String note,
-                          SeedDto seed, EconomicsDto economics, NotesDto notes, CalculationFreshnessDto freshness) { }
+                          SeedDto seed, EconomicsDto economics, NotesDto notes, CalculationFreshnessDto freshness,
+                          SettingsDto settings, OwnValueDto ownValue, CloverEstimateDto clover, long rootOwned,
+                          ComparisonDto comparison) { }
 }
