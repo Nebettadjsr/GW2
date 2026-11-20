@@ -276,11 +276,17 @@ public class MysticForgeApiController {
         String outcome = d.referenceOnly() ? "REFERENCE_RANDOM" : d.batchTarget() ? "EXPECTED" : "FIXED";
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
+        ComparisonDto cmp = comparison(d, p, ownValue);
+        // A whole-amount buy total beyond the exact range is decided here: the project is incomplete, never a guaranteed result.
+        boolean cmpOverflow = cmp != null && cmp.outputBuyTotalCopper() == null && cmp.unitBuyCopper() != null;
+        boolean complete = p.complete() && !cmpOverflow;
+        String reason = cmpOverflow && p.complete() ? "quantity exceeds the supported range" : p.incompleteReason();
+        Long guaranteed = d.referenceOnly() || cmpOverflow || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput();
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
-                d.requestedTarget(), p.batches(), d.referenceOnly() || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
-                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !p.complete() || partialLine, unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
+                d.requestedTarget(), p.batches(), guaranteed, complete, reason,
+                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !complete || partialLine, unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
                 cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness, settingsDto(p.settings()), ownValue, cloverDto,
-                p.rootOwned(), comparison(d, p, ownValue));
+                p.rootOwned(), cmp);
     }
 
     private static ComparisonDto comparison(CraftingProfitService.ForgeProjectData d, ForgeProjectPlanner.Project p, OwnValueDto own) {

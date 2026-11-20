@@ -35,16 +35,26 @@ const fNode = (itemId, name, o = {}) => ({ item: fItem(itemId, name), needed: 1,
   performable: true, assignedCharacter: null, hint: null, ...o })
 const fFresh = { requestId: 'r', calculationId: 'c', evaluatedAt: '2026-11-15T20:00:00Z', provisional: false, resultAvailable: true,
   accountSources: [], tradingPost: {}, outstandingWork: [], failures: [] }
-export function forgeProject(recipeId, target) {
-  const base = { recipeId, requestedTarget: target, complete: false, incompleteReason: null, freshness: fFresh, note: null, seed: null,
+export const FORGE_DEFAULT_SETTINGS = { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' }
+export function forgeProject(recipeId, target, requested = {}) {
+  const settings = { ...FORGE_DEFAULT_SETTINGS, ...Object.fromEntries(Object.entries(requested).filter(([key]) => key in FORGE_DEFAULT_SETTINGS)) }
+  const base = { settings, ownValue: null, clover: null, rootOwned: 0, notes: null, comparison: null, recipeId, requestedTarget: target, complete: false, incompleteReason: null, freshness: fFresh, note: null, seed: null,
     unpricedItems: [], shopping: [], currencies: [], walletKnown: false, goldCostPartial: true, knownGoldCopper: 4200 }
   if (recipeId === FORGE_BOW) return { ...base, output: fItem(87001, 'Sunrise Longbow'), outcome: 'FIXED', targetKind: 'OUTPUT_QUANTITY',
-    batches: target, guaranteedOutput: target, unpricedItems: [fItem(9001, 'Gift of Fortune')],
+    batches: target, guaranteedOutput: null, unpricedItems: [fItem(9001, 'Gift of Fortune')],
+    clover: { missing: 18, attempts: 59, percent: 31 },
+    ownValue: settings.valueOwn ? { knownCopper: 100, unpricedItems: [] } : null,
+    comparison: { unitBuyCopper: 6000, unitSellCopper: 5000, outputBuyTotalCopper: 6000 * target, savingsCopper: 6000 * target - 4200,
+      conditional: true, excludesOwnValue: !settings.valueOwn },
     currencies: [{ currencyId: 23, name: 'Spirit Shards', iconUrl: null, wikiUrl: null, needed: 50 * target, owned: null, missing: null }],
     tree: fNode(87001, 'Sunrise Longbow', { needed: target, toCraft: target, toAcquire: 0, recipeId, crafts: target, children: [
       fNode(87010, 'Locked Plank', { needed: 3 * target, recipeId: 5501, recipeSource: 'CRAFT', recipeKnown: false, performable: false,
         children: [fNode(19721, 'Glob of Ectoplasm', { needed: 9 * target, toAcquire: 9 * target })] }),
-      fNode(20796, "Philosopher's Stone", { needed: 5 * target, toCraft: 5 * target, toAcquire: 0, recipeId: -1000000001, recipeSource: 'VENDOR' })] }),
+      fNode(20796, "Philosopher's Stone", { needed: 5 * target, toCraft: 5 * target, toAcquire: 0, recipeId: -1000000001, recipeSource: 'VENDOR' }),
+      fNode(19675, 'Mystic Clover', { needed: 18, toAcquire: 18, crafts: 59,
+        hint: 'Estimated: Mystic Forge one-Clover attempt, about 31% chance per attempt - 59 attempts to cover 18 missing Clovers; not guaranteed',
+        children: [fNode(19925, 'Obsidian Shard', { needed: 59, toCraft: 59, toAcquire: 0, recipeId: -1000000002, recipeSource: 'VENDOR', crafts: 59,
+          hint: 'Tactician Deathstrider, Temple of Balthazar (Glorious Victory Waypoint): 2100 Karma each' })] })] }),
     economics: { outputUnitSellCopper: 5000, expectedGrossProceedsCopper: 4250 * target, feeCopper: 750 * target,
       expectedNetProceedsCopper: 3500 * target, knownShoppingCopper: 4200, goldInputCopper: 4200, currencyInputs: [], unpricedInputs: [],
       marginOnShoppingCopper: 9999999, marginCopper: 3500 * target - 4200, conditional: true, fixedOutput: true } }
@@ -169,7 +179,7 @@ export function createJourneyBackend() {
         assert.notEqual(context, null, 'Forge project preceded proof')
         assert.equal(ticket, context, 'Wrong account context on Forge project')
         const input = JSON.parse(body)
-        const value = forgeProject(input.recipeId, input.target)
+        const value = forgeProject(input.recipeId, input.target, input)
         if (holdForgeProject) {
           holdForgeProject = false
           heldForge = () => sendJson(200, value)

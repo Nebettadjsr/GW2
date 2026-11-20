@@ -9,7 +9,7 @@ import { launchOwnedBrowser, closeOwnedBrowser } from './ownedBrowser.mjs'
 import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
-import { createJourneyBackend, KEY_A, KEY_B, BAD_KEY, ACCOUNT_A, ACCOUNT_B, storageKey, FORGE_BOW } from './userJourneyFixtures.mjs'
+import { createJourneyBackend, KEY_A, KEY_B, BAD_KEY, ACCOUNT_A, ACCOUNT_B, storageKey, FORGE_BOW, FORGE_SCRAP, FORGE_DEFAULT_SETTINGS } from './userJourneyFixtures.mjs'
 
 selectors.setTestIdAttribute('data-test')
 const OUTPUT = resolve(process.env.GW2_SMOKE_OUTPUT ?? 'quality-reports/desktop-journeys')
@@ -494,13 +494,13 @@ async function mysticForgeJourney({ page, api, origin, step }) {
   await bowRow.click()
   await get(page, 'forge-detail').waitFor()
   await get(page, 'forge-tree').waitFor()
-  assert.deepEqual(forgeProjects(api), [{ recipeId: FORGE_BOW, target: 1 }])
+  assert.deepEqual(forgeProjects(api), [{ recipeId: FORGE_BOW, target: 1, ...FORGE_DEFAULT_SETTINGS }])
   const detail = await get(page, 'forge-detail').innerText()
   assert.match(detail, /Locked Plank/)
   assert.match(detail, /Recipe not unlocked/)
   assert.match(detail, /wallet unknown/)
   assert.match(detail, /partial/)
-  assert.match(detail, /Gift of Fortune/)
+  assert.match(await get(page, 'forge-unpriced').textContent(), /Gift of Fortune/, 'unpriced requirement named in its collapsed disclosure')
   const vendor = get(page, 'forge-node').filter({ hasText: "Philosopher's Stone" }).last()
   const vendorText = await vendor.innerText()
   assert.match(vendorText, /Vendor/)
@@ -508,16 +508,19 @@ async function mysticForgeJourney({ page, api, origin, step }) {
   assert.doesNotMatch(vendorText, /Mystic Forge|To craft/)
   step('opening one root plans exactly that recipe: locked ordinary how-to, vendor step, partial cost and unknown wallet')
 
-  assert.equal(await get(page, 'forge-unit-quote').innerText(), '50s 0c')
-  assert.equal(await get(page, 'forge-total-proceeds').innerText(), '42s 50c')
-  assert.match(await get(page, 'forge-economics').innerText(), /Total project proceeds/)
+  assert.equal(await get(page, 'forge-unit-buy').innerText(), '60s 0c')
   assert.doesNotMatch(await get(page, 'forge-margin').innerText(), /999g/, 'marginOnShopping must never be the margin')
+  assert.equal(await get(page, 'forge-output').count(), 0, 'an estimated Clover dependency never shows a guaranteed output')
+  const bowText = await get(page, 'forge-detail').innerText()
+  assert.match(await get(page, 'forge-clover-estimate').innerText(), /59 Mystic Forge attempts for 18 missing Clovers/)
+  assert.match(bowText, /59/, 'the backend attempt count, not the missing Clover count, is the Forge attempts amount')
+  assert.match(bowText, /Tactician Deathstrider/)
+  assert.match(bowText, /Glorious Victory Waypoint/)
   await get(page, 'forge-target').fill('3')
   await waitFor(() => forgeProjects(api).length === 2, 'Expected exactly one project read for the new target')
-  await get(page, 'forge-output').waitFor()
-  assert.match(await get(page, 'forge-output').innerText(), /Guaranteed output: 3/)
-  assert.equal(await get(page, 'forge-total-proceeds').innerText(), '1g 27s 50c')
-  assert.deepEqual(forgeProjects(api).at(-1), { recipeId: FORGE_BOW, target: 3 })
+  await waitFor(async () => (await get(page, 'forge-unit-buy').count()) > 0, 'Expected the target-3 project to paint')
+  assert.equal(await get(page, 'forge-output').count(), 0)
+  assert.deepEqual(forgeProjects(api).at(-1), { recipeId: FORGE_BOW, target: 3, ...FORGE_DEFAULT_SETTINGS })
   assert.equal(forgeProjects(api).length, 2)
   step('target change re-plans only the selected project; per-item quote and multi-batch totals are labelled separately')
 
@@ -527,12 +530,24 @@ async function mysticForgeJourney({ page, api, origin, step }) {
   assert.equal(await get(page, 'forge-tree').count(), 0, 'an earlier quantity must not stay current while 4 is pending')
   await get(page, 'forge-target').fill('5')
   await waitFor(() => forgeProjects(api).length === 4, 'Expected the target-5 read')
-  await get(page, 'forge-output').waitFor()
+  await get(page, 'forge-savings').waitFor()
   api.releaseForge()
   await quietFrame(page)
   await pause(100)
-  assert.match(await get(page, 'forge-output').innerText(), /Guaranteed output: 5/)
+  assert.equal(await get(page, 'forge-savings').innerText(), '+2g 58s 0c', 'target 5 savings (6000*5-4200c), not the late target 4')
   step('a late answer for an earlier target is discarded')
+
+  await get(page, 'forge-setting-price').selectOption('BUY_ORDER')
+  await waitFor(() => forgeProjects(api).at(-1)?.priceMode === 'BUY_ORDER', 'Expected a read carrying the price setting')
+  await get(page, 'forge-setting-promotions').selectOption('NO')
+  await waitFor(() => forgeProjects(api).at(-1)?.promotions === false, 'Expected a read carrying the promotions setting')
+  await get(page, 'forge-setting-value-own').selectOption('NO')
+  await waitFor(() => forgeProjects(api).at(-1)?.valueOwn === false, 'Expected a read carrying the value-own setting')
+  assert.deepEqual(forgeProjects(api).at(-1), { recipeId: FORGE_BOW, target: 5, ...FORGE_DEFAULT_SETTINGS,
+    priceMode: 'BUY_ORDER', valueOwn: false, promotions: false })
+  await get(page, 'forge-tree').waitFor()
+  assert.equal(await get(page, 'forge-own-value').innerText(), 'Not valued')
+  step('functional settings reach the backend request; Clover attempts and merchant waypoint instructions come from backend facts')
 
   await get(page, 'forge-back').click()
   await get(page, 'forge-overview').waitFor()

@@ -296,6 +296,7 @@ public final class ForgeProjectPlanner {
                 econ = economics(target, batches, seed, prices, copper, settings);
             } catch (ArithmeticException e) { seed = null; econ = null; run.stop("quantity exceeds the supported range"); }
         }
+        if (run.cloverMissing > 0) out = -1; // random Clovers never guarantee downstream completion
         if (run.reason != null) out = -1; // a stopped run (including late economics overflow) promises no guaranteed output
         OwnValue ownValue = null;
         if (settings.valueOwn()) {
@@ -636,7 +637,7 @@ public final class ForgeProjectPlanner {
             // Daily Buy: the shortfall is purchased at the selected price, never recursively crafted.
             if (p != null && settings.daily() == ForgeSettings.DailyMode.BUY && DailyCrafts.isDailyOutput(itemId)) p = null;
             // Promotions: optional material-promotion producers only (the selected root is not expanded here).
-            if (p != null && !settings.promotions() && p.isMysticForge()) p = null;
+            if (p != null && !settings.promotions() && CraftingResolver.isPromotion(p)) p = null; // required fixed Forge gifts stay
             if (p == null || path.contains(p.recipeId)) {
                 leaf.merge(itemId, unmet, ForgeProjectPlanner::add);
                 String cut = p == null ? null : "cycle: this item's producer is already being expanded above";
@@ -666,7 +667,6 @@ public final class ForgeProjectPlanner {
 
         /** Estimated, never guaranteed: ceil(missing / 31%) one-Clover Forge attempts, inputs charged once. */
         Node cloverEstimate(int itemId, long qty, long use, long spare, long unmet, int depth, Set<Integer> path) {
-            long attempts = Math.ceilDiv(mul(unmet, 100L), (long) CLOVER_PERCENT);
             cloverMissing = add(cloverMissing, unmet);
             cloverAttempts = Math.ceilDiv(mul(cloverMissing, 100L), (long) CLOVER_PERCENT); // rounded up once, aggregate
             long delta = cloverAttempts - Math.ceilDiv(mul(cloverMissing - unmet, 100L), (long) CLOVER_PERCENT);
@@ -676,9 +676,10 @@ public final class ForgeProjectPlanner {
                 Node n = need(i.itemId, mul((long) i.count, delta), depth + 1, path, null, false);
                 if (n != null) kids.add(n);
             }
-            return new Node(itemId, qty, use, spare, 0, unmet, null, null, 0, 0, "", reason, kids, null, true, null,
+            // crafts carries the typed attempt count charged by THIS demand (aggregate delta), not the standalone ceil.
+            return new Node(itemId, qty, use, spare, 0, unmet, null, null, delta, 0, "", reason, kids, null, true, null,
                     "Estimated: Mystic Forge one-Clover attempt (1 Obsidian Shard, 1 Mystic Coin, 1 Glob of Ectoplasm, 6 Philosopher's Stones), about "
-                            + CLOVER_PERCENT + "% chance per attempt - " + attempts + " attempts to cover " + unmet + " missing Clovers; not guaranteed",
+                            + CLOVER_PERCENT + "% chance per attempt - " + delta + " attempts to cover " + unmet + " missing Clovers; not guaranteed",
                     0, 0);
         }
     }

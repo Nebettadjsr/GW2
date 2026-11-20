@@ -334,6 +334,25 @@ class MysticForgeApiControllerTest {
         assertNull(dto.guaranteedOutput());
     }
 
+    /** Ask-only overflow: the cost/proceeds side is fine, only unitBuy * target leaves the exact range. */
+    @Test
+    void comparisonBuyTotalOverflowStopsTheProjectWithoutAGuaranteedOutput() {
+        Recipe t = new Recipe(-2, 900, 1, 0, "", List.of(new Ingredient(5001, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        Map<Integer, PriceQuote> tp = Map.of(5001, new PriceQuote(1, 1), 900, new PriceQuote(1, 10_000_001));
+        var project = new craft.ForgeProjectPlanner(List.of(t)).planOutput(t, 1_000_000_000L,
+                craft.ForgeProjectPlanner.Inventory.shared(Map.of()), craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp);
+        assertTrue(project.complete(), "the planner alone cannot see the controller-side comparison range");
+        var dto = MysticForgeApiController.toProject(
+                new CraftingProfitService.ForgeProjectData(project, false, false, 1_000_000_000L, new HashMap<>(), tp, true), null);
+        assertFalse(dto.complete());
+        assertEquals("quantity exceeds the supported range", dto.incompleteReason());
+        assertNull(dto.guaranteedOutput());
+        assertEquals(10_000_001L, dto.comparison().unitBuyCopper());
+        assertNull(dto.comparison().outputBuyTotalCopper(), "no saturated or zero total");
+        assertNull(dto.comparison().savingsCopper());
+        assertTrue(dto.goldCostPartial());
+    }
+
     /** Both reference-only Clover variants at several batch counts: inputs scale, the root claims no output or craft. */
     @Test
     void referenceOnlyCloverRootNeverClaimsGuaranteedOutputNeededOrToCraft() {

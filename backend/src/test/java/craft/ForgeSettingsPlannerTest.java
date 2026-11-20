@@ -91,16 +91,41 @@ class ForgeSettingsPlannerTest {
     }
 
     @Test
-    void disabledPromotionsLeaveTheMaterialShortfallToAcquire() {
-        Recipe promo = forge(3, PLATE, List.of(new Ingredient(ORE, 2)));
-        Recipe top = forge(4, WEAPON, List.of(new Ingredient(PLATE, 1)));
-        assertTrue(run(top, List.of(promo), sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT).steps().stream()
-                .anyMatch(s -> s.recipeId() == promo.recipeId));
-        var off = run(top, List.of(promo), sellable(Map.of()), Map.of(),
+    void disabledPromotionsDropOnlyOptionalPromotionsAndKeepRequiredGifts() {
+        Recipe promo = Recipe.forgeWithExpectedYield(-3, PLATE, ExpectedYield.of("3.5", 2, 6),
+                List.of(new Ingredient(PLATE, 1), new Ingredient(ORE, 2)));
+        int gift1 = 7001, gift2 = 7002;
+        Recipe fortune = forge(11, gift1, List.of(new Ingredient(ORE, 3)));
+        Recipe mastery = forge(12, gift2, List.of(new Ingredient(gift1, 1), new Ingredient(ORE, 4)));
+        Recipe top = forge(4, WEAPON, List.of(new Ingredient(PLATE, 1), new Ingredient(gift2, 1)));
+        var producers = List.of(promo, fortune, mastery);
+        var on = run(top, producers, sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        // Random-yield promotions are never planner producers (no guaranteed output), so Allow adds no step for them.
+        assertTrue(on.steps().stream().noneMatch(s -> s.recipeId() == promo.recipeId));
+        assertTrue(on.steps().stream().anyMatch(s -> s.recipeId() == mastery.recipeId));
+        var off = run(top, producers, sellable(Map.of()), Map.of(),
                 with(ForgeSettings.PriceMode.INSTANT_BUY, true, true, ForgeSettings.DailyMode.CRAFT, false, ForgeSettings.ReduceMode.YES));
-        assertEquals(1, line(off, PLATE).missing());
+        assertEquals(1, line(off, PLATE).missing(), "the optional promotion is left to acquire");
         assertTrue(off.steps().stream().noneMatch(s -> s.recipeId() == promo.recipeId));
-        assertEquals(top.recipeId, off.recipeId(), "the selected root itself is still planned");
+        assertTrue(off.steps().stream().anyMatch(s -> s.recipeId() == fortune.recipeId), "required fixed gift stays");
+        assertTrue(off.steps().stream().anyMatch(s -> s.recipeId() == mastery.recipeId), "required fixed gift stays");
+        assertEquals(0, line(off, gift1).missing());
+        assertEquals(0, line(off, gift2).missing());
+        assertEquals(top.recipeId, off.recipeId());
+    }
+
+    @Test
+    void separateOneCloverDemandsChargeAggregateAttemptsAndNeverGuaranteeOutput() {
+        Recipe top = forge(9, WEAPON, List.of(new Ingredient(CLOVER, 1), new Ingredient(CLOVER, 1)));
+        List<Recipe> producers = new ArrayList<>(VendorAcquisitions.forgeProjectRecipes());
+        var p = run(top, producers, sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        assertEquals(7, p.clover().attempts(), "ceil(2/0.31), not 4+4");
+        assertEquals(7, line(p, COIN).needed(), "inputs charged once for the aggregate");
+        var nodes = p.tree().children().stream().filter(n -> n.itemId() == CLOVER).toList();
+        assertEquals(List.of(4L, 3L), nodes.stream().map(ForgeProjectPlanner.Node::crafts).toList());
+        assertEquals(-1, p.guaranteedOutput(), "an estimated Clover dependency never guarantees output");
+        var plain = run(forge(10, WEAPON, List.of(new Ingredient(ORE, 1))), List.of(), sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        assertEquals(1, plain.guaranteedOutput());
     }
 
     @Test
