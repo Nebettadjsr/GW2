@@ -38,9 +38,9 @@ public final class MysticForgeDtos {
      * stay separate and unpriced; {@code conditional} marks a margin that excludes them or other unpriced parts.
      */
     public record EconomicsDto(Integer outputUnitSellCopper, Long expectedGrossProceedsCopper, Long feeCopper,
-                               Long expectedNetProceedsCopper, long knownShoppingCopper, Long replacementCostCopper,
-                               long knownReplacementCopper, List<Item> unpricedInputs, Long marginOnShoppingCopper,
-                               Long marginOnReplacementCopper, boolean conditional) { }
+                               Long expectedNetProceedsCopper, long knownShoppingCopper, long goldInputCopper,
+                               List<CurrencyDto> currencyInputs, List<Item> unpricedInputs, Long marginOnShoppingCopper,
+                               Long marginCopper, boolean conditional, boolean fixedOutput) { }
 
     /** unitCopper null = UNPRICED (never zero). */
     public record ShoppingDto(Item item, long needed, long fromOwned, long toAcquire, Long unitCopper, Long knownCopper) { }

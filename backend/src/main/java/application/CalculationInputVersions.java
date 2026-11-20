@@ -54,6 +54,15 @@ public final class CalculationInputVersions {
          * As {@link #read(Connection, AccountScope)} when the calculation enabled Mystic Forge recipes: the required
          * set then also holds the catalog's item ids. Ports without Forge awareness fall back to the ordinary set.
          */
+        /**
+         * Coverage of exactly the explicit positive item ids (a selected Forge project's path), independent of the
+         * ordinary set. Ports without it fall back to the ordinary scoped coverage.
+         */
+        default CalculationFreshness.PriceCoverage readExplicit(Connection con, AccountScope scope,
+                                                                java.util.Set<Integer> itemIds) throws SQLException {
+            return read(con, scope);
+        }
+
         default CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope, boolean allowForge)
                 throws SQLException {
             return read(con, scope);
@@ -99,6 +108,21 @@ public final class CalculationInputVersions {
     /** True when this calculation enabled Mystic Forge recipes (its price demand then includes the catalog). */
     public boolean forgeEnabled() {
         return forgeCatalogFingerprint != null;
+    }
+
+    /** Explicit quote ids a selected Forge project depends on (empty for ordinary calculations). */
+    private java.util.Set<Integer> projectPriceIds = java.util.Set.of();
+
+    public java.util.Set<Integer> projectPriceIds() { return projectPriceIds; }
+
+    /**
+     * Identity of one selected Forge project source: the Forge/Clover/vendor fact fingerprint, the project's own
+     * item-id set and recipe. Quote changes enter through the coverage version over exactly those ids.
+     */
+    public CalculationInputVersions withProject(String fingerprint, java.util.Set<Integer> priceIds) {
+        this.forgeCatalogFingerprint = fingerprint;
+        this.projectPriceIds = java.util.Set.copyOf(priceIds);
+        return this;
     }
 
     public CalculationInputVersions withForgeCatalog(String fingerprint) {
@@ -302,6 +326,13 @@ public final class CalculationInputVersions {
         public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {
             if (con == null) return CalculationFreshness.PriceCoverage.none();
             return map(collector.coverage(con, scope));
+        }
+
+        @Override
+        public CalculationFreshness.PriceCoverage readExplicit(Connection con, AccountScope scope,
+                                                               java.util.Set<Integer> itemIds) throws SQLException {
+            if (con == null) return CalculationFreshness.PriceCoverage.none();
+            return map(collector.coverageExplicit(con, itemIds));
         }
 
         @Override

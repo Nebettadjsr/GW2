@@ -169,10 +169,15 @@ public class MysticForgeApiController {
             var e = p.economics();
             List<Item> unpricedInputs = new ArrayList<>();
             e.unpricedInputItemIds().forEach(id -> unpricedInputs.add(item(id, info)));
+            List<CurrencyDto> inputs = new ArrayList<>();
+            for (var c : e.currencyInputs()) {
+                String cname = craft.KnownCurrencies.name(c.currencyId());
+                inputs.add(new CurrencyDto(c.currencyId(), cname, CurrencyIcons.urlFor(c.currencyId()),
+                        currencyWiki(c.currencyId(), cname), c.needed(), null, null));
+            }
             econ = new EconomicsDto(e.outputUnitSellCopper(), e.expectedGrossProceedsCopper(), e.feeCopper(),
-                    e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.replacementCostCopper(),
-                    e.knownReplacementCopper(), unpricedInputs, e.marginOnShoppingCopper(),
-                    e.marginOnReplacementCopper(), e.conditional());
+                    e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.goldInputCopper(), inputs, unpricedInputs,
+                    e.marginOnShoppingCopper(), e.marginCopper(), e.conditional(), e.fixedOutput());
         }
         String outcome = d.referenceOnly() ? "REFERENCE_RANDOM" : d.batchTarget() ? "EXPECTED" : "FIXED";
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."

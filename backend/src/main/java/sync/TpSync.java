@@ -369,6 +369,19 @@ public final class TpSync {
         syncTpPrices(itemIds);
     }
 
+    /**
+     * Quote refresh for exactly the explicit positive item ids (a selected Forge project's path or the catalogue's
+     * outputs): same shared cache, ten-minute policy and batching; metadata completion runs with no connection held.
+     */
+    public static void syncTpPricesForIds(Set<Integer> requested) throws Exception {
+        Set<Integer> itemIds;
+        try (Connection con = Db.open()) {
+            itemIds = new CraftingProfitItemCollector().collectExplicit(con, requested);
+        }
+        IconSync.completeMissingMetadata(requested);
+        syncTpPrices(itemIds);
+    }
+
     /** The Discovery counterpart of {@link #syncTpPricesForProfit(model.AccountScope)}. */
     public static void syncTpPricesForDiscovery(model.AccountScope scope) throws Exception {
         Set<Integer> itemIds;

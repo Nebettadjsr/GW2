@@ -113,8 +113,8 @@ class MysticForgeApiControllerTest {
         assertEquals(0L, shards.owned(), "a known empty wallet map means exactly zero");
         assertEquals(1, dto.seed().externalSeedUnits());
         assertEquals("36.84", dto.seed().netExpectedOutput());
-        assertEquals(3684L, dto.economics().expectedGrossProceedsCopper());
-        assertEquals(553L, dto.economics().feeCopper());
+        assertEquals(3315L, dto.economics().expectedGrossProceedsCopper(), "proceeds use the bid 90, not the ask 100");
+        assertEquals(497L, dto.economics().feeCopper());
         assertTrue(dto.economics().conditional());
     }
 }

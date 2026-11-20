@@ -287,6 +287,42 @@ FROM relevant_tradeable
         }
     }
 
+    private static final String EXPLICIT_ITEMS = """
+WITH relevant_tradeable AS (
+  SELECT DISTINCT i.item_id, tp.fetched_at,
+         tp.buy_quantity, tp.buy_unit_price, tp.sell_quantity, tp.sell_unit_price
+  FROM unnest(?::int[]) AS i(item_id)
+  JOIN tp_tradeable_items t ON t.item_id = i.item_id
+  LEFT JOIN tp_prices tp ON tp.item_id = i.item_id
+  WHERE i.item_id > 0
+)
+""";
+
+    /**
+     * Stale or missing quote ids among exactly the explicit positive {@code itemIds} (a selected Forge project's own
+     * public path; never the ordinary or whole-catalogue set), under the same ten-minute policy and tradeable filter.
+     */
+    public Set<Integer> collectExplicit(Connection con, Set<Integer> itemIds) throws Exception {
+        Set<Integer> ids = new HashSet<>();
+        if (itemIds.isEmpty()) return ids;
+        try (PreparedStatement ps = con.prepareStatement(EXPLICIT_ITEMS + SELECT_STALE)) {
+            bindForge(con, ps, 1, itemIds);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
+    }
+
+    /** Coverage over exactly the explicit ids, the same definition {@link #collectExplicit} fetches by. */
+    public Coverage coverageExplicit(Connection con, Set<Integer> itemIds) throws SQLException {
+        if (itemIds.isEmpty()) return coverageOf(null);
+        try (PreparedStatement ps = con.prepareStatement(EXPLICIT_ITEMS + COVERAGE_SELECT)) {
+            bindForge(con, ps, 1, itemIds);
+            return coverageOf(ps);
+        }
+    }
+
     private static void bindForge(Connection con, PreparedStatement ps, int index, Set<Integer> forgeItemIds)
             throws SQLException {
         if (forgeItemIds.isEmpty()) return;
@@ -299,6 +335,7 @@ FROM relevant_tradeable
     }
 
     private static Coverage coverageOf(PreparedStatement ps) throws SQLException {
+        if (ps == null) return new Coverage(0, 0, 0, 0, null, null, null);
         try (ResultSet rs = ps.executeQuery()) {
             if (!rs.next()) return Coverage.unknown();
             return new Coverage(

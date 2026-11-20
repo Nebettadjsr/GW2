@@ -201,26 +201,41 @@ public class CraftingProfitService {
      * account Materials/Bank pool plus account-bound and Bank-resident soulbound stock (Forge Bank exception); carried
      * character-bound stock is not pooled across owners. Returns null when {@code recipeId} is not a known Forge recipe.
      */
+    /**
+     * The explicit quote ids this project's public path needs (null when the recipe is unknown): structure only, so
+     * no calculation or price is needed to discover them.
+     */
+    public Set<Integer> forgeProjectItemIds(int recipeId) throws SQLException {
+        craft.ForgeReferenceRecipes.Reference ref = craft.ForgeReferenceRecipes.byId(recipeId);
+        Recipe root = ref != null ? ref.asPlanningTarget()
+                : MysticForgeCatalogLoader.bundled().recipes().stream().filter(r -> r.recipeId == recipeId).findFirst().orElse(null);
+        if (root == null) return null;
+        return new craft.ForgeProjectPlanner(forgeProducers()).pathItemIds(root);
+    }
+
+    private List<Recipe> forgeProducers() throws SQLException {
+        List<Recipe> producers = new ArrayList<>();
+        try {
+            producers.addAll(graphCache.loadForSnapshot(session.connection()).getRecipes());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load crafting graph cache", e);
+        }
+        producers.addAll(MysticForgeCatalogLoader.bundled().recipes());
+        producers.addAll(craft.VendorAcquisitions.recipes());
+        return producers;
+    }
+
     public ForgeProjectData planForgeProject(int recipeId, long target) throws SQLException {
         craft.ForgeReferenceRecipes.Reference ref = craft.ForgeReferenceRecipes.byId(recipeId);
         Recipe root = ref != null ? ref.asPlanningTarget()
                 : MysticForgeCatalogLoader.bundled().recipes().stream().filter(r -> r.recipeId == recipeId).findFirst().orElse(null);
         if (root == null) return null;
         Connection con = session.connection();
-        List<Recipe> producers = new ArrayList<>();
-        try {
-            producers.addAll(graphCache.loadForSnapshot(con).getRecipes());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to load crafting graph cache", e);
-        }
-        producers.addAll(MysticForgeCatalogLoader.bundled().recipes());
-        producers.addAll(craft.VendorAcquisitions.recipes());
+        List<Recipe> producers = forgeProducers();
         // Clover references are never producers: they are deliberately not in this list.
-        Set<Integer> itemIds = new HashSet<>();
-        for (Recipe r : producers) { itemIds.add(r.outputItemId); for (Ingredient i : r.ingredients) itemIds.add(i.itemId); }
-        itemIds.add(root.outputItemId);
-        for (Ingredient i : root.ingredients) itemIds.add(i.itemId);
-        Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(con, itemIds);
+        craft.ForgeProjectPlanner planner = new craft.ForgeProjectPlanner(producers);
+        // Quotes for exactly this project's public path (the same ids its source identity/admission cover).
+        Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(con, planner.pathItemIds(root));
 
         // Binding pools stay separate (sellable / account-bound / per-owner carried and Bank namespaces): the planner
         // applies the shared PlanState rules, so a Forge step may use any owner's Bank stock and an ordinary step only
@@ -238,7 +253,6 @@ public class CraftingProfitService {
         }
 
         boolean batchTarget = ref != null || root.hasExpectedYield();
-        craft.ForgeProjectPlanner planner = new craft.ForgeProjectPlanner(producers);
         craft.ForgeProjectPlanner.Project project = batchTarget
                 ? planner.plan(root, target, true, inventory, context, wallet, tp)
                 : planner.planOutput(root, target, inventory, context, wallet, tp);

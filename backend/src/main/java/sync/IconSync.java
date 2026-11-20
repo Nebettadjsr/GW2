@@ -308,7 +308,8 @@ public final class IconSync {
         try (PreparedStatement ps = con.prepareStatement(
                 "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL"
                         + " AND btrim(coalesce(name, '')) <> '' AND btrim(coalesce(type, '')) <> ''"
-                        + " AND btrim(coalesce(rarity, '')) <> '' AND no_mystic_forge IS NOT NULL")) {
+                        + " AND btrim(coalesce(rarity, '')) <> '' AND no_mystic_forge IS NOT NULL"
+                        + " AND (type NOT IN ('Weapon', 'Armor') OR btrim(coalesce(subtype, '')) <> '')")) {
             ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -511,17 +512,29 @@ public final class IconSync {
      * reads the referenced families directly rather than through {@code items}, so a referenced id
      * with no metadata row is still discovered, and it filters by no tradeability source.
      */
-    static List<Integer> globalReferencedOrUnknownItemIds(Connection con) throws SQLException {
+    /** Test seam: the bundled Forge/Clover/vendor reference ids that join the global selection. */
+    static volatile java.util.function.Supplier<Set<Integer>> forgeReferenceIds =
+            parser.MysticForgeCatalogLoader::referencedItemIds;
 
-        return selectItemIds(con, """
+    static List<Integer> globalReferencedOrUnknownItemIds(Connection con) throws SQLException {
+        // Bundled Forge/Clover/vendor references join the same global selection (no new refresh path).
+        List<Integer> ids = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("""
         SELECT item_id FROM (
             SELECT item_id FROM items WHERE icon_url IS NULL
             UNION SELECT item_id FROM material_category_items
             UNION SELECT output_item_id FROM recipes WHERE output_item_id IS NOT NULL
             UNION SELECT item_id FROM recipe_ingredients WHERE item_id IS NOT NULL
+            UNION SELECT unnest(?::int[])
         ) referenced
         ORDER BY item_id
-        """);
+        """)) {
+            ps.setArray(1, con.createArrayOf("int", forgeReferenceIds.get().toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
     }
 
     /** Runs one parameterless item-id selection, in the order the statement itself established. */

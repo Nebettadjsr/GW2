@@ -283,15 +283,19 @@ public class CachedCraftingProfitService {
      */
     public ForgeProjectOutcome forgeProject(AccountScope scope, int recipeId, long target, KeyedAdmission keyed,
                                             application.access.AccountContext readContext) throws Exception {
-        CraftingSettings settings = CraftingSettings.ordinaryOnly(null);
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingProfitService.ForgeProjectData data = null;
         verifyProof(keyed);
         boolean wallet = walletAuthorized(readContext, keyed);
         try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
-            captured = capture(session, scope, wallet, settings);
-            if (captured.usable()) data = profitServices.apply(session).planForgeProject(recipeId, target);
+            CraftingProfitService service = profitServices.apply(session);
+            // Source identity and price demand are this project's own public path, never the ordinary set or the
+            // whole catalogue; a recipe id outside the catalogue has an empty path.
+            java.util.Set<Integer> pathIds = service.forgeProjectItemIds(recipeId);
+            if (pathIds == null) pathIds = java.util.Set.of();
+            captured = capture(session, scope, wallet, null, recipeId, pathIds);
+            if (captured.usable()) data = service.planForgeProject(recipeId, target);
         }
         boolean unknown = captured.usable() && data == null;
         return new ForgeProjectOutcome(data, unknown, describe(requestId, captured, data != null, scope, keyed));
@@ -318,7 +322,14 @@ public class CachedCraftingProfitService {
 
     /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
     private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet,
-                                             CraftingSettings settings)
+                                             CraftingSettings settings) throws SQLException {
+        return capture(session, scope, wallet, settings, null, null);
+    }
+
+    /** {@code projectPathIds} non-null = a Forge project source: price coverage/identity over exactly those ids. */
+    private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet,
+                                             CraftingSettings settings, Integer projectRecipeId,
+                                             java.util.Set<Integer> projectPathIds)
             throws SQLException {
         Instant evaluatedAt = clock.instant();
         session.withWalletFreshness(evaluatedAt, accountMaxAge);
@@ -334,13 +345,18 @@ public class CachedCraftingProfitService {
             generations.put(source, state.generation());
         });
 
-        CalculationFreshness.PriceCoverage coverage = settings != null && settings.allowMysticForge
-                ? priceCoverage.read(session.connection(), scope, true)
-                : priceCoverage.read(session.connection(), scope);
+        if (projectPathIds != null) {
+            CalculationFreshness.PriceCoverage coverage =
+                    priceCoverage.readExplicit(session.connection(), scope, projectPathIds);
+            String identity = "project=" + projectRecipeId + "|" + parser.MysticForgeCatalogLoader.bundled().fingerprint()
+                    + "|" + craft.VendorAcquisitions.fingerprint() + "|" + craft.ForgeReferenceRecipes.fingerprint()
+                    + "|ids=" + projectPathIds;
+            return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
+                    evaluatedAt).withWalletTracked(wallet).withProject(identity, projectPathIds);
+        }
+        CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
-                evaluatedAt).withWalletTracked(wallet)
-                .withForgeCatalog(settings != null && settings.allowMysticForge
-                        ? parser.MysticForgeCatalogLoader.bundled().fingerprint() + "|" + craft.VendorAcquisitions.fingerprint() : null);
+                evaluatedAt).withWalletTracked(wallet);
     }
 
     /**
@@ -377,7 +393,11 @@ public class CachedCraftingProfitService {
         if (!captured.coverage().covered()) {
             // Trading Post quotes are shared, account-free data and need no key, so the on-demand
             // shared refresh is admitted without a key.
-            TradingPostRefreshCoordinator.Admission admission = priceRefresh.requireProfitCoverage(scope, captured.forgeEnabled());
+            // A project demands exactly its own path ids on the shared single-flight run; ordinary calculations
+            // keep the ordinary scoped demand.
+            TradingPostRefreshCoordinator.Admission admission = captured.forgeEnabled()
+                    ? priceRefresh.requireItems(captured.projectPriceIds(), scope)
+                    : priceRefresh.requireProfitCoverage(scope);
             outstanding.add(new CalculationFreshness.OutstandingRefresh(
                     CalculationFreshness.RefreshKind.TRADING_POST, Set.of(), admission.taskId(),
                     stateOf(admission.taskId()), admission.reuse()));

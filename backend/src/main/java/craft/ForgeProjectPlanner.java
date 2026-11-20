@@ -66,9 +66,9 @@ public final class ForgeProjectPlanner {
      * Currencies are never converted to gold; {@code conditional} is true when currencies or unpriced parts remain.
      */
     public record Economics(Integer outputUnitSellCopper, Long expectedGrossProceedsCopper, Long feeCopper,
-                            Long expectedNetProceedsCopper, long knownShoppingCopper, Long replacementCostCopper,
-                            long knownReplacementCopper, List<Integer> unpricedInputItemIds,
-                            Long marginOnShoppingCopper, Long marginOnReplacementCopper, boolean conditional) { }
+                            Long expectedNetProceedsCopper, long knownShoppingCopper, long goldInputCopper,
+                            List<CurrencyLine> currencyInputs, List<Integer> unpricedInputItemIds,
+                            Long marginOnShoppingCopper, Long marginCopper, boolean conditional, boolean fixedOutput) { }
 
     public record Project(int recipeId, int outputItemId, long batches, long guaranteedOutput,
                           List<CraftStep> steps, List<ItemLine> items, List<CurrencyLine> currencies,
@@ -89,6 +89,30 @@ public final class ForgeProjectPlanner {
 
     private static int rank(RecipeSource s) {
         return s == RecipeSource.VENDOR ? 2 : s == RecipeSource.MYSTIC_FORGE ? 1 : 0;
+    }
+
+    /**
+     * Item ids of the selected target's public path: its output, direct inputs and, recursively, the inputs of each
+     * fixed-output producer reachable from them. Independent of owned stock and prices (structure only), bounded by
+     * {@link #MAX_NODES}; never the whole catalogue.
+     */
+    public Set<Integer> pathItemIds(Recipe target) {
+        Set<Integer> ids = new java.util.TreeSet<>();
+        java.util.ArrayDeque<Recipe> queue = new java.util.ArrayDeque<>();
+        Set<Integer> seen = new HashSet<>();
+        queue.add(target);
+        ids.add(target.outputItemId);
+        while (!queue.isEmpty() && seen.size() <= MAX_NODES) {
+            Recipe r = queue.poll();
+            if (!seen.add(r.recipeId)) continue;
+            for (Ingredient i : r.ingredients) {
+                ids.add(i.itemId);
+                Recipe p = producerByItem.get(i.itemId);
+                if (p != null && !seen.contains(p.recipeId)) queue.add(p);
+            }
+        }
+        ids.removeIf(id -> id <= 0);
+        return ids;
     }
 
     /** Batch semantics with only shared stock and no roster (unbound-map convenience for simple callers/tests). */
@@ -140,8 +164,6 @@ public final class ForgeProjectPlanner {
         List<ItemLine> items = new ArrayList<>();
         List<Integer> unpriced = new ArrayList<>();
         long copper = run.vendorCopper;
-        long knownReplacement = 0;
-        List<Integer> unpricedInputs = new ArrayList<>();
         for (var e : run.demand.entrySet()) {
             int id = e.getKey();
             long missing = run.leaf.getOrDefault(id, 0L);
@@ -151,13 +173,6 @@ public final class ForgeProjectPlanner {
                 try { copper = Math.addExact(copper, Math.multiplyExact(unit, missing)); }
                 catch (ArithmeticException ex) { run.stop("gold cost exceeds the supported range"); }
             } else if (missing > 0) unpriced.add(id);
-            if ((missing > 0 || have > 0) && (batchTarget || id != target.outputItemId)) {
-                if (unit == null) { if (!unpricedInputs.contains(id)) unpricedInputs.add(id); }
-                else {
-                    try { knownReplacement = Math.addExact(knownReplacement, Math.multiplyExact(unit, Math.addExact(missing, have))); }
-                    catch (ArithmeticException ex) { run.stop("gold cost exceeds the supported range"); }
-                }
-            }
             items.add(new ItemLine(id, e.getValue(), have, missing, unit));
         }
         List<CurrencyLine> currencies = new ArrayList<>();
@@ -170,17 +185,22 @@ public final class ForgeProjectPlanner {
         try { out = Math.multiplyExact(batches, (long) target.outputCount); } catch (ArithmeticException e) { out = Long.MAX_VALUE; }
         Seed seed = null;
         Economics econ = null;
-        if (batchTarget && target.hasExpectedYield() && run.reason == null) {
-            seed = seedOf(target, batches);
-            econ = economics(target, seed, prices.get(target.outputItemId), copper, knownReplacement, unpricedInputs,
-                    !currencies.isEmpty() || !unpriced.isEmpty());
+        if (run.reason == null && (target.hasExpectedYield() || !batchTarget)) {
+            if (target.hasExpectedYield()) seed = seedOf(target, batches);
+            econ = economics(target, batches, seed, prices, copper);
         }
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
                 tree, copper, unpriced, run.reason == null, run.reason, seed, econ);
     }
 
+    /** Cost side of the Trading Post: the lowest listing (ask, sell_unit_price). */
     private static Long unitPrice(PriceQuote q) {
         return q != null && q.sellUnit != null && q.sellUnit > 0 ? (long) q.sellUnit : null;
+    }
+
+    /** Instant-sell side of the Trading Post: the highest bid (buy_unit_price). */
+    private static Long bidPrice(PriceQuote q) {
+        return q != null && q.buyUnit != null && q.buyUnit > 0 ? (long) q.buyUnit : null;
     }
 
     /** Units of the root's own output consumed per batch as the seed (summed over such ingredients). */
@@ -202,21 +222,59 @@ public final class ForgeProjectPlanner {
         return new Seed(external, reused, gross, gross - reused, grossExp, grossExp.subtract(BigDecimal.valueOf(reused)));
     }
 
-    private static Economics economics(Recipe r, Seed seed, PriceQuote outQuote, long shopping, long knownReplacement,
-                                       List<Integer> unpricedInputs, boolean conditional) {
-        Long unit = unitPrice(outQuote);
+    /**
+     * Buy-all-direct-inputs -> instantly-sell-outputs comparison (not the how-to's cheapest path, and owned stock is
+     * never free). Each direct input costs its valid Trading Post ask, else a verified vendor purchase (cash counted
+     * once, currencies kept separate and never converted to gold), else it is listed as unpriced. A self-seed counts
+     * only the external units. Proceeds use the bid; the 15% fee is applied once over the gross, half-up.
+     */
+    private Economics economics(Recipe r, long batches, Seed seed, Map<Integer, PriceQuote> prices, long shopping) {
+        long gold = 0;
+        Map<Integer, Long> currency = new TreeMap<>();
+        List<Integer> unpricedInputs = new ArrayList<>();
+        boolean conditional = false;
+        try {
+            gold = Math.multiplyExact((long) r.vendorCopper, batches);
+            for (CurrencyRequirement c : r.currencies) {
+                currency.merge(c.currencyId(), Math.multiplyExact((long) c.count(), batches), Math::addExact);
+                conditional = true;
+            }
+            for (Ingredient i : r.ingredients) {
+                boolean seedInput = seed != null && i.itemId == r.outputItemId;
+                long qty = seedInput ? seed.externalSeedUnits() : Math.multiplyExact((long) i.count, batches);
+                if (qty <= 0) continue;
+                Long ask = unitPrice(prices.get(i.itemId));
+                Recipe vendor = producerByItem.get(i.itemId);
+                if (ask != null) gold = Math.addExact(gold, Math.multiplyExact(ask, qty));
+                else if (vendor != null && vendor.isVendor()) {
+                    long buys = Math.ceilDiv(qty, (long) vendor.outputCount);
+                    gold = Math.addExact(gold, Math.multiplyExact((long) vendor.vendorCopper, buys));
+                    for (CurrencyRequirement c : vendor.currencies) {
+                        currency.merge(c.currencyId(), Math.multiplyExact((long) c.count(), buys), Math::addExact);
+                        conditional = true;
+                    }
+                } else if (!unpricedInputs.contains(i.itemId)) unpricedInputs.add(i.itemId);
+            }
+        } catch (ArithmeticException e) {
+            return null;
+        }
+        Long bid = bidPrice(prices.get(r.outputItemId));
         Long gross = null, fee = null, net = null;
-        if (unit != null) {
-            gross = ExpectedYield.floorCopper(seed.netExpectedOutput(), (int) Math.min(Integer.MAX_VALUE, unit));
+        if (bid != null) {
+            try {
+                gross = seed != null
+                        ? ExpectedYield.floorCopper(seed.netExpectedOutput(), (int) Math.min(Integer.MAX_VALUE, bid))
+                        : Math.multiplyExact(bid, Math.multiplyExact(batches, (long) r.outputCount));
+            } catch (ArithmeticException e) { return null; }
             fee = gross > 0 ? tradingpost.TradingPostFeePolicy.feeOn(gross) : 0L;
             net = gross - fee;
         }
         boolean full = unpricedInputs.isEmpty();
-        Long replacement = full ? knownReplacement : null;
-        Long marginShop = net != null && full ? net - shopping : null;
-        Long marginRepl = net != null && full ? net - knownReplacement : null;
-        return new Economics(unit == null ? null : (int) Math.min(Integer.MAX_VALUE, unit), gross, fee, net, shopping,
-                replacement, knownReplacement, List.copyOf(unpricedInputs), marginShop, marginRepl, conditional);
+        List<CurrencyLine> lines = new ArrayList<>();
+        currency.forEach((id, n) -> lines.add(new CurrencyLine(id, n, null, null)));
+        return new Economics(bid == null ? null : (int) Math.min(Integer.MAX_VALUE, bid), gross, fee, net, shopping,
+                gold, lines, List.copyOf(unpricedInputs), net != null && full ? net - shopping : null,
+                net != null && full ? net - gold : null, conditional || !full, seed == null);
     }
 
     private final class Run {

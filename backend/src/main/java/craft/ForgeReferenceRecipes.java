@@ -37,6 +37,16 @@ public final class ForgeReferenceRecipes {
 
     public static List<Reference> all() { return ALL; }
 
+    /** Stable text of every reference recipe for project source identity. */
+    public static String fingerprint() {
+        StringBuilder sb = new StringBuilder("clover-v1|").append(SOURCE_REVISION);
+        for (Reference r : ALL) {
+            sb.append('|').append(r.recipeId()).append(':').append(r.outputItemId()).append(':').append(r.possibleOutputs());
+            r.ingredients().forEach(i -> sb.append(',').append(i.itemId).append('x').append(i.count));
+        }
+        return sb.toString();
+    }
+
     public static Reference byId(int recipeId) {
         return ALL.stream().filter(r -> r.recipeId() == recipeId).findFirst().orElse(null);
     }

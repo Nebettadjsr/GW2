@@ -92,6 +92,58 @@ class ForgeMetadataCompletionTest {
         assertTrue(calls.isEmpty());
     }
 
+    @Test
+    void freshMigratedDatabaseSelectsBundledForgeIdsAndStoresWeaponSubtypeWhileGearWithoutSubtypeIsRetried() throws Exception {
+        try (Connection con = Db.open()) {
+            List<Integer> selected = IconSync.globalReferencedOrUnknownItemIds(con);
+            assertTrue(selected.containsAll(parser.MysticForgeCatalogLoader.referencedItemIds()),
+                    "bundled Forge/Clover/vendor ids join the existing global selection on an empty database");
+            assertTrue(selected.contains(24277) || selected.contains(20796));
+        }
+        // a Weapon row complete except its subtype is retried; a non-gear row never needs one
+        String icon = "https://render.guildwars2.com/file/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/1.png";
+        exec("INSERT INTO items (item_id, name, type, rarity, vendor_value, icon_url, no_mystic_forge) VALUES"
+                + " (30001, 'Bow', 'Weapon', 'Rare', 1, '" + icon + "', false),"
+                + " (30002, 'Mat', 'CraftingMaterial', 'Fine', 1, '" + icon + "', false)");
+        IconSync.ItemMetadataSource source = ids -> {
+            calls.add(new ArrayList<>(new TreeSet<>(ids)));
+            ArrayNode out = JSON.createArrayNode();
+            for (int id : ids) {
+                var n = JSON.createObjectNode().put("id", id).put("name", "Bow").put("type", "Weapon")
+                        .put("rarity", "Rare").put("vendor_value", 3).put("icon", icon);
+                n.set("flags", JSON.createArrayNode());
+                n.set("details", JSON.createObjectNode().put("type", "LongBow"));
+                out.add(n);
+            }
+            return out;
+        };
+        assertTrue(IconSync.completeMissingMetadata(Set.of(30001, 30002), source).isEmpty());
+        assertEquals(List.of(List.of(30001)), calls, "only the gear row lacking a subtype is fetched");
+        try (Statement s = admin.createStatement();
+             ResultSet rs = s.executeQuery("SELECT subtype FROM items WHERE item_id = 30001")) {
+            assertTrue(rs.next());
+            assertEquals("LongBow", rs.getString(1));
+        }
+        assertTrue(IconSync.completeMissingMetadata(Set.of(30001, 30002), source).isEmpty());
+        assertEquals(1, calls.size(), "complete now: no further call");
+    }
+
+    @Test
+    void explicitCoverageIsLimitedToTheProjectIdsAndQuoteChangesAlterItsVersion() throws Exception {
+        exec("INSERT INTO tp_tradeable_items (item_id, fetched_at) VALUES (19745, now()), (19748, now()), (99999, now())");
+        exec("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price, fetched_at) VALUES (19745, 90, 100, now())");
+        var collector = new sync.tp.relevance.CraftingProfitItemCollector();
+        try (Connection con = Db.open()) {
+            var cov = collector.coverageExplicit(con, Set.of(19745, 19748, -1));
+            assertEquals(2, cov.requiredItems(), "only the explicit tradeable ids; 99999 and ordinary items are out of scope");
+            assertEquals(1, cov.missingItems());
+            assertEquals(Set.of(19748), collector.collectExplicit(con, Set.of(19745, 19748)));
+            String before = cov.quoteVersion();
+            exec("UPDATE tp_prices SET sell_unit_price = 101 WHERE item_id = 19745");
+            assertTrue(!before.equals(collector.coverageExplicit(con, Set.of(19745, 19748)).quoteVersion()));
+        }
+    }
+
     private JsonNode upstream(List<Integer> ids) {
         calls.add(new ArrayList<>(new TreeSet<>(ids)));
         ArrayNode out = JSON.createArrayNode();

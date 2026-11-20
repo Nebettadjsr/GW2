@@ -40,6 +40,27 @@ public final class MysticForgeCatalogLoader {
 
     public static MysticForgeCatalog bundled() { return BUNDLED; }
 
+    /**
+     * Every item id the bundled Forge catalogue, Clover references and verified vendor facts mention (outputs and
+     * inputs): the Forge share of the EXISTING global metadata refresh selection, so a fresh database can name and
+     * icon Forge-only, non-tradable items.
+     */
+    public static java.util.Set<Integer> referencedItemIds() {
+        java.util.Set<Integer> ids = new java.util.TreeSet<>();
+        java.util.List<craft.Recipe> all = new java.util.ArrayList<>(BUNDLED.recipes());
+        all.addAll(craft.VendorAcquisitions.recipes());
+        for (craft.Recipe r : all) {
+            ids.add(r.outputItemId);
+            for (craft.Ingredient i : r.ingredients) ids.add(i.itemId);
+        }
+        for (var ref : craft.ForgeReferenceRecipes.all()) {
+            ids.add(ref.outputItemId());
+            for (craft.Ingredient i : ref.ingredients()) ids.add(i.itemId);
+        }
+        ids.removeIf(id -> id <= 0);
+        return ids;
+    }
+
     static MysticForgeCatalog load(String resource) {
         try (InputStream in = MysticForgeCatalogLoader.class.getResourceAsStream(resource)) {
             if (in == null) return failed("missing resource " + resource, null);

@@ -90,14 +90,52 @@ class ForgeProjectBindingSeedTest {
                 new Ingredient(19748, 250), new Ingredient(19745, 1), new Ingredient(24277, 5), new Ingredient(20796, 5)));
     }
 
+    private static List<Recipe> gossamerProducers(Recipe g) {
+        return List.of(g, Recipe.vendor(-1_000_000_001, 24277, 10, List.of(new CurrencyRequirement(23, 1)), 0),
+                Recipe.vendor(-1_000_000_002, 19663, 1, List.of(), 2504));
+    }
+
+    // independent oracle: silk ask 2c, seed ask 110c (output bid 100 / ask 110), dust ask 10c, Stones vendor 10 per Shard
+    private static Map<Integer, PriceQuote> gossamerPrices() {
+        return Map.of(19745, new PriceQuote(100, 110), 19748, new PriceQuote(1, 2), 20796, new PriceQuote(9, 10));
+    }
+
+    @Test
+    void gossamerOneBatchComparesFullInputsAtAskAndSellsAtBid() {
+        Recipe g = gossamer();
+        var p = new ForgeProjectPlanner(gossamerProducers(g)).plan(g, 1, true,
+                ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(23, 0L), gossamerPrices());
+        var e = p.economics();
+        assertEquals(100, e.outputUnitSellCopper(), "instant sell uses the BID, not the ask");
+        assertEquals(660, e.goldInputCopper());
+        assertEquals(1892, e.expectedGrossProceedsCopper());
+        assertEquals(284, e.feeCopper());
+        assertEquals(1608, e.expectedNetProceedsCopper());
+        assertEquals(948, e.marginCopper());
+        assertTrue(e.conditional());
+        assertEquals(List.of(new ForgeProjectPlanner.CurrencyLine(23, 1, null, null)), e.currencyInputs());
+        assertTrue(e.unpricedInputItemIds().isEmpty());
+    }
+
+    @Test
+    void ownedStonesDoNotChangeFullInputComparisonAndStayConditional() {
+        Recipe g = gossamer();
+        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        var none = pl.plan(g, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(23, 5L), gossamerPrices());
+        var owned = pl.plan(g, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of(24277, 99L, 19748, 250L, 20796, 5L)),
+                ForgeProjectPlanner.Context.NONE, Map.of(23, 5L), gossamerPrices());
+        assertEquals(none.economics().marginCopper(), owned.economics().marginCopper());
+        assertEquals(948, owned.economics().marginCopper());
+        assertTrue(owned.economics().conditional(), "Stones remain vendor-currency inputs even when owned");
+        assertTrue(owned.knownCopper() < none.knownCopper(), "owned stock lowers remaining shopping only");
+    }
+
     @Test
     void gossamerTwoBatchesOneExternalSeedGuaranteedReuseAndOracleEconomics() {
         Recipe g = gossamer();
-        var pl = new ForgeProjectPlanner(List.of(g, Recipe.vendor(-1_000_000_001, 20796, 10, List.of(new CurrencyRequirement(23, 1)), 0)));
-        Map<Integer, PriceQuote> tp = Map.of(19745, new PriceQuote(90, 100), 19748, new PriceQuote(1, 2),
-                20796, new PriceQuote(19, 20), 24277, new PriceQuote(1, 3));
-        var inv = ForgeProjectPlanner.Inventory.shared(Map.of(24277, 10L)); // Stones sufficiently owned
-        var p = pl.plan(g, 2, true, inv, ForgeProjectPlanner.Context.NONE, Map.of(23, 100L), tp);
+        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        var p = pl.plan(g, 2, true, ForgeProjectPlanner.Inventory.shared(Map.of(24277, 10L)),
+                ForgeProjectPlanner.Context.NONE, Map.of(23, 100L), gossamerPrices());
         var s = p.seed();
         assertEquals(1, s.externalSeedUnits());
         assertEquals(1, s.reusedSeedUnits());
@@ -105,22 +143,55 @@ class ForgeProjectBindingSeedTest {
         assertEquals(19, s.netGuaranteedOutput());
         assertEquals(0, new java.math.BigDecimal("36.84").compareTo(s.netExpectedOutput()));
         assertEquals(0, new java.math.BigDecimal("37.84").compareTo(s.grossExpectedOutput()));
-        // inputs: 19748 x500 (not x2 seed), seed x1 external only
         var seedLine = p.items().stream().filter(i -> i.itemId() == 19745).findFirst().orElseThrow();
         assertEquals(1, seedLine.needed(), "the seed is not multiplied by the batch count nor produced recursively");
-        assertEquals(1, seedLine.missing());
         var e = p.economics();
-        assertEquals(100, e.outputUnitSellCopper());
+        assertEquals(1210, e.goldInputCopper());
         assertEquals(3684, e.expectedGrossProceedsCopper());
         assertEquals(553, e.feeCopper());
         assertEquals(3131, e.expectedNetProceedsCopper());
-        // 500x2c + 10 dust: purchased via vendor batch (1 shard) is currency, priced items are leaves only
-        // 24277 owned. Dust comes from the vendor producer (1 Spirit Shard per 10), not a gold purchase.
-        assertTrue(e.conditional(), "Spirit Shards stay unpriced: the margin is conditional");
-        assertEquals(1000 + 100, p.knownCopper(), "500 lower-bound inputs x2c + one 100c seed; dust is a shard purchase");
-        assertEquals(3131 - 1100, e.marginOnShoppingCopper());
-        // replacement cost values the OWNED stones too (10 owned used 10: 5 per batch x2) at 3c
-        assertEquals(1100 + 10 * 3, e.knownReplacementCopper());
+        assertEquals(1921, e.marginCopper());
+        assertTrue(e.conditional());
+    }
+
+    @Test
+    void cashVendorWineIsCountedExactlyOnceAndUnpricedMaterialBlocksMargin() {
+        Recipe r = Recipe.forgeWithExpectedYield(-79, 5000, ExpectedYield.of("2.5", 2, 3),
+                List.of(new Ingredient(19663, 1), new Ingredient(6000, 1)));
+        var pl = new ForgeProjectPlanner(gossamerProducers(gossamer()));
+        var priced = new ForgeProjectPlanner(List.of(r, Recipe.vendor(-1_000_000_002, 19663, 1, List.of(), 2504)));
+        var p = priced.plan(r, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of(19663, 1L)),
+                ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(5000, new PriceQuote(1000, 1100), 6000, new PriceQuote(5, 6)));
+        assertEquals(2504 + 6, p.economics().goldInputCopper(), "owned Wine is not free; cash counted once");
+        assertFalse(p.economics().conditional(), "cash-only vendor purchases are not conditional");
+        var unp = priced.plan(r, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE,
+                Map.of(), Map.of(5000, new PriceQuote(1000, 1100)));
+        assertEquals(List.of(6000), unp.economics().unpricedInputItemIds());
+        assertNull(unp.economics().marginCopper());
+        assertEquals(2504, unp.economics().goldInputCopper(), "known subtotal stays visible");
+    }
+
+    @Test
+    void fixedOutputConversionHasExactCountEconomics() {
+        Recipe r = new Recipe(-5, 7000, 3, 0, "", List.of(new Ingredient(7001, 2)), List.of(), RecipeSource.MYSTIC_FORGE);
+        var p = new ForgeProjectPlanner(List.of(r)).planOutput(r, 6, ForgeProjectPlanner.Inventory.shared(Map.of()),
+                ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(7000, new PriceQuote(200, 250), 7001, new PriceQuote(10, 300)));
+        var e = p.economics();
+        assertTrue(e.fixedOutput());
+        assertEquals(2 * 2 * 300, e.goldInputCopper());
+        assertEquals(1200, e.expectedGrossProceedsCopper());
+        assertEquals(180, e.feeCopper());
+        assertEquals(1020 - 1200, e.marginCopper());
+    }
+
+    @Test
+    void pathItemIdsCoverOnlyTheSelectedProjectsOutputInputsAndProducerInputs() {
+        Recipe root = new Recipe(-5, 7000, 1, 0, "", List.of(new Ingredient(7001, 2), new Ingredient(7002, 1)), List.of(),
+                RecipeSource.MYSTIC_FORGE);
+        Recipe producer = new Recipe(10, 7001, 1, 0, "Weaponsmith", List.of(new Ingredient(7003, 3)));
+        Recipe unrelated = new Recipe(11, 8000, 1, 0, "Weaponsmith", List.of(new Ingredient(8001, 1)));
+        var ids = new ForgeProjectPlanner(List.of(root, producer, unrelated)).pathItemIds(root);
+        assertEquals(java.util.Set.of(7000, 7001, 7002, 7003), ids, "no unrelated root's ids are demanded");
     }
 
     @Test

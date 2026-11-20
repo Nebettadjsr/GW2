@@ -75,6 +75,8 @@ public class TradingPostRefreshCoordinator {
         final java.util.Set<model.AccountScope> scopes = new java.util.LinkedHashSet<>();
         /** The subset of {@link #scopes} whose calculation enabled Mystic Forge (their demand is a superset). */
         final java.util.Set<model.AccountScope> forgeScopes = new java.util.LinkedHashSet<>();
+        /** Explicit positive item ids demanded by selected Forge projects/catalogue; coalesced into one pass. */
+        final java.util.Set<Integer> explicitIds = new java.util.TreeSet<>();
         boolean draining;
         String activeTaskId;
         int completedPasses;
@@ -112,6 +114,36 @@ public class TradingPostRefreshCoordinator {
     public synchronized Admission requireProfitCoverage(model.AccountScope scope, boolean allowForge) {
         if (allowForge && scope != null) states.get(Variant.PROFIT).forgeScopes.add(scope);
         return require(Variant.PROFIT, scope);
+    }
+
+    /**
+     * Demands quotes for exactly {@code itemIds} (positive ids only) on the shared PROFIT run: the same single-flight
+     * task, coalescing and ten-minute batching as every other demand. An empty set admits nothing.
+     */
+    public synchronized Admission requireItems(java.util.Collection<Integer> itemIds, model.AccountScope scope) {
+        java.util.Set<Integer> positive = new java.util.TreeSet<>();
+        for (Integer id : itemIds) if (id != null && id > 0) positive.add(id);
+        if (positive.isEmpty()) return new Admission(null, REUSE_ADMITTED);
+        states.get(Variant.PROFIT).explicitIds.addAll(positive);
+        return require(Variant.PROFIT, null, true);
+    }
+
+    private Admission require(Variant variant, model.AccountScope scope, boolean explicitOnly) {
+        State state = states.get(variant);
+        state.demanded = true;
+        if (state.draining) return new Admission(state.activeTaskId, REUSE_COALESCED_INTO_ACTIVE_RUN);
+        state.draining = true;
+        try {
+            state.activeTaskId = tasks.submit(variant.operation(), () -> drain(variant, state));
+            return new Admission(state.activeTaskId, REUSE_ADMITTED);
+        } catch (BackgroundTasks.OperationAlreadyRunning foreign) {
+            state.draining = false;
+            state.activeTaskId = foreign.existingTaskId();
+            return new Admission(foreign.existingTaskId(), REUSE_WAITING_FOR_UNRELATED_TASK);
+        } catch (RuntimeException admissionFailure) {
+            state.draining = false;
+            throw admissionFailure;
+        }
     }
 
     /**
@@ -217,10 +249,13 @@ public class TradingPostRefreshCoordinator {
                 java.util.List<model.AccountScope> pass;
                 java.util.Set<model.AccountScope> forgePass;
                 boolean global;
+                java.util.Set<Integer> explicit;
                 synchronized (this) {
                     if (!state.demanded) return;
                     state.demanded = false;
-                    global = state.globalDemanded || state.scopes.isEmpty();
+                    explicit = new java.util.TreeSet<>(state.explicitIds);
+                    state.explicitIds.clear();
+                    global = state.globalDemanded || (state.scopes.isEmpty() && explicit.isEmpty());
                     state.globalDemanded = false;
                     pass = new java.util.ArrayList<>(state.scopes);
                     state.scopes.clear();
@@ -230,6 +265,7 @@ public class TradingPostRefreshCoordinator {
 
                 try {
                     if (global) refreshFor(variant, null);
+                    if (!explicit.isEmpty()) refresh.refreshForIds(explicit);
                     for (model.AccountScope scope : pass) refreshFor(variant, scope, forgePass.contains(scope));
                     synchronized (this) {
                         state.completedPasses++;

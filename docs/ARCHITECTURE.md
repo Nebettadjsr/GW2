@@ -282,9 +282,14 @@ Forge is no longer part of Crafting Profit (issue #378). `GET /api/mystic-forge/
 (no planner, no account read); `POST /api/mystic-forge/project {recipeId,target}` plans one exact target over the verified
 session's account snapshot via `CachedCraftingProfitService.forgeProject` -> `CraftingProfitService.planForgeProject` ->
 `ForgeProjectPlanner`, keeping inventory binding pools, roster and known recipes intact. Item and currency icons are mapped to
-same-origin routes; the browser never contacts ArenaNet/Wiki image hosts. Remaining source task: the cached call still captures
-with `ordinaryOnly(null)` settings, so Forge reference TP/metadata demand and subtype completion are not yet admitted through the
-scoped refresh path.
+same-origin routes; the browser never contacts ArenaNet/Wiki image hosts. A project's source identity and price demand are its own public path, not the ordinary set or the catalogue:
+`ForgeProjectPlanner.pathItemIds` (structure only: output, direct inputs and fixed-output producers' inputs) feeds
+`CraftingProfitItemCollector.coverageExplicit` (quote version over exactly those ids), is fingerprinted with the
+catalogue, vendor and Clover reference facts, and is demanded through `TradingPostRefreshCoordinator.requireItems` ->
+`TpSync.syncTpPricesForIds` on the shared single-flight/coalesced ten-minute run, with metadata completion and no DB
+connection held over the network. A keyless cached read admits no account work. The old all-catalogue Forge flag is not used.
+The global metadata refresh selection (`IconSync.globalReferencedOrUnknownItemIds`) includes bundled Forge/Clover/vendor ids,
+and Weapon/Armor rows are incomplete until their `subtype` is stored (non-gear never needs one).
 
 The application freshness envelope identifies the captured account/source/quote generations,
 coverage, task locations and retry state. A task finishing does not prove final freshness.
