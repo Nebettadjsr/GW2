@@ -148,6 +148,32 @@ class ForgeProjectBindingSeedTest {
     }
 
     @Test
+    void batchTargetRootNeverInventsRoundUpSurplusButFixedOutputRootKeepsIt() {
+        Recipe g = gossamer();
+        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        // gross produced = batches*10; net partition = 10*batches - (batches-1); no leftover is invented for any batch count
+        for (long[] c : new long[][] {{1, 10, 10}, {2, 20, 19}, {50, 500, 451}}) {
+            var t = pl.plan(g, c[0], true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 1000L)),
+                    ForgeProjectPlanner.Context.NONE, Map.of(23, 1000L), gossamerPrices()).tree();
+            assertEquals(c[1], t.produced(), "gross output of " + c[0] + " batches");
+            assertEquals(c[2], t.needed());
+            assertEquals(c[2], t.toCraft());
+            assertEquals(0, t.newSurplus(), "expected-yield roots have no guaranteed round-up leftover");
+        }
+        // normal fixed-output rounding: output 10, target 15 -> 2 batches, 20 produced, 5 surplus
+        Recipe fixed = forge(5, WEAPON, 10, List.of(new Ingredient(ORE, 1)));
+        var t = new ForgeProjectPlanner(List.of(fixed)).planOutput(fixed, 15, ForgeProjectPlanner.Inventory.shared(Map.of()),
+                ForgeProjectPlanner.Context.NONE, Map.of(), Map.of()).tree();
+        assertEquals(20, t.produced());
+        assertEquals(5, t.newSurplus());
+        // a fixed-output batch target also has no invented surplus
+        var b = new ForgeProjectPlanner(List.of(fixed)).plan(fixed, 2, true, ForgeProjectPlanner.Inventory.shared(Map.of()),
+                ForgeProjectPlanner.Context.NONE, Map.of(), Map.of()).tree();
+        assertEquals(20, b.produced());
+        assertEquals(0, b.newSurplus());
+    }
+
+    @Test
     void gossamerTwoBatchesOneExternalSeedGuaranteedReuseAndOracleEconomics() {
         Recipe g = gossamer();
         var pl = new ForgeProjectPlanner(gossamerProducers(g));

@@ -200,11 +200,12 @@ public final class ForgeProjectPlanner {
                 run.demand.merge(target.outputItemId, quantity, ForgeProjectPlanner::add);
             }
             List<Node> kids = batches > 0 ? run.craft(target, batches, 0, new HashSet<>()) : List.of();
-            long surplusOut = batches > 0 ? sub(mul(batches, (long) target.outputCount), quantity - rootOwned) : 0;
+            long surplusOut = batches > 0 && !batchTarget ? sub(mul(batches, (long) target.outputCount), quantity - rootOwned) : 0;
             boolean fixedRoot = !batchTarget;
             tree = new Node(target.outputItemId, outUnits, rootOwned, 0, fixedRoot ? outUnits - rootOwned : outUnits, 0,
                     target.recipeId, target.source, batches, target.minRating, target.disciplinesText, run.reason, kids,
-                    null, true, null, null, mul(batches, (long) target.outputCount), Math.max(0, surplusOut));
+                    null, true, null, null, mul(batches, (long) target.outputCount),
+                    fixedRoot ? Math.max(0, surplusOut) : 0); // only a fixed-output desired-quantity root has round-up surplus
             if (fixedRoot && surplusOut > 0) run.surplus.merge(target.outputItemId, surplusOut, ForgeProjectPlanner::add);
             if (run.reason == null) {
                 notes = planNotes(run, wallet, prices, tree, kids);
@@ -306,18 +307,24 @@ public final class ForgeProjectPlanner {
                 ownedContainers, mul(ownedContainers, yield), acquireContainers, Math.max(0, sub(shortfall, covered)), locked);
     }
 
-    /** Cheapest eligible fully priced variant; else cheapest priced; else the lowest id (shown locked/unpriced). */
+    /**
+     * Explicit tiers: eligible and fully priced first, then fully priced, then the lowest recipe id (shown
+     * locked/unpriced). Within a priced tier the cheaper batch wins; ties keep the lower recipe id.
+     */
     private Recipe chooseNoteProducer(Run run, ResearchNoteEstimate estimate) {
         Recipe best = null;
-        long bestKey = Long.MAX_VALUE;
+        int bestTier = Integer.MAX_VALUE;
+        long bestCost = Long.MAX_VALUE;
         for (Recipe r : noteRecipes.values()) {
             ResearchNoteEstimate.Variant v = estimate.variants().stream().filter(x -> x.recipeId() == r.recipeId).findFirst().orElse(null);
             boolean priced = v != null && v.priced();
             boolean eligible = run.assign(r) != null && !Boolean.FALSE.equals(
                     run.ctx.knownRecipeIds() == null ? null : run.ctx.knownRecipeIds().contains(r.recipeId));
-            long cost = priced ? v.batchCostCopper() : Long.MAX_VALUE / 4;
-            long key = (eligible ? 0 : Long.MAX_VALUE / 2) + cost;
-            if (best == null || key < bestKey) { best = r; bestKey = key; }
+            int tier = priced ? (eligible ? 0 : 1) : 2;
+            long cost = priced ? v.batchCostCopper() : 0;
+            boolean better = best == null || tier < bestTier
+                    || (tier == bestTier && (cost < bestCost || (cost == bestCost && r.recipeId < best.recipeId)));
+            if (better) { best = r; bestTier = tier; bestCost = cost; }
         }
         return best;
     }

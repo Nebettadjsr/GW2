@@ -86,6 +86,25 @@ class ForgeProjectNotesTest {
     }
 
     @Test
+    void producerTiersPreferPricedOverEligibleUnpricedAndFallBackToLowestIdWhenNothingIsPriced() {
+        // only variant A (15120) is unlocked; its SHARED input is unpriced while B's input is priced
+        var onlyA = new ForgeProjectPlanner.Context(
+                List.of(new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), java.util.Set.of(15120));
+        var p = planner.plan(root, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of()), onlyA,
+                Map.of((int) NOTE, 0L), Map.of(B, ask(10)));
+        assertEquals(15131, p.notes().producerRecipeId(), "locked but fully priced beats eligible but unpriced");
+        assertTrue(p.notes().producerLocked(), "the chosen producer stays visibly unavailable");
+        // nothing priced: lowest recipe id regardless of which one is eligible
+        var onlyB = new ForgeProjectPlanner.Context(
+                List.of(new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), java.util.Set.of(15131));
+        for (var c : List.of(onlyA, onlyB)) {
+            var q = planner.plan(root, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of()), c,
+                    Map.of((int) NOTE, 0L), Map.of());
+            assertEquals(15120, q.notes().producerRecipeId());
+        }
+    }
+
+    @Test
     void lockedProducerIsStillPlannedButNotPerformable() {
         var locked = new ForgeProjectPlanner.Context(List.of(), java.util.Set.of());
         var p = planner.plan(root, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of()), locked,
