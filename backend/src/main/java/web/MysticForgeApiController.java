@@ -51,14 +51,24 @@ public class MysticForgeApiController {
     private final Supplier<MysticForgeCatalog> catalog;
     private final ItemRepository items;
     private final TpPriceRepository tp;
+    private final application.TradingPostRefreshCoordinator priceRefresh;
 
     @Autowired
-    public MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp) {
-        this(profitService, accessHttp, MysticForgeCatalogLoader::bundled, new ItemRepository(), new TpPriceRepository());
+    public MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
+                                    application.TradingPostRefreshCoordinator priceRefresh) {
+        this(profitService, accessHttp, MysticForgeCatalogLoader::bundled, new ItemRepository(), new TpPriceRepository(),
+                priceRefresh);
     }
 
     MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
                              Supplier<MysticForgeCatalog> catalog, ItemRepository items, TpPriceRepository tp) {
+        this(profitService, accessHttp, catalog, items, tp, null);
+    }
+
+    MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
+                             Supplier<MysticForgeCatalog> catalog, ItemRepository items, TpPriceRepository tp,
+                             application.TradingPostRefreshCoordinator priceRefresh) {
+        this.priceRefresh = priceRefresh;
         this.profitService = profitService;
         this.accessHttp = accessHttp;
         this.catalog = catalog;
@@ -86,7 +96,27 @@ public class MysticForgeApiController {
             rows.add(row(ref.recipeId(), ref.outputItemId(), "REFERENCE_RANDOM", 0, null, null, ref.ingredients().size(),
                     ForgeReferenceRecipes.SOURCE_PAGE, ref.revision(), info, quotes));
         }
-        return new Catalogue(c.status(), c.source(), c.license(), c.recipes().size(), ForgeReferenceRecipes.all().size(), rows);
+        // Cold catalogue: output items whose cached metadata is incomplete (no name/type, so no Weapon subtype to
+        // search) are completed in the background on the shared single-flight run (public ids only, no account, no
+        // planner). This request never waits for it; the client rereads while "completing" is true.
+        boolean completing = false;
+        if (priceRefresh != null) {
+            Set<Integer> incomplete = new HashSet<>();
+            for (int id : ids) {
+                ItemRepository.ItemInfo it = info.get(id);
+                if (id > 0 && (it == null || it.name == null || it.type == null)) incomplete.add(id);
+            }
+            if (!incomplete.isEmpty()) {
+                try {
+                    priceRefresh.requireItems(incomplete, null);
+                    completing = true;
+                } catch (RuntimeException admissionFailure) {
+                    completing = false; // truthful: nothing was admitted; the cached catalogue is still served
+                }
+            }
+        }
+        return new Catalogue(c.status(), c.source(), c.license(), c.recipes().size(), ForgeReferenceRecipes.all().size(), rows,
+                completing);
     }
 
     private static RecipeRow row(int recipeId, int out, String outcome, int count, String mean, Integer max, int kinds,

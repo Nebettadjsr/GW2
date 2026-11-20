@@ -241,6 +241,24 @@ class ForgeProjectBindingSeedTest {
     }
 
     @Test
+    void carriedRootOutputCountsOnceIndependentOfWhoHoldsTheInputs() {
+        // A carries the finished root and no inputs; B carries all the inputs (2 plates).
+        var inv = new ForgeProjectPlanner.Inventory(Map.of(), Map.of(), Map.of(
+                "A", Map.of(WEAPON, 1), "B", Map.of(PLATE, 2)));
+        var p = planner.planOutput(weapon, 1, inv, ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
+        assertEquals(0, p.batches());
+        assertEquals(1, p.tree().fromOwned());
+        assertEquals(0, p.tree().toCraft());
+        assertTrue(p.steps().isEmpty());
+        assertTrue(p.items().stream().allMatch(i -> i.missing() == 0));
+        assertTrue(p.currencies().isEmpty());
+        // wanting 2: the carried root counts once, the second is crafted from B's inputs only
+        var two = planner.planOutput(weapon, 2, inv, ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
+        assertEquals(1, two.tree().fromOwned());
+        assertEquals(1, two.batches());
+    }
+
+    @Test
     void fixedRootConsumesAlreadyOwnedOutputBeforeExpanding() {
         var inv = ForgeProjectPlanner.Inventory.shared(Map.of(WEAPON, 2L));
         var p = planner.planOutput(weapon, 3, inv, ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());

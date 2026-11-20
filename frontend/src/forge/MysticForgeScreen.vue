@@ -114,7 +114,12 @@ async function back(): Promise<void> {
       </label>
       <p v-if="!targetValid" role="alert" class="forge-missing">Enter a whole number from 1 to 1,000,000,000.</p>
       <p v-if="f.projectLoading.value" role="status" data-test="forge-loading">Planning…</p>
-      <p v-if="f.pending.value" role="status" data-test="forge-pending">Account data is not available yet. It is being refreshed; this page will check again shortly.</p>
+      <p v-if="f.sourceRefreshing.value" role="status" data-test="forge-refreshing">Synchronizing your account data for this project…</p>
+      <p v-else-if="f.pending.value && !f.stalled.value && !f.sourceError.value" role="status" data-test="forge-pending">Account data is not available yet. It is being refreshed; this page will check again shortly.</p>
+      <p v-if="f.sourceError.value || f.stalled.value" role="alert" data-test="forge-source-failed">
+        {{ f.sourceError.value ?? 'Account data is still not available; automatic checking has stopped.' }}
+        <button type="button" data-test="forge-retry" @click="f.retry()">Retry</button>
+      </p>
       <p v-if="f.projectError.value" role="alert" data-test="forge-error">{{ f.projectError.value }}</p>
 
       <template v-if="project">

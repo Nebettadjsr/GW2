@@ -278,7 +278,7 @@ synchronized recipe tables. The backend alone computes exact expected output ver
 (including seed reuse), vendor acquisitions, binding, and the initial-owner index; work that was rejected or
 hit the work limit is not refunded and records no execution. The browser only presents these source facts.
 
-Forge is no longer part of Crafting Profit (issue #378). `GET /api/mystic-forge/recipes` is a public cached-metadata catalogue
+Forge is no longer part of Crafting Profit (issue #378). `GET /api/mystic-forge/recipes` is a public cached-metadata catalogue When output items lack cached metadata (cold catalogue), the GET admits only their public positive ids on the shared single-flight `TradingPostRefreshCoordinator.requireItems` run (metadata completion + quotes, ten-minute policy, no account/planner work, no request-thread upstream call) and returns `completing: true` so the client rereads a bounded number of times.
 (no planner, no account read); `POST /api/mystic-forge/project {recipeId,target}` plans one exact target over the verified
 session's account snapshot via `CachedCraftingProfitService.forgeProject` -> `CraftingProfitService.planForgeProject` ->
 `ForgeProjectPlanner`, keeping inventory binding pools, roster and known recipes intact. Item and currency icons are mapped to

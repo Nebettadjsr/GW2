@@ -69,6 +69,58 @@ class MysticForgeApiControllerTest {
                 "a random Clover row never claims a fixed or expected yield");
     }
 
+    /** Cold catalogue: a Weapon with no cached metadata demands exactly its public id on the shared run, nothing else. */
+    @Test
+    void coldCatalogueAdmitsOnlyThePublicIncompleteOutputIdsInTheBackgroundAndRereadFindsTheSubtype() throws Exception {
+        Recipe bow = new Recipe(-1, 500, 1, 0, "", List.of(new Ingredient(1, 2)), List.of(), RecipeSource.MYSTIC_FORGE);
+        var catalog = new MysticForgeCatalog(List.of(bow), 0, "test");
+        var complete = new java.util.concurrent.atomic.AtomicBoolean();
+        var idCalls = new java.util.ArrayList<Set<Integer>>();
+        var other = new java.util.ArrayList<String>();
+        var admitted = new java.util.ArrayList<application.BackgroundTasks.Work>();
+        var gateway = new sync.TradingPostPriceRefreshGateway() {
+            @Override public void syncTpPricesForIds(Set<Integer> ids) { idCalls.add(new java.util.TreeSet<>(ids)); complete.set(true); }
+            @Override public void syncTpPricesForProfit() { other.add("global"); }
+            @Override public void syncTpPricesForProfit(model.AccountScope s) { other.add("scope"); }
+        };
+        var tasks = new application.BackgroundTasks() {
+            @Override public String submit(String op, Work w) { admitted.add(w); return "t" + admitted.size(); }
+            @Override public java.util.Optional<Status> find(String id) { return java.util.Optional.empty(); }
+        };
+        var coordinator = new application.TradingPostRefreshCoordinator(
+                new application.TradingPostPriceRefreshService(gateway), tasks);
+        var items = new ItemRepository() {
+            @Override public Map<Integer, ItemInfo> loadItems(Set<Integer> ids) {
+                Map<Integer, ItemInfo> m = new HashMap<>();
+                if (complete.get()) for (int id : ids) {
+                    m.put(id, id == 500 ? new ItemInfo(500, "Aurene's Wing", null, 0, "Weapon", "LongBow")
+                            : new ItemInfo(id, "Item " + id, null, 0, "CraftingMaterial", null));
+                }
+                return m;
+            }
+        };
+        var controller = new MysticForgeApiController(null, null, () -> catalog, items, new TpPriceRepository() {
+            @Override public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> ids) { return Map.of(); }
+        }, coordinator);
+
+        var cold = controller.recipes();
+        assertTrue(cold.completing());
+        assertNull(cold.recipes().get(0).itemSubtype());
+        assertEquals(1, admitted.size(), "one coalesced background task");
+        assertEquals(List.of(), idCalls, "the request thread did no upstream work");
+        controller.recipes();
+        assertEquals(1, admitted.size(), "single-flight: a second read admits nothing new");
+
+        admitted.get(0).run();
+        assertEquals(1, idCalls.size());
+        assertTrue(idCalls.get(0).stream().allMatch(id -> id > 0), "public positive output ids only");
+        assertTrue(idCalls.get(0).contains(500));
+        assertEquals(List.of(), other, "no Profit/global/account work");
+        var warm = controller.recipes();
+        assertEquals("LongBow", warm.recipes().get(0).itemSubtype());
+        assertEquals(1, admitted.size());
+    }
+
     /** Validation happens before any account work: the (null) service is never reached for an invalid request. */
     @Test
     void invalidProjectRequestsAreRejectedBeforeAnyAccountWork() {

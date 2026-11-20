@@ -146,7 +146,7 @@ public final class ForgeProjectPlanner {
                 outUnits = Math.multiplyExact(batches, (long) target.outputCount);
             } else {
                 outUnits = quantity;
-                rootOwned = run.consume(target.outputItemId, quantity, run.forgeAssignee(target));
+                rootOwned = run.consumeRoot(target.outputItemId, quantity);
                 batches = Math.ceilDiv(quantity - rootOwned, (long) target.outputCount);
                 if (rootOwned > 0) run.fromOwned.merge(target.outputItemId, rootOwned, Math::addExact);
                 run.demand.merge(target.outputItemId, quantity, Math::addExact);
@@ -302,6 +302,12 @@ public final class ForgeProjectPlanner {
         long consume(int itemId, long qty, String assignee) {
             int ask = (int) Math.min(Integer.MAX_VALUE, qty);
             return ask <= 0 ? 0 : state.consumeInventoryWithBinding(itemId, ask, assignee).total();
+        }
+
+        /** Owned goal output counts once from actual output ownership, independent of the input assignee. */
+        long consumeRoot(int itemId, long qty) {
+            int ask = (int) Math.min(Integer.MAX_VALUE, qty);
+            return ask <= 0 ? 0 : state.consumeOwnedOutput(itemId, ask).total();
         }
 
         /** Deterministic eligible character holding the most relevant stock; null when none can perform it. */

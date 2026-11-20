@@ -13,7 +13,7 @@ public final class MysticForgeDtos {
                             String sourcePage, Long sourceRevision, String wikiUrl, int ingredientKinds) { }
 
     public record Catalogue(String status, String source, String license, int recipeCount, int referenceCount,
-                            List<RecipeRow> recipes) { }
+                            List<RecipeRow> recipes, boolean completing) { }
 
     public record ProjectRequest(Integer recipeId, Long target) { }
 

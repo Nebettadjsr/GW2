@@ -566,6 +566,22 @@ public class PlanState {
         return new InventoryConsumption(usedCharacterBound + usedAccountBound, usedSellable);
     }
 
+    /**
+     * Consumes already-owned stock of a goal item regardless of which character would perform the step: carried and
+     * Bank stock of every owner (deterministic key order), then account-bound, then sellable. Used for the fixed
+     * Forge root output, whose ownership is independent of who holds the inputs.
+     */
+    public InventoryConsumption consumeOwnedOutput(int itemId, int qtyWanted) {
+        int used = 0;
+        for (String key : new java.util.TreeSet<>(characterBoundInventory.keySet())) {
+            if (used >= qtyWanted) break;
+            used += consumeCharacterStock(key, itemId, qtyWanted - used);
+        }
+        int usedAccountBound = consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - used);
+        int usedSellable = consumeInventory(itemId, qtyWanted - used - usedAccountBound);
+        return new InventoryConsumption(used + usedAccountBound, usedSellable);
+    }
+
     private int consumeCharacterStock(String key, int itemId, int wanted) {
         Map<Integer, Integer> stock = characterBoundInventory.get(key);
         if (stock == null) return 0;

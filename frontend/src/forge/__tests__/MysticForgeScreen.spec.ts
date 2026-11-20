@@ -170,3 +170,101 @@ describe('selected project', () => {
     w.unmount()
   })
 })
+
+describe('first use source refresh and cold catalogue', () => {
+  const credentialPending = (target: number): ForgeProject => project(target, {
+    tree: null,
+    freshness: { requestId: 'r', calculationId: 'c', evaluatedAt: '', provisional: true, resultAvailable: false, accountSources: [],
+      tradingPost: {} as never, outstandingWork: [],
+      failures: [{ kind: 'ACCOUNT', taskId: null, taskStatusUrl: null, code: 'CREDENTIAL_REQUIRED', message: 'key needed', retryable: true }] }
+  })
+  function sourceApi(states: string[]) {
+    let ready = false
+    const calls = { project: 0, start: 0, read: 0 }
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) { calls.project++; return ready ? project(target) : credentialPending(target) },
+      async startSourceRefresh() { calls.start++; return { statusUrl: '/t/1' } as never },
+      async readSourceTask() {
+        const state = states[Math.min(calls.read++, states.length - 1)]!
+        if (state === 'SUCCEEDED') ready = true
+        return { state, failure: state === 'FAILED' ? { message: 'boom' } : null } as never
+      }
+    }
+    return { api, calls }
+  }
+
+  it('a keyless 202 starts one keyed refresh task, then rereads only the selected project', async () => {
+    const { api, calls } = sourceApi(['RUNNING', 'SUCCEEDED'])
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(calls.start).toBe(1)
+    expect(w.find('[data-test="forge-refreshing"]').exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(2100)
+    await flushPromises()
+    expect(calls.start).toBe(1)
+    expect(calls.project).toBe(2)
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(true)
+    expect(w.find('[data-test="forge-source-failed"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('a failed task stops with a truthful status and Retry starts a new attempt', async () => {
+    const { api, calls } = sourceApi(['FAILED', 'SUCCEEDED'])
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(w.get('[data-test="forge-source-failed"]').text()).toContain('boom')
+    expect(w.find('[data-test="forge-pending"]').exists()).toBe(false)
+    const startedBefore = calls.start
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(calls.start).toBe(startedBefore)
+    await w.get('[data-test="forge-retry"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(100)
+    await flushPromises()
+    expect(calls.start).toBe(startedBefore + 1)
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('a late task completion after the selection was closed cannot update the old view', async () => {
+    const { api, calls } = sourceApi(['RUNNING', 'RUNNING', 'SUCCEEDED'])
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    await w.get('[data-test="forge-back"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(10_000)
+    await flushPromises()
+    expect(calls.project).toBe(1)
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('rereads the catalogue while public metadata is completing so a Bow search finds the type', async () => {
+    let calls = 0
+    const api: MysticForgeApi = {
+      async loadCatalogue() {
+        calls++
+        const warm = calls > 1
+        return { ...catalogue, completing: !warm, recipes: catalogue.recipes.map((r) => r.recipeId === -1
+          ? { ...r, name: 'Aurene Thing', itemType: warm ? 'Weapon' : null, itemSubtype: warm ? 'LongBow' : null } : r) }
+      },
+      async loadProject(_id, target) { return project(target) }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.get('[data-test="forge-search"]').setValue('longbow')
+    expect(w.findAll('[data-test="forge-row"]')).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(5100)
+    await flushPromises()
+    expect(calls).toBe(2)
+    expect(w.findAll('[data-test="forge-row"]')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(calls).toBe(2)
+    w.unmount()
+  })
+})

@@ -929,6 +929,8 @@ export interface ForgeCatalogue {
   recipeCount: number
   referenceCount: number
   recipes: ForgeRecipeRow[]
+  /** True while public item metadata is being completed in the background; reread to pick it up. */
+  completing?: boolean
 }
 
 export interface ForgeItem { itemId: number; name: string | null; iconUrl: string | null; wikiUrl: string | null }
