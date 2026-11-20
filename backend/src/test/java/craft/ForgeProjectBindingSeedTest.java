@@ -85,19 +85,19 @@ class ForgeProjectBindingSeedTest {
     // ---- self-seed ----
 
     private static Recipe gossamer() {
-        // output 19745 min 10 mean 18.92; seed 19745 x1; plus 19748 x250, 24277 x5 (Stones), 20796 x5 (Dust)
+        // output 19745 min 10 mean 18.92; seed 19745 x1; plus 19748 x250, 24277 x5 (Dust), 20796 x5 (Philosopher's Stones)
         return Recipe.forgeWithExpectedYield(-77, 19745, ExpectedYield.of("18.92", 10, 40), List.of(
-                new Ingredient(19748, 250), new Ingredient(19745, 1), new Ingredient(24277, 5), new Ingredient(20796, 5)));
+                new Ingredient(19748, 250), new Ingredient(19745, 1), new Ingredient(20796, 5), new Ingredient(24277, 5)));
     }
 
     private static List<Recipe> gossamerProducers(Recipe g) {
-        return List.of(g, Recipe.vendor(-1_000_000_001, 24277, 10, List.of(new CurrencyRequirement(23, 1)), 0),
+        return List.of(g, Recipe.vendor(-1_000_000_001, 20796, 10, List.of(new CurrencyRequirement(23, 1)), 0),
                 Recipe.vendor(-1_000_000_002, 19663, 1, List.of(), 2504));
     }
 
     // independent oracle: silk ask 2c, seed ask 110c (output bid 100 / ask 110), dust ask 10c, Stones vendor 10 per Shard
     private static Map<Integer, PriceQuote> gossamerPrices() {
-        return Map.of(19745, new PriceQuote(100, 110), 19748, new PriceQuote(1, 2), 20796, new PriceQuote(9, 10));
+        return Map.of(19745, new PriceQuote(100, 110), 19748, new PriceQuote(1, 2), 24277, new PriceQuote(9, 10));
     }
 
     @Test
@@ -122,7 +122,7 @@ class ForgeProjectBindingSeedTest {
         Recipe g = gossamer();
         var pl = new ForgeProjectPlanner(gossamerProducers(g));
         var none = pl.plan(g, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(23, 5L), gossamerPrices());
-        var owned = pl.plan(g, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of(24277, 99L, 19748, 250L, 20796, 5L)),
+        var owned = pl.plan(g, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 99L, 19748, 250L, 24277, 5L)),
                 ForgeProjectPlanner.Context.NONE, Map.of(23, 5L), gossamerPrices());
         assertEquals(none.economics().marginCopper(), owned.economics().marginCopper());
         assertEquals(948, owned.economics().marginCopper());
@@ -134,7 +134,7 @@ class ForgeProjectBindingSeedTest {
     void gossamerTwoBatchesOneExternalSeedGuaranteedReuseAndOracleEconomics() {
         Recipe g = gossamer();
         var pl = new ForgeProjectPlanner(gossamerProducers(g));
-        var p = pl.plan(g, 2, true, ForgeProjectPlanner.Inventory.shared(Map.of(24277, 10L)),
+        var p = pl.plan(g, 2, true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 10L)),
                 ForgeProjectPlanner.Context.NONE, Map.of(23, 100L), gossamerPrices());
         var s = p.seed();
         assertEquals(1, s.externalSeedUnits());
