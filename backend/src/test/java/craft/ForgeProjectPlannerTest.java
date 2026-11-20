@@ -81,6 +81,17 @@ class ForgeProjectPlannerTest {
     }
 
     @Test
+    void surplusIsNotPublishedBeforeTheProducingCraftSecuresItsOwnInputs() {
+        int bp = 21259, key = 103913;
+        Recipe big = forge(2125901, bp, 600, List.of(new Ingredient(bp, 1), new Ingredient(key, 3)), List.of());
+        Recipe small = forge(2125902, bp, 200, List.of(new Ingredient(bp, 3), new Ingredient(key, 1)), List.of());
+        Recipe top = forge(7, WEAPON, 1, List.of(new Ingredient(bp, 1)), List.of());
+        var p = new ForgeProjectPlanner(List.of(top, big, small)).plan(top, 1, Map.of(), Map.of(), Map.of());
+        // the blueprint seed needed by the producing craft is external, not financed by that craft's own output
+        assertTrue(line(p, bp).missing() > 0, "seed blueprint must still be acquired");
+    }
+
+    @Test
     void cyclesTerminateAsLeaves() {
         Recipe a = ordinary(20, PLATE, 1, List.of(new Ingredient(ORE, 1)));
         Recipe b = ordinary(21, ORE, 1, List.of(new Ingredient(PLATE, 1)));

@@ -554,7 +554,6 @@ public final class ForgeProjectPlanner {
             }
             long crafts = Math.ceilDiv(unmet, (long) p.outputCount);
             long extra = sub(mul(crafts, (long) p.outputCount), unmet);
-            if (extra > 0) surplus.merge(itemId, extra, ForgeProjectPlanner::add);
             Boolean known = p.source == RecipeSource.ORDINARY && ctx.knownRecipeIds() != null
                     ? ctx.knownRecipeIds().contains(p.recipeId) : null;
             String who = null;
@@ -566,6 +565,8 @@ public final class ForgeProjectPlanner {
                 childAssignee = who;
             }
             List<Node> kids = craft(p, crafts, depth, path, childAssignee);
+            // Surplus exists only after the craft's own inputs are secured; it must not finance that craft.
+            if (extra > 0 && reason == null) surplus.merge(itemId, extra, ForgeProjectPlanner::add);
             return new Node(itemId, qty, use, spare, unmet, 0, p.recipeId, p.source, crafts, p.minRating,
                     p.disciplinesText, reason, kids, known, performable, who,
                     p.isVendor() ? VendorAcquisitions.hintFor(p.outputItemId) : null,
