@@ -146,4 +146,25 @@ class ForgeProjectNotesTest {
         assertEquals("estimate exceeds the supported range", p.notes().estimateIssue());
         assertTrue(p.guaranteedOutput() < 0);
     }
+
+    @Test
+    void rangeStopWithRemainingDeficitPlansNoProductionAndDoesNotThrow() {
+        // need 1,000,000,002 Notes, wallet 1,000,000,000: valuation at 2,000,000,000c per 150 Notes exceeds MAX_SAFE
+        Recipe big = new Recipe(-11, 901, 1, 0, "", List.of(), List.of(new CurrencyRequirement(NOTE, 1)), RecipeSource.MYSTIC_FORGE);
+        var p = planner.plan(big, 1_000_000_002L, true, ForgeProjectPlanner.Inventory.shared(Map.of()), ctx,
+                Map.of((int) NOTE, 1_000_000_000L), Map.of(SHARED, ask(500_000_000)));
+        var n = p.notes();
+        assertFalse(p.complete());
+        assertNotNull(p.incompleteReason());
+        assertTrue(p.guaranteedOutput() < 0);
+        assertNull(n.estimateCopper());
+        assertEquals("estimate exceeds the supported range", n.estimateIssue());
+        assertEquals(1_000_000_002L, n.needed());
+        assertEquals(1_000_000_000L, n.walletUsed());
+        assertEquals(2L, n.shortfall());
+        assertEquals(0, n.containersCrafted());
+        assertEquals(0, n.producedNotes());
+        assertEquals(0, n.surplus());
+        assertEquals(2L, n.uncoveredNotes());
+    }
 }

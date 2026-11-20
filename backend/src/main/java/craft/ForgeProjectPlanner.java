@@ -309,6 +309,10 @@ public final class ForgeProjectPlanner {
             }
         } else cost = 0L;
         long containers = Math.ceilDiv(shortfall, (long) production.yield());
+        if (run.reason != null) {
+            // Valuation range stop: keep the safe Note facts, plan no production, retain the whole deficit.
+            return new Notes(needed, true, used, shortfall, 0, 0, 0, 0, null, estimate, cost, issue, 0, 0, 0, shortfall, false);
+        }
         Recipe producer = containers > 0 ? chooseNoteProducer(run, estimate) : null;
         long crafted = 0;
         long ownedContainers = 0, acquireContainers = 0;
@@ -317,6 +321,9 @@ public final class ForgeProjectPlanner {
             if (producer != null) run.noteProducer = producer;
             long before = run.crafted(CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID);
             Node n = run.need(CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID, containers, 1, new HashSet<>(), null, false);
+            if (n == null) {
+                return new Notes(needed, true, used, shortfall, 0, 0, 0, 0, null, estimate, cost, issue, 0, 0, 0, shortfall, false);
+            }
             run.noteNode = n;
             crafted = run.crafted(CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID) - before;
             ownedContainers = add(n.fromOwned(), n.fromSurplus());
