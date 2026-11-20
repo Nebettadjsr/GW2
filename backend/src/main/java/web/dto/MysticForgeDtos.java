@@ -19,11 +19,15 @@ public final class MysticForgeDtos {
 
     public record Item(int itemId, String name, String iconUrl, String wikiUrl) { }
 
-    /** needed == fromOwned + fromSurplus + toCraft + toAcquire; toCraft is planned work, never owned progress. */
+    /**
+     * produced = units the node's step actually makes/buys (crafts x output; differs from demand for batch outputs);
+     * newSurplus = produced beyond this node's own unmet demand, kept for later reuse (never paid twice).
+     * needed == fromOwned + fromSurplus + toCraft + toAcquire; toCraft is planned work, never owned progress. */
     public record NodeDto(Item item, long needed, long fromOwned, long fromSurplus, long toCraft, long toAcquire,
                           Integer recipeId, String recipeSource, long crafts, int minRating, String disciplines,
                           String cutoff, List<NodeDto> children, Boolean recipeKnown, boolean performable,
-                          String assignedCharacter, String hint) { }
+                          String assignedCharacter, String hint,
+                          long produced, long newSurplus) { }
 
     /** null owned/missing = wallet unknown. */
     public record CurrencyDto(int currencyId, String name, String iconUrl, String wikiUrl, long needed, Long owned,
@@ -50,7 +54,8 @@ public final class MysticForgeDtos {
     public record NotesDto(long needed, boolean walletKnown, Long walletUsed, Long shortfall, long containersNeeded,
                            long containersCrafted, long producedNotes, long surplus, Integer producerRecipeId,
                            Long estimateCopper, String estimateIssue, Integer basisRecipeId,
-                           List<CurrencyCostsDto.VariantDto> variants) { }
+                           List<CurrencyCostsDto.VariantDto> variants, long ownedContainers, long ownedNotes,
+                           long acquireContainers, long uncoveredNotes, boolean producerLocked) { }
 
     /** unitCopper null = UNPRICED (never zero). */
     public record ShoppingDto(Item item, long needed, long fromOwned, long toAcquire, Long unitCopper, Long knownCopper) { }

@@ -953,6 +953,10 @@ export interface ForgeNode {
   performable: boolean
   assignedCharacter: string | null
   hint: string | null
+  /** Units the step actually makes/buys (crafts x output); differs from demand for batch outputs. */
+  produced: number
+  /** produced beyond this node's own unmet demand, kept for later reuse. */
+  newSurplus: number
 }
 
 export interface ForgeCurrency {
@@ -1037,4 +1041,9 @@ export interface ForgeNotes {
   estimateIssue: string | null
   basisRecipeId: number | null
   variants: NoteEstimateVariant[]
+  ownedContainers: number
+  ownedNotes: number
+  acquireContainers: number
+  uncoveredNotes: number
+  producerLocked: boolean
 }

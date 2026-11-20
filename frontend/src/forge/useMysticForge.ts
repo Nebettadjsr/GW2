@@ -148,8 +148,9 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     try {
       const loaded = await api.loadProject(recipeId, target)
       if (mine !== token || !active || generation !== connection.generation) return
-      pending.value = loaded.tree === null
-      project.value = loaded.tree === null ? null : loaded
+      const unavailable = hasNoResult(loaded)
+      pending.value = unavailable
+      project.value = unavailable ? null : loaded
       // A first-use (no plan) OR usable-but-stale account plan needs the keyed DATA refresh; the stale plan stays
       // visible (marked by its freshness) while it runs. Recoveries are capped so a still-stale answer cannot loop.
       if (needsKeyedRefresh(loaded) && api.startSourceRefresh && api.readSourceTask && sourceRecoveries < SOURCE_MAX_RECOVERIES) {
@@ -164,11 +165,19 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     }
   }
 
+  /**
+   * Only a pending-account / no-result answer is "pending". A REAL result (output present or resultAvailable) is kept
+   * and shown even when it is arithmetic-incomplete and carries no tree.
+   */
+  function hasNoResult(loaded: ForgeProject): boolean {
+    return loaded.tree === null && loaded.output === null && loaded.freshness?.resultAvailable !== true
+  }
+
   /** Outstanding source work: reread a bounded number of times instead of spinning forever. */
   function scheduleReread(loaded: ForgeProject): void {
     if (reread !== null) clearTimeout(reread)
     reread = null
-    const outstanding = (loaded.freshness?.outstandingWork?.length ?? 0) > 0 || loaded.tree === null
+    const outstanding = (loaded.freshness?.outstandingWork?.length ?? 0) > 0 || hasNoResult(loaded)
     if (!outstanding) return
     if (rereads >= MAX_REREADS) { stalled.value = true; return }
     rereads += 1
@@ -178,7 +187,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   function needsKeyedRefresh(loaded: ForgeProject): boolean {
     const freshness = loaded.freshness
     if ((freshness?.failures ?? []).some((failure) => failure.kind === 'ACCOUNT' && failure.code === CREDENTIAL_REQUIRED)) return true
-    return loaded.tree !== null && (freshness?.accountSources ?? []).some((source) => source.state === 'STALE' || source.state === 'MISSING')
+    return !hasNoResult(loaded) && (freshness?.accountSources ?? []).some((source) => source.state === 'STALE' || source.state === 'MISSING')
   }
 
   /**

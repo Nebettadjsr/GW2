@@ -144,7 +144,7 @@ async function back(): Promise<void> {
         <section class="forge-summary" data-test="forge-summary">
           <h3>Cost</h3>
           <p data-test="forge-known-gold">Known remaining gold cost{{ referenceOnly ? ' of the inputs' : '' }}: <strong class="numeric">{{ formatCopper(project.knownGoldCopper) }}</strong>
-            <template v-if="project.goldCostPartial"> (partial: some requirements are unpriced)</template></p>
+            <template v-if="project.goldCostPartial"> (partial: {{ project.complete ? 'some requirements are unpriced' : 'the plan is incomplete, so this is only the priced part' }})</template></p>
           <p v-if="project.unpricedItems.length" data-test="forge-unpriced">Unpriced: {{ project.unpricedItems.map((i) => i.name ?? `Item ${i.itemId}`).join(', ') }}</p>
           <p v-if="project.guaranteedOutput !== null && !referenceOnly" data-test="forge-output">Guaranteed output: {{ project.guaranteedOutput }}</p>
           <p v-else-if="project.batches > 0" data-test="forge-batches">{{ referenceOnly ? 'Inputs for ' : '' }}{{ project.batches }} requested batch{{ project.batches === 1 ? '' : 'es' }}</p>
@@ -162,8 +162,11 @@ async function back(): Promise<void> {
 
         <section v-if="project.notes" data-test="forge-notes">
           <h3>Research Notes</h3>
-          <p data-test="forge-notes-needed">Needed {{ project.notes.needed }}<template v-if="project.notes.walletKnown">; wallet used {{ project.notes.walletUsed }}, still missing {{ project.notes.shortfall }}.</template><template v-else>; wallet unknown, so no production count or deficit is claimed.</template></p>
-          <p v-if="project.notes.containersNeeded > 0" data-test="forge-notes-production">Planned production: {{ project.notes.containersCrafted }} Peer Reviewed Research (150 Notes each) = {{ project.notes.producedNotes }} Notes<template v-if="project.notes.surplus > 0">, {{ project.notes.surplus }} left over</template>. Owned containers counted first.</p>
+          <p data-test="forge-notes-needed">Needed {{ project.notes.needed }}<template v-if="project.notes.walletKnown">; wallet used {{ project.notes.walletUsed }}, missing {{ project.notes.shortfall }} before production.</template><template v-else>; wallet unknown, so no production count or deficit is claimed.</template></p>
+          <p v-if="project.notes.ownedContainers > 0" data-test="forge-notes-owned">Already owned: {{ project.notes.ownedContainers }} Peer Reviewed Research to open = {{ project.notes.ownedNotes }} Notes.</p>
+          <p v-if="project.notes.containersCrafted > 0" data-test="forge-notes-production">Planned work{{ project.notes.producerLocked ? ' (recipe locked)' : '' }}: craft {{ project.notes.containersCrafted }} Peer Reviewed Research (150 Notes each) = {{ project.notes.producedNotes }} Notes.</p>
+          <p v-if="project.notes.acquireContainers > 0" class="forge-missing" data-test="forge-notes-acquire">Still to acquire: {{ project.notes.acquireContainers }} Peer Reviewed Research with no available producer; {{ project.notes.uncoveredNotes }} Notes remain uncovered.</p>
+          <p v-if="project.notes.surplus > 0" data-test="forge-notes-surplus">{{ project.notes.surplus }} Notes left over after covering the shortfall.</p>
           <p v-if="project.notes.walletUsed" data-test="forge-notes-estimate">
             Wallet Notes value: <template v-if="project.notes.estimateCopper !== null">≈ {{ formatCopper(project.notes.estimateCopper) }} <ResearchNoteEstimatePopup :estimate="noteEstimate(project.notes)" /></template>
             <template v-else>unavailable ({{ project.notes.estimateIssue }})</template>

@@ -26,7 +26,7 @@ const item = (id: number, name: string) => ({ itemId: id, name, iconUrl: null, w
 const node = (o: Partial<ForgeNode>): ForgeNode => ({
   item: item(1, 'X'), needed: 1, fromOwned: 0, fromSurplus: 0, toCraft: 0, toAcquire: 1, recipeId: null, recipeSource: null,
   crafts: 0, minRating: 0, disciplines: null, cutoff: null, children: [], recipeKnown: null, performable: true,
-  assignedCharacter: null, hint: null, ...o
+  assignedCharacter: null, hint: null, produced: 0, newSurplus: 0, ...o
 })
 function project(target: number, o: Partial<ForgeProject> = {}): ForgeProject {
   return {
@@ -173,7 +173,8 @@ describe('selected project', () => {
 
 describe('first use source refresh and cold catalogue', () => {
   const credentialPending = (target: number): ForgeProject => project(target, {
-    tree: null,
+    tree: null, output: null, // the real 202 carries no output
+
     freshness: { requestId: 'r', calculationId: 'c', evaluatedAt: '', provisional: true, resultAvailable: false, accountSources: [],
       tradingPost: {} as never, outstandingWork: [],
       failures: [{ kind: 'ACCOUNT', taskId: null, taskStatusUrl: null, code: 'CREDENTIAL_REQUIRED', message: 'key needed', retryable: true }] }
@@ -389,15 +390,16 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     const variant = (id: number, basis: boolean) => ({ recipeId: id, outputName: 'Peer Reviewed Research', notesPerBatch: 150, batchCostCopper: 40,
       per100NotesCopper: 27, basis, ingredients: [{ itemId: 5003, name: 'Page', count: 4, unitPriceCopper: 10, totalCopper: 40, iconUrl: null }] })
     const notes = { needed: 210, walletKnown: true, walletUsed: 60, shortfall: 150, containersNeeded: 1, containersCrafted: 1, producedNotes: 150,
-      surplus: 0, producerRecipeId: 15120, estimateCopper: 16, estimateIssue: null, basisRecipeId: 15120, variants: [variant(15120, true), variant(15131, false)] }
+      surplus: 0, producerRecipeId: 15120, estimateCopper: 16, estimateIssue: null, basisRecipeId: 15120, variants: [variant(15120, true), variant(15131, false)],
+      ownedContainers: 0, ownedNotes: 0, acquireContainers: 0, uncoveredNotes: 0, producerLocked: false }
     let current: ForgeProject['notes'] = notes
     const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) { return project(target, { notes: current }) } }
     const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
     await flushPromises()
     await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
     await flushPromises()
-    expect(w.get('[data-test="forge-notes-needed"]').text()).toBe('Needed 210; wallet used 60, still missing 150.')
-    expect(w.get('[data-test="forge-notes-production"]').text()).toContain('1 Peer Reviewed Research (150 Notes each) = 150 Notes')
+    expect(w.get('[data-test="forge-notes-needed"]').text()).toBe('Needed 210; wallet used 60, missing 150 before production.')
+    expect(w.get('[data-test="forge-notes-production"]').text()).toContain('craft 1 Peer Reviewed Research (150 Notes each) = 150 Notes')
     expect(w.get('[data-test="forge-notes-estimate"]').text()).toContain('16c')
     expect(w.findAll('[data-test="note-estimate-trigger"]')).toHaveLength(1)
     w.unmount()
@@ -455,6 +457,60 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     expect(nodes[0]!.get('.forge-node__head').find('[data-test="forge-node-needed"]').exists()).toBe(false)
     expect(nodes[0]!.text()).not.toContain('To craft')
     expect(nodes[1]!.get('[data-test="forge-node-needed"]').text()).toBe(`× ${batches * 3}`)
+    w.unmount()
+  })
+
+  it('separates owned containers from planned crafting and never claims output for an acquire-only container', async () => {
+    const notes = { needed: 300, walletKnown: true, walletUsed: 0, shortfall: 300, containersNeeded: 2, containersCrafted: 0, producedNotes: 0,
+      surplus: 0, producerRecipeId: null, estimateCopper: null, estimateIssue: null, basisRecipeId: null, variants: [],
+      ownedContainers: 1, ownedNotes: 150, acquireContainers: 1, uncoveredNotes: 150, producerLocked: false }
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) { return project(target, { notes }) } }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(w.get('[data-test="forge-notes-owned"]').text()).toContain('1 Peer Reviewed Research to open = 150 Notes')
+    expect(w.find('[data-test="forge-notes-production"]').exists()).toBe(false)
+    expect(w.get('[data-test="forge-notes-acquire"]').text()).toContain('150 Notes remain uncovered')
+    expect(w.find('[data-test="forge-notes-surplus"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('shows the actual produced quantity and kept surplus of a batch purchase beside the demand', async () => {
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) {
+      return project(target, { tree: node({ item: item(101, 'Root'), needed: 1, toCraft: 1, toAcquire: 0, recipeId: -1, children: [
+        node({ item: item(20796, "Philosopher's Stone"), needed: 5, toCraft: 5, toAcquire: 0, recipeId: -1_000_000_001, recipeSource: 'VENDOR',
+          produced: 10, newSurplus: 5 })] }) })
+    } }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    const facts = w.findAll('[data-test="forge-node"]')[1]!.get('[data-test="forge-node-facts"]').text()
+    expect(facts).toContain('To buy 5')
+    expect(facts).toContain('Purchase yields 10')
+    expect(facts).toContain('5 surplus kept for later use')
+    w.unmount()
+  })
+
+  it('keeps a REAL arithmetic-incomplete result with no tree and does not re-poll it as pending', async () => {
+    let calls = 0
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) {
+      calls++
+      return project(target, { tree: null, complete: false, incompleteReason: 'quantity exceeds the supported range', goldCostPartial: true, unpricedItems: [],
+        freshness: { requestId: 'r', calculationId: 'c', evaluatedAt: '', provisional: false, resultAvailable: true, accountSources: [],
+          tradingPost: {} as never, outstandingWork: [], failures: [] } })
+    } }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(calls).toBe(1)
+    expect(w.find('[data-test="forge-pending"]').exists()).toBe(false)
+    expect(w.get('[data-test="forge-incomplete"]').text()).toContain('quantity exceeds the supported range')
+    expect(w.get('[data-test="forge-known-gold"]').text()).toContain('the plan is incomplete')
+    expect(w.get('[data-test="forge-known-gold"]').text()).not.toContain('unpriced')
     w.unmount()
   })
 })

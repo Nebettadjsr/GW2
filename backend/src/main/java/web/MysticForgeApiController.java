@@ -194,12 +194,13 @@ public class MysticForgeApiController {
         boolean random = d.referenceOnly() || d.batchTarget();
         List<ShoppingDto> shopping = new ArrayList<>();
         List<Item> unpriced = new ArrayList<>();
+        boolean partialLine = false;
         for (var l : p.items()) {
             if (l.missing() <= 0) continue;
             Long known = null;
             if (l.knownUnitCopper() != null) {
-                try { known = Math.multiplyExact(l.knownUnitCopper(), l.missing()); }
-                catch (ArithmeticException overflow) { known = null; } // unavailable line total, never a fake exact cost
+                try { known = ForgeProjectPlanner.mul(l.knownUnitCopper(), l.missing()); }
+                catch (ArithmeticException overflow) { known = null; partialLine = true; } // unavailable line total, never a fake exact cost
             }
             shopping.add(new ShoppingDto(item(l.itemId(), info), l.needed(), l.fromOwned(), l.missing(), l.knownUnitCopper(), known));
         }
@@ -234,14 +235,15 @@ public class MysticForgeApiController {
             var n = p.notes();
             notes = new NotesDto(n.needed(), n.walletKnown(), n.walletUsed(), n.shortfall(), n.containersNeeded(),
                     n.containersCrafted(), n.producedNotes(), n.surplus(), n.producerRecipeId(), n.estimateCopper(),
-                    n.estimateIssue(), n.estimate().basisRecipeId(), CraftingRowMapper.variantDtos(n.estimate(), info));
+                    n.estimateIssue(), n.estimate().basisRecipeId(), CraftingRowMapper.variantDtos(n.estimate(), info),
+                    n.ownedContainers(), n.ownedNotes(), n.acquireContainers(), n.uncoveredNotes(), n.producerLocked());
         }
         String outcome = d.referenceOnly() ? "REFERENCE_RANDOM" : d.batchTarget() ? "EXPECTED" : "FIXED";
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
-                d.requestedTarget(), p.batches(), random ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
-                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty(), unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
+                d.requestedTarget(), p.batches(), random || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
+                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !p.complete() || partialLine, unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
                 cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness);
     }
 
@@ -253,11 +255,11 @@ public class MysticForgeApiController {
         if (referenceRoot) {
             return new NodeDto(item(n.itemId(), info), 0, 0, 0, 0, 0,
                     n.recipeId(), n.source() == null ? null : n.source().name(), n.crafts(), n.minRating(), n.disciplines(),
-                    n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint());
+                    n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint(), 0, 0);
         }
         return new NodeDto(item(n.itemId(), info), n.needed(), n.fromOwned(), n.fromSurplus(), n.toCraft(), n.toAcquire(),
                 n.recipeId(), n.source() == null ? null : n.source().name(), n.crafts(), n.minRating(), n.disciplines(),
-                n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint());
+                n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint(), n.produced(), n.newSurplus());
     }
 
     private static Item item(int id, Map<Integer, ItemRepository.ItemInfo> info) {

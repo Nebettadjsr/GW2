@@ -46,6 +46,8 @@ const knowledge = computed(() => {
       <span v-if="node.fromOwned > 0">Owned {{ node.fromOwned }}</span>
       <span v-if="node.fromSurplus > 0">From surplus {{ node.fromSurplus }}</span>
       <span v-if="node.toCraft > 0">{{ isVendor ? 'To buy' : node.recipeId !== null && node.recipeId < 0 ? 'To craft (Mystic Forge)' : 'To craft' }} {{ node.toCraft }}</span>
+      <span v-if="node.produced > 0 && node.produced !== node.toCraft" data-test="forge-node-produced">{{ isVendor ? 'Purchase yields' : 'Produces' }} {{ node.produced }}</span>
+      <span v-if="node.newSurplus > 0" data-test="forge-node-surplus">{{ node.newSurplus }} surplus kept for later use</span>
       <span v-if="node.toAcquire > 0" class="forge-missing">To acquire {{ node.toAcquire }}</span>
       <span v-if="knowledge" :class="{ 'forge-missing': node.recipeKnown === false }">{{ knowledge }}</span>
       <span v-if="node.minRating > 0">Rating {{ node.minRating }}</span>
