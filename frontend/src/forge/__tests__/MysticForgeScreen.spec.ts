@@ -36,7 +36,8 @@ function project(target: number, o: Partial<ForgeProject> = {}): ForgeProject {
     tree: node({ item: item(101, 'Sunrise Longbow'), needed: target, toCraft: target, toAcquire: 0, recipeId: -1, children: [
       node({ item: item(5, 'Locked Plank'), needed: 3, recipeId: 55, recipeSource: 'CRAFT', recipeKnown: false, performable: false,
         children: [node({ item: item(6, 'Ancient Wood Log'), needed: 9, fromOwned: 4, toAcquire: 5 })] })] }),
-    shopping: [{ item: item(6, 'Ancient Wood Log'), needed: 9, fromOwned: 4, toAcquire: 5, unitCopper: 100, knownCopper: 500 }],
+    shopping: [{ item: item(6, 'Ancient Wood Log'), needed: 9, fromOwned: 4, toAcquire: 5, unitCopper: 100, knownCopper: 500,
+      source: 'TRADING_POST', purchases: 0, currencyCosts: [], hint: null }],
     currencies: [{ currencyId: 23, name: 'Spirit Shards', iconUrl: null, wikiUrl: 'https://wiki.guildwars2.com/wiki/Spirit_Shard', needed: 50, owned: null, missing: null }],
     note: null, seed: null,
     economics: { outputUnitSellCopper: 100, expectedGrossProceedsCopper: 3684, feeCopper: 553, expectedNetProceedsCopper: 3131, knownShoppingCopper: 1300,
@@ -372,6 +373,75 @@ describe('first use source refresh and cold catalogue', () => {
     expect(w.findAll('[data-test="forge-row"]')).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(30_000)
     expect(calls).toBe(2)
+    w.unmount()
+  })
+})
+
+describe('vendor shopping and bounded catalogue completion', () => {
+  it('shows a vendor purchase batch in Shopping with its currency cost, never as free or a Trading Post price', async () => {
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) {
+        return project(target, { shopping: [
+          { item: item(20796, 'Mystic Crystal'), needed: 5, fromOwned: 0, toAcquire: 10, unitCopper: null, knownCopper: null,
+            source: 'VENDOR', purchases: 1, currencyCosts: [{ currencyId: 23, name: 'Spirit Shard', count: 1 }], hint: null },
+          { item: item(6, 'Ancient Wood Log'), needed: 9, fromOwned: 4, toAcquire: 5, unitCopper: 100, knownCopper: 500,
+            source: 'TRADING_POST', purchases: 0, currencyCosts: [], hint: null }] })
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    const lines = w.findAll('[data-test="forge-shopping-line"]')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]!.text()).toContain('Mystic Crystal × 10')
+    expect(lines[0]!.text()).toContain('vendor purchase (1 buy)')
+    expect(lines[0]!.text()).toContain('for 1 Spirit Shard')
+    expect(lines[0]!.text()).not.toContain('price unavailable')
+    expect(lines[1]!.text()).toContain('Ancient Wood Log × 5')
+    expect(lines[1]!.text()).toContain('each')
+    w.unmount()
+  })
+
+  function completingApi(counter: { calls: number }, doneAfter: number): MysticForgeApi {
+    return {
+      async loadCatalogue() { counter.calls++; return { ...catalogue, completing: counter.calls < doneAfter } },
+      async loadProject(_id, target) { return project(target) }
+    }
+  }
+
+  it('stops at the reread cap with a visible Retry that keeps rows and query; Retry resets the bound and completes', async () => {
+    const counter = { calls: 0 }
+    const w = mount(MysticForgeScreen, { props: { api: completingApi(counter, 9) }, attachTo: document.body })
+    await flushPromises()
+    await w.get('[data-test="forge-search"]').setValue('longbow')
+    for (let i = 0; i < 10; i++) { await vi.advanceTimersByTimeAsync(5100) }
+    expect(counter.calls).toBe(7) // initial + 6 bounded rereads, then nothing more
+    expect(w.find('[data-test="forge-catalogue-stalled"]').exists()).toBe(true)
+    expect(w.findAll('[data-test="forge-row"]')).toHaveLength(1)
+    expect((w.get('[data-test="forge-search"]').element as HTMLInputElement).value).toBe('longbow')
+    await w.get('[data-test="forge-catalogue-retry"]').trigger('click')
+    await flushPromises()
+    for (let i = 0; i < 4; i++) { await vi.advanceTimersByTimeAsync(5100) }
+    expect(counter.calls).toBe(9) // retried, completed at call 9, no further rereads
+    expect(w.find('[data-test="forge-catalogue-stalled"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('resumes a completing catalogue whose timer was cancelled by opening a detail once the user goes Back', async () => {
+    const counter = { calls: 0 }
+    const w = mount(MysticForgeScreen, { props: { api: completingApi(counter, 3) }, attachTo: document.body })
+    await flushPromises()
+    expect(counter.calls).toBe(1)
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(counter.calls).toBe(1) // the detail cancelled the reread timer
+    await w.get('[data-test="forge-back"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(11_000)
+    await flushPromises()
+    expect(counter.calls).toBe(3) // resumed, completed, stopped
     w.unmount()
   })
 })

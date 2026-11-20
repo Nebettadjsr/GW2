@@ -235,7 +235,7 @@ public class CraftingProfitService {
         // Clover references are never producers: they are deliberately not in this list.
         craft.ForgeProjectPlanner planner = new craft.ForgeProjectPlanner(producers);
         // Quotes for exactly this project's public path (the same ids its source identity/admission cover).
-        Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(con, planner.pathItemIds(root));
+        Map<Integer, PriceQuote> tp = tpRepo.loadCurrentTradeableQuotes(con, planner.pathItemIds(root));
 
         // Binding pools stay separate (sellable / account-bound / per-owner carried and Bank namespaces): the planner
         // applies the shared PlanState rules, so a Forge step may use any owner's Bank stock and an ordinary step only

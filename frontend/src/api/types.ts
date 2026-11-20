@@ -1000,6 +1000,12 @@ export interface ForgeShoppingLine {
   toAcquire: number
   unitCopper: number | null
   knownCopper: number | null
+  /** `TRADING_POST` (a leaf to buy) or `VENDOR` (a verified vendor purchase batch; currency-only has no gold). */
+  source: 'TRADING_POST' | 'VENDOR'
+  /** Vendor buys paid for (0 for Trading Post lines). */
+  purchases: number
+  currencyCosts: { currencyId: number; name: string | null; count: number }[]
+  hint: string | null
 }
 
 export interface ForgeProject {

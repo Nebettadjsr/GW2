@@ -38,6 +38,25 @@ public class TpPriceRepository {
         }
     }
 
+    /**
+     * Quotes only for items in the CURRENT tradeable catalogue: a retained {@code tp_prices} row of a retired item is
+     * not a current ask, whatever its age. Scoped to the Mystic Forge surfaces; ordinary quote loading is unchanged.
+     */
+    public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Set<Integer> itemIds) throws SQLException {
+        try (Connection con = repo.Db.open()) {
+            return loadCurrentTradeableQuotes(con, itemIds);
+        }
+    }
+
+    public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Connection con, Set<Integer> itemIds) throws SQLException {
+        return query(con, itemIds, """
+            SELECT p.item_id, p.buy_unit_price, p.sell_unit_price
+            FROM tp_prices p
+            JOIN tp_tradeable_items t ON t.item_id = p.item_id
+            WHERE p.item_id = ANY(?)
+        """);
+    }
+
     public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> itemIds) throws SQLException {
         try (Connection con = repo.Db.open()) {
             return loadTpQuotes(con, itemIds);
@@ -51,14 +70,16 @@ public class TpPriceRepository {
      * without going through production connection config.
      */
     public Map<Integer, PriceQuote> loadTpQuotes(Connection con, Set<Integer> itemIds) throws SQLException {
-        Map<Integer, PriceQuote> out = new HashMap<>();
-        if (itemIds.isEmpty()) return out;
-
-        String sql = """
+        return query(con, itemIds, """
             SELECT item_id, buy_unit_price, sell_unit_price
             FROM tp_prices
             WHERE item_id = ANY(?)
-        """;
+        """);
+    }
+
+    private static Map<Integer, PriceQuote> query(Connection con, Set<Integer> itemIds, String sql) throws SQLException {
+        Map<Integer, PriceQuote> out = new HashMap<>();
+        if (itemIds.isEmpty()) return out;
 
         try (PreparedStatement ps = con.prepareStatement(sql)) {
 

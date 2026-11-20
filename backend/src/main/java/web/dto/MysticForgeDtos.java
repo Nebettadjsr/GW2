@@ -58,7 +58,11 @@ public final class MysticForgeDtos {
                            long acquireContainers, long uncoveredNotes, boolean producerLocked) { }
 
     /** unitCopper null = UNPRICED (never zero). */
-    public record ShoppingDto(Item item, long needed, long fromOwned, long toAcquire, Long unitCopper, Long knownCopper) { }
+    public record ShoppingDto(Item item, long needed, long fromOwned, long toAcquire, Long unitCopper, Long knownCopper,
+                              String source, long purchases, List<CurrencyCostDto> currencyCosts, String hint) { }
+
+    /** A currency cost of a vendor purchase: exact, never converted to gold. */
+    public record CurrencyCostDto(int currencyId, String name, long count) { }
 
     public record Project(int recipeId, Item output, String outcome, String targetKind, long requestedTarget, long batches,
                           Long guaranteedOutput, boolean complete, String incompleteReason, boolean walletKnown,

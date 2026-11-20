@@ -47,6 +47,8 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   const catalogue = shallowRef<ForgeCatalogue | null>(null)
   const catalogueLoading = ref(false)
   const catalogueError = ref<string | null>(null)
+  /** True when bounded background completion rereads ran out while public metadata is still completing. */
+  const catalogueStalled = ref(false)
   const tab = ref<ForgeTab>('ALL')
   const query = ref('')
   const visibleLimit = ref(INITIAL_VISIBLE)
@@ -122,10 +124,26 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   function scheduleCatalogueReread(loaded: ForgeCatalogue): void {
     if (catalogueTimer !== null) clearTimeout(catalogueTimer)
     catalogueTimer = null
-    if (loaded.completing !== true) { catalogueRereads = 0; return }
-    if (catalogueRereads >= MAX_REREADS) return
+    if (loaded.completing !== true) { catalogueRereads = 0; catalogueStalled.value = false; return }
+    if (catalogueRereads >= MAX_REREADS) { catalogueStalled.value = true; return }
+    catalogueStalled.value = false
     catalogueRereads += 1
     catalogueTimer = setTimeout(() => { catalogueTimer = null; void loadCatalogue() }, REREAD_DELAY_MS)
+  }
+
+  /** Manual Retry: the only path that resets the bounded counter; automatic rereads never do. */
+  function retryCatalogue(): void {
+    catalogueRereads = 0
+    catalogueStalled.value = false
+    void loadCatalogue()
+  }
+
+  /** Re-arms a completion reread cancelled by opening a detail or deactivating, still within the same bound. */
+  function resumeCatalogue(): void {
+    const loaded = catalogue.value
+    if (loaded === null || loaded.completing !== true || catalogueTimer !== null || catalogueLoading.value
+      || catalogueStalled.value || !active || disposed) return
+    scheduleCatalogueReread(loaded)
   }
 
   function clearTimers(): void {
@@ -272,6 +290,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     sourceRefreshing.value = false
     projectError.value = null
     pending.value = false
+    resumeCatalogue()
   }
 
   /** A modest debounce; an empty or invalid draft never posts. */
@@ -308,6 +327,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     if (disposed) return
     active = true
     if (catalogue.value === null) void loadCatalogue()
+    else resumeCatalogue()
     if (selectedRecipeId.value !== null) void loadProject()
   }
 
@@ -329,6 +349,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     pending.value = false
     stalled.value = false
     catalogueRereads = 0
+    catalogueStalled.value = false
     // A selected project belongs to the replaced account: close it rather than silently planning it for another.
     selectedRecipeId.value = null
     targetText.value = '1'
@@ -340,7 +361,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   onScopeDispose(() => { disposed = true; active = false; clearTimers(); ++token; ++catalogueToken })
 
   return {
-    catalogue, catalogueLoading, catalogueError, tab, query, visibleLimit, filtered, visible, selectedRecipeId,
+    catalogue, catalogueLoading, catalogueError, catalogueStalled, retryCatalogue, tab, query, visibleLimit, filtered, visible, selectedRecipeId,
     selectedRow, targetText, project, currentProject, projectLoading, projectError, pending, sourceRefreshing, sourceError, stalled, retry, loadCatalogue, open, back, setTarget,
     activate, deactivate, setTab, setQuery, showMore
   }

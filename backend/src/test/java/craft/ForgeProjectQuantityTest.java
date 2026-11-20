@@ -27,6 +27,39 @@ class ForgeProjectQuantityTest {
     }
 
     @Test
+    void vendorProducedRequirementIsAShoppingFactWithOnePaymentAndReusedSurplus() {
+        // 5 Stones demanded by the first step, 3 more by the second: one vendor buy of 10 (1 Shard) covers both.
+        Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(A, 1), new Ingredient(B, 1)), List.of());
+        Recipe a = forge(2, A, 1, List.of(new Ingredient(STONE, 5)), List.of());
+        Recipe b = forge(3, B, 1, List.of(new Ingredient(STONE, 3)), List.of());
+        Recipe vendor = Recipe.vendor(-1_000_020796, STONE, 10, List.of(new CurrencyRequirement(SHARD, 1)), 0);
+        var p = new ForgeProjectPlanner(List.of(t, a, b, vendor)).planOutput(t, 1, ForgeProjectPlanner.Inventory.shared(Map.of()),
+                ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
+        assertEquals(1, p.vendorPurchases().size());
+        var v = p.vendorPurchases().get(0);
+        assertEquals(STONE, v.itemId());
+        assertEquals(1, v.purchases(), "one payment, the 2nd demand reuses the surplus");
+        assertEquals(10, v.units());
+        assertEquals(0, v.copper());
+        assertEquals(List.of(new CurrencyRequirement(SHARD, 1)), v.currencies(), "currency-only offer keeps its currency cost");
+        assertEquals(1, p.currencies().get(0).needed());
+        assertEquals(0, p.items().stream().filter(i -> i.itemId() == STONE).findFirst().orElseThrow().missing(),
+                "vendor-made stock is not a trading-post leaf");
+    }
+
+    @Test
+    void cashVendorPurchaseCarriesItsCopperAndOrdinaryLeavesAreUnaffected() {
+        Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(19663, 2), new Ingredient(A, 1)), List.of());
+        Recipe wine = Recipe.vendor(-1_000_019663, 19663, 1, List.of(), 2504);
+        var p = new ForgeProjectPlanner(List.of(t, wine)).planOutput(t, 1, ForgeProjectPlanner.Inventory.shared(Map.of()),
+                ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(A, ask(100)));
+        assertEquals(2, p.vendorPurchases().get(0).purchases());
+        assertEquals(5008, p.vendorPurchases().get(0).copper());
+        assertEquals(5108, p.knownCopper(), "vendor cash is counted once alongside the priced leaf");
+        assertEquals(1, p.items().stream().filter(i -> i.itemId() == A).findFirst().orElseThrow().missing());
+    }
+
+    @Test
     void goldTotalAboveTheExactJsonRangeIsIncompleteNotAFakeNumber() {
         Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(A, 1)), List.of());
         var p = new ForgeProjectPlanner(List.of(t)).planOutput(t, 999_999_999L, ForgeProjectPlanner.Inventory.shared(Map.of()),

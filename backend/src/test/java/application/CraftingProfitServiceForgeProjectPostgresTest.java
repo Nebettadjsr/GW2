@@ -31,7 +31,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -116,6 +116,19 @@ class CraftingProfitServiceForgeProjectPostgresTest {
         assertEquals(50, shards.needed());
         assertNull(shards.owned());
         assertTrue(a.project().currencies().isEmpty(), "A owns the Scroll, so no shards are demanded");
+    }
+
+    @Test
+    void retainedQuoteOfRetiredItemIsNotACurrentAskButTradeableQuoteIs() throws Exception {
+        sql("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price, fetched_at) VALUES (19976, 50, 60, now()), (12976, 70, 80, now())");
+        sql("INSERT INTO tp_tradeable_items (item_id) VALUES (12976)"); // 19976 was retired from the tradeable catalogue
+        var c = service(con, AccountScope.of(UUID.fromString(ACC_C))).planForgeProject(SCEPTER_RECIPE, 1);
+        var retired = c.project().items().stream().filter(i -> i.itemId() == 19976).findFirst().orElseThrow();
+        var current = c.project().items().stream().filter(i -> i.itemId() == 12976).findFirst().orElseThrow();
+        assertNull(retired.knownUnitCopper(), "a retained quote of a retired item must not price the leaf");
+        assertTrue(c.project().unpricedItemIds().contains(19976));
+        assertNotNull(current.knownUnitCopper(), "a current tradeable item keeps its quote");
+        assertFalse(c.project().unpricedItemIds().contains(12976));
     }
 
     private static CraftingProfitService service(Connection con, AccountScope scope) {

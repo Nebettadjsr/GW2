@@ -72,7 +72,7 @@ class CraftingProfitServiceForgeEmptyRosterTest {
                 return loadOwnedInventoryForCharacters(con, scope, names);
             }
         }, new TpPriceRepository() {
-            @Override public Map<Integer, PriceQuote> loadTpQuotes(Connection con, Set<Integer> ids) {
+            @Override public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Connection con, Set<Integer> ids) {
                 return Map.of(31058, new PriceQuote(1000, 1100));
             }
         }, new ItemRepository() {

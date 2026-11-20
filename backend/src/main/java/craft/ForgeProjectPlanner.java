@@ -49,6 +49,14 @@ public final class ForgeProjectPlanner {
     /** Per item: total demand, what stock covered, and what must still be acquired (a leaf the plan cannot produce). */
     public record ItemLine(int itemId, long needed, long fromOwned, long missing, Long knownUnitCopper) { }
 
+    /**
+     * One verified vendor purchase batch the plan actually pays for ({@code purchases} buys of {@code outputCount}
+     * units each; {@code units} may exceed demand, the rest stays conserved surplus). Cash is real copper; a
+     * currency-only offer has {@code copper == 0} and a non-empty {@code currencies} (never a free purchase).
+     */
+    public record VendorPurchase(int itemId, long purchases, long units, long copper,
+                                 List<CurrencyRequirement> currencies, String hint) { }
+
     /** {@code owned}/{@code missing} are null when the wallet is unknown (never defaulted to zero). */
     public record CurrencyLine(int currencyId, long needed, Long owned, Long missing) { }
 
@@ -109,7 +117,8 @@ public final class ForgeProjectPlanner {
     public record Project(int recipeId, int outputItemId, long batches, long guaranteedOutput,
                           List<CraftStep> steps, List<ItemLine> items, List<CurrencyLine> currencies,
                           Node tree, long knownCopper, List<Integer> unpricedItemIds, boolean complete, String incompleteReason,
-                          Seed seed, Economics economics, Notes notes) { }
+                          Seed seed, Economics economics, Notes notes,
+                          List<VendorPurchase> vendorPurchases) { }
 
     private final Map<Integer, Recipe> producerByItem = new java.util.HashMap<>();
     private final Map<Integer, Recipe> noteRecipes = new TreeMap<>();
@@ -240,6 +249,17 @@ public final class ForgeProjectPlanner {
             currencies.add(new CurrencyLine(e.getKey(), e.getValue(), have,
                     have == null ? null : Math.max(0, e.getValue() - have)));
         }
+        List<VendorPurchase> vendorPurchases = new ArrayList<>();
+        for (Recipe v : run.vendorRecipes.values()) {
+            long buys = run.stepByRecipe.containsKey(v.recipeId) ? run.stepByRecipe.get(v.recipeId).crafts() : 0L;
+            if (buys <= 0) continue;
+            try {
+                List<CurrencyRequirement> cost = new ArrayList<>();
+                for (CurrencyRequirement c : v.currencies) cost.add(new CurrencyRequirement(c.currencyId(), (int) mul((long) c.count(), buys)));
+                vendorPurchases.add(new VendorPurchase(v.outputItemId, buys, mul(buys, (long) v.outputCount),
+                        mul((long) v.vendorCopper, buys), List.copyOf(cost), VendorAcquisitions.hintFor(v.outputItemId)));
+            } catch (ArithmeticException ex) { run.stop("quantity exceeds the supported range"); }
+        }
         long out;
         try { out = mul(batches, (long) target.outputCount); } catch (ArithmeticException e) { out = -1; } // -1: unavailable, never a clamped number
         Seed seed = null;
@@ -251,7 +271,7 @@ public final class ForgeProjectPlanner {
             } catch (ArithmeticException e) { seed = null; econ = null; run.stop("quantity exceeds the supported range"); }
         }
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
-                tree, copper, unpriced, run.reason == null, run.reason, seed, econ, notes);
+                tree, copper, unpriced, run.reason == null, run.reason, seed, econ, notes, List.copyOf(vendorPurchases));
     }
 
     /**
@@ -428,6 +448,7 @@ public final class ForgeProjectPlanner {
         final Map<Integer, Long> leaf = new java.util.HashMap<>();
         final Map<Integer, Long> currencyDemand = new TreeMap<>();
         final Map<Integer, CraftStep> stepByRecipe = new TreeMap<>();
+        final Map<Integer, Recipe> vendorRecipes = new TreeMap<>();
         final List<CraftStep> steps = new ArrayList<>();
         long vendorCopper;
         Recipe noteProducer;
@@ -507,6 +528,7 @@ public final class ForgeProjectPlanner {
             if (depth > MAX_DEPTH || ++nodes > MAX_NODES) { stop("planning bound reached"); return kids; }
             try {
                 vendorCopper = add(vendorCopper, mul((long) r.vendorCopper, crafts));
+                if (r.isVendor()) vendorRecipes.putIfAbsent(r.recipeId, r);
                 for (CurrencyRequirement c : r.currencies) {
                     currencyDemand.merge(c.currencyId(), mul((long) c.count(), crafts), ForgeProjectPlanner::add);
                 }

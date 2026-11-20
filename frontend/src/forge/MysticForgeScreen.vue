@@ -89,7 +89,10 @@ async function back(): Promise<void> {
       </label>
       <p v-if="f.catalogueLoading.value && f.catalogue.value === null" role="status">Loading recipes…</p>
       <p v-if="f.catalogueError.value" role="alert" data-test="forge-catalogue-error">{{ f.catalogueError.value }}
-        <button type="button" @click="f.loadCatalogue()">Try again</button></p>
+        <button type="button" @click="f.retryCatalogue()">Try again</button></p>
+      <p v-if="f.catalogueStalled.value" role="status" data-test="forge-catalogue-stalled">
+        Recipe details are still being completed in the background, but automatic checking has stopped. Your rows, search and tab are kept.
+        <button type="button" data-test="forge-catalogue-retry" @click="f.retryCatalogue()">Retry</button></p>
       <template v-if="f.catalogue.value">
         <p class="forge-count" data-test="forge-count">{{ f.filtered.value.length }} recipes</p>
         <ul class="forge-list">
@@ -204,10 +207,13 @@ async function back(): Promise<void> {
 
         <section v-if="project.shopping.length" data-test="forge-shopping">
           <h3>Shopping</h3>
-          <ul><li v-for="s in project.shopping" :key="s.item.itemId" data-test="forge-shopping-line">
+          <ul><li v-for="s in project.shopping" :key="`${s.source}-${s.item.itemId}`" data-test="forge-shopping-line">
             <ItemIcon :icon-url="s.item.iconUrl" :item-id="s.item.itemId" :size="20" />
             {{ s.item.name ?? `Item ${s.item.itemId}` }} × {{ s.toAcquire }} —
-            <template v-if="s.unitCopper === null">price unavailable</template>
+            <template v-if="s.source === 'VENDOR'">
+              <span data-test="forge-shopping-vendor">vendor purchase ({{ s.purchases }} {{ s.purchases === 1 ? 'buy' : 'buys' }})</span><template v-if="s.knownCopper !== null"> for {{ formatCopper(s.knownCopper) }}</template><template v-for="c in s.currencyCosts" :key="c.currencyId"> for {{ c.count }} {{ c.name }}</template><template v-if="s.hint"> — {{ s.hint }}</template>
+            </template>
+            <template v-else-if="s.unitCopper === null">price unavailable</template>
             <template v-else>{{ formatCopper(s.unitCopper) }} each = {{ formatCopper(s.knownCopper) }}</template>
           </li></ul>
         </section>

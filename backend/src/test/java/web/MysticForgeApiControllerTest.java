@@ -38,7 +38,7 @@ class MysticForgeApiControllerTest {
             }
         };
         var tp = new TpPriceRepository() {
-            @Override public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> ids) {
+            @Override public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Set<Integer> ids) {
                 quoteCalls.incrementAndGet();
                 return Map.of(500, new PriceQuote(1000, 1500), 600, new PriceQuote(0, null));
             }
@@ -100,7 +100,7 @@ class MysticForgeApiControllerTest {
             }
         };
         var controller = new MysticForgeApiController(null, null, () -> catalog, items, new TpPriceRepository() {
-            @Override public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> ids) { return Map.of(); }
+            @Override public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Set<Integer> ids) { return Map.of(); }
             @Override public Set<Integer> staleOrMissingTradeable(Set<Integer> ids) { return Set.of(); }
         }, coordinator);
 
@@ -144,7 +144,7 @@ class MysticForgeApiControllerTest {
         };
         return new MysticForgeApiController(null, null, () -> new MysticForgeCatalog(List.of(bow), 0, "test"), items,
                 new TpPriceRepository() {
-                    @Override public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> ids) { return Map.of(); }
+                    @Override public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Set<Integer> ids) { return Map.of(); }
                     @Override public Set<Integer> staleOrMissingTradeable(Set<Integer> ids) { return staleQuoteIds; }
                 }, coordinator);
     }

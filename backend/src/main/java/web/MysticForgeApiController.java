@@ -83,7 +83,7 @@ public class MysticForgeApiController {
         for (Recipe r : c.recipes()) ids.add(r.outputItemId);
         for (var ref : ForgeReferenceRecipes.all()) ids.add(ref.outputItemId());
         Map<Integer, ItemRepository.ItemInfo> info = items.loadItems(ids);
-        Map<Integer, PriceQuote> quotes = tp.loadTpQuotes(ids);
+        Map<Integer, PriceQuote> quotes = tp.loadCurrentTradeableQuotes(ids);
         List<RecipeRow> rows = new ArrayList<>();
         for (Recipe r : c.recipes()) {
             ExpectedYield y = r.expectedYield;
@@ -202,7 +202,17 @@ public class MysticForgeApiController {
                 try { known = ForgeProjectPlanner.mul(l.knownUnitCopper(), l.missing()); }
                 catch (ArithmeticException overflow) { known = null; partialLine = true; } // unavailable line total, never a fake exact cost
             }
-            shopping.add(new ShoppingDto(item(l.itemId(), info), l.needed(), l.fromOwned(), l.missing(), l.knownUnitCopper(), known));
+            shopping.add(new ShoppingDto(item(l.itemId(), info), l.needed(), l.fromOwned(), l.missing(), l.knownUnitCopper(), known,
+                    "TRADING_POST", 0, List.of(), null));
+        }
+        for (var v : p.vendorPurchases()) {
+            List<CurrencyCostDto> costs = new ArrayList<>();
+            v.currencies().forEach(c -> costs.add(new CurrencyCostDto(c.currencyId(), craft.KnownCurrencies.name(c.currencyId()), c.count())));
+            var line = p.items().stream().filter(l -> l.itemId() == v.itemId()).findFirst().orElse(null);
+            // Cash of a vendor buy is real; a currency-only offer has no gold figure (null), never a free purchase.
+            shopping.add(new ShoppingDto(item(v.itemId(), info), line == null ? v.units() : line.needed(),
+                    line == null ? 0 : line.fromOwned(), v.units(), null, v.copper() > 0 ? v.copper() : null,
+                    "VENDOR", v.purchases(), costs, v.hint()));
         }
         p.unpricedItemIds().forEach(id -> unpriced.add(item(id, info)));
         List<CurrencyDto> cur = new ArrayList<>();
