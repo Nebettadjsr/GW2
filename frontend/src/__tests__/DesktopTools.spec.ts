@@ -118,14 +118,14 @@ describe('desktop-layout warning through the real App', () => {
   it.each(tools)('restores the retained key and keeps %s available on a direct1023px bookmark', async destination => {
     await resize(1023)
     window.sessionStorage.setItem(STORAGE_KEY, KEY)
-    const app = await open(`/#/${destination}`)
+    const app = await open(`/#/${destination === 'forge' ? 'mystic-forge' : destination}`)
     notice(app)
     expect(app.get(toolContent[destination]!).isVisible()).toBe(true)
     expect(requests[0]).toBe('/api/session')
     expect(requests.filter(path => path === '/api/session')).toHaveLength(1)
     expect(connection.phase).toBe('connected')
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe(KEY)
-    expect(window.location.hash).toBe(`#/${destination}`)
+    expect(window.location.hash).toBe(`#/${destination === 'forge' ? 'mystic-forge' : destination}`)
   })
 
   it.each(['/welcome', '/#/legal', '/#/privacy', '/#/storage'])('keeps public%s readable and request-quiet at360px', async path => {

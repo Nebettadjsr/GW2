@@ -50,7 +50,7 @@ const knowledge = computed(() => {
       <span v-if="knowledge" :class="{ 'forge-missing': node.recipeKnown === false }">{{ knowledge }}</span>
       <span v-if="node.minRating > 0">Rating {{ node.minRating }}</span>
       <span v-if="node.disciplines">{{ node.disciplines }}</span>
-      <span v-if="node.recipeKnown === false || (node.recipeId !== null && node.recipeId > 0 && !node.performable && !isVendor)">Structural path only, not executable yet</span>
+      <span v-if="node.recipeKnown === false || (node.recipeId !== null && node.recipeId > 0 && !node.performable && !isVendor)">Crafting step unavailable</span>
     </p>
     <p v-else class="forge-node__facts" data-test="forge-node-reference">Reference inputs only; no output is claimed.</p>
     <p v-if="node.hint" class="forge-node__hint">{{ node.hint }}</p>

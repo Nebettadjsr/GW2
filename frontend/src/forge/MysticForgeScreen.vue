@@ -29,6 +29,14 @@ onDeactivated(() => f.deactivate())
 const detail = computed(() => f.selectedRecipeId.value !== null)
 const row = computed(() => f.selectedRow.value)
 const project = computed(() => f.currentProject.value)
+/** Weapon/Armor details whose direct-input comparison is only unknown bound Gifts carry no usable economics. */
+const showEconomics = computed(() => {
+  const e = project.value?.economics
+  if (!e) return false
+  const gearOnlyUnknown = (row.value?.category === 'WEAPONS' || row.value?.category === 'ARMOR')
+    && e.unpricedInputs.length > 0 && e.goldInputCopper === 0 && e.currencyInputs.length === 0
+  return !gearOnlyUnknown
+})
 const referenceOnly = computed(() => project.value?.outcome === 'REFERENCE_RANDOM')
 const batchTarget = computed(() => project.value?.targetKind === 'BATCHES' || row.value?.outcome !== 'FIXED')
 const targetValid = computed(() => parseTarget(f.targetText.value) !== null)
@@ -62,11 +70,11 @@ async function back(): Promise<void> {
 </script>
 
 <template>
-  <section class="forge" data-test="forge-screen">
-    <PageHeader heading="Mystic Forge" intro="Browse Mystic Forge recipes and plan one selected project from your captured account." />
+  <section class="screen forge" data-test="forge-screen">
+    <PageHeader heading="Mystic Forge" intro="Browse Mystic Forge recipes and plan one selected project from your account." />
 
     <!-- The list stays mounted while a project is open so its tab, search, scroll and focus survive. -->
-    <div v-show="!detail" ref="list" data-test="forge-overview">
+    <div v-show="!detail" ref="list" class="forge-overview" data-test="forge-overview">
       <div class="forge-tabs" role="group" aria-label="Recipe category">
         <button v-for="t in FORGE_TABS" :key="t.id" type="button" :aria-pressed="f.tab.value === t.id"
           :data-test="`forge-tab-${t.id}`" @click="f.setTab(t.id)">{{ t.label }}</button>
@@ -147,7 +155,7 @@ async function back(): Promise<void> {
           </li></ul>
         </section>
 
-        <section v-if="project.economics" data-test="forge-economics">
+        <section v-if="project.economics && showEconomics" data-test="forge-economics">
           <h3>{{ project.economics.conditional ? 'Estimated conditional economics' : 'Economics' }}</h3>
           <p class="forge-note">Direct-input buy-all comparison for the whole project; {{ project.economics.fixedOutput ? 'output is fixed' : 'an estimate, not a guarantee' }}. Excludes unpriced inputs and currencies.</p>
           <dl class="forge-dl">
@@ -195,6 +203,10 @@ async function back(): Promise<void> {
 </template>
 
 <style scoped>
+.forge-detail, .forge-detail > section { display: flex; flex-direction: column; gap: var(--space-3); }
+.forge-detail > section { padding: var(--space-3) 0; }
+.forge-detail h3, .forge-detail p, .forge-detail dl { margin: 0; }
+.forge-overview { display: flex; flex-direction: column; gap: var(--space-3); }
 .forge-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
 .forge-tabs [aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
 .forge-search { display: block; max-width: 28rem; }
