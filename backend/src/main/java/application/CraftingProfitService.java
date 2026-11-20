@@ -222,14 +222,14 @@ public class CraftingProfitService {
         for (Ingredient i : root.ingredients) itemIds.add(i.itemId);
         Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(con, itemIds);
 
+        // Binding pools stay separate (sellable / account-bound / per-owner carried and Bank namespaces): the planner
+        // applies the shared PlanState rules, so a Forge step may use any owner's Bank stock and an ordinary step only
+        // its assigned eligible character's own stock. Nothing is collapsed into one shared map here.
         InventoryRepository.CoordinatedInventory inv = invRepo.loadOwnedInventoryForCharacters(con, session.scope(), Set.of(), true);
-        Map<Integer, Long> owned = new HashMap<>();
-        inv.sellable().forEach((k, v) -> owned.merge(k, (long) v, Long::sum));
-        inv.accountBound().forEach((k, v) -> owned.merge(k, (long) v, Long::sum));
-        String bankPrefix = craft.PlanState.bankOwnerKey("");
-        inv.characterBound().forEach((key, items) -> {
-            if (key.startsWith(bankPrefix)) items.forEach((k, v) -> owned.merge(k, (long) v, Long::sum));
-        });
+        craft.ForgeProjectPlanner.Inventory inventory = new craft.ForgeProjectPlanner.Inventory(
+                inv.sellable(), inv.accountBound(), inv.characterBound());
+        craft.ForgeProjectPlanner.Context context = new craft.ForgeProjectPlanner.Context(
+                buildCoordinatedRoster(null), recipeRepo.loadKnownRecipeIds(con, session.scope()));
 
         Map<Integer, Long> wallet = null;
         if (session.walletAuthorized()) {
@@ -238,9 +238,10 @@ public class CraftingProfitService {
         }
 
         boolean batchTarget = ref != null || root.hasExpectedYield();
-        long batches = batchTarget ? target : Math.ceilDiv(target, (long) root.outputCount);
-        craft.ForgeProjectPlanner.Project project = new craft.ForgeProjectPlanner(producers)
-                .plan(root, batches, owned, wallet, tp);
+        craft.ForgeProjectPlanner planner = new craft.ForgeProjectPlanner(producers);
+        craft.ForgeProjectPlanner.Project project = batchTarget
+                ? planner.plan(root, target, true, inventory, context, wallet, tp)
+                : planner.planOutput(root, target, inventory, context, wallet, tp);
         Set<Integer> shown = new HashSet<>();
         shown.add(root.outputItemId);
         for (Ingredient i : root.ingredients) shown.add(i.itemId);

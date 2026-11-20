@@ -14,7 +14,8 @@
     { "itemId": 20796, "name": "Philosopher's Stone", "quantity": 10, "currencyId": 23, "currencyUnits": 1, "source": "https://wiki.guildwars2.com/wiki/Philosopher%27s_Stone" },
     { "itemId": 20799, "name": "Mystic Crystal", "quantity": 5, "currencyId": 23, "currencyUnits": 3, "source": "https://wiki.guildwars2.com/wiki/Mystic_Crystal" },
     { "itemId": 20852, "name": "Eldritch Scroll", "quantity": 1, "currencyId": 23, "currencyUnits": 50, "source": "https://wiki.guildwars2.com/wiki/Eldritch_Scroll" },
-    { "itemId": 19663, "name": "Bottle of Elonian Wine", "quantity": 1, "copper": 2504, "source": "https://wiki.guildwars2.com/wiki/Bottle_of_Elonian_Wine" }
+    { "itemId": 19663, "name": "Bottle of Elonian Wine", "quantity": 1, "copper": 2504, "source": "https://wiki.guildwars2.com/wiki/Bottle_of_Elonian_Wine" },
+    { "itemId": 79418, "name": "Mystic Runestone", "quantity": 1, "copper": 10000, "source": "https://wiki.guildwars2.com/wiki/Mystic_Runestone" }
   ],
   "currency": { "id": 23, "name": "Spirit Shard", "source": "https://api.guildwars2.com/v2/currencies/23" },
   "capture": {

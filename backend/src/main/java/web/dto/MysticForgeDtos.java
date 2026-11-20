@@ -22,10 +22,25 @@ public final class MysticForgeDtos {
     /** needed == fromOwned + fromSurplus + toCraft + toAcquire; toCraft is planned work, never owned progress. */
     public record NodeDto(Item item, long needed, long fromOwned, long fromSurplus, long toCraft, long toAcquire,
                           Integer recipeId, String recipeSource, long crafts, int minRating, String disciplines,
-                          String cutoff, List<NodeDto> children) { }
+                          String cutoff, List<NodeDto> children, Boolean recipeKnown, boolean performable,
+                          String assignedCharacter, String hint) { }
 
     /** null owned/missing = wallet unknown. */
-    public record CurrencyDto(int currencyId, String name, long needed, Long owned, Long missing) { }
+    public record CurrencyDto(int currencyId, String name, String iconUrl, String wikiUrl, long needed, Long owned,
+                              Long missing) { }
+
+    /** One external seed then guaranteed reuse only; expected figures are estimates, guaranteed figures are exact. */
+    public record SeedDto(long externalSeedUnits, long reusedSeedUnits, long grossGuaranteedOutput,
+                          long netGuaranteedOutput, String grossExpectedOutput, String netExpectedOutput) { }
+
+    /**
+     * Backend-computed promotion economics (copper). A null amount is not claimable (unpriced output/inputs). Currencies
+     * stay separate and unpriced; {@code conditional} marks a margin that excludes them or other unpriced parts.
+     */
+    public record EconomicsDto(Integer outputUnitSellCopper, Long expectedGrossProceedsCopper, Long feeCopper,
+                               Long expectedNetProceedsCopper, long knownShoppingCopper, Long replacementCostCopper,
+                               long knownReplacementCopper, List<Item> unpricedInputs, Long marginOnShoppingCopper,
+                               Long marginOnReplacementCopper, boolean conditional) { }
 
     /** unitCopper null = UNPRICED (never zero). */
     public record ShoppingDto(Item item, long needed, long fromOwned, long toAcquire, Long unitCopper, Long knownCopper) { }
@@ -34,5 +49,5 @@ public final class MysticForgeDtos {
                           Long guaranteedOutput, boolean complete, String incompleteReason, boolean walletKnown,
                           long knownGoldCopper, boolean goldCostPartial, List<Item> unpricedItems, NodeDto tree,
                           List<ShoppingDto> shopping, List<CurrencyDto> currencies, String note,
-                          CalculationFreshnessDto freshness) { }
+                          SeedDto seed, EconomicsDto economics, CalculationFreshnessDto freshness) { }
 }

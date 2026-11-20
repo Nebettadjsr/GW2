@@ -1,5 +1,6 @@
 package craft;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -38,11 +39,41 @@ public final class ForgeProjectPlanner {
      */
     public record Node(int itemId, long needed, long fromOwned, long fromSurplus, long toCraft, long toAcquire,
                        Integer recipeId, RecipeSource source, long crafts, int minRating, String disciplines,
-                       String cutoff, List<Node> children) { }
+                       String cutoff, List<Node> children, Boolean recipeKnown, boolean performable,
+                       String assignedCharacter, String hint) { }
+
+    /** Owned stock in its binding pools (never collapsed): sellable, account-bound and per-owner character/Bank stock. */
+    public record Inventory(Map<Integer, Integer> sellable, Map<Integer, Integer> accountBound,
+                            Map<String, Map<Integer, Integer>> characterBound) {
+        public static Inventory shared(Map<Integer, Long> owned) {
+            Map<Integer, Integer> m = new java.util.HashMap<>();
+            owned.forEach((k, v) -> m.put(k, (int) Math.min(Integer.MAX_VALUE, Math.max(0, v))));
+            return new Inventory(m, Map.of(), Map.of());
+        }
+    }
+
+    /** Roster ratings and known recipe ids ({@code knownRecipeIds} null = unknown, never "none known"). */
+    public record Context(List<CharacterCraftingProfile> roster, Set<Integer> knownRecipeIds) {
+        public static final Context NONE = new Context(List.of(), null);
+    }
+
+    /** Self-seed accounting of an expected-yield root: one external seed, then guaranteed reuse only. */
+    public record Seed(long externalSeedUnits, long reusedSeedUnits, long grossGuaranteedOutput,
+                       long netGuaranteedOutput, BigDecimal grossExpectedOutput, BigDecimal netExpectedOutput) { }
+
+    /**
+     * Conditional economics of a tradable promotion batch plan. Null money = not claimable (unpriced inputs/output).
+     * Currencies are never converted to gold; {@code conditional} is true when currencies or unpriced parts remain.
+     */
+    public record Economics(Integer outputUnitSellCopper, Long expectedGrossProceedsCopper, Long feeCopper,
+                            Long expectedNetProceedsCopper, long knownShoppingCopper, Long replacementCostCopper,
+                            long knownReplacementCopper, List<Integer> unpricedInputItemIds,
+                            Long marginOnShoppingCopper, Long marginOnReplacementCopper, boolean conditional) { }
 
     public record Project(int recipeId, int outputItemId, long batches, long guaranteedOutput,
                           List<CraftStep> steps, List<ItemLine> items, List<CurrencyLine> currencies,
-                          Node tree, long knownCopper, List<Integer> unpricedItemIds, boolean complete, String incompleteReason) { }
+                          Node tree, long knownCopper, List<Integer> unpricedItemIds, boolean complete, String incompleteReason,
+                          Seed seed, Economics economics) { }
 
     private final Map<Integer, Recipe> producerByItem = new java.util.HashMap<>();
 
@@ -60,50 +91,138 @@ public final class ForgeProjectPlanner {
         return s == RecipeSource.VENDOR ? 2 : s == RecipeSource.MYSTIC_FORGE ? 1 : 0;
     }
 
+    /** Batch semantics with only shared stock and no roster (unbound-map convenience for simple callers/tests). */
     public Project plan(Recipe target, long batches, Map<Integer, Long> owned, Map<Integer, Long> wallet,
                         Map<Integer, PriceQuote> prices) {
+        return plan(target, batches, true, Inventory.shared(owned), Context.NONE, wallet, prices);
+    }
+
+    /** Fixed target: {@code quantity} is the desired TOTAL output; already-owned output is consumed first. */
+    public Project planOutput(Recipe target, long quantity, Inventory inv, Context ctx, Map<Integer, Long> wallet,
+                              Map<Integer, PriceQuote> prices) {
+        return plan(target, quantity, false, inv, ctx, wallet, prices);
+    }
+
+    /**
+     * @param quantity batches when {@code batchTarget}, else the desired total output units
+     * @param wallet   null = whole wallet unknown; a known map treats an absent currency as exactly 0
+     */
+    public Project plan(Recipe target, long quantity, boolean batchTarget, Inventory inv, Context ctx,
+                        Map<Integer, Long> wallet, Map<Integer, PriceQuote> prices) {
         if (target == null || !target.isMysticForge()) throw new IllegalArgumentException("target must be a Mystic Forge recipe");
-        if (batches <= 0) throw new IllegalArgumentException("batches must be positive");
-        Run run = new Run(new java.util.HashMap<>(owned), prices);
+        if (quantity <= 0) throw new IllegalArgumentException("batches must be positive");
+        Run run = new Run(new PlanState(inv.sellable(), inv.accountBound(), inv.characterBound()), prices, ctx);
+        long batches = 0;
         Node tree = null;
         try {
-            List<Node> kids = run.craft(target, batches, 0, new HashSet<>());
-            long outUnits = Math.multiplyExact(batches, (long) target.outputCount);
-            tree = new Node(target.outputItemId, outUnits, 0, 0, outUnits, 0, target.recipeId, target.source, batches,
-                    target.minRating, target.disciplinesText, run.reason, kids);
+            long outUnits;
+            long rootOwned = 0;
+            if (batchTarget) {
+                batches = quantity;
+                outUnits = Math.multiplyExact(batches, (long) target.outputCount);
+            } else {
+                outUnits = quantity;
+                rootOwned = run.consume(target.outputItemId, quantity, run.forgeAssignee(target));
+                batches = Math.ceilDiv(quantity - rootOwned, (long) target.outputCount);
+                if (rootOwned > 0) run.fromOwned.merge(target.outputItemId, rootOwned, Math::addExact);
+                run.demand.merge(target.outputItemId, quantity, Math::addExact);
+            }
+            List<Node> kids = batches > 0 ? run.craft(target, batches, 0, new HashSet<>()) : List.of();
+            long surplusOut = batches > 0 ? Math.subtractExact(Math.multiplyExact(batches, (long) target.outputCount), quantity - rootOwned) : 0;
+            boolean fixedRoot = !batchTarget;
+            tree = new Node(target.outputItemId, outUnits, rootOwned, 0, fixedRoot ? outUnits - rootOwned : outUnits, 0,
+                    target.recipeId, target.source, batches, target.minRating, target.disciplinesText, run.reason, kids,
+                    null, true, null, null);
+            if (fixedRoot && surplusOut > 0) run.surplus.merge(target.outputItemId, surplusOut, Math::addExact);
         } catch (ArithmeticException e) {
             run.stop("quantity exceeds the supported range");
         }
         List<ItemLine> items = new ArrayList<>();
         List<Integer> unpriced = new ArrayList<>();
         long copper = run.vendorCopper;
+        long knownReplacement = 0;
+        List<Integer> unpricedInputs = new ArrayList<>();
         for (var e : run.demand.entrySet()) {
             int id = e.getKey();
             long missing = run.leaf.getOrDefault(id, 0L);
-            Long unit = null;
-            PriceQuote q = prices.get(id);
-            if (missing > 0 && q != null && q.sellUnit != null) {
-                unit = (long) q.sellUnit;
+            long have = run.fromOwned.getOrDefault(id, 0L);
+            Long unit = unitPrice(prices.get(id));
+            if (missing > 0 && unit != null) {
                 try { copper = Math.addExact(copper, Math.multiplyExact(unit, missing)); }
                 catch (ArithmeticException ex) { run.stop("gold cost exceeds the supported range"); }
             } else if (missing > 0) unpriced.add(id);
-            items.add(new ItemLine(id, e.getValue(), run.fromOwned.getOrDefault(id, 0L), missing, unit));
+            if ((missing > 0 || have > 0) && (batchTarget || id != target.outputItemId)) {
+                if (unit == null) { if (!unpricedInputs.contains(id)) unpricedInputs.add(id); }
+                else {
+                    try { knownReplacement = Math.addExact(knownReplacement, Math.multiplyExact(unit, Math.addExact(missing, have))); }
+                    catch (ArithmeticException ex) { run.stop("gold cost exceeds the supported range"); }
+                }
+            }
+            items.add(new ItemLine(id, e.getValue(), have, missing, unit));
         }
         List<CurrencyLine> currencies = new ArrayList<>();
         for (var e : run.currencyDemand.entrySet()) {
-            Long have = wallet == null || !wallet.containsKey(e.getKey()) ? null : Math.max(0, wallet.get(e.getKey()));
+            Long have = wallet == null ? null : Math.max(0, wallet.getOrDefault(e.getKey(), 0L));
             currencies.add(new CurrencyLine(e.getKey(), e.getValue(), have,
                     have == null ? null : Math.max(0, e.getValue() - have)));
         }
         long out;
         try { out = Math.multiplyExact(batches, (long) target.outputCount); } catch (ArithmeticException e) { out = Long.MAX_VALUE; }
+        Seed seed = null;
+        Economics econ = null;
+        if (batchTarget && target.hasExpectedYield() && run.reason == null) {
+            seed = seedOf(target, batches);
+            econ = economics(target, seed, prices.get(target.outputItemId), copper, knownReplacement, unpricedInputs,
+                    !currencies.isEmpty() || !unpriced.isEmpty());
+        }
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
-                tree, copper, unpriced, run.reason == null, run.reason);
+                tree, copper, unpriced, run.reason == null, run.reason, seed, econ);
+    }
+
+    private static Long unitPrice(PriceQuote q) {
+        return q != null && q.sellUnit != null && q.sellUnit > 0 ? (long) q.sellUnit : null;
+    }
+
+    /** Units of the root's own output consumed per batch as the seed (summed over such ingredients). */
+    static long seedExternalUnits(Recipe r, long batches) {
+        long s = r.selfSeedUnits();
+        if (s == 0 || !r.hasExpectedYield()) return 0;
+        long reusedPerBatch = Math.min(s, r.expectedYield.min());
+        return Math.addExact(s, Math.multiplyExact(batches - 1, s - reusedPerBatch));
+    }
+
+    private static Seed seedOf(Recipe r, long batches) {
+        ExpectedYield y = r.expectedYield;
+        long s = r.selfSeedUnits();
+        long external = seedExternalUnits(r, batches);
+        long totalSeed = Math.multiplyExact(batches, s);
+        long reused = totalSeed - external;
+        long gross = Math.multiplyExact(batches, (long) y.min());
+        BigDecimal grossExp = y.mean().multiply(BigDecimal.valueOf(batches));
+        return new Seed(external, reused, gross, gross - reused, grossExp, grossExp.subtract(BigDecimal.valueOf(reused)));
+    }
+
+    private static Economics economics(Recipe r, Seed seed, PriceQuote outQuote, long shopping, long knownReplacement,
+                                       List<Integer> unpricedInputs, boolean conditional) {
+        Long unit = unitPrice(outQuote);
+        Long gross = null, fee = null, net = null;
+        if (unit != null) {
+            gross = ExpectedYield.floorCopper(seed.netExpectedOutput(), (int) Math.min(Integer.MAX_VALUE, unit));
+            fee = gross > 0 ? tradingpost.TradingPostFeePolicy.feeOn(gross) : 0L;
+            net = gross - fee;
+        }
+        boolean full = unpricedInputs.isEmpty();
+        Long replacement = full ? knownReplacement : null;
+        Long marginShop = net != null && full ? net - shopping : null;
+        Long marginRepl = net != null && full ? net - knownReplacement : null;
+        return new Economics(unit == null ? null : (int) Math.min(Integer.MAX_VALUE, unit), gross, fee, net, shopping,
+                replacement, knownReplacement, List.copyOf(unpricedInputs), marginShop, marginRepl, conditional);
     }
 
     private final class Run {
-        final Map<Integer, Long> stock;
+        final PlanState state;
         final Map<Integer, PriceQuote> prices;
+        final Context ctx;
         final Map<Integer, Long> surplus = new java.util.HashMap<>();
         final Map<Integer, Long> demand = new TreeMap<>();
         final Map<Integer, Long> fromOwned = new java.util.HashMap<>();
@@ -115,57 +234,127 @@ public final class ForgeProjectPlanner {
         int nodes;
         String reason;
 
-        Run(Map<Integer, Long> stock, Map<Integer, PriceQuote> prices) { this.stock = stock; this.prices = prices; }
+        Run(PlanState state, Map<Integer, PriceQuote> prices, Context ctx) {
+            this.state = state; this.prices = prices; this.ctx = ctx;
+        }
 
         void stop(String why) { if (reason == null) reason = why; }
 
+        /** Takes owned stock through the shared binding rules for {@code assignee}; returns units used. */
+        long consume(int itemId, long qty, String assignee) {
+            int ask = (int) Math.min(Integer.MAX_VALUE, qty);
+            return ask <= 0 ? 0 : state.consumeInventoryWithBinding(itemId, ask, assignee).total();
+        }
+
+        /** Deterministic eligible character holding the most relevant stock; null when none can perform it. */
+        String assign(Recipe r) {
+            Set<String> disc = new HashSet<>();
+            if (r.disciplinesText != null) for (String d : r.disciplinesText.split(",")) if (!d.isBlank()) disc.add(d.trim());
+            String best = null;
+            long bestScore = -1;
+            for (CharacterCraftingProfile p : ctx.roster()) {
+                boolean ok = false;
+                for (String d : disc) {
+                    Integer rating = p.ratingByDiscipline().get(d);
+                    if (rating != null && rating >= r.minRating) { ok = true; break; }
+                }
+                if (!ok) continue;
+                long score = 0;
+                for (Ingredient i : r.ingredients) {
+                    score += state.carriedQuantity(p.name(), i.itemId)
+                            + state.carriedQuantity(PlanState.bankOwnerKey(p.name()), i.itemId);
+                }
+                if (score > bestScore || (score == bestScore && p.name().compareTo(best) < 0)) { best = p.name(); bestScore = score; }
+            }
+            return best;
+        }
+
+        /**
+         * A Forge step may use Bank stock of every owner plus the carried stock of ONE character: the one holding the
+         * most relevant ingredients (deterministic, ties by name). Carried stock of different owners is never pooled.
+         */
+        String forgeAssignee(Recipe r) {
+            String best = null;
+            long bestScore = 0;
+            for (String key : new java.util.TreeSet<>(state.characterBoundInventory.keySet())) {
+                if (key.startsWith(PlanState.BANK_PREFIX)) continue;
+                long score = 0;
+                for (Ingredient i : r.ingredients) score += state.carriedQuantity(key, i.itemId);
+                if (score > bestScore) { best = key; bestScore = score; }
+            }
+            return PlanState.forgeAssignee(best);
+        }
+
         List<Node> craft(Recipe r, long crafts, int depth, Set<Integer> path) {
+            return craft(r, crafts, depth, path, r.isMysticForge() ? forgeAssignee(r) : null);
+        }
+
+        List<Node> craft(Recipe r, long crafts, int depth, Set<Integer> path, String assignee) {
             List<Node> kids = new ArrayList<>();
             if (reason != null) return kids;
             if (depth > MAX_DEPTH || ++nodes > MAX_NODES) { stop("planning bound reached"); return kids; }
-            vendorCopper = Math.addExact(vendorCopper, Math.multiplyExact((long) r.vendorCopper, crafts));
-            for (CurrencyRequirement c : r.currencies) {
-                currencyDemand.merge(c.currencyId(), Math.multiplyExact((long) c.count(), crafts), Math::addExact);
+            try {
+                vendorCopper = Math.addExact(vendorCopper, Math.multiplyExact((long) r.vendorCopper, crafts));
+                for (CurrencyRequirement c : r.currencies) {
+                    currencyDemand.merge(c.currencyId(), Math.multiplyExact((long) c.count(), crafts), Math::addExact);
+                }
+                path.add(r.recipeId);
+                for (Ingredient i : r.ingredients) {
+                    boolean seed = r.hasExpectedYield() && i.itemId == r.outputItemId;
+                    long qty = seed ? seedQuantity(r, i, crafts) : Math.multiplyExact((long) i.count, crafts);
+                    Node n = need(i.itemId, qty, depth + 1, path, assignee, seed);
+                    if (n != null) kids.add(n);
+                }
+                path.remove(r.recipeId);
+                steps.removeIf(s -> s.recipeId() == r.recipeId);
+                long total = Math.addExact(stepByRecipe.containsKey(r.recipeId) ? stepByRecipe.get(r.recipeId).crafts() : 0L, crafts);
+                CraftStep step = new CraftStep(r.recipeId, r.outputItemId, total, Math.multiplyExact(total, (long) r.outputCount), r.source);
+                stepByRecipe.put(r.recipeId, step);
+                steps.add(step);
+            } catch (ArithmeticException e) {
+                stop("quantity exceeds the supported range");
             }
-            path.add(r.recipeId);
-            for (Ingredient i : r.ingredients) {
-                Node n = need(i.itemId, Math.multiplyExact((long) i.count, crafts), depth + 1, path);
-                if (n != null) kids.add(n);
-            }
-            path.remove(r.recipeId);
-            steps.removeIf(s -> s.recipeId() == r.recipeId);
-            long total = Math.addExact(stepByRecipe.containsKey(r.recipeId) ? stepByRecipe.get(r.recipeId).crafts() : 0L, crafts);
-            CraftStep step = new CraftStep(r.recipeId, r.outputItemId, total, Math.multiplyExact(total, (long) r.outputCount), r.source);
-            stepByRecipe.put(r.recipeId, step);
-            steps.add(step);
             return kids;
         }
 
-        Node need(int itemId, long qty, int depth, Set<Integer> path) {
+        /** One external seed, then each later batch reuses only the guaranteed minimum output. */
+        long seedQuantity(Recipe r, Ingredient i, long crafts) {
+            long reusedPerBatch = Math.min(i.count, r.expectedYield.min());
+            return Math.addExact(i.count, Math.multiplyExact(crafts - 1, i.count - reusedPerBatch));
+        }
+
+        Node need(int itemId, long qty, int depth, Set<Integer> path, String assignee, boolean seedLeaf) {
             if (reason != null || qty <= 0) return null;
             demand.merge(itemId, qty, Math::addExact);
-            long have = stock.getOrDefault(itemId, 0L);
-            long use = Math.min(have, qty);
-            if (use > 0) {
-                stock.put(itemId, have - use);
-                fromOwned.merge(itemId, use, Math::addExact);
-            }
+            long use = consume(itemId, qty, assignee);
+            if (use > 0) fromOwned.merge(itemId, use, Math::addExact);
             long unmet = qty - use;
             long spare = Math.min(surplus.getOrDefault(itemId, 0L), unmet);
             if (spare > 0) { surplus.merge(itemId, -spare, Long::sum); unmet -= spare; } // conserved craft surplus, not owned stock
-            if (unmet == 0) return new Node(itemId, qty, use, spare, 0, 0, null, null, 0, 0, "", null, List.of());
-            Recipe p = producerByItem.get(itemId);
+            if (unmet == 0) return new Node(itemId, qty, use, spare, 0, 0, null, null, 0, 0, "", null, List.of(), null, true, null, null);
+            Recipe p = seedLeaf ? null : producerByItem.get(itemId);
             if (p == null || path.contains(p.recipeId)) {
                 leaf.merge(itemId, unmet, Math::addExact);
                 String cut = p == null ? null : "cycle: this item's producer is already being expanded above";
-                return new Node(itemId, qty, use, spare, 0, unmet, null, null, 0, 0, "", cut, List.of());
+                return new Node(itemId, qty, use, spare, 0, unmet, null, null, 0, 0, "", cut, List.of(), null, true, null, null);
             }
             long crafts = Math.ceilDiv(unmet, (long) p.outputCount);
             long extra = Math.subtractExact(Math.multiplyExact(crafts, (long) p.outputCount), unmet);
             if (extra > 0) surplus.merge(itemId, extra, Math::addExact);
-            List<Node> kids = craft(p, crafts, depth, path);
+            Boolean known = p.source == RecipeSource.ORDINARY && ctx.knownRecipeIds() != null
+                    ? ctx.knownRecipeIds().contains(p.recipeId) : null;
+            String who = null;
+            boolean performable = true;
+            String childAssignee = p.isMysticForge() ? forgeAssignee(p) : null;
+            if (p.source == RecipeSource.ORDINARY) {
+                who = assign(p);
+                performable = who != null && !Boolean.FALSE.equals(known);
+                childAssignee = who;
+            }
+            List<Node> kids = craft(p, crafts, depth, path, childAssignee);
             return new Node(itemId, qty, use, spare, unmet, 0, p.recipeId, p.source, crafts, p.minRating,
-                    p.disciplinesText, reason, kids);
+                    p.disciplinesText, reason, kids, known, performable, who,
+                    p.isVendor() ? VendorAcquisitions.hintFor(p.outputItemId) : null);
         }
     }
 }

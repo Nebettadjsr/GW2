@@ -278,6 +278,14 @@ synchronized recipe tables. The backend alone computes exact expected output ver
 (including seed reuse), vendor acquisitions, binding, and the initial-owner index; work that was rejected or
 hit the work limit is not refunded and records no execution. The browser only presents these source facts.
 
+Forge is no longer part of Crafting Profit (issue #378). `GET /api/mystic-forge/recipes` is a public cached-metadata catalogue
+(no planner, no account read); `POST /api/mystic-forge/project {recipeId,target}` plans one exact target over the verified
+session's account snapshot via `CachedCraftingProfitService.forgeProject` -> `CraftingProfitService.planForgeProject` ->
+`ForgeProjectPlanner`, keeping inventory binding pools, roster and known recipes intact. Item and currency icons are mapped to
+same-origin routes; the browser never contacts ArenaNet/Wiki image hosts. Remaining source task: the cached call still captures
+with `ordinaryOnly(null)` settings, so Forge reference TP/metadata demand and subtype completion are not yet admitted through the
+scoped refresh path.
+
 The application freshness envelope identifies the captured account/source/quote generations,
 coverage, task locations and retry state. A task finishing does not prove final freshness.
 The browser polls only advertised locations and recalculates with current settings. One

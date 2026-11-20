@@ -1,5 +1,6 @@
 package web;
 
+import application.CraftingProfitService;
 import craft.Ingredient;
 import craft.MysticForgeCatalog;
 import craft.PriceQuote;
@@ -81,5 +82,39 @@ class MysticForgeApiControllerTest {
             assertThrows(ApiValidationException.class, () -> controller.project(bad, http), String.valueOf(bad));
         }
         assertThrows(ApiValidationException.class, () -> controller.project(null, http));
+    }
+
+    /** Every project item and the catalogue go through the same-origin icon route; currencies get names; economics are backend-made. */
+    @Test
+    void projectMappingUsesSameOriginIconsHumanCurrenciesAndBackendEconomics() {
+        String render = "https://render.guildwars2.com/file/0123456789ABCDEF0123456789ABCDEF01234567/66582.png";
+        Recipe g = Recipe.forgeWithExpectedYield(-77, 19745, craft.ExpectedYield.of("18.92", 10, 40), List.of(
+                new craft.Ingredient(19745, 1), new craft.Ingredient(19748, 250), new craft.Ingredient(20796, 5)));
+        var planner = new craft.ForgeProjectPlanner(List.of(g,
+                Recipe.vendor(-1_000_000_001, 20796, 10, List.of(new craft.CurrencyRequirement(23, 1)), 0)));
+        Map<Integer, PriceQuote> tp = Map.of(19745, new PriceQuote(90, 100), 19748, new PriceQuote(1, 2));
+        var project = planner.plan(g, 2, true, craft.ForgeProjectPlanner.Inventory.shared(Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp);
+        Map<Integer, ItemRepository.ItemInfo> info = new HashMap<>();
+        info.put(19745, new ItemRepository.ItemInfo(19745, "Gossamer Scrap", render, 0, "CraftingMaterial", null));
+        info.put(19748, new ItemRepository.ItemInfo(19748, "Bolt of Gossamer", render, 0, "CraftingMaterial", null));
+        var data = new CraftingProfitService.ForgeProjectData(project, false, true, 2, info, tp, true);
+
+        var dto = MysticForgeApiController.toProject(data, null);
+
+        assertTrue(dto.output().iconUrl().startsWith("/api/items/19745/icon/"), dto.output().iconUrl());
+        assertFalse(dto.output().iconUrl().contains("render.guildwars2.com"));
+        dto.tree().children().forEach(c -> {
+            if (c.item().iconUrl() != null) assertTrue(c.item().iconUrl().startsWith("/api/items/"), c.item().iconUrl());
+        });
+        var shards = dto.currencies().getFirst();
+        assertEquals("Spirit Shards", shards.name());
+        assertEquals(1L, shards.needed());
+        assertEquals(0L, shards.owned(), "a known empty wallet map means exactly zero");
+        assertEquals(1, dto.seed().externalSeedUnits());
+        assertEquals("36.84", dto.seed().netExpectedOutput());
+        assertEquals(3684L, dto.economics().expectedGrossProceedsCopper());
+        assertEquals(553L, dto.economics().feeCopper());
+        assertTrue(dto.economics().conditional());
     }
 }

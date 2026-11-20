@@ -98,11 +98,15 @@ public class MysticForgeApiController {
         String category = "EXPECTED".equals(outcome) || "REFERENCE_RANDOM".equals(outcome) || "CraftingMaterial".equals(type)
                 ? "MATERIALS"
                 : "Weapon".equals(type) ? "WEAPONS" : "Armor".equals(type) ? "ARMOR" : "OTHER";
-        return new RecipeRow(recipeId, out, it == null ? null : it.name, it == null ? null : it.iconUrl, type,
+        return new RecipeRow(recipeId, out, it == null ? null : it.name, it == null ? null : application.icons.ItemIconUrls.iconUrlFor(out, it.iconUrl), type,
                 it == null ? null : it.subtype, category, outcome, count, mean, max,
                 q == null || q.buyUnit == null || q.buyUnit <= 0 ? null : q.buyUnit,
                 q == null || q.sellUnit == null || q.sellUnit <= 0 ? null : q.sellUnit,
                 page, revision, wiki(it == null ? null : it.name), kinds);
+    }
+
+    static String currencyWiki(int id, String name) {
+        return name.startsWith("Currency ") ? null : wiki(id == SPIRIT_SHARD ? "Spirit Shard" : name);
     }
 
     static String wiki(String name) {
@@ -133,7 +137,7 @@ public class MysticForgeApiController {
         if (!outcome.hasResult()) {
             // No source ever synchronized: never an empty plan that reads as "nothing needed".
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(new Project(recipeId, null, null, null, target, 0, null, false, "account data not yet available",
-                    false, 0, true, List.of(), null, List.of(), List.of(), null, freshness));
+                    false, 0, true, List.of(), null, List.of(), List.of(), null, null, null, freshness));
         }
         return ResponseEntity.ok(toProject(outcome.data(), freshness));
     }
@@ -151,15 +155,32 @@ public class MysticForgeApiController {
         }
         p.unpricedItemIds().forEach(id -> unpriced.add(item(id, info)));
         List<CurrencyDto> cur = new ArrayList<>();
-        for (var c : p.currencies()) cur.add(new CurrencyDto(c.currencyId(), c.currencyId() == SPIRIT_SHARD ? "Spirit Shards"
-                : "Currency " + c.currencyId(), c.needed(), c.owned(), c.missing()));
+        for (var c : p.currencies()) {
+            String cname = craft.KnownCurrencies.name(c.currencyId());
+            cur.add(new CurrencyDto(c.currencyId(), cname, CurrencyIcons.urlFor(c.currencyId()), currencyWiki(c.currencyId(), cname),
+                    c.needed(), c.owned(), c.missing()));
+        }
+        SeedDto seed = p.seed() == null ? null : new SeedDto(p.seed().externalSeedUnits(), p.seed().reusedSeedUnits(),
+                p.seed().grossGuaranteedOutput(), p.seed().netGuaranteedOutput(),
+                p.seed().grossExpectedOutput().stripTrailingZeros().toPlainString(),
+                p.seed().netExpectedOutput().stripTrailingZeros().toPlainString());
+        EconomicsDto econ = null;
+        if (p.economics() != null && !d.referenceOnly()) {
+            var e = p.economics();
+            List<Item> unpricedInputs = new ArrayList<>();
+            e.unpricedInputItemIds().forEach(id -> unpricedInputs.add(item(id, info)));
+            econ = new EconomicsDto(e.outputUnitSellCopper(), e.expectedGrossProceedsCopper(), e.feeCopper(),
+                    e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.replacementCostCopper(),
+                    e.knownReplacementCopper(), unpricedInputs, e.marginOnShoppingCopper(),
+                    e.marginOnReplacementCopper(), e.conditional());
+        }
         String outcome = d.referenceOnly() ? "REFERENCE_RANDOM" : d.batchTarget() ? "EXPECTED" : "FIXED";
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
                 d.requestedTarget(), p.batches(), random ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
                 d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty(), unpriced, node(p.tree(), info), shopping,
-                cur, note, freshness);
+                cur, note, d.referenceOnly() ? null : seed, econ, freshness);
     }
 
     private static NodeDto node(ForgeProjectPlanner.Node n, Map<Integer, ItemRepository.ItemInfo> info) {
@@ -168,11 +189,13 @@ public class MysticForgeApiController {
         n.children().forEach(c -> kids.add(node(c, info)));
         return new NodeDto(item(n.itemId(), info), n.needed(), n.fromOwned(), n.fromSurplus(), n.toCraft(), n.toAcquire(),
                 n.recipeId(), n.source() == null ? null : n.source().name(), n.crafts(), n.minRating(), n.disciplines(),
-                n.cutoff(), kids);
+                n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint());
     }
 
     private static Item item(int id, Map<Integer, ItemRepository.ItemInfo> info) {
         ItemRepository.ItemInfo it = info.get(id);
-        return new Item(id, it == null ? null : it.name, it == null ? null : it.iconUrl, wiki(it == null ? null : it.name));
+        // Same-origin icon route only; the retained ArenaNet source is never forwarded to the browser.
+        return new Item(id, it == null ? null : it.name,
+                it == null ? null : application.icons.ItemIconUrls.iconUrlFor(id, it.iconUrl), wiki(it == null ? null : it.name));
     }
 }

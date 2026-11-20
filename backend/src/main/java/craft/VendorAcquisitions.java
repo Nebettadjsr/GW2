@@ -13,14 +13,22 @@ public final class VendorAcquisitions {
     /** Synthetic ids live below the Forge identity range so they never collide with an ArenaNet or Forge recipe id. */
     public static final int ID_BASE = 1_000_000_000;
     public static final int SPIRIT_SHARD = 23;
+    public static final int MYSTIC_RUNESTONE = 79418;
 
     private static final List<Recipe> RECIPES = List.of(
             Recipe.vendor(-(ID_BASE + 20796), 20796, 10, List.of(new CurrencyRequirement(SPIRIT_SHARD, 1)), 0),
             Recipe.vendor(-(ID_BASE + 20799), 20799, 5, List.of(new CurrencyRequirement(SPIRIT_SHARD, 3)), 0),
             Recipe.vendor(-(ID_BASE + 20852), 20852, 1, List.of(new CurrencyRequirement(SPIRIT_SHARD, 50)), 0),
-            Recipe.vendor(-(ID_BASE + 19663), 19663, 1, List.of(), 2504));
+            Recipe.vendor(-(ID_BASE + 19663), 19663, 1, List.of(), 2504),
+            // Mystic Runestone: merchant purchase price 100 silver (10000c) per unit, NOT its 330c vendor sell value.
+            Recipe.vendor(-(ID_BASE + MYSTIC_RUNESTONE), MYSTIC_RUNESTONE, 1, List.of(), 10_000));
 
     private VendorAcquisitions() { }
+
+    /** A short access hint for a purchase whose account requirement is known but not verifiable per account; else null. */
+    public static String hintFor(int itemId) {
+        return itemId == MYSTIC_RUNESTONE ? "Requires the Scholar of Secrets mastery to buy (your mastery is not checked)" : null;
+    }
 
     public static List<Recipe> recipes() {
         return RECIPES;
