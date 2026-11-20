@@ -422,4 +422,108 @@ class MysticForgeApiControllerTest {
         assertEquals(19L, dto.guaranteedOutput());
         assertTrue(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(dto).contains("\"guaranteedOutput\":19"));
     }
+
+    // ---- full-path equipment economics: wallet Notes, conditionality, combined range (issue 378) ----
+
+    private static final craft.ForgeSettings VALUE_OWN = new craft.ForgeSettings(craft.ForgeSettings.PriceMode.INSTANT_BUY, true, true,
+            craft.ForgeSettings.DailyMode.CRAFT, true, craft.ForgeSettings.ReduceMode.YES);
+
+    private static web.dto.MysticForgeDtos.Project notesProject(long wallet, Map<Integer, PriceQuote> tp) {
+        Recipe root = new Recipe(-7, 900, 1, 0, "", List.of(new Ingredient(5001, 1)),
+                List.of(new craft.CurrencyRequirement(61, 30)), RecipeSource.MYSTIC_FORGE);
+        Recipe a = new Recipe(15120, 104934, 1, 0, "Artificer", List.of(new Ingredient(5003, 4)));
+        Recipe b = new Recipe(15131, 104934, 1, 0, "Artificer", List.of(new Ingredient(5002, 4)));
+        var planner = new craft.ForgeProjectPlanner(List.of(root, a, b));
+        var project = planner.plan(root, 1, false, craft.ForgeProjectPlanner.Inventory.shared(Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(61, wallet), tp, VALUE_OWN);
+        return MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                project, false, false, 1, new HashMap<>(), tp, true), null);
+    }
+
+    @Test
+    void walletNotesAreSubtractedOnceAtTheEstimateAndGeneratedNotesAreNotValuedAgain() {
+        Map<Integer, PriceQuote> tp = Map.of(5001, new PriceQuote(1, 100), 5002, new PriceQuote(1, 100), 5003, new PriceQuote(1, 10),
+                900, new PriceQuote(1000, 2000));
+        var wallet = notesProject(30, tp); // 30 wallet Notes valued at 40c / 150 Notes = 8c
+        assertEquals(8L, wallet.notes().estimateCopper());
+        assertEquals(850L, wallet.economics().expectedNetProceedsCopper());
+        assertEquals(750L, wallet.economics().marginOnShoppingCopper(), "bought cash only");
+        assertEquals(742L, wallet.economics().marginCopper(), "850 - 100 bought - 8 valued wallet Notes");
+        assertEquals(2000L - 108L, wallet.comparison().savingsCopper());
+        assertFalse(wallet.economics().conditional(), "Notes valued and nothing else unvalued");
+        var generated = notesProject(0, tp); // one 150-Note container crafted: 4 x 10c charged through its inputs only
+        assertEquals(1, generated.notes().containersCrafted());
+        assertEquals(710L, generated.economics().marginCopper(), "850 - (100 + 40 container inputs), no second Note value");
+        assertEquals(2000L - 140L, generated.comparison().savingsCopper());
+    }
+
+    @Test
+    void unavailableWalletNoteEstimateMakesTheFullMarginAndSavingsUnavailableNeverFree() {
+        Map<Integer, PriceQuote> tp = Map.of(5001, new PriceQuote(1, 100), 900, new PriceQuote(1000, 2000));
+        var dto = notesProject(30, tp);
+        assertNull(dto.notes().estimateCopper());
+        assertEquals(750L, dto.economics().marginOnShoppingCopper());
+        assertNull(dto.economics().marginCopper());
+        assertNull(dto.comparison().savingsCopper());
+        assertTrue(dto.economics().conditional());
+        assertTrue(dto.comparison().conditional());
+    }
+
+    @Test
+    void fullyPricedExpandedGiftPathIsNotConditionalButUnvaluedCurrencyIs() {
+        Recipe gift = new Recipe(-50, 6000, 1, 0, "", List.of(new Ingredient(5001, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        Recipe t = new Recipe(-51, 900, 1, 0, "", List.of(new Ingredient(6000, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        Map<Integer, PriceQuote> tp = Map.of(5001, new PriceQuote(1, 100), 900, new PriceQuote(1000, 2000));
+        var project = new craft.ForgeProjectPlanner(List.of(gift, t)).plan(t, 1, false,
+                craft.ForgeProjectPlanner.Inventory.shared(Map.of()), craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp, VALUE_OWN);
+        var dto = MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                project, false, false, 1, new HashMap<>(), tp, true), null);
+        assertEquals(750L, dto.economics().marginCopper());
+        assertFalse(dto.economics().conditional(), "expanded priced gift path: no structural conditional from the untradeable gift");
+        Recipe gift2 = new Recipe(-52, 6000, 1, 0, "", List.of(new Ingredient(5001, 1)),
+                List.of(new craft.CurrencyRequirement(23, 5)), RecipeSource.MYSTIC_FORGE);
+        var project2 = new craft.ForgeProjectPlanner(List.of(gift2, t)).plan(t, 1, false,
+                craft.ForgeProjectPlanner.Inventory.shared(Map.of()), craft.ForgeProjectPlanner.Context.NONE, Map.of(23, 0L), tp, VALUE_OWN);
+        var dto2 = MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                project2, false, false, 1, new HashMap<>(), tp, true), null);
+        assertTrue(dto2.economics().conditional(), "an unvalued Spirit Shard requirement stays conditional");
+    }
+
+    /** Each subtotal is within 2^53-1 but their combination is not; bid-only output, no ask/comparison needed. */
+    @Test
+    void combinedDeductionOverflowStopsThroughTheControllerPathWithSafeSubfactsKept() {
+        Recipe t = new Recipe(-60, 900, 1, 0, "", List.of(new Ingredient(5001, 1), new Ingredient(5002, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        Map<Integer, PriceQuote> tp = Map.of(5001, new PriceQuote(null, 9_000_000), 5002, new PriceQuote(9_000_000, null),
+                900, new PriceQuote(10, null));
+        var project = new craft.ForgeProjectPlanner(List.of(t)).plan(t, 1_000_000_000L, false,
+                new craft.ForgeProjectPlanner.Inventory(Map.of(5002, 1_000_000_000), Map.of(), Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp, VALUE_OWN);
+        assertTrue(project.complete(), "the planner alone sees only safe subtotals");
+        assertEquals(9_000_000_000_000_000L, project.knownCopper());
+        assertEquals(9_000_000_000_000_000L, project.ownValue().knownCopper());
+        var dto = MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                project, false, false, 1_000_000_000L, new HashMap<>(), tp, true), null);
+        assertFalse(dto.complete());
+        assertEquals("quantity exceeds the supported range", dto.incompleteReason());
+        assertNull(dto.guaranteedOutput());
+        assertTrue(dto.goldCostPartial());
+        assertNull(dto.economics().marginCopper());
+        assertEquals(8_500_000_000L, dto.economics().expectedNetProceedsCopper(), "safe unit/subtotal facts stay");
+        assertEquals(9_000_000_000_000_000L, dto.knownGoldCopper());
+    }
+
+    @Test
+    void consumedOwnValueOverflowThroughTheControllerPathIsAnIncompleteProject() {
+        Recipe t = new Recipe(-61, 900, 1, 0, "", List.of(new Ingredient(5002, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        Map<Integer, PriceQuote> tp = Map.of(5002, new PriceQuote(9_000_000, null), 900, new PriceQuote(10, 20));
+        var project = new craft.ForgeProjectPlanner(List.of(t)).plan(t, 2_000_000_000L, false,
+                new craft.ForgeProjectPlanner.Inventory(Map.of(5002, 2_000_000_000), Map.of(), Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp, VALUE_OWN);
+        var dto = MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                project, false, false, 2_000_000_000L, new HashMap<>(), tp, true), null);
+        assertFalse(dto.complete());
+        assertNull(dto.guaranteedOutput());
+        assertNull(dto.economics().marginCopper());
+        assertNull(dto.comparison().savingsCopper());
+    }
 }

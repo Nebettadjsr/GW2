@@ -252,14 +252,17 @@ public final class ForgeProjectPlanner {
                 int stepsBefore = run.steps.size();
                 notes = planNotes(run, wallet, prices, tree, kids);
                 if (notes != null && run.steps.size() > stepsBefore) {
-                    // Note production precedes every craft that consumes its Notes (steps are executable in order).
+                    // Note production runs after every step producing a surplus item it consumes and before the first Note consumer.
                     List<CraftStep> produced = new ArrayList<>(run.steps.subList(stepsBefore, run.steps.size()));
                     run.steps.subList(stepsBefore, run.steps.size()).clear();
-                    run.steps.addAll(0, produced);
+                    run.steps.addAll(noteStepPosition(target, run.steps, produced), produced);
                 }
                 if (notes != null && notes.containersNeeded() > 0 && run.noteNode != null) {
                     kids = new ArrayList<>(kids);
-                    kids.add(0, run.noteNode);
+                    Set<Integer> consumed = noteConsumedItems(run.noteNode);
+                    int at = 0;
+                    for (int k = 0; k < kids.size(); k++) if (producesAny(kids.get(k), consumed)) at = k + 1;
+                    kids.add(at, run.noteNode);
                     tree = new Node(tree.itemId(), tree.needed(), tree.fromOwned(), tree.fromSurplus(), tree.toCraft(),
                             tree.toAcquire(), tree.recipeId(), tree.source(), tree.crafts(), tree.minRating(),
                             tree.disciplines(), run.reason, kids, null, true, null, null, tree.produced(), tree.newSurplus());
@@ -323,7 +326,7 @@ public final class ForgeProjectPlanner {
                 java.util.TreeSet<Integer> ids = new java.util.TreeSet<>(run.ownSellable.keySet());
                 ids.addAll(run.ownBound.keySet());
                 for (int id : ids) {
-                    if (id == target.outputItemId) continue; // the root output is not an input
+                    // Root already-owned reduction never enters these pools (consumeRoot); an external self-seed does and is valued.
                     OwnedValuer.Value v = valuer.value(id, run.ownSellable.getOrDefault(id, 0L), run.ownBound.getOrDefault(id, 0L));
                     if (v.unvalued()) unknown.add(id);
                     known = add(known, v.copper());
@@ -345,6 +348,55 @@ public final class ForgeProjectPlanner {
                 settings, ownValue, clover, rootOwnedOut);
     }
 
+    /** Items the Note production subtree draws on (its own produced items excluded). */
+    private static Set<Integer> noteConsumedItems(Node n) {
+        Set<Integer> made = new HashSet<>();
+        Set<Integer> used = new HashSet<>();
+        collectNoteItems(n, made, used);
+        used.removeAll(made);
+        return used;
+    }
+
+    private static void collectNoteItems(Node n, Set<Integer> made, Set<Integer> used) {
+        if (n.recipeId() != null && n.crafts() > 0) made.add(n.itemId());
+        else used.add(n.itemId());
+        if (n.children() != null) for (Node c : n.children()) collectNoteItems(c, made, used);
+    }
+
+    private static boolean producesAny(Node n, Set<Integer> ids) {
+        if (n.recipeId() != null && n.crafts() > 0 && ids.contains(n.itemId())) return true;
+        if (n.children() != null) for (Node c : n.children()) if (producesAny(c, ids)) return true;
+        return false;
+    }
+
+    /**
+     * Index where the Note production steps go: after the last step producing an item they consume from surplus,
+     * and no later than the first step that needs Notes (when that does not precede such a producer).
+     */
+    private int noteStepPosition(Recipe target, List<CraftStep> steps, List<CraftStep> produced) {
+        Set<Integer> made = new HashSet<>();
+        Set<Integer> used = new HashSet<>();
+        Map<Integer, Recipe> byId = new java.util.HashMap<>();
+        for (Recipe r : producerByItem.values()) byId.put(r.recipeId, r);
+        byId.putAll(noteRecipes);
+        byId.put(target.recipeId, target);
+        for (CraftStep st : produced) {
+            made.add(st.outputItemId());
+            Recipe r = byId.get(st.recipeId());
+            if (r != null) for (Ingredient i : r.ingredients) used.add(i.itemId);
+        }
+        used.removeAll(made);
+        int after = 0;
+        int firstConsumer = steps.size();
+        for (int k = 0; k < steps.size(); k++) {
+            CraftStep st = steps.get(k);
+            if (used.contains(st.outputItemId())) after = k + 1;
+            Recipe r = byId.get(st.recipeId());
+            if (r != null && firstConsumer == steps.size() && r.currencies.stream().anyMatch(c -> c.currencyId() == NOTES)) firstConsumer = k;
+        }
+        return Math.max(after, firstConsumer);
+    }
+
     /**
      * Research Notes of the whole selected how-to, aggregated once: a KNOWN wallet pays its available amount once and
      * the shortfall is covered by Peer Reviewed Research containers (owned first, rest crafted through the cheaper
@@ -357,7 +409,7 @@ public final class ForgeProjectPlanner {
         Map<Integer, List<Recipe>> byOutput = new java.util.HashMap<>();
         for (Recipe r : noteRecipes.values()) byOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
         ResearchNoteEstimate estimate = ResearchNoteEstimate.compute(byOutput, prices,
-                new CraftingSettings(true, true, 0, true, false, false));
+                new CraftingSettings(true, true, 0, true, run.settings.priceMode() == ForgeSettings.PriceMode.BUY_ORDER, false));
         if (wallet == null) {
             return new Notes(needed, false, null, null, 0, 0, 0, 0, null, estimate, null, "wallet unknown", 0, 0, 0, 0, false);
         }

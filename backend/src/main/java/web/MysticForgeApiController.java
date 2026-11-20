@@ -248,9 +248,18 @@ public class MysticForgeApiController {
             p.ownValue().unpricedItemIds().forEach(id -> unknownOwn.add(item(id, info)));
             ownValue = new OwnValueDto(p.ownValue().knownCopper(), unknownOwn);
         }
-        ComparisonDto cmp = comparison(d, p, ownValue);
+        // Combined full-path deduction (bought + valued wallet Notes + valued own materials): each subtotal is safe, the
+        // sum may not be. Range failure is decided independently of any output quote or comparison.
+        boolean fixedPath = !d.referenceOnly() && !d.batchTarget();
+        boolean deductionOverflow = false;
+        Long deduction = null;
+        if (fixedPath && p.complete()) {
+            try { deduction = fullPathDeduction(p, ownValue); }
+            catch (ArithmeticException overflow) { deductionOverflow = true; }
+        }
+        ComparisonDto cmp = comparison(d, p, ownValue, deduction, deductionOverflow);
         // A whole-amount buy total beyond the exact range is decided here: the project is incomplete, never a guaranteed result.
-        boolean cmpOverflow = cmp != null && cmp.outputBuyTotalCopper() == null && cmp.unitBuyCopper() != null;
+        boolean cmpOverflow = deductionOverflow || cmp != null && cmp.outputBuyTotalCopper() == null && cmp.unitBuyCopper() != null;
         boolean complete = p.complete() && !cmpOverflow;
         String reason = cmpOverflow && p.complete() ? "quantity exceeds the supported range" : p.incompleteReason();
         EconomicsDto econ = null;
@@ -268,16 +277,15 @@ public class MysticForgeApiController {
             boolean conditionalEcon = e.conditional();
             if (e.fixedOutput()) {
                 // Equipment full-path margin from the actual consumed quantities: cash-only subtracts only what is bought;
-                // valueOwn=Yes also subtracts the authoritative value of consumed owned inputs exactly once.
+                // the full margin also subtracts valued wallet Notes and (valueOwn=Yes) consumed owned inputs exactly once.
                 Long net = e.expectedNetProceedsCopper();
                 boolean known = net != null && complete && p.unpricedItemIds().isEmpty();
                 try {
                     cash = known ? ForgeProjectPlanner.sub(net, p.knownCopper()) : null;
-                    if (p.ownValue() == null) margin = cash;
-                    else if (known && p.ownValue().unpricedItemIds().isEmpty()) margin = ForgeProjectPlanner.sub(cash, p.ownValue().knownCopper());
-                    else margin = null;
+                    margin = known && deduction != null ? ForgeProjectPlanner.sub(net, deduction) : null;
                 } catch (ArithmeticException overflow) { cash = null; margin = null; }
-                conditionalEcon = conditionalEcon || !p.currencies().isEmpty() || p.clover() != null;
+                // Recomputed from full-path facts, not the structural flag of untradeable direct gifts.
+                conditionalEcon = fullPathConditional(p, ownValue) || !complete;
             }
             econ = new EconomicsDto(e.outputUnitSellCopper(), e.expectedGrossProceedsCopper(), e.feeCopper(),
                     e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.goldInputCopper(), inputs, unpricedInputs,
@@ -304,7 +312,32 @@ public class MysticForgeApiController {
                 p.rootOwned(), cmp);
     }
 
-    private static ComparisonDto comparison(CraftingProfitService.ForgeProjectData d, ForgeProjectPlanner.Project p, OwnValueDto own) {
+    /** Valued wallet Notes (estimate) replace nothing already charged: produced Notes are priced through their inputs. */
+    private static Long notesEstimateCopper(ForgeProjectPlanner.Project p) {
+        var n = p.notes();
+        if (n == null) return 0L;
+        if (!n.walletKnown() || n.walletUsed() == null) return null;
+        if (n.walletUsed() == 0) return 0L;
+        return n.estimateCopper();
+    }
+
+    /** null = unavailable (unpriced input, unvalued own material or wallet-Note estimate); throws on a range overflow. */
+    private static Long fullPathDeduction(ForgeProjectPlanner.Project p, OwnValueDto own) {
+        Long notes = notesEstimateCopper(p);
+        if (!p.unpricedItemIds().isEmpty() || notes == null || own != null && !own.unpricedItems().isEmpty()) return null;
+        return ForgeProjectPlanner.add(ForgeProjectPlanner.add(p.knownCopper(), notes), own == null ? 0 : own.knownCopper());
+    }
+
+    /** Unpriced items, non-Note currencies, unavailable Note valuation/uncovered Notes, own-value gaps and Clovers keep a result conditional. */
+    private static boolean fullPathConditional(ForgeProjectPlanner.Project p, OwnValueDto own) {
+        boolean otherCurrency = p.currencies().stream().anyMatch(c -> c.currencyId() != craft.CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID);
+        boolean notesGap = p.notes() != null && (notesEstimateCopper(p) == null || p.notes().uncoveredNotes() > 0);
+        boolean ownUnknown = own != null && !own.unpricedItems().isEmpty();
+        return otherCurrency || notesGap || ownUnknown || !p.unpricedItemIds().isEmpty() || p.clover() != null;
+    }
+
+    private static ComparisonDto comparison(CraftingProfitService.ForgeProjectData d, ForgeProjectPlanner.Project p, OwnValueDto own,
+                                            Long deduction, boolean deductionOverflow) {
         if (d.referenceOnly() || d.batchTarget()) return null; // random/batch outputs claim no purchasable output quantity
         PriceQuote q = d.tp().get(p.outputItemId());
         boolean orderMode = p.settings().priceMode() == craft.ForgeSettings.PriceMode.BUY_ORDER;
@@ -312,16 +345,14 @@ public class MysticForgeApiController {
         Long unitBuy = buy == null || buy <= 0 ? null : (long) buy;
         Long unitSell = q == null || q.buyUnit == null || q.buyUnit <= 0 ? null : (long) q.buyUnit;
         Long total = null, savings = null;
-        boolean ownUnknown = own != null && !own.unpricedItems().isEmpty();
-        boolean conditional = !p.currencies().isEmpty() || !p.unpricedItemIds().isEmpty() || ownUnknown || p.clover() != null || !p.complete();
+        boolean conditional = fullPathConditional(p, own) || !p.complete();
         try {
             if (unitBuy != null) {
                 total = ForgeProjectPlanner.mul(unitBuy, d.requestedTarget());
-                if (p.complete() && p.unpricedItemIds().isEmpty() && !ownUnknown) {
-                    savings = total - ForgeProjectPlanner.add(p.knownCopper(), own == null ? 0 : own.knownCopper());
-                }
+                if (deduction != null) savings = ForgeProjectPlanner.sub(total, deduction);
             }
         } catch (ArithmeticException overflow) { total = null; savings = null; }
+        if (deductionOverflow) savings = null;
         return new ComparisonDto(unitBuy, unitSell, total, savings, conditional, own == null);
     }
 

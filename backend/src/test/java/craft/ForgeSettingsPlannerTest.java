@@ -336,4 +336,52 @@ class ForgeSettingsPlannerTest {
         assertNull(p.economics().marginCopper());
         assertNull(p.economics().marginOnShoppingCopper());
     }
+
+    @Test
+    void noteProductionRunsAfterTheStepThatSuppliesItsSurplusAndBeforeTheConsumer() {
+        Recipe promotion = Recipe.forgeWithExpectedYield(-32, 19722, ExpectedYield.of("86.34", 40, 200),
+                List.of(new Ingredient(500, 250), new Ingredient(19722, 1), new Ingredient(501, 5), new Ingredient(20796, 1)));
+        Recipe notes = new Recipe(15131, 104934, 1, 0, "Artificer", List.of(new Ingredient(19722, 30)));
+        Recipe target = new Recipe(-20, 9000001, 1, 0, "", List.of(new Ingredient(19722, 1)),
+                List.of(new CurrencyRequirement(61, 30)), RecipeSource.MYSTIC_FORGE);
+        var planner = new ForgeProjectPlanner(List.of(promotion, notes));
+        var ctx = new ForgeProjectPlanner.Context(List.of(new CharacterCraftingProfile("Fixture", Map.of("Artificer", 500))), java.util.Set.of(15131));
+        var plan = planner.planOutput(target, 1, ForgeProjectPlanner.Inventory.shared(Map.of()), ctx, Map.of(61, 0L), Map.of());
+        assertTrue(plan.complete());
+        assertEquals(List.of(19722, 104934, 9000001), plan.steps().stream().map(ForgeProjectPlanner.CraftStep::outputItemId).toList());
+        assertEquals(1, plan.steps().stream().filter(s -> s.outputItemId() == 19722).count(), "promotion produced once");
+        assertEquals(List.of(19722, 104934), plan.tree().children().stream().map(ForgeProjectPlanner.Node::itemId).toList(),
+                "the traversal also shows the producer before the Note consumer");
+    }
+
+    @Test
+    void noteVariantChoiceFollowsTheSelectedBuyOrderOrAskMode() {
+        int note = CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID;
+        Recipe consumer = new Recipe(-71, WEAPON, 1, 0, "", List.of(), List.of(new CurrencyRequirement(note, 30)), RecipeSource.MYSTIC_FORGE);
+        Recipe a = new Recipe(15120, CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID, 1, 0, "Artificer", List.of(new Ingredient(ORE + 1, 4)));
+        Recipe b = new Recipe(15131, CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID, 1, 0, "Artificer", List.of(new Ingredient(ORE + 2, 4)));
+        // A is cheaper by ask, B cheaper by bid.
+        Map<Integer, PriceQuote> prices = Map.of(ORE + 1, new PriceQuote(50, 10), ORE + 2, new PriceQuote(5, 20));
+        var planner = new ForgeProjectPlanner(List.of(consumer, a, b));
+        var ask = planner.plan(consumer, 1, false, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(note, 0L), prices,
+                with(ForgeSettings.PriceMode.INSTANT_BUY, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
+        var bid = planner.plan(consumer, 1, false, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(note, 0L), prices,
+                with(ForgeSettings.PriceMode.BUY_ORDER, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
+        assertEquals(15120, ask.notes().producerRecipeId());
+        assertEquals(15120, ask.notes().estimate().basisRecipeId());
+        assertEquals(15131, bid.notes().producerRecipeId());
+        assertEquals(15131, bid.notes().estimate().basisRecipeId());
+    }
+
+    @Test
+    void externalSelfSeedIsValuedWhileTheFixedRootReductionStaysExcluded() {
+        Recipe promotion = Recipe.forgeWithExpectedYield(-33, 19745, ExpectedYield.of("18.92", 10, 40),
+                List.of(new Ingredient(19745, 1)));
+        Map<Integer, PriceQuote> prices = Map.of(19745, new PriceQuote(40, 90));
+        var inv = new ForgeProjectPlanner.Inventory(Map.of(19745, 1), Map.of(19745, 2), Map.of());
+        var plan = new ForgeProjectPlanner(List.of(promotion)).plan(promotion, 5, false, inv, ForgeProjectPlanner.Context.NONE, Map.of(), prices,
+                with(ForgeSettings.PriceMode.INSTANT_BUY, true, true, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.UNTRADABLE));
+        assertEquals(2, plan.rootOwned(), "fixed root reduction uses only the bound copies");
+        assertEquals(40L, plan.ownValue().knownCopper(), "the sellable seed copy is a consumed input valued at the bid, once");
+    }
 }
