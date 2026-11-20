@@ -321,6 +321,19 @@ class MysticForgeApiControllerTest {
         assertTrue(dto.economics().conditional());
     }
 
+    @Test
+    void lateEconomicsOverflowPublishesNoGuaranteedOutput() {
+        Recipe t = new Recipe(-1, 900, 1, 0, "", List.of(new Ingredient(5001, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        var project = new craft.ForgeProjectPlanner(List.of(t)).planOutput(t, 999_999_999L,
+                craft.ForgeProjectPlanner.Inventory.shared(Map.of()), craft.ForgeProjectPlanner.Context.NONE, Map.of(),
+                Map.of(5001, new PriceQuote(null, 10_000_001)));
+        var data = new CraftingProfitService.ForgeProjectData(project, true, true, 999_999_999L, new HashMap<>(), Map.of(), true);
+        var dto = MysticForgeApiController.toProject(data, null);
+        assertFalse(dto.complete());
+        assertNotNull(dto.incompleteReason());
+        assertNull(dto.guaranteedOutput());
+    }
+
     /** Both reference-only Clover variants at several batch counts: inputs scale, the root claims no output or craft. */
     @Test
     void referenceOnlyCloverRootNeverClaimsGuaranteedOutputNeededOrToCraft() {

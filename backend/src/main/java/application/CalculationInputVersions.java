@@ -242,7 +242,7 @@ public final class CalculationInputVersions {
 
     /** Every required account source is fresh and every required quote is inside the TP policy. */
     public boolean confirmedCurrent() {
-        return sourcesNeedingRefresh().isEmpty() && coverage.covered();
+        return sourcesNeedingRefresh().isEmpty() && coverage.covered() && !projectMetadataIncomplete;
     }
 
     /**

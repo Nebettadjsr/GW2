@@ -68,6 +68,7 @@ class ForgeProjectQuantityTest {
         assertNotNull(p.incompleteReason());
         assertTrue(p.knownCopper() <= MAX_SAFE);
         assertNull(p.economics());
+        assertTrue(p.guaranteedOutput() < 0, "a stopped run promises no guaranteed output even with a safe root count");
         assertEquals(999_999_999L, p.items().stream().filter(i -> i.itemId() == A).findFirst().orElseThrow().missing());
     }
 

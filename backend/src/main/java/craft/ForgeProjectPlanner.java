@@ -270,6 +270,7 @@ public final class ForgeProjectPlanner {
                 econ = economics(target, batches, seed, prices, copper);
             } catch (ArithmeticException e) { seed = null; econ = null; run.stop("quantity exceeds the supported range"); }
         }
+        if (run.reason != null) out = -1; // a stopped run (including late economics overflow) promises no guaranteed output
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
                 tree, copper, unpriced, run.reason == null, run.reason, seed, econ, notes, List.copyOf(vendorPurchases));
     }
