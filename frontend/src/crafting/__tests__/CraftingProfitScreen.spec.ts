@@ -176,16 +176,16 @@ describe('CraftingProfitScreen', () => {
       .toBe(false)
   })
 
-  it('sendsAndKeepsTheMysticForgeChoiceThroughTheRequestAndEffectiveSettingsEcho', async () => {
+  it('offersNoMysticForgeToggleAndNeverSendsTheRetiredFlag', async () => {
     const api = new FakeCraftingApi()
     const wrapper = await openScreen(api)
 
-    await wrapper.find('[data-test="setting-allowMysticForge"]').setValue(true)
+    expect(wrapper.find('[data-test="setting-allowMysticForge"]').exists()).toBe(false)
+    await wrapper.find('[data-test="setting-useOwnMats"]').setValue(false)
     await flushPromises()
-
-    expect(api.profitRequests.at(1)?.settings?.allowMysticForge).toBe(true)
-    expect((wrapper.find('[data-test="setting-allowMysticForge"]').element as HTMLInputElement).checked)
-      .toBe(true)
+    for (const request of api.profitRequests) {
+      expect(request.settings?.allowMysticForge).toBeUndefined()
+    }
   })
 
   it('keepsScopeSettingsSearchAndSortAcrossAManualReload', async () => {

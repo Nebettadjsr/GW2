@@ -88,16 +88,14 @@ class CraftingProfitServiceForgeCarriedOwnerPostgresTest {
         AccountScope a = AccountScope.of(UUID.fromString(ACC_A));
         AccountScope b = AccountScope.of(UUID.fromString(ACC_B));
 
-        CraftResult forA = service(con, a).reload(DiscChoice.all(), settings(true)).resultsByRecipeId().get(SCEPTER_RECIPE);
-        assertEquals(1, forA.craftableCount, "one carried set, counted exactly once, B's Bank set excluded");
-        assertTrue(forA.missingToBuy.isEmpty(), "carried stock must not become a purchase: " + forA.missingToBuy);
-
-        var offA = service(con, a).reload(DiscChoice.all(), settings(false));
-        assertNull(offA.resultsByRecipeId().get(SCEPTER_RECIPE));
-        assertTrue(offA.visibleRecipes().isEmpty());
-
-        CraftResult forB = service(con, b).reload(DiscChoice.all(), settings(true)).resultsByRecipeId().get(SCEPTER_RECIPE);
-        assertEquals(1, forB.craftableCount, "B sees only its own Bank set, never A's carried stock");
+        // Issue #378 product change: Forge left Profit; stale opt-ins are ignored for every account.
+        for (AccountScope scope : new AccountScope[] {a, b}) {
+            var stale = service(con, scope).reload(DiscChoice.all(), settings(true));
+            assertNull(stale.resultsByRecipeId().get(SCEPTER_RECIPE));
+            assertTrue(stale.visibleRecipes().isEmpty());
+            var off = service(con, scope).reload(DiscChoice.all(), settings(false));
+            assertNull(off.resultsByRecipeId().get(SCEPTER_RECIPE));
+        }
     }
 
     private static CraftingSettings settings(boolean forge) {

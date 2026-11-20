@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -36,10 +36,12 @@ class CraftingProfitServiceForgeEmptyRosterTest {
     private static final int SCEPTER_RECIPE = -3105801;
 
     @Test
-    void enabledForgeUsesSharedStockWithAnEmptyRoster() throws Exception {
-        CraftResult r = service().reload(DiscChoice.all(), settings(true)).resultsByRecipeId().get(SCEPTER_RECIPE);
-        assertEquals(1, r.craftableCount, "one owned set, no roster needed");
-        assertTrue(r.missingToBuy.isEmpty(), "owned stock must not become an empty map: " + r.missingToBuy);
+    void staleForgeOptInNeverReEnablesForgeInProfit() throws Exception {
+        // Issue #378 product change: Profit is ordinary crafting only; a stale true flag is dropped at the service.
+        var data = service().reload(DiscChoice.all(), settings(true));
+        assertNull(data.resultsByRecipeId().get(SCEPTER_RECIPE));
+        assertTrue(data.visibleRecipes().isEmpty());
+        assertTrue(data.allRecipes().stream().noneMatch(Recipe::isMysticForge));
     }
 
     @Test

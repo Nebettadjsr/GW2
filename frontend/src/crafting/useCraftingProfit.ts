@@ -15,7 +15,6 @@ import {
   type SyncTaskStatus
 } from '@/api/types'
 import { canonicalAllocationKey, canonicalIds, canonicalQuantityKey, useMaterialProtection, type MaterialProtectionState } from '@/materials/materialProtectionState'
-import { useForgePreference, type ForgePreference } from './forgePreference'
 import { buildScopeOptions, defaultScopeOptionId, type ScopeOption } from './scopeOptions'
 
 /**
@@ -157,8 +156,7 @@ type TaskOutcome =
 export function useCraftingProfit(
   api: CraftingApi,
   refresh: ProfitRefreshPorts,
-  protection: MaterialProtectionState = useMaterialProtection(),
-  forge: ForgePreference = useForgePreference()
+  protection: MaterialProtectionState = useMaterialProtection()
 ): CraftingProfitState {
   const scopeOptions = shallowRef<ScopeOption[]>([])
   const selectedScopeId = ref<string | null>(null)
@@ -316,7 +314,7 @@ export function useCraftingProfit(
   function effectiveKey(): string {
     const context = protectionContext()
     if (context === null) return 'none'
-    return `${protection.state.accountId}|forge:${forge.current()}|${context.enabled}|${context.enabled ? JSON.stringify([context.bankIds, context.materialIds, canonicalQuantityKey(context.bankQuantities), canonicalQuantityKey(context.materialQuantities), canonicalAllocationKey(context.bankAllocations)]) : ''}`
+    return `${protection.state.accountId}|${context.enabled}|${context.enabled ? JSON.stringify([context.bankIds, context.materialIds, canonicalQuantityKey(context.bankQuantities), canonicalQuantityKey(context.materialQuantities), canonicalAllocationKey(context.bankAllocations)]) : ''}`
   }
 
   /** Whether an enabled-protection request was echoed back as such (order/duplicate insensitive). */
@@ -627,9 +625,8 @@ export function useCraftingProfit(
     const context = protectionContext()
     if (settings.value !== null) {
       request.settings = { ...settings.value }
-      // The saved per-account preference, not the previous echo, decides the flag: another account's
-      // settings object must never leak its Forge choice into this request.
-      if (context !== null) request.settings.allowMysticForge = forge.current()
+      // Profit is ordinary crafting only: never send the retired Forge flag, even from stale echoes.
+      delete request.settings.allowMysticForge
       if (context !== null) {
         request.settings.materialProtectionEnabled = context.enabled
         request.settings.protectedItemIds = []
@@ -647,9 +644,9 @@ export function useCraftingProfit(
         delete request.settings.protectedMaterialQuantities
         delete request.settings.protectedBankAllocations
       }
-    } else if (context !== null && (context.enabled || forge.current())) {
+    } else if (context !== null && context.enabled) {
       // Backend defaults for everything else; only the committed protection and Forge flag are supplied.
-      request.settings = { ...(forge.current() ? { allowMysticForge: true } : {}), materialProtectionEnabled: context.enabled, protectedItemIds: [],
+      request.settings = { materialProtectionEnabled: context.enabled, protectedItemIds: [],
         protectedBankItemIds: context.bankIds, protectedMaterialItemIds: context.materialIds,
         protectedBankQuantities: { ...context.bankQuantities }, protectedMaterialQuantities: { ...context.materialQuantities },
         protectedBankAllocations: context.bankAllocations.map(row => ({ ...row })) }
@@ -698,8 +695,6 @@ export function useCraftingProfit(
 
     async applySettings(next: EffectiveSettings): Promise<void> {
       settings.value = next
-      // A changed Forge flag changes the effective key, whose watcher already started the replacement request.
-      if (forge.set(next.allowMysticForge ?? false) && opened && active && !disposed && effectiveKey() !== 'none') return
       await requestProfit(currentRequest())
     },
 

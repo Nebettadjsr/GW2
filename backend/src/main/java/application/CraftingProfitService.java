@@ -109,7 +109,7 @@ public class CraftingProfitService {
     }
 
     public ProfitData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
-
+        settings = CraftingSettings.ordinaryOnly(settings);
         Candidates candidates = loadCandidates(choice, settings);
         CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
 
@@ -143,7 +143,7 @@ public class CraftingProfitService {
      */
     public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice, CraftingSettings settings)
             throws SQLException {
-
+        settings = CraftingSettings.ordinaryOnly(settings);
         Candidates candidates = loadCandidates(choice, settings);
 
         Recipe selected = candidates.selected(recipeId);

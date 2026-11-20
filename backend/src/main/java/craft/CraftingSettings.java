@@ -141,6 +141,11 @@ public class CraftingSettings {
                 protectedBankQuantities, protectedMaterialQuantities, protectedBankAllocations, allowMysticForge);
     }
 
+    /** Crafting Profit is ordinary crafting only: a stale Forge opt-in never survives this boundary. */
+    public static CraftingSettings ordinaryOnly(CraftingSettings settings) {
+        return settings == null || !settings.allowMysticForge ? settings : settings.withMysticForge(false);
+    }
+
     /** Same settings with the Mystic Forge opt-in set; everything else is preserved. */
     public CraftingSettings withMysticForge(boolean allow) {
         return new CraftingSettings(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,

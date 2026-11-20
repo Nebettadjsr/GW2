@@ -199,6 +199,7 @@ public class CachedCraftingProfitService {
      */
     public ProfitOutcome profit(AccountScope scope, DiscChoice choice, CraftingSettings settings,
                                 KeyedAdmission keyed, application.access.AccountContext readContext) throws Exception {
+        settings = CraftingSettings.ordinaryOnly(settings);
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingProfitService.ProfitData data = null;
@@ -247,6 +248,7 @@ public class CachedCraftingProfitService {
                                         String basedOnCalculationId,
                                         KeyedAdmission keyed,
                                         application.access.AccountContext readContext) throws Exception {
+        settings = CraftingSettings.ordinaryOnly(settings);
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingResolutionDetail detail = null;

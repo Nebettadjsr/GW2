@@ -112,7 +112,7 @@ final class CraftingProfitApiMapper {
                         DEFAULT_ALLOW_DAILY_CRAFTS),
                 orDefault(settings == null ? null : settings.materialProtectionEnabled(), false),
                 globalAll, bankAll, materialAll, bankQty, materialQty, bankAllocations,
-                orDefault(settings == null ? null : settings.allowMysticForge(), false));
+                false); // Profit is ordinary crafting only; a stale Forge request flag is ignored
     }
 
     /** Entry shape and ranges only; sorted by slot. Duplicate slots are rejected. */
@@ -267,7 +267,7 @@ final class CraftingProfitApiMapper {
                     settings.materialProtectionEnabled(),
                     settings.protectedItemIds(), settings.protectedBankItemIds(), settings.protectedMaterialItemIds(),
                     settings.protectedBankQuantities(), settings.protectedMaterialQuantities(),
-                    settings.protectedBankAllocations(), settings.allowMysticForge());
+                    settings.protectedBankAllocations(), false);
         }
     }
 

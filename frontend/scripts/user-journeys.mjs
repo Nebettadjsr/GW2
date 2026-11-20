@@ -431,7 +431,7 @@ async function modalResize({ page, api, origin, step }, kind) {
 const rowFor = (page, name) => get(page, 'profit-row').filter({ hasText: name })
 const forgeFlag = call => JSON.parse(call.body).settings?.allowMysticForge ?? false
 
-/** Controlled Mystic Forge opt-in: request flag, source/estimate hints, backend-only detail facts, toggle off, reload persistence. */
+/** Forge left Crafting Profit (issue #378): no toggle, no Forge rows, no retired flag; ordinary Note popup intact. */
 async function forgeJourney({ page, api, origin, step }) {
   api.useForgeFixtures()
   await page.goto(`${origin}/#/synchronization`)
@@ -439,52 +439,11 @@ async function forgeJourney({ page, api, origin, step }) {
   await go(page, 'crafting')
   await get(page, 'profit-table').waitFor()
   const profit = () => api.calls.filter(call => call.path === '/api/crafting/profit')
-  assert.equal(forgeFlag(profit().at(-1)), false, 'Forge must default off')
+  assert.equal(forgeFlag(profit().at(-1)), false, 'Profit must never request Forge')
   assert.equal(await get(page, 'forge-source').count(), 0)
-  assert.equal(await get(page, 'setting-allowMysticForge').isChecked(), false)
-  step('verified synthetic account starts with Forge off: request disallows it and no Forge row is listed')
-
-  await get(page, 'setting-allowMysticForge').check()
-  await rowFor(page, 'Gossamer Scrap').waitFor()
-  assert.equal(forgeFlag(profit().at(-1)), true)
-  assert.equal(await get(page, 'forge-source').count(), 2)
-  assert.equal(await rowFor(page, 'Mystic Crystal').getByTestId('estimated-hint').count(), 0)
-  assert.equal(await rowFor(page, 'Gossamer Scrap').getByTestId('estimated-hint').innerText(), '≈ est.')
-  assert.equal(await page.evaluate(key => localStorage.getItem(key), forgeStorageKey(ACCOUNT_A)),
-    '{"version":1,"allowMysticForge":true}')
-  step('enabling sends allowMysticForge:true; fixed and variable Forge rows show the source and only the variable one the estimate hint')
-
-  await rowFor(page, 'Gossamer Scrap').getByTestId('select-row').click()
-  await get(page, 'detail-name').filter({ hasText: 'Gossamer Scrap' }).waitFor()
-  assert.equal(await get(page, 'detail-identity').innerText(), 'Mystic Forge')
-  assert.equal(await get(page, 'expected-sellable').innerText(), '≈ 36.84 expected (estimate; 19 guaranteed)')
-  const calculation = await get(page, 'detail-calculation').innerText()
-  assert.match(calculation, /No\. craftable Items\s*19/)
-  assert.doesNotMatch(calculation, /\b20\b/, 'The gross 20 must not be presented as sellable')
-  const root = get(page, 'tree-node').first()
-  assert.equal(await root.getByTestId('node-forge').first().innerText(),
-    'Mystic Forge · 2 batches · expected 18.92 per batch (range 10–40) · ≈ 36.84 expected, 19 guaranteed net · 1 reused as seed')
-  for (const summary of await root.getByTestId('node-children').first().locator('summary').all()) await summary.click()
-  assert.equal(await get(page, 'tree-node').nth(1).getByTestId('node-forge').innerText(),
-    'Vendor · 1 batch bought · 10 units (10 used)')
-  assert.equal(await get(page, 'currency-name').innerText(), 'Spirit Shard')
-  assert.equal(await get(page, 'currency-quantity').innerText(), '1 needed')
-  step('variable row detail shows backend expected 36.84 / net 19 / min 10 / reused seed 1 (not 20), and the expanded vendor batch with 1 Spirit Shard')
-
-  await get(page, 'setting-allowMysticForge').uncheck()
-  await get(page, 'forge-source').first().waitFor({ state: 'detached' })
-  assert.equal(forgeFlag(profit().at(-1)), false)
+  assert.equal(await get(page, 'setting-allowMysticForge').count(), 0)
   assert.equal(await rowFor(page, 'Gossamer Scrap').count(), 0)
-  await get(page, 'setting-allowMysticForge').check()
-  await rowFor(page, 'Gossamer Scrap').waitFor()
-  const before = profit().length
-  await page.reload()
-  await get(page, 'profit-table').waitFor()
-  await rowFor(page, 'Gossamer Scrap').waitFor()
-  assert.equal(api.proofs.length, 2, 'Reload must prove the retained key again')
-  assert.equal(forgeFlag(profit()[before]), true, 'The per-account preference did not reach the first request after reload')
-  assert.equal(await get(page, 'setting-allowMysticForge').isChecked(), true)
-  step('disabling removes Forge rows; re-enabled preference survives reload in the first request')
+  step('Crafting Profit is ordinary again: no Forge toggle, rows or request flag')
 
   await rowFor(page, 'Iron Ingot').getByTestId('select-row').click()
   await get(page, 'note-estimate-trigger').click()
@@ -504,7 +463,7 @@ export async function runUserJourneys({ recoveryOnly = false } = {}) {
     ['failure-recovery', recoveryJourney], ['account-isolation', isolationJourney], ['desktop-boundary', boundaryJourney],
     ['pending-profit-resize', pendingProfitResize], ['ecto-resize-state', ectoResizeState],
     ['help-dialog-resize', context => modalResize(context, 'help')],
-    ['delete-confirmation-resize', context => modalResize(context, 'delete')], ['mystic-forge', forgeJourney]
+    ['delete-confirmation-resize', context => modalResize(context, 'delete')], ['profit-ordinary-only', forgeJourney]
   ]
   try {
     console.log(`Bundle: ${requireFreshBundle()}`)

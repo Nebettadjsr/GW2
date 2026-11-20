@@ -271,7 +271,7 @@ function materialQuoteText(item: MissingItem): string {
           </dt>
           <dd class="numeric calculation__info">
             {{ formatCount(outputItemCount) }}
-            <span v-if="expectedSellableNote !== null" class="meta" data-test="expected-sellable">{{ expectedSellableNote }}</span>
+            <span v-if="expectedSellableNote !== null" class="meta expected-note" data-test="expected-sellable">{{ expectedSellableNote }}</span>
           </dd>
 
           <!-- Revenue -->
@@ -679,5 +679,9 @@ function materialQuoteText(item: MissingItem): string {
 
 .material-list .meta {
   grid-column: 1 / -1;
+}
+.expected-note {
+  display: block;
+  overflow-wrap: anywhere;
 }
 </style>
