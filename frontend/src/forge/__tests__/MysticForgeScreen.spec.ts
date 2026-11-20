@@ -84,6 +84,87 @@ describe('navigation and helpers', () => {
   })
 })
 
+describe('equipment detail layout', () => {
+  it('keeps calculation choices visual, with accessible reduction help and the amount still connected', async () => {
+    const w = await mounted()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+    await flushPromises()
+    expect(w.get('[data-test="forge-settings"]').text()).toContain('Settings preview · only Amount applies')
+    await w.get('[data-test="forge-preview-material-price"]').setValue('Buy order')
+    await w.get('[data-test="forge-settings"]').findAll('select')[1]!.setValue('No')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(projectCalls).toEqual([{ recipeId: -1, target: 1 }])
+    const help = w.get('button[aria-controls="forge-reduction-help"]')
+    await help.trigger('click')
+    expect(help.attributes('aria-expanded')).toBe('true')
+    expect(w.get('#forge-reduction-help').text()).toContain('Tradable only')
+    expect(w.get('#forge-reduction-help').text()).toContain('Untradable only')
+    await help.trigger('keydown', { key: 'Escape' })
+    expect(w.find('#forge-reduction-help').exists()).toBe(false)
+    await w.get('[data-test="forge-target"]').setValue('2')
+    await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1)
+    expect(projectCalls.at(-1)).toEqual({ recipeId: -1, target: 2 })
+    w.unmount()
+  })
+
+  it('puts owned use and missing quantities in separate boxes, and lists steps in dependency order', async () => {
+    const path = node({ item: item(101, 'Sunrise Longbow'), recipeId: -1, needed: 1, toCraft: 1, toAcquire: 0, crafts: 1, produced: 1, children: [
+      node({ item: item(5, 'Locked Plank'), recipeId: 55, recipeSource: 'CRAFT', recipeKnown: false, performable: false,
+        needed: 3, toCraft: 3, toAcquire: 0, crafts: 3, produced: 3, children: [
+          node({ item: item(6, 'Ancient Wood Log'), needed: 9, fromOwned: 4, toAcquire: 5 })] })] })
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) { return project(target, { tree: path }) } }
+    const w = mount(MysticForgeScreen, { props: { api } })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+    await flushPromises()
+    expect(w.get('[data-test="forge-owned"]').text()).toContain('Including reserved materials')
+    expect(w.get('[data-test="forge-owned-line"]').get('strong').text()).toBe('4')
+    expect(w.get('[data-test="forge-shopping-line"]').get('strong').text()).toBe('5')
+    const steps = w.findAll('[data-test="forge-crafting-step"]')
+    expect(steps).toHaveLength(3)
+    expect(steps[0]!.text()).toContain('Acquire5Ancient Wood Log')
+    expect(steps[1]!.text()).toContain('Craft3Locked Plank')
+    expect(steps[1]!.text()).toContain('Recipe not unlocked')
+    expect(steps[2]!.text()).toContain('Craft1Sunrise Longbow')
+    expect(w.get('[data-test="forge-shopping-currency"]').text()).toContain('wallet unknown')
+    w.unmount()
+  })
+
+  it('shows Clover and Obsidian acquisition guidance without pretending that Clover output is guaranteed', async () => {
+    const clover = node({ item: item(19675, 'Mystic Clover'), needed: 2, toAcquire: 2 })
+    const obsidian = node({ item: item(19925, 'Obsidian Shard'), needed: 3, toAcquire: 3 })
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) {
+      return project(target, { tree: node({ item: item(101, 'Sunrise Longbow'), recipeId: -1, crafts: 1, produced: 1, toAcquire: 0, children: [clover, obsidian] }),
+        shopping: [clover, obsidian].map(n => ({ item: n.item, needed: n.needed, fromOwned: 0, toAcquire: n.toAcquire,
+          unitCopper: null, knownCopper: null, source: 'TRADING_POST', purchases: 0, currencyCosts: [], hint: null })) })
+    } }
+    const w = mount(MysticForgeScreen, { props: { api } })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+    await flushPromises()
+    const shopping = w.get('[data-test="forge-shopping"]')
+    expect(shopping.text()).toContain('Tactician Deathstrider')
+    expect(shopping.text()).toContain('Mystic Forge / other sources')
+    expect(shopping.findAll('[data-test="forge-shopping-line"] strong').map(n => n.text())).toEqual(['2', '3'])
+    const steps = w.findAll('[data-test="forge-crafting-step"]')
+    expect(steps[0]!.text()).toContain('Acquire2Mystic Clover')
+    expect(steps[0]!.text()).toContain('outcome is random')
+    expect(steps[0]!.get('a[href*="#Acquisition"]').attributes('href')).toBe('https://wiki.guildwars2.com/wiki/Mystic_Clover#Acquisition')
+    expect(steps[1]!.text()).toContain('2,100 Karma each')
+    w.unmount()
+  })
+
+  it('keeps material promotions on their existing detail layout', async () => {
+    const w = await mounted()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Gossamer Scrap'))!.trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="forge-equipment-layout"]').exists()).toBe(false)
+    expect(w.find('[data-test="forge-economics"]').exists()).toBe(true)
+    expect(w.get('[data-test="forge-yield"]').text()).toContain('10–40')
+    w.unmount()
+  })
+})
+
 describe('Mystic Forge overview', () => {
   it('loads the catalogue once and never plans for overview, tab or search', async () => {
     const w = await mounted()
@@ -395,12 +476,15 @@ describe('vendor shopping and bounded catalogue completion', () => {
     await flushPromises()
     const lines = w.findAll('[data-test="forge-shopping-line"]')
     expect(lines).toHaveLength(2)
-    expect(lines[0]!.text()).toContain('Mystic Crystal × 10')
-    expect(lines[0]!.text()).toContain('vendor purchase (1 buy)')
-    expect(lines[0]!.text()).toContain('for 1 Spirit Shard')
+    expect(lines[0]!.get('a').text()).toBe('Mystic Crystal')
+    expect(lines[0]!.get('strong').text()).toBe('10')
+    expect(lines[0]!.get('[data-test="forge-shopping-vendor"]').text()).toBe('Merchant · 1 purchase')
+    expect(lines[0]!.text()).toContain('1 Spirit Shard')
     expect(lines[0]!.text()).not.toContain('price unavailable')
-    expect(lines[1]!.text()).toContain('Ancient Wood Log × 5')
-    expect(lines[1]!.text()).toContain('each')
+    expect(lines[1]!.get('a').text()).toBe('Ancient Wood Log')
+    expect(lines[1]!.get('strong').text()).toBe('5')
+    expect(lines[1]!.text()).toContain('Trading Post')
+    expect(lines[1]!.text()).toContain('5s 0c')
     w.unmount()
   })
 

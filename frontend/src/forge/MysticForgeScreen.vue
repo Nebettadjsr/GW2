@@ -8,6 +8,7 @@ import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
 import ResearchNoteEstimatePopup from '@/crafting/ResearchNoteEstimatePopup.vue'
 import MysticForgeNode from './MysticForgeNode.vue'
+import ForgeEquipmentDetail from './ForgeEquipmentDetail.vue'
 import { FORGE_TABS, TARGET_DEBOUNCE_MS, parseTarget, useMysticForge } from './useMysticForge'
 
 /**
@@ -30,6 +31,7 @@ onDeactivated(() => f.deactivate())
 const detail = computed(() => f.selectedRecipeId.value !== null)
 const row = computed(() => f.selectedRow.value)
 const project = computed(() => f.currentProject.value)
+const equipmentDetail = computed(() => row.value?.category === 'WEAPONS' || row.value?.category === 'ARMOR')
 /** Weapon/Armor details whose direct-input comparison is only unknown bound Gifts carry no usable economics. */
 const showEconomics = computed(() => {
   const e = project.value?.economics
@@ -124,7 +126,7 @@ async function back(): Promise<void> {
         <h2>{{ row.name ?? `Item ${row.outputItemId}` }}</h2>
         <a v-if="row.wikiUrl" :href="row.wikiUrl" target="_blank" rel="noopener noreferrer">Wiki</a>
       </header>
-      <label class="forge-target">
+      <label v-if="!equipmentDetail" class="forge-target">
         {{ batchTarget ? 'Batches to run (output varies)' : 'Desired total output' }}
         <input type="text" inputmode="numeric" :value="f.targetText.value" data-test="forge-target"
           :aria-invalid="!targetValid" @input="f.setTarget(($event.target as HTMLInputElement).value)" />
@@ -143,7 +145,18 @@ async function back(): Promise<void> {
         <p v-if="project.freshness?.provisional" class="forge-note" data-test="forge-provisional">Based on the last synchronized data; a refresh is pending or inputs may be stale.</p>
         <p v-if="project.note" class="forge-note" data-test="forge-note">{{ project.note }}</p>
         <p v-if="project.incompleteReason" role="status" class="forge-note" data-test="forge-incomplete">{{ project.incompleteReason }}</p>
+      </template>
 
+      <ForgeEquipmentDetail v-if="equipmentDetail && row" :key="row.recipeId" :row="row" :project="project">
+        <template #amount>
+          <label class="forge-target forge-target--equipment">Amount
+            <input type="text" inputmode="numeric" :value="f.targetText.value" data-test="forge-target"
+              :aria-invalid="!targetValid" @input="f.setTarget(($event.target as HTMLInputElement).value)" />
+          </label>
+        </template>
+      </ForgeEquipmentDetail>
+
+      <template v-if="project && !equipmentDetail">
         <section class="forge-summary" data-test="forge-summary">
           <h3>Cost</h3>
           <p data-test="forge-known-gold">Known remaining gold cost{{ referenceOnly ? ' of the inputs' : '' }}: <strong class="numeric">{{ formatCopper(project.knownGoldCopper) }}</strong>
@@ -244,6 +257,8 @@ async function back(): Promise<void> {
 .forge-detail { max-width: 100%; }
 .forge-detail__title { display: flex; align-items: center; gap: 0.75rem; }
 .forge-target input { width: 10ch; }
+.forge-target--equipment { display: flex; flex-direction: column; gap: var(--space-2); }
+.forge-target--equipment input { width: 100%; }
 .forge-dl { display: grid; grid-template-columns: minmax(12rem, max-content) 1fr; gap: 0.25rem 1rem; }
 .forge-note { color: var(--color-muted); white-space: normal; min-width: 0; }
 .forge-missing { color: var(--color-warning); }
