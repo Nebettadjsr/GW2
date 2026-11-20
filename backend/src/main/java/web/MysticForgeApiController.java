@@ -104,11 +104,21 @@ public class MysticForgeApiController {
             Set<Integer> incomplete = new HashSet<>();
             for (int id : ids) {
                 ItemRepository.ItemInfo it = info.get(id);
-                if (id > 0 && (it == null || it.name == null || it.type == null)) incomplete.add(id);
+                if (id > 0 && metadataIncomplete(it)) incomplete.add(id);
             }
-            if (!incomplete.isEmpty()) {
+            // Complete metadata is not a current quote: stale/missing tradeable quotes get the same scoped demand.
+            // The short read closes its connection before admission; a failed read just skips quote demand.
+            Set<Integer> demand = new HashSet<>(incomplete);
+            try {
+                Set<Integer> positive = new HashSet<>();
+                for (int id : ids) if (id > 0) positive.add(id);
+                demand.addAll(tp.staleOrMissingTradeable(positive));
+            } catch (Exception quoteReadFailure) {
+                // truthful: only metadata demand (if any) is admitted
+            }
+            if (!demand.isEmpty()) {
                 try {
-                    priceRefresh.requireItems(incomplete, null);
+                    priceRefresh.requireItems(demand, null);
                     completing = true;
                 } catch (RuntimeException admissionFailure) {
                     completing = false; // truthful: nothing was admitted; the cached catalogue is still served
@@ -117,6 +127,12 @@ public class MysticForgeApiController {
         }
         return new Catalogue(c.status(), c.source(), c.license(), c.recipes().size(), ForgeReferenceRecipes.all().size(), rows,
                 completing);
+    }
+
+    /** Missing name/type, or a Weapon/Armor with a missing/blank subtype (the V18 rows have NULL subtype). */
+    static boolean metadataIncomplete(ItemRepository.ItemInfo it) {
+        if (it == null || it.name == null || it.type == null) return true;
+        return ("Weapon".equals(it.type) || "Armor".equals(it.type)) && (it.subtype == null || it.subtype.isBlank());
     }
 
     private static RecipeRow row(int recipeId, int out, String outcome, int count, String mean, Integer max, int kinds,

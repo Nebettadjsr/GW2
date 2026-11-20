@@ -17,6 +17,12 @@ const MAX_REREADS = 6
 export const SOURCE_POLL_MS = 2_000
 export const SOURCE_MAX_POLLS = 60
 const CREDENTIAL_REQUIRED = 'CREDENTIAL_REQUIRED'
+/** Keyed-refresh recoveries per selection/target (a still-stale answer after a succeeded task stops here). */
+export const SOURCE_MAX_RECOVERIES = 2
+/** Admissions that did not cover this request (a narrower task was running) before the recovery stops. */
+export const SOURCE_MAX_ADMISSIONS = 3
+const SOURCE_ADMISSION_DELAY_MS = 2_000
+const SOURCE_ADMISSION_DELAY_MAX_MS = 10_000
 
 /** Text searched per row: name, ids and the real item type/subtype ("bow" matches LongBow and ShortBow). */
 export function searchText(row: ForgeRecipeRow): string {
@@ -59,6 +65,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   let debounce: ReturnType<typeof setTimeout> | null = null
   let reread: ReturnType<typeof setTimeout> | null = null
   let rereads = 0
+  let sourceRecoveries = 0
   let catalogueRereads = 0
   let catalogueTimer: ReturnType<typeof setTimeout> | null = null
   let active = true
@@ -136,14 +143,17 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     if (recipeId === null || target === null || disposed || !active) return
     const mine = ++token
     const generation = connection.generation
-    if (!isReread) { rereads = 0; projectLoading.value = true; stalled.value = false; sourceError.value = null }
+    if (!isReread) { rereads = 0; sourceRecoveries = 0; projectLoading.value = true; stalled.value = false; sourceError.value = null }
     projectError.value = null
     try {
       const loaded = await api.loadProject(recipeId, target)
       if (mine !== token || !active || generation !== connection.generation) return
       pending.value = loaded.tree === null
       project.value = loaded.tree === null ? null : loaded
-      if (loaded.tree === null && needsKeyedRefresh(loaded) && api.startSourceRefresh && api.readSourceTask) {
+      // A first-use (no plan) OR usable-but-stale account plan needs the keyed DATA refresh; the stale plan stays
+      // visible (marked by its freshness) while it runs. Recoveries are capped so a still-stale answer cannot loop.
+      if (needsKeyedRefresh(loaded) && api.startSourceRefresh && api.readSourceTask && sourceRecoveries < SOURCE_MAX_RECOVERIES) {
+        sourceRecoveries += 1
         void runSourceRefresh(mine)
       } else scheduleReread(loaded)
     } catch (cause) {
@@ -166,7 +176,9 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   }
 
   function needsKeyedRefresh(loaded: ForgeProject): boolean {
-    return (loaded.freshness?.failures ?? []).some((failure) => failure.kind === 'ACCOUNT' && failure.code === CREDENTIAL_REQUIRED)
+    const freshness = loaded.freshness
+    if ((freshness?.failures ?? []).some((failure) => failure.kind === 'ACCOUNT' && failure.code === CREDENTIAL_REQUIRED)) return true
+    return loaded.tree !== null && (freshness?.accountSources ?? []).some((source) => source.state === 'STALE' || source.state === 'MISSING')
   }
 
   /**
@@ -181,7 +193,18 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     sourceError.value = null
     stalled.value = false
     try {
-      const accepted = await api.startSourceRefresh!()
+      let accepted = await api.startSourceRefresh!()
+      // A narrower running task does not cover this request: retry admission a bounded number of times.
+      for (let admission = 1; accepted.coversRequest === false; admission += 1) {
+        if (admission >= SOURCE_MAX_ADMISSIONS) throw new Error('Account synchronization is busy with another task. Try again shortly.')
+        const seconds = accepted.retryAfterSeconds
+        const delay = typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+          ? Math.min(seconds * 1_000, SOURCE_ADMISSION_DELAY_MAX_MS) : SOURCE_ADMISSION_DELAY_MS
+        await sleep(delay)
+        if (!current()) return
+        accepted = await api.startSourceRefresh!()
+        if (!current()) return
+      }
       for (let poll = 0; ; poll += 1) {
         if (!current()) return
         if (poll >= SOURCE_MAX_POLLS) throw new Error('Account synchronization is taking longer than expected.')
@@ -200,6 +223,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
       if (!current()) return
       sourceError.value = message(cause) ?? 'Account synchronization failed.'
       pending.value = false
+      sourceRecoveries = SOURCE_MAX_RECOVERIES // terminal: no automatic re-admission until the user retries
     } finally {
       if (mine === token) sourceRefreshing.value = false
     }

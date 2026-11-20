@@ -27,6 +27,17 @@ public class TpPriceRepository {
         }
     }
 
+    /**
+     * The tradeable ids among {@code itemIds} whose quote is missing or older than the shared ten-minute policy
+     * (the same explicit coverage definition a refresh fetches by). Non-tradeable ids are never reported, so they
+     * cannot demand a refresh forever. The connection is closed before this returns.
+     */
+    public Set<Integer> staleOrMissingTradeable(Set<Integer> itemIds) throws Exception {
+        try (Connection con = repo.Db.open()) {
+            return new sync.tp.relevance.CraftingProfitItemCollector().collectExplicit(con, itemIds);
+        }
+    }
+
     public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> itemIds) throws SQLException {
         try (Connection con = repo.Db.open()) {
             return loadTpQuotes(con, itemIds);

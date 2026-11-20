@@ -230,6 +230,69 @@ describe('first use source refresh and cold catalogue', () => {
     w.unmount()
   })
 
+  const staleUsable = (target: number): ForgeProject => project(target, {
+    freshness: { requestId: 'r', calculationId: 'c', evaluatedAt: '', provisional: true, resultAvailable: true,
+      accountSources: [{ source: 'BANK', fetchedAt: '2020-01-01T00:00:00Z', state: 'STALE' }],
+      tradingPost: {} as never, outstandingWork: [], failures: [] }
+  })
+
+  it('a usable but STALE plan stays visible, runs one keyed task, then rereads to a fresh plan', async () => {
+    let ready = false
+    const calls = { project: 0, start: 0 }
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) { calls.project++; return ready ? project(target) : staleUsable(target) },
+      async startSourceRefresh() { calls.start++; return { statusUrl: '/t/1', coversRequest: true } as never },
+      async readSourceTask() { ready = true; return { state: 'SUCCEEDED', failure: null } as never }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(calls.start).toBe(1)
+    expect(calls.project).toBe(2)
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(calls.start).toBe(1)
+    w.unmount()
+  })
+
+  it('a task that succeeds but leaves the plan stale is recovered a bounded number of times, then stops', async () => {
+    const calls = { start: 0 }
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) { return staleUsable(target) },
+      async startSourceRefresh() { calls.start++; return { statusUrl: '/t/1', coversRequest: true } as never },
+      async readSourceTask() { return { state: 'SUCCEEDED', failure: null } as never }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await vi.advanceTimersByTimeAsync(120_000)
+    await flushPromises()
+    expect(calls.start).toBe(2)
+    w.unmount()
+  })
+
+  it('a narrower task (coversRequest=false) is retried a bounded number of times, then stops with Retry', async () => {
+    const calls = { start: 0 }
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) { return credentialPending(target) },
+      async startSourceRefresh() { calls.start++; return { statusUrl: '/t/9', coversRequest: false, retryAfterSeconds: 1 } as never },
+      async readSourceTask() { throw new Error('a narrower task is never followed') }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await vi.advanceTimersByTimeAsync(120_000)
+    await flushPromises()
+    expect(calls.start).toBe(3)
+    expect(w.get('[data-test="forge-source-failed"]').text()).toContain('busy')
+    expect(w.find('[data-test="forge-retry"]').exists()).toBe(true)
+    w.unmount()
+  })
+
   it('a late task completion after the selection was closed cannot update the old view', async () => {
     const { api, calls } = sourceApi(['RUNNING', 'RUNNING', 'SUCCEEDED'])
     const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })

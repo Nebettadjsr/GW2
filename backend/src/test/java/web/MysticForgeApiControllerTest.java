@@ -101,6 +101,7 @@ class MysticForgeApiControllerTest {
         };
         var controller = new MysticForgeApiController(null, null, () -> catalog, items, new TpPriceRepository() {
             @Override public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> ids) { return Map.of(); }
+            @Override public Set<Integer> staleOrMissingTradeable(Set<Integer> ids) { return Set.of(); }
         }, coordinator);
 
         var cold = controller.recipes();
@@ -119,6 +120,72 @@ class MysticForgeApiControllerTest {
         var warm = controller.recipes();
         assertEquals("LongBow", warm.recipes().get(0).itemSubtype());
         assertEquals(1, admitted.size());
+    }
+
+    private static MysticForgeApiController catalogueController(String subtype, Set<Integer> staleQuoteIds,
+                                                                 List<Set<Integer>> demanded, List<Integer> tasksAdmitted) {
+        Recipe bow = new Recipe(-1, 500, 1, 0, "", List.of(new Ingredient(1, 2)), List.of(), RecipeSource.MYSTIC_FORGE);
+        var gateway = new sync.TradingPostPriceRefreshGateway() {
+            @Override public void syncTpPricesForIds(Set<Integer> ids) { demanded.add(new java.util.TreeSet<>(ids)); }
+        };
+        var tasks = new application.BackgroundTasks() {
+            @Override public String submit(String op, Work w) { tasksAdmitted.add(1); return "t" + tasksAdmitted.size(); }
+            @Override public java.util.Optional<Status> find(String id) { return java.util.Optional.empty(); }
+        };
+        var coordinator = new application.TradingPostRefreshCoordinator(
+                new application.TradingPostPriceRefreshService(gateway), tasks);
+        var items = new ItemRepository() {
+            @Override public Map<Integer, ItemInfo> loadItems(Set<Integer> ids) {
+                Map<Integer, ItemInfo> m = new HashMap<>();
+                for (int id : ids) m.put(id, id == 500 ? new ItemInfo(500, "Aurene's Wing", null, 0, "Weapon", subtype)
+                        : new ItemInfo(id, "Item " + id, null, 0, "CraftingMaterial", null));
+                return m;
+            }
+        };
+        return new MysticForgeApiController(null, null, () -> new MysticForgeCatalog(List.of(bow), 0, "test"), items,
+                new TpPriceRepository() {
+                    @Override public Map<Integer, PriceQuote> loadTpQuotes(Set<Integer> ids) { return Map.of(); }
+                    @Override public Set<Integer> staleOrMissingTradeable(Set<Integer> ids) { return staleQuoteIds; }
+                }, coordinator);
+    }
+
+    /** The installed DB has names and Weapon type but NULL/blank subtype (V18): that alone triggers the repair. */
+    @Test
+    void knownNameAndTypeWithMissingOrBlankWeaponSubtypeStillDemandsCompletion() throws Exception {
+        for (String subtype : new String[] {null, "  "}) {
+            var tasks = new java.util.ArrayList<Integer>();
+            var out = catalogueController(subtype, Set.of(), new java.util.ArrayList<>(), tasks).recipes();
+            assertTrue(out.completing(), "subtype=" + subtype);
+            assertEquals(1, tasks.size());
+        }
+        assertFalse(MysticForgeApiController.metadataIncomplete(
+                new ItemRepository.ItemInfo(1, "Mat", null, 0, "CraftingMaterial", null)), "non-gear needs no subtype");
+    }
+
+    /** Complete metadata with a stale/missing eligible quote demands exactly those ids; fresh/nontradeable reads admit nothing. */
+    @Test
+    void completeMetadataWithStaleQuoteDemandsOnlyStaleEligibleIdsAndFreshReadsAdmitNothing() throws Exception {
+        var demanded = new java.util.ArrayList<Set<Integer>>();
+        var tasks = new java.util.ArrayList<Integer>();
+        var stale = catalogueController("LongBow", Set.of(500), demanded, tasks);
+        assertTrue(stale.recipes().completing());
+        assertEquals(1, tasks.size(), "scoped demand admitted on the shared run");
+        assertEquals(List.of(), demanded, "the request thread did no upstream work");
+
+        var tasks2 = new java.util.ArrayList<Integer>();
+        var fresh = catalogueController("LongBow", Set.of(), new java.util.ArrayList<>(), tasks2); // fresh or nontradeable
+        assertFalse(fresh.recipes().completing());
+        fresh.recipes();
+        fresh.recipes();
+        assertEquals(0, tasks2.size(), "repeated fresh/nontradeable reads admit no work");
+    }
+
+    /** Owner decision: Forge always counts all owned stock, so the request carries no protection/reservation payload. */
+    @Test
+    void projectRequestCarriesOnlyRecipeAndTarget() {
+        var names = java.util.Arrays.stream(web.dto.MysticForgeDtos.ProjectRequest.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).toList();
+        assertEquals(List.of("recipeId", "target"), names);
     }
 
     /** Validation happens before any account work: the (null) service is never reached for an invalid request. */
