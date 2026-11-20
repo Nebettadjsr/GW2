@@ -155,23 +155,28 @@ final class CraftingRowMapper {
                                                                boolean detail) {
         craft.ResearchNoteEstimate estimate = result.noteEstimate;
         if (estimate == null || (result.estimatedNotesPerCraft == 0 && result.estimatedNotesTotal == 0)) return null;
-        List<CurrencyCostsDto.VariantDto> variants = new ArrayList<>();
-        if (detail) {
-            for (craft.ResearchNoteEstimate.Variant v : estimate.variants()) {
-                List<CurrencyCostsDto.LineDto> lines = new ArrayList<>();
-                for (craft.ResearchNoteEstimate.Line line : v.ingredients()) {
-                    lines.add(new CurrencyCostsDto.LineDto(line.itemId(), itemName(line.itemId(), items), line.count(),
-                            line.unitPriceCopper(), line.totalCopper(), iconUrl(line.itemId(), items)));
-                }
-                variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
-                        v.notesPerBatch(), v.batchCostCopper(), per100(v),
-                        estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
-                        List.copyOf(lines)));
-            }
-        }
+        List<CurrencyCostsDto.VariantDto> variants = detail ? variantDtos(estimate, items) : List.of();
         return new CurrencyCostsDto.NoteEstimateDto(result.estimatedNotesPerCraft, result.estimatedNotesTotal,
                 result.estimatedNotesCostPerCraftCopper, result.estimatedNotesCostTotalCopper,
                 estimate.basisRecipeId(), List.copyOf(variants));
+    }
+
+    /** Both Note recipe variants (pictures, quantities, totals) for the shared estimate popup. */
+    public static List<CurrencyCostsDto.VariantDto> variantDtos(craft.ResearchNoteEstimate estimate,
+                                                                Map<Integer, ItemRepository.ItemInfo> items) {
+        List<CurrencyCostsDto.VariantDto> variants = new ArrayList<>();
+        for (craft.ResearchNoteEstimate.Variant v : estimate.variants()) {
+            List<CurrencyCostsDto.LineDto> lines = new ArrayList<>();
+            for (craft.ResearchNoteEstimate.Line line : v.ingredients()) {
+                lines.add(new CurrencyCostsDto.LineDto(line.itemId(), itemName(line.itemId(), items), line.count(),
+                        line.unitPriceCopper(), line.totalCopper(), iconUrl(line.itemId(), items)));
+            }
+            variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
+                    v.notesPerBatch(), v.batchCostCopper(), per100(v),
+                    estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
+                    List.copyOf(lines)));
+        }
+        return variants;
     }
 
     /** Backend-owned display amount: ceil(batchCost * 100 / notesPerBatch), exact; null when unpriced or unrepresentable. */

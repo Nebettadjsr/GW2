@@ -42,6 +42,16 @@ public final class MysticForgeDtos {
                                List<CurrencyDto> currencyInputs, List<Item> unpricedInputs, Long marginOnShoppingCopper,
                                Long marginCopper, boolean conditional, boolean fixedOutput) { }
 
+    /**
+     * Research Notes of the selected how-to. null walletUsed/shortfall = wallet unknown (no production promised).
+     * estimateCopper values only wallet-used Notes (null = unavailable, see estimateIssue); produced Notes are charged
+     * by their crafting inputs. {@code estimate} carries both recipe variants for the shared popup.
+     */
+    public record NotesDto(long needed, boolean walletKnown, Long walletUsed, Long shortfall, long containersNeeded,
+                           long containersCrafted, long producedNotes, long surplus, Integer producerRecipeId,
+                           Long estimateCopper, String estimateIssue, Integer basisRecipeId,
+                           List<CurrencyCostsDto.VariantDto> variants) { }
+
     /** unitCopper null = UNPRICED (never zero). */
     public record ShoppingDto(Item item, long needed, long fromOwned, long toAcquire, Long unitCopper, Long knownCopper) { }
 
@@ -49,5 +59,5 @@ public final class MysticForgeDtos {
                           Long guaranteedOutput, boolean complete, String incompleteReason, boolean walletKnown,
                           long knownGoldCopper, boolean goldCostPartial, List<Item> unpricedItems, NodeDto tree,
                           List<ShoppingDto> shopping, List<CurrencyDto> currencies, String note,
-                          SeedDto seed, EconomicsDto economics, CalculationFreshnessDto freshness) { }
+                          SeedDto seed, EconomicsDto economics, NotesDto notes, CalculationFreshnessDto freshness) { }
 }

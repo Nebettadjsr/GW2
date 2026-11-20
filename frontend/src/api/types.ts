@@ -1018,5 +1018,23 @@ export interface ForgeProject {
   note: string | null
   seed: ForgeSeed | null
   economics: ForgeEconomics | null
+  notes: ForgeNotes | null
   freshness: CalculationFreshness | null
+}
+
+/** Research Notes of the selected how-to; null walletUsed/shortfall = wallet unknown (no production promised). */
+export interface ForgeNotes {
+  needed: number
+  walletKnown: boolean
+  walletUsed: number | null
+  shortfall: number | null
+  containersNeeded: number
+  containersCrafted: number
+  producedNotes: number
+  surplus: number
+  producerRecipeId: number | null
+  estimateCopper: number | null
+  estimateIssue: string | null
+  basisRecipeId: number | null
+  variants: NoteEstimateVariant[]
 }

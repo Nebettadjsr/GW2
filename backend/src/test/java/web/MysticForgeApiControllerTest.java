@@ -203,6 +203,51 @@ class MysticForgeApiControllerTest {
         assertThrows(ApiValidationException.class, () -> controller.project(null, http));
     }
 
+    /** Planner already stops on gold overflow; the mapping must not throw again but expose an unavailable line total. */
+    @Test
+    void overflowingShoppingLineIsATruthfulIncompleteProjectNotAnHttpError() {
+        Recipe g = Recipe.forgeWithExpectedYield(-78, 19745, craft.ExpectedYield.of("18.92", 10, 40), List.of(
+                new craft.Ingredient(19748, 250)));
+        var planner = new craft.ForgeProjectPlanner(List.of(g));
+        Map<Integer, PriceQuote> tp = Map.of(19748, new PriceQuote(1, 100_000_000));
+        var project = planner.plan(g, 1_000_000_000L, true, craft.ForgeProjectPlanner.Inventory.shared(Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp);
+        var data = new CraftingProfitService.ForgeProjectData(project, false, true, 1_000_000_000L, new HashMap<>(), tp, true);
+
+        var dto = MysticForgeApiController.toProject(data, null);
+
+        assertFalse(dto.complete());
+        assertNotNull(dto.incompleteReason());
+        var line = dto.shopping().stream().filter(l -> l.item().itemId() == 19748).findFirst().orElseThrow();
+        assertEquals(250_000_000_000L, line.toAcquire());
+        assertEquals(100_000_000L, line.unitCopper());
+        assertNull(line.knownCopper(), "an overflowing total is unavailable, never zero or saturated");
+    }
+
+    @Test
+    void notesMappingCarriesBackendFactsAndBothVariantsForThePopup() {
+        Recipe root = new Recipe(-7, 900, 1, 0, "", List.of(), List.of(new craft.CurrencyRequirement(61, 210)),
+                craft.RecipeSource.MYSTIC_FORGE);
+        Recipe a = new Recipe(15120, 104934, 1, 0, "Artificer", List.of(new craft.Ingredient(5003, 4)));
+        Recipe b = new Recipe(15131, 104934, 1, 0, "Artificer", List.of(new craft.Ingredient(5002, 3)));
+        var planner = new craft.ForgeProjectPlanner(List.of(root, a, b));
+        Map<Integer, PriceQuote> tp = Map.of(5003, new PriceQuote(null, 10), 5002, new PriceQuote(null, 100));
+        var project = planner.plan(root, 1, true, craft.ForgeProjectPlanner.Inventory.shared(Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(61, 60L), tp);
+        var data = new CraftingProfitService.ForgeProjectData(project, false, true, 1, new HashMap<>(), tp, true);
+
+        var n = MysticForgeApiController.toProject(data, null).notes();
+
+        assertEquals(210, n.needed());
+        assertEquals(60L, n.walletUsed());
+        assertEquals(150L, n.shortfall());
+        assertEquals(1, n.containersCrafted());
+        assertEquals(16L, n.estimateCopper());
+        assertEquals(15120, n.basisRecipeId());
+        assertEquals(2, n.variants().size());
+        assertTrue(n.variants().get(0).basis());
+    }
+
     /** Every project item and the catalogue go through the same-origin icon route; currencies get names; economics are backend-made. */
     @Test
     void projectMappingUsesSameOriginIconsHumanCurrenciesAndBackendEconomics() {

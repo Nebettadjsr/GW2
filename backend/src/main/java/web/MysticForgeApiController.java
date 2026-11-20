@@ -183,7 +183,7 @@ public class MysticForgeApiController {
         if (!outcome.hasResult()) {
             // No source ever synchronized: never an empty plan that reads as "nothing needed".
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(new Project(recipeId, null, null, null, target, 0, null, false, "account data not yet available",
-                    false, 0, true, List.of(), null, List.of(), List.of(), null, null, null, freshness));
+                    false, 0, true, List.of(), null, List.of(), List.of(), null, null, null, null, freshness));
         }
         return ResponseEntity.ok(toProject(outcome.data(), freshness));
     }
@@ -196,7 +196,11 @@ public class MysticForgeApiController {
         List<Item> unpriced = new ArrayList<>();
         for (var l : p.items()) {
             if (l.missing() <= 0) continue;
-            Long known = l.knownUnitCopper() == null ? null : Math.multiplyExact(l.knownUnitCopper(), l.missing());
+            Long known = null;
+            if (l.knownUnitCopper() != null) {
+                try { known = Math.multiplyExact(l.knownUnitCopper(), l.missing()); }
+                catch (ArithmeticException overflow) { known = null; } // unavailable line total, never a fake exact cost
+            }
             shopping.add(new ShoppingDto(item(l.itemId(), info), l.needed(), l.fromOwned(), l.missing(), l.knownUnitCopper(), known));
         }
         p.unpricedItemIds().forEach(id -> unpriced.add(item(id, info)));
@@ -225,13 +229,20 @@ public class MysticForgeApiController {
                     e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.goldInputCopper(), inputs, unpricedInputs,
                     e.marginOnShoppingCopper(), e.marginCopper(), e.conditional(), e.fixedOutput());
         }
+        NotesDto notes = null;
+        if (p.notes() != null && !d.referenceOnly()) {
+            var n = p.notes();
+            notes = new NotesDto(n.needed(), n.walletKnown(), n.walletUsed(), n.shortfall(), n.containersNeeded(),
+                    n.containersCrafted(), n.producedNotes(), n.surplus(), n.producerRecipeId(), n.estimateCopper(),
+                    n.estimateIssue(), n.estimate().basisRecipeId(), CraftingRowMapper.variantDtos(n.estimate(), info));
+        }
         String outcome = d.referenceOnly() ? "REFERENCE_RANDOM" : d.batchTarget() ? "EXPECTED" : "FIXED";
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
                 d.requestedTarget(), p.batches(), random ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
                 d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty(), unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
-                cur, note, d.referenceOnly() ? null : seed, econ, freshness);
+                cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness);
     }
 
     private static NodeDto node(ForgeProjectPlanner.Node n, Map<Integer, ItemRepository.ItemInfo> info, boolean referenceRoot) {

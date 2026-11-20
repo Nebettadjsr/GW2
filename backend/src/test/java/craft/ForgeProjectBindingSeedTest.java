@@ -131,6 +131,23 @@ class ForgeProjectBindingSeedTest {
     }
 
     @Test
+    void expectedSeededRootPartitionUsesNetGuaranteedOutputWhileStepsKeepGross() {
+        Recipe g = gossamer();
+        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        for (long[] c : new long[][] {{2, 19}, {50, 10 * 50 - 49}}) {
+            var p = pl.plan(g, c[0], true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 1000L)),
+                    ForgeProjectPlanner.Context.NONE, Map.of(23, 1000L), gossamerPrices());
+            var t = p.tree();
+            assertEquals(c[1], t.needed());
+            assertEquals(c[1], t.toCraft());
+            assertEquals(t.needed(), t.fromOwned() + t.fromSurplus() + t.toCraft() + t.toAcquire());
+            assertEquals(c[1], p.seed().netGuaranteedOutput());
+            assertEquals(c[0] * 10, p.seed().grossGuaranteedOutput());
+            assertEquals(c[0] * 10, p.steps().stream().filter(s -> s.recipeId() == g.recipeId).findFirst().orElseThrow().outputUnits());
+        }
+    }
+
+    @Test
     void gossamerTwoBatchesOneExternalSeedGuaranteedReuseAndOracleEconomics() {
         Recipe g = gossamer();
         var pl = new ForgeProjectPlanner(gossamerProducers(g));

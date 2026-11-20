@@ -559,13 +559,16 @@ not close/reopen them, clear the form draft/key or trigger refetch. Never confir
 The 18 November owner decision explicitly replaces earlier blocking, no-request-at-narrow and
 forced-modal-close assertions. Preserve the unaffected account/desktop user-story regressions.
 
-The `mystic-forge` journey drives the built app against scripted backend answers only (never live
-ArenaNet/Wiki/owner data): Forge defaults off; enabling sends `allowMysticForge:true` and lists fixed
-and variable Forge rows with the source label and (variable only) the estimate hint; the variable
-row's detail shows the backend's literal expected/net/seed facts and the expanded vendor batch with
-its currency; disabling removes Forge rows; the re-enabled per-account preference reaches the first
-request after a reload; and the ordinary Research Note estimate popup still opens and closes. The
-browser performs no Forge arithmetic. The journey is the controlled desktop Forge check; real-backend Forge accuracy remains a separate supervised check.
+The Forge-only browser journey gate drives the built app against scripted backend answers only (never live
+ArenaNet/Wiki/owner data): the Forge destination lists fixed, variable and reference rows from the cached
+catalogue, and the selected-project journeys (12 in total) open one recipe, show the backend's literal
+needed/owned/to-craft/to-acquire partition, expected/net/seed facts, vendor and Research Note facts, and re-plan
+only when the target changes. Crafting Profit has no Forge toggle: no `allowMysticForge` is sent or honoured. The
+browser performs no Forge arithmetic. The journey is the controlled desktop Forge check; real-backend Forge accuracy
+remains a separate supervised check. Research Notes in a project are covered by `ForgeProjectNotesTest` (210-Note
+aggregate: wallet 60 -> 1 batch, wallet 10 -> 2 batches/100 surplus, shared stock consumed once, unknown wallet,
+locked producer, cheaper variant, incomplete quote basis, path price relevance), `MysticForgeApiControllerTest`
+(notes DTO, overflowing line total stays an incomplete project) and the compact popup case in `MysticForgeScreen.spec.ts`.
 
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to

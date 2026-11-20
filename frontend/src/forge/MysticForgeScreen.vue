@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onDeactivated, onMounted, ref } from 'vue'
 import { mysticForgeApi, type MysticForgeApi } from '@/api/mysticForgeApi'
-import type { ForgeCurrency, ForgeRecipeRow } from '@/api/types'
+import type { ForgeCurrency, ForgeNotes, ForgeRecipeRow, NoteEstimate } from '@/api/types'
 import { formatCopper } from '@/crafting/formatCopper'
 import ItemIcon from '@/items/ItemIcon.vue'
 import TradingPostPriceDisclaimer from '@/items/TradingPostPriceDisclaimer.vue'
 import PageHeader from '@/shell/PageHeader.vue'
+import ResearchNoteEstimatePopup from '@/crafting/ResearchNoteEstimatePopup.vue'
 import MysticForgeNode from './MysticForgeNode.vue'
 import { FORGE_TABS, TARGET_DEBOUNCE_MS, parseTarget, useMysticForge } from './useMysticForge'
 
@@ -41,6 +42,10 @@ const referenceOnly = computed(() => project.value?.outcome === 'REFERENCE_RANDO
 const batchTarget = computed(() => project.value?.targetKind === 'BATCHES' || row.value?.outcome !== 'FIXED')
 const targetValid = computed(() => parseTarget(f.targetText.value) !== null)
 
+function noteEstimate(n: ForgeNotes): NoteEstimate {
+  return { perCraftNotes: 0, totalNotes: n.walletUsed ?? 0, perCraftCopper: 0, totalCopper: n.estimateCopper ?? 0,
+    basisRecipeId: n.basisRecipeId, variants: n.variants }
+}
 function quote(value: number | null): string { return value === null ? 'Not traded / price unavailable' : formatCopper(value) }
 function outcomeLabel(r: ForgeRecipeRow): string {
   if (r.outcome === 'FIXED') return `Output ×${r.outputCount}`
@@ -153,6 +158,16 @@ async function back(): Promise<void> {
             <a v-if="c.wikiUrl" :href="c.wikiUrl" target="_blank" rel="noopener noreferrer">{{ c.name }}</a><template v-else>{{ c.name }}</template>
             — {{ currencyDetail(c) }}
           </li></ul>
+        </section>
+
+        <section v-if="project.notes" data-test="forge-notes">
+          <h3>Research Notes</h3>
+          <p data-test="forge-notes-needed">Needed {{ project.notes.needed }}<template v-if="project.notes.walletKnown">; wallet used {{ project.notes.walletUsed }}, still missing {{ project.notes.shortfall }}.</template><template v-else>; wallet unknown, so no production count or deficit is claimed.</template></p>
+          <p v-if="project.notes.containersNeeded > 0" data-test="forge-notes-production">Planned production: {{ project.notes.containersCrafted }} Peer Reviewed Research (150 Notes each) = {{ project.notes.producedNotes }} Notes<template v-if="project.notes.surplus > 0">, {{ project.notes.surplus }} left over</template>. Owned containers counted first.</p>
+          <p v-if="project.notes.walletUsed" data-test="forge-notes-estimate">
+            Wallet Notes value: <template v-if="project.notes.estimateCopper !== null">≈ {{ formatCopper(project.notes.estimateCopper) }} <ResearchNoteEstimatePopup :estimate="noteEstimate(project.notes)" /></template>
+            <template v-else>unavailable ({{ project.notes.estimateIssue }})</template>
+          </p>
         </section>
 
         <section v-if="project.economics && showEconomics" data-test="forge-economics">

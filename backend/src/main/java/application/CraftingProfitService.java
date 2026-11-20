@@ -261,6 +261,12 @@ public class CraftingProfitService {
         for (Ingredient i : root.ingredients) shown.add(i.itemId);
         project.items().forEach(l -> shown.add(l.itemId()));
         project.steps().forEach(st -> shown.add(st.outputItemId()));
+        if (project.notes() != null) {
+            for (var v : project.notes().estimate().variants()) {
+                shown.add(v.outputItemId());
+                v.ingredients().forEach(l -> shown.add(l.itemId()));
+            }
+        }
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(con, shown);
         return new ForgeProjectData(project, ref != null, batchTarget, target, items, tp, wallet != null);
     }

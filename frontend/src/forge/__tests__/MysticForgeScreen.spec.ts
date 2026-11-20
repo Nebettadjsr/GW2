@@ -41,7 +41,7 @@ function project(target: number, o: Partial<ForgeProject> = {}): ForgeProject {
     note: null, seed: null,
     economics: { outputUnitSellCopper: 100, expectedGrossProceedsCopper: 3684, feeCopper: 553, expectedNetProceedsCopper: 3131, knownShoppingCopper: 1300,
       goldInputCopper: 1300, currencyInputs: [], unpricedInputs: [], marginOnShoppingCopper: null, marginCopper: -1831, conditional: true, fixedOutput: false },
-    freshness: null, ...o
+    notes: null, freshness: null, ...o
   }
 }
 
@@ -384,6 +384,31 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     expect(w.get('[data-test="forge-total-proceeds"]').text()).toBe('36s 84c')
     expect(w.get('[data-test="forge-margin"]').text()).toBe('-18s 31c')
     w.unmount()
+  })
+  it('shows backend Research Note facts, the estimated value popup, and no invented numbers for an unknown wallet', async () => {
+    const variant = (id: number, basis: boolean) => ({ recipeId: id, outputName: 'Peer Reviewed Research', notesPerBatch: 150, batchCostCopper: 40,
+      per100NotesCopper: 27, basis, ingredients: [{ itemId: 5003, name: 'Page', count: 4, unitPriceCopper: 10, totalCopper: 40, iconUrl: null }] })
+    const notes = { needed: 210, walletKnown: true, walletUsed: 60, shortfall: 150, containersNeeded: 1, containersCrafted: 1, producedNotes: 150,
+      surplus: 0, producerRecipeId: 15120, estimateCopper: 16, estimateIssue: null, basisRecipeId: 15120, variants: [variant(15120, true), variant(15131, false)] }
+    let current: ForgeProject['notes'] = notes
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) { return project(target, { notes: current }) } }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(w.get('[data-test="forge-notes-needed"]').text()).toBe('Needed 210; wallet used 60, still missing 150.')
+    expect(w.get('[data-test="forge-notes-production"]').text()).toContain('1 Peer Reviewed Research (150 Notes each) = 150 Notes')
+    expect(w.get('[data-test="forge-notes-estimate"]').text()).toContain('16c')
+    expect(w.findAll('[data-test="note-estimate-trigger"]')).toHaveLength(1)
+    w.unmount()
+    current = { ...notes, walletKnown: false, walletUsed: null, shortfall: null, containersNeeded: 0, containersCrafted: 0, producedNotes: 0, estimateCopper: null, estimateIssue: 'wallet unknown' }
+    const w2 = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w2.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(w2.get('[data-test="forge-notes-needed"]').text()).toContain('wallet unknown')
+    expect(w2.find('[data-test="forge-notes-production"]').exists()).toBe(false)
+    w2.unmount()
   })
   it('vendor steps are labelled Vendor / To buy, never Mystic Forge / To craft', async () => {
     const api: MysticForgeApi = {

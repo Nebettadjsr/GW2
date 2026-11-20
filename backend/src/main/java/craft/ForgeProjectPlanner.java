@@ -70,18 +70,33 @@ public final class ForgeProjectPlanner {
                             List<CurrencyLine> currencyInputs, List<Integer> unpricedInputItemIds,
                             Long marginOnShoppingCopper, Long marginCopper, boolean conditional, boolean fixedOutput) { }
 
+    /**
+     * Research Note facts of the selected how-to (null when it needs no Notes). {@code walletUsed}/{@code shortfall} are
+     * null for an unknown wallet (never defaulted to zero, no production promised). {@code containersNeeded} is the
+     * Peer Reviewed Research containers covering the shortfall (owned ones first, the rest crafted); {@code surplus}
+     * is the Notes opened beyond the shortfall. {@code estimateCopper} values ONLY wallet-used Notes at the cheaper
+     * fully priced recipe's replacement cost (null = unavailable); produced Notes are charged by their inputs.
+     */
+    public record Notes(long needed, boolean walletKnown, Long walletUsed, Long shortfall, long containersNeeded,
+                        long containersCrafted, long producedNotes, long surplus, Integer producerRecipeId,
+                        ResearchNoteEstimate estimate, Long estimateCopper, String estimateIssue) { }
+
     public record Project(int recipeId, int outputItemId, long batches, long guaranteedOutput,
                           List<CraftStep> steps, List<ItemLine> items, List<CurrencyLine> currencies,
                           Node tree, long knownCopper, List<Integer> unpricedItemIds, boolean complete, String incompleteReason,
-                          Seed seed, Economics economics) { }
+                          Seed seed, Economics economics, Notes notes) { }
 
     private final Map<Integer, Recipe> producerByItem = new java.util.HashMap<>();
+    private final Map<Integer, Recipe> noteRecipes = new TreeMap<>();
+    private static final int NOTES = CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID;
 
     /** @param producers every recipe that may supply an intermediate (ordinary graph recipes, Forge, vendor) */
     public ForgeProjectPlanner(List<Recipe> producers) {
         List<Recipe> sorted = new ArrayList<>(producers);
         sorted.sort(Comparator.<Recipe>comparingInt(r -> rank(r.source)).thenComparingInt(r -> r.recipeId));
         for (Recipe r : sorted) {
+            if (r.outputItemId == CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID
+                    && ResearchNoteEstimate.VARIANT_RECIPE_IDS.contains(r.recipeId)) noteRecipes.put(r.recipeId, r);
             if (r.hasExpectedYield() || r.outputCount <= 0) continue; // random outcomes never feed a guaranteed plan
             producerByItem.putIfAbsent(r.outputItemId, r);
         }
@@ -105,6 +120,11 @@ public final class ForgeProjectPlanner {
         while (!queue.isEmpty() && seen.size() <= MAX_NODES) {
             Recipe r = queue.poll();
             if (!seen.add(r.recipeId)) continue;
+            // A path that reaches Research Notes needs both Note variants' prices, independent of stock/unlock.
+            if (r.currencies.stream().anyMatch(c -> c.currencyId() == NOTES)) {
+                for (Recipe v : noteRecipes.values()) if (!seen.contains(v.recipeId)) queue.add(v);
+                ids.add(CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID);
+            }
             for (Ingredient i : r.ingredients) {
                 ids.add(i.itemId);
                 Recipe p = producerByItem.get(i.itemId);
@@ -138,12 +158,15 @@ public final class ForgeProjectPlanner {
         Run run = new Run(new PlanState(inv.sellable(), inv.accountBound(), inv.characterBound()), prices, ctx);
         long batches = 0;
         Node tree = null;
+        Notes notes = null;
         try {
             long outUnits;
             long rootOwned = 0;
             if (batchTarget) {
                 batches = quantity;
                 outUnits = Math.multiplyExact(batches, (long) target.outputCount);
+                // A self-seeded expected-yield root's guaranteed stock is NET of the reused seed (gross stays in seed facts/steps).
+                if (target.hasExpectedYield() && target.selfSeedUnits() > 0) outUnits = seedOf(target, batches).netGuaranteedOutput();
             } else {
                 outUnits = quantity;
                 rootOwned = run.consumeRoot(target.outputItemId, quantity);
@@ -158,6 +181,16 @@ public final class ForgeProjectPlanner {
                     target.recipeId, target.source, batches, target.minRating, target.disciplinesText, run.reason, kids,
                     null, true, null, null);
             if (fixedRoot && surplusOut > 0) run.surplus.merge(target.outputItemId, surplusOut, Math::addExact);
+            if (run.reason == null) {
+                notes = planNotes(run, wallet, prices, tree, kids);
+                if (notes != null && notes.containersNeeded() > 0 && run.noteNode != null) {
+                    kids = new ArrayList<>(kids);
+                    kids.add(run.noteNode);
+                    tree = new Node(tree.itemId(), tree.needed(), tree.fromOwned(), tree.fromSurplus(), tree.toCraft(),
+                            tree.toAcquire(), tree.recipeId(), tree.source(), tree.crafts(), tree.minRating(),
+                            tree.disciplines(), run.reason, kids, null, true, null, null);
+                }
+            }
         } catch (ArithmeticException e) {
             run.stop("quantity exceeds the supported range");
         }
@@ -190,7 +223,67 @@ public final class ForgeProjectPlanner {
             econ = economics(target, batches, seed, prices, copper);
         }
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
-                tree, copper, unpriced, run.reason == null, run.reason, seed, econ);
+                tree, copper, unpriced, run.reason == null, run.reason, seed, econ, notes);
+    }
+
+    /**
+     * Research Notes of the whole selected how-to, aggregated once: a KNOWN wallet pays its available amount once and
+     * the shortfall is covered by Peer Reviewed Research containers (owned first, rest crafted through the cheaper
+     * eligible fully priced recipe, sharing this run's inventory/surplus). An unknown wallet promises nothing.
+     */
+    private Notes planNotes(Run run, Map<Integer, Long> wallet, Map<Integer, PriceQuote> prices, Node tree, List<Node> kids) {
+        Long needed = run.currencyDemand.get(NOTES);
+        if (needed == null || needed <= 0) return null;
+        CurrencyProduction production = CurrencyProduction.forCurrency(NOTES).orElseThrow();
+        Map<Integer, List<Recipe>> byOutput = new java.util.HashMap<>();
+        for (Recipe r : noteRecipes.values()) byOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
+        ResearchNoteEstimate estimate = ResearchNoteEstimate.compute(byOutput, prices,
+                new CraftingSettings(true, true, 0, true, false, false));
+        if (wallet == null) {
+            return new Notes(needed, false, null, null, 0, 0, 0, 0, null, estimate, null, "wallet unknown");
+        }
+        long have = Math.max(0, wallet.getOrDefault(NOTES, 0L));
+        long used = Math.min(needed, have);
+        long shortfall = needed - used;
+        Long cost = null;
+        String issue = null;
+        if (used > 0) {
+            if (!estimate.available()) issue = "no completely priced Research Note recipe";
+            else {
+                try { cost = (long) estimate.costCopper(used); }
+                catch (ArithmeticException e) { issue = "estimate exceeds the supported range"; }
+            }
+        } else cost = 0L;
+        long containers = Math.ceilDiv(shortfall, (long) production.yield());
+        Recipe producer = containers > 0 ? chooseNoteProducer(run, estimate) : null;
+        long crafted = 0;
+        if (containers > 0) {
+            if (producer != null) run.noteProducer = producer;
+            long before = run.crafted(CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID);
+            Node n = run.need(CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID, containers, 1, new HashSet<>(), null, false);
+            run.noteNode = n;
+            crafted = run.crafted(CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID) - before;
+        }
+        long surplus = Math.subtractExact(Math.multiplyExact(containers, (long) production.yield()), shortfall);
+        return new Notes(needed, true, used, shortfall, containers, crafted,
+                Math.multiplyExact(crafted, (long) production.yield()), surplus,
+                producer == null ? null : producer.recipeId, estimate, cost, issue);
+    }
+
+    /** Cheapest eligible fully priced variant; else cheapest priced; else the lowest id (shown locked/unpriced). */
+    private Recipe chooseNoteProducer(Run run, ResearchNoteEstimate estimate) {
+        Recipe best = null;
+        long bestKey = Long.MAX_VALUE;
+        for (Recipe r : noteRecipes.values()) {
+            ResearchNoteEstimate.Variant v = estimate.variants().stream().filter(x -> x.recipeId() == r.recipeId).findFirst().orElse(null);
+            boolean priced = v != null && v.priced();
+            boolean eligible = run.assign(r) != null && !Boolean.FALSE.equals(
+                    run.ctx.knownRecipeIds() == null ? null : run.ctx.knownRecipeIds().contains(r.recipeId));
+            long cost = priced ? v.batchCostCopper() : Long.MAX_VALUE / 4;
+            long key = (eligible ? 0 : Long.MAX_VALUE / 2) + cost;
+            if (best == null || key < bestKey) { best = r; bestKey = key; }
+        }
+        return best;
     }
 
     /** Cost side of the Trading Post: the lowest listing (ask, sell_unit_price). */
@@ -289,11 +382,18 @@ public final class ForgeProjectPlanner {
         final Map<Integer, CraftStep> stepByRecipe = new TreeMap<>();
         final List<CraftStep> steps = new ArrayList<>();
         long vendorCopper;
+        Recipe noteProducer;
+        Node noteNode;
         int nodes;
         String reason;
 
         Run(PlanState state, Map<Integer, PriceQuote> prices, Context ctx) {
             this.state = state; this.prices = prices; this.ctx = ctx;
+        }
+
+        long crafted(int outputItemId) {
+            return stepByRecipe.values().stream().filter(st -> st.outputItemId() == outputItemId)
+                    .mapToLong(CraftStep::crafts).sum();
         }
 
         void stop(String why) { if (reason == null) reason = why; }
@@ -396,7 +496,9 @@ public final class ForgeProjectPlanner {
             long spare = Math.min(surplus.getOrDefault(itemId, 0L), unmet);
             if (spare > 0) { surplus.merge(itemId, -spare, Long::sum); unmet -= spare; } // conserved craft surplus, not owned stock
             if (unmet == 0) return new Node(itemId, qty, use, spare, 0, 0, null, null, 0, 0, "", null, List.of(), null, true, null, null);
-            Recipe p = seedLeaf ? null : producerByItem.get(itemId);
+            Recipe p = seedLeaf ? null
+                    : itemId == CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID && noteProducer != null ? noteProducer
+                    : producerByItem.get(itemId);
             if (p == null || path.contains(p.recipeId)) {
                 leaf.merge(itemId, unmet, Math::addExact);
                 String cut = p == null ? null : "cycle: this item's producer is already being expanded above";
