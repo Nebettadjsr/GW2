@@ -531,6 +531,39 @@ describe('vendor shopping and bounded catalogue completion', () => {
     w.unmount()
   })
 
+  it('a cold OTHER equipment row gets its 6 selectors in place when authoritative metadata arrives, keeping state and without extra project requests', async () => {
+    let calls = 0
+    const cold = (r: ForgeRecipeRow) => r.recipeId === -1 ? { ...r, itemType: null, itemSubtype: null, category: 'OTHER' as const } : r
+    const api: MysticForgeApi = {
+      async loadCatalogue() {
+        calls++
+        const warm = calls > 1
+        return { ...catalogue, completing: !warm, recipes: warm ? catalogue.recipes : catalogue.recipes.map(cold) }
+      },
+      loadProject(recipeId, target, settings) {
+        projectCalls.push({ recipeId, target, settings })
+        return Promise.resolve(project(target, settings ? { settings } : {}))
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="forge-settings"]').exists()).toBe(false)
+    expect(projectCalls).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(5100)
+    await flushPromises()
+    expect(calls).toBe(2)
+    for (const id of ['price', 'use-own', 'value-own', 'daily', 'promotions', 'reduce']) {
+      expect(w.find(`[data-test="forge-setting-${id}"]`).exists()).toBe(true)
+    }
+    expect(projectCalls).toHaveLength(1) // no extra project/Profit request, selection kept
+    expect(w.text()).toContain('Sunrise Longbow')
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(calls).toBe(2) // metadata complete: no further polling
+    w.unmount()
+  })
+
   it('resumes a completing catalogue whose timer was cancelled by opening a detail once the user goes Back', async () => {
     const counter = { calls: 0 }
     const w = mount(MysticForgeScreen, { props: { api: completingApi(counter, 3) }, attachTo: document.body })

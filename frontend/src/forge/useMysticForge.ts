@@ -287,6 +287,9 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     sourceRefreshing.value = false
     sourceError.value = null
     stalled.value = false
+    // A row whose type is not cached yet (category OTHER) must not stay generic: keep the same bounded public
+    // metadata reread running while its detail is open so weapon/armor controls appear in place.
+    if (selectedRow.value?.category === 'OTHER') resumeCatalogue()
     void loadProject()
   }
 
