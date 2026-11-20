@@ -41,7 +41,7 @@ class ForgeProjectQuantityTest {
         assertEquals(1, v.purchases(), "one payment, the 2nd demand reuses the surplus");
         assertEquals(10, v.units());
         assertEquals(0, v.copper());
-        assertEquals(List.of(new CurrencyRequirement(SHARD, 1)), v.currencies(), "currency-only offer keeps its currency cost");
+        assertEquals(List.of(new ForgeProjectPlanner.CurrencyLine(SHARD, 1L, null, null)), v.currencies(), "currency-only offer keeps its currency cost");
         assertEquals(1, p.currencies().get(0).needed());
         assertEquals(0, p.items().stream().filter(i -> i.itemId() == STONE).findFirst().orElseThrow().missing(),
                 "vendor-made stock is not a trading-post leaf");

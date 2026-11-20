@@ -207,7 +207,7 @@ public class MysticForgeApiController {
         }
         for (var v : p.vendorPurchases()) {
             List<CurrencyCostDto> costs = new ArrayList<>();
-            v.currencies().forEach(c -> costs.add(new CurrencyCostDto(c.currencyId(), craft.KnownCurrencies.name(c.currencyId()), c.count())));
+            v.currencies().forEach(c -> costs.add(new CurrencyCostDto(c.currencyId(), craft.KnownCurrencies.name(c.currencyId()), c.needed())));
             var line = p.items().stream().filter(l -> l.itemId() == v.itemId()).findFirst().orElse(null);
             // Cash of a vendor buy is real; a currency-only offer has no gold figure (null), never a free purchase.
             shopping.add(new ShoppingDto(item(v.itemId(), info), line == null ? v.units() : line.needed(),

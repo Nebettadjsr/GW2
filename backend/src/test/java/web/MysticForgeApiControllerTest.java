@@ -248,6 +248,28 @@ class MysticForgeApiControllerTest {
         assertTrue(n.variants().get(0).basis());
     }
 
+    /** A vendor currency total above Integer.MAX_VALUE stays exact and positive through domain and JSON. */
+    @Test
+    void vendorCurrencyTotalAboveIntRangeStaysExactThroughMapper() throws Exception {
+        Recipe t = Recipe.forgeWithExpectedYield(-78, 19745, craft.ExpectedYield.of("1", 1, 1),
+                List.of(new craft.Ingredient(20796, 1_000_000_000)));
+        var planner = new craft.ForgeProjectPlanner(List.of(t,
+                Recipe.vendor(-1_000_000_001, 20796, 10, List.of(new craft.CurrencyRequirement(23, 50)), 0)));
+        var project = planner.planOutput(t, 1, craft.ForgeProjectPlanner.Inventory.shared(Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
+        var vendor = project.vendorPurchases().getFirst();
+        assertEquals(100_000_000L, vendor.purchases());
+        assertEquals(5_000_000_000L, vendor.currencies().getFirst().needed());
+        assertEquals(5_000_000_000L, project.currencies().getFirst().needed());
+        var dto = MysticForgeApiController.toProject(
+                new CraftingProfitService.ForgeProjectData(project, false, true, 1, new HashMap<>(), Map.of(), true), null);
+        var line = dto.shopping().stream().filter(s -> "VENDOR".equals(s.source())).findFirst().orElseThrow();
+        assertEquals(5_000_000_000L, line.currencyCosts().getFirst().count());
+        assertEquals(5_000_000_000L, dto.currencies().getFirst().needed());
+        String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(line.currencyCosts().getFirst());
+        assertTrue(json.contains("\"count\":5000000000"), json);
+    }
+
     /** Every project item and the catalogue go through the same-origin icon route; currencies get names; economics are backend-made. */
     @Test
     void projectMappingUsesSameOriginIconsHumanCurrenciesAndBackendEconomics() {

@@ -55,7 +55,7 @@ public final class ForgeProjectPlanner {
      * currency-only offer has {@code copper == 0} and a non-empty {@code currencies} (never a free purchase).
      */
     public record VendorPurchase(int itemId, long purchases, long units, long copper,
-                                 List<CurrencyRequirement> currencies, String hint) { }
+                                 List<CurrencyLine> currencies, String hint) { }
 
     /** {@code owned}/{@code missing} are null when the wallet is unknown (never defaulted to zero). */
     public record CurrencyLine(int currencyId, long needed, Long owned, Long missing) { }
@@ -254,8 +254,8 @@ public final class ForgeProjectPlanner {
             long buys = run.stepByRecipe.containsKey(v.recipeId) ? run.stepByRecipe.get(v.recipeId).crafts() : 0L;
             if (buys <= 0) continue;
             try {
-                List<CurrencyRequirement> cost = new ArrayList<>();
-                for (CurrencyRequirement c : v.currencies) cost.add(new CurrencyRequirement(c.currencyId(), (int) mul((long) c.count(), buys)));
+                List<CurrencyLine> cost = new ArrayList<>();
+                for (CurrencyRequirement c : v.currencies) cost.add(new CurrencyLine(c.currencyId(), mul((long) c.count(), buys), null, null));
                 vendorPurchases.add(new VendorPurchase(v.outputItemId, buys, mul(buys, (long) v.outputCount),
                         mul((long) v.vendorCopper, buys), List.copyOf(cost), VendorAcquisitions.hintFor(v.outputItemId)));
             } catch (ArithmeticException ex) { run.stop("quantity exceeds the supported range"); }
