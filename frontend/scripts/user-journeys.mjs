@@ -8,7 +8,7 @@ import { chromium, selectors } from 'playwright-core'
 import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
-import { createJourneyBackend, KEY_A, KEY_B, BAD_KEY, ACCOUNT_A, ACCOUNT_B, storageKey, forgeStorageKey } from './userJourneyFixtures.mjs'
+import { createJourneyBackend, KEY_A, KEY_B, BAD_KEY, ACCOUNT_A, ACCOUNT_B, storageKey, FORGE_BOW } from './userJourneyFixtures.mjs'
 
 selectors.setTestIdAttribute('data-test')
 const OUTPUT = resolve(process.env.GW2_SMOKE_OUTPUT ?? 'quality-reports/desktop-journeys')
@@ -455,6 +455,132 @@ async function forgeJourney({ page, api, origin, step }) {
   step('ordinary Research Note estimate popup still opens as a modal and closes beside Forge rows')
 }
 
+const forgeCalls = (api, path) => api.calls.filter(call => call.path === path)
+const forgeProjects = api => forgeCalls(api, '/api/mystic-forge/project').map(call => JSON.parse(call.body))
+
+/** Mystic Forge destination (issue #378): catalogue-only browsing, one selected project, exact target, late answers discarded. */
+async function mysticForgeJourney({ page, api, origin, step }) {
+  await page.goto(`${origin}/#/synchronization`)
+  await connect(page, KEY_A)
+  const nav = await page.locator('[data-test^="nav-"]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-test')))
+  assert.ok(nav.indexOf('nav-discovery') >= 0 && nav.indexOf('nav-forge') === nav.indexOf('nav-discovery') + 1 &&
+    nav.indexOf('nav-ecto') === nav.indexOf('nav-forge') + 1, `Forge must sit between Discovery and Ecto: ${nav}`)
+  step('navigation places Mystic Forge between Crafting Discovery and Ecto Salvage')
+
+  await go(page, 'forge')
+  await get(page, 'forge-screen').waitFor()
+  await get(page, 'forge-count').waitFor()
+  assert.equal(await get(page, 'forge-count').innerText(), '43 recipes')
+  await get(page, 'forge-search').fill('bow')
+  assert.equal(await get(page, 'forge-count').innerText(), '1 recipes', 'bow must match the actual LongBow subtype only')
+  await get(page, 'forge-search').fill('')
+  await get(page, 'forge-tab-MATERIALS').click()
+  assert.equal(await get(page, 'forge-count').innerText(), '2 recipes')
+  await get(page, 'forge-tab-ARMOR').click()
+  assert.equal(await get(page, 'forge-count').innerText(), '0 recipes')
+  assert.equal(forgeProjects(api).length, 0, 'Browsing must not plan any project')
+  assert.equal(count(api, '/api/crafting/profit'), 0, 'Browsing must not call Profit')
+  step('catalogue search, tab and category cause no project and no Profit request; Bow matches the real subtype')
+
+  await get(page, 'forge-tab-WEAPONS').click()
+  await get(page, 'forge-search').fill('weapon')
+  assert.equal(await get(page, 'forge-count').innerText(), '41 recipes')
+  const bowRow = get(page, 'forge-row').filter({ hasText: 'Sunrise Longbow' })
+  await bowRow.scrollIntoViewIfNeeded()
+  const listScroll = await page.evaluate(() => window.scrollY)
+  assert.ok(listScroll > 100, 'the long list must actually scroll')
+  await bowRow.click()
+  await get(page, 'forge-detail').waitFor()
+  await get(page, 'forge-tree').waitFor()
+  assert.deepEqual(forgeProjects(api), [{ recipeId: FORGE_BOW, target: 1 }])
+  const detail = await get(page, 'forge-detail').innerText()
+  assert.match(detail, /Locked Plank/)
+  assert.match(detail, /Recipe not unlocked/)
+  assert.match(detail, /wallet unknown/)
+  assert.match(detail, /partial/)
+  assert.match(detail, /Gift of Fortune/)
+  const vendor = get(page, 'forge-node').filter({ hasText: "Philosopher's Stone" }).last()
+  const vendorText = await vendor.innerText()
+  assert.match(vendorText, /Vendor/)
+  assert.match(vendorText, /To buy 5/)
+  assert.doesNotMatch(vendorText, /Mystic Forge|To craft/)
+  step('opening one root plans exactly that recipe: locked ordinary how-to, vendor step, partial cost and unknown wallet')
+
+  assert.equal(await get(page, 'forge-unit-quote').innerText(), '50s 0c')
+  assert.equal(await get(page, 'forge-total-proceeds').innerText(), '42s 50c')
+  assert.match(await get(page, 'forge-economics').innerText(), /Total project proceeds/)
+  assert.doesNotMatch(await get(page, 'forge-margin').innerText(), /999g/, 'marginOnShopping must never be the margin')
+  await get(page, 'forge-target').fill('3')
+  await waitFor(() => forgeProjects(api).length === 2, 'Expected exactly one project read for the new target')
+  await get(page, 'forge-output').waitFor()
+  assert.match(await get(page, 'forge-output').innerText(), /Guaranteed output: 3/)
+  assert.equal(await get(page, 'forge-total-proceeds').innerText(), '1g 27s 50c')
+  assert.deepEqual(forgeProjects(api).at(-1), { recipeId: FORGE_BOW, target: 3 })
+  assert.equal(forgeProjects(api).length, 2)
+  step('target change re-plans only the selected project; per-item quote and multi-batch totals are labelled separately')
+
+  api.holdNextForgeProject()
+  await get(page, 'forge-target').fill('4')
+  await waitFor(api.hasHeldForge, 'Expected a held target-4 answer')
+  assert.equal(await get(page, 'forge-tree').count(), 0, 'an earlier quantity must not stay current while 4 is pending')
+  await get(page, 'forge-target').fill('5')
+  await waitFor(() => forgeProjects(api).length === 4, 'Expected the target-5 read')
+  await get(page, 'forge-output').waitFor()
+  api.releaseForge()
+  await quietFrame(page)
+  await pause(100)
+  assert.match(await get(page, 'forge-output').innerText(), /Guaranteed output: 5/)
+  step('a late answer for an earlier target is discarded')
+
+  await get(page, 'forge-back').click()
+  await get(page, 'forge-overview').waitFor()
+  assert.equal(await get(page, 'forge-search').inputValue(), 'weapon')
+  assert.equal(await get(page, 'forge-tab-WEAPONS').getAttribute('aria-pressed'), 'true')
+  assert.ok(Math.abs((await page.evaluate(() => window.scrollY)) - listScroll) <= 2, 'list scroll must be restored')
+  await focusIs(bowRow)
+  assert.equal(forgeCalls(api, '/api/crafting/profit').length, 0)
+  step('Back restores category, query, scroll position and focus on the opened row')
+
+  await get(page, 'forge-search').fill('')
+  await get(page, 'forge-tab-MATERIALS').click()
+  await get(page, 'forge-row').filter({ hasText: 'Gossamer Scrap' }).click()
+  await get(page, 'forge-tree').waitFor()
+  await get(page, 'forge-target').fill('2')
+  await get(page, 'forge-total-proceeds').waitFor()
+  await waitFor(() => forgeProjects(api).at(-1)?.target === 2, 'Expected Gossamer 2-batch read')
+  await pause(50)
+  assert.match(await get(page, 'forge-economics').innerText(), /Estimated total proceeds \(2 batches\)/)
+  assert.equal(await get(page, 'forge-total-proceeds').innerText(), '73s 68c')
+  step('expected-yield project labels estimated total proceeds for all requested batches')
+
+  await get(page, 'forge-back').click()
+  await get(page, 'forge-row').filter({ hasText: 'Mystic Clover' }).click()
+  await get(page, 'forge-tree').waitFor()
+  assert.equal(await get(page, 'forge-output').count(), 0)
+  assert.equal(await get(page, 'forge-economics').count(), 0)
+  assert.equal(await get(page, 'forge-node').first().locator(':scope > .forge-node__head').getByTestId('forge-node-needed').count(), 0)
+  step('reference-only Clover shows inputs for requested batches and no guaranteed output or expected economics')
+
+  await get(page, 'forge-back').click()
+  await get(page, 'forge-row').filter({ hasText: 'Gossamer Scrap' }).click()
+  await get(page, 'forge-tree').waitFor()
+  await get(page, 'forge-back').click()
+  api.holdNextForgeProject()
+  await get(page, 'forge-row').filter({ hasText: 'Gossamer Scrap' }).click()
+  await waitFor(api.hasHeldForge, 'Expected a held account-A answer')
+  await go(page, 'synchronization')
+  await get(page, 'disconnect').click()
+  await get(page, 'disconnect').waitFor({ state: 'hidden' })
+  await connect(page, KEY_B)
+  api.releaseForge()
+  await go(page, 'forge')
+  await get(page, 'forge-overview').waitFor()
+  await pause(100)
+  assert.equal(await get(page, 'forge-tree').count(), 0)
+  assert.equal(await get(page, 'forge-detail').count(), 0, 'account A selection survived into B')
+  step('a late account-A project answer cannot repaint account B')
+}
+
 /** Compatibility inventory entry reuses the current recovery story rather than removed buttons. */
 export async function runUserJourneys({ recoveryOnly = false } = {}) {
   await mkdir(OUTPUT, { recursive: true })
@@ -463,7 +589,7 @@ export async function runUserJourneys({ recoveryOnly = false } = {}) {
     ['failure-recovery', recoveryJourney], ['account-isolation', isolationJourney], ['desktop-boundary', boundaryJourney],
     ['pending-profit-resize', pendingProfitResize], ['ecto-resize-state', ectoResizeState],
     ['help-dialog-resize', context => modalResize(context, 'help')],
-    ['delete-confirmation-resize', context => modalResize(context, 'delete')], ['profit-ordinary-only', forgeJourney]
+    ['delete-confirmation-resize', context => modalResize(context, 'delete')], ['profit-ordinary-only', forgeJourney], ['mystic-forge', mysticForgeJourney]
   ]
   try {
     console.log(`Bundle: ${requireFreshBundle()}`)

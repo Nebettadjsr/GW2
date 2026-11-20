@@ -169,4 +169,36 @@ class MysticForgeApiControllerTest {
         assertEquals(497L, dto.economics().feeCopper());
         assertTrue(dto.economics().conditional());
     }
+
+    /** Both reference-only Clover variants at several batch counts: inputs scale, the root claims no output or craft. */
+    @Test
+    void referenceOnlyCloverRootNeverClaimsGuaranteedOutputNeededOrToCraft() {
+        for (var ref : craft.ForgeReferenceRecipes.all()) {
+            for (long batches : new long[] {1, 3, 10}) {
+                Recipe root = ref.asPlanningTarget();
+                var planner = new craft.ForgeProjectPlanner(List.of());
+                var project = planner.plan(root, batches, true, craft.ForgeProjectPlanner.Inventory.shared(Map.of()),
+                        craft.ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
+                var data = new CraftingProfitService.ForgeProjectData(project, true, true, batches, new HashMap<>(), Map.of(), true);
+
+                var dto = MysticForgeApiController.toProject(data, null);
+                String label = ref.recipeId() + " x" + batches;
+
+                assertNull(dto.guaranteedOutput(), label);
+                assertEquals("REFERENCE_RANDOM", dto.outcome(), label);
+                assertEquals("BATCHES", dto.targetKind(), label);
+                assertNull(dto.economics(), label);
+                assertNull(dto.seed(), label);
+                var rootNode = dto.tree();
+                assertEquals(0L, rootNode.needed(), label);
+                assertEquals(0L, rootNode.toCraft(), label);
+                assertEquals(0L, rootNode.fromOwned(), label);
+                assertEquals(0L, rootNode.toAcquire(), label);
+                assertEquals(ref.ingredients().size(), rootNode.children().size(), label);
+                for (int k = 0; k < ref.ingredients().size(); k++) {
+                    assertEquals(ref.ingredients().get(k).count * batches, rootNode.children().get(k).needed(), label);
+                }
+            }
+        }
+    }
 }

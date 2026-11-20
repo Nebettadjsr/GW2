@@ -28,7 +28,8 @@ onDeactivated(() => f.deactivate())
 
 const detail = computed(() => f.selectedRecipeId.value !== null)
 const row = computed(() => f.selectedRow.value)
-const project = computed(() => f.project.value)
+const project = computed(() => f.currentProject.value)
+const referenceOnly = computed(() => project.value?.outcome === 'REFERENCE_RANDOM')
 const batchTarget = computed(() => project.value?.targetKind === 'BATCHES' || row.value?.outcome !== 'FIXED')
 const targetValid = computed(() => parseTarget(f.targetText.value) !== null)
 
@@ -42,7 +43,7 @@ function moneyClass(v: number | null | undefined): string { return v == null ? '
 function signed(v: number | null | undefined): string { return v == null ? '—' : `${v > 0 ? '+' : ''}${formatCopper(v)}` }
 function currencyDetail(c: ForgeCurrency): string {
   if (c.owned === null) return `need ${c.needed}, wallet unknown`
-  return `need ${c.needed}, have ${c.owned}, missing ${c.missing ?? 0}`
+  return c.missing === null ? `need ${c.needed}, have ${c.owned}` : `need ${c.needed}, have ${c.owned}, missing ${c.missing}`
 }
 
 async function open(r: ForgeRecipeRow): Promise<void> {
@@ -129,11 +130,11 @@ async function back(): Promise<void> {
 
         <section class="forge-summary" data-test="forge-summary">
           <h3>Cost</h3>
-          <p data-test="forge-known-gold">Known gold cost: <strong class="numeric">{{ formatCopper(project.knownGoldCopper) }}</strong>
+          <p data-test="forge-known-gold">Known remaining gold cost{{ referenceOnly ? ' of the inputs' : '' }}: <strong class="numeric">{{ formatCopper(project.knownGoldCopper) }}</strong>
             <template v-if="project.goldCostPartial"> (partial: some requirements are unpriced)</template></p>
           <p v-if="project.unpricedItems.length" data-test="forge-unpriced">Unpriced: {{ project.unpricedItems.map((i) => i.name ?? `Item ${i.itemId}`).join(', ') }}</p>
-          <p v-if="project.guaranteedOutput !== null" data-test="forge-output">Guaranteed output: {{ project.guaranteedOutput }}</p>
-          <p v-else-if="project.batches > 0">{{ project.batches }} batch{{ project.batches === 1 ? '' : 'es' }}</p>
+          <p v-if="project.guaranteedOutput !== null && !referenceOnly" data-test="forge-output">Guaranteed output: {{ project.guaranteedOutput }}</p>
+          <p v-else-if="project.batches > 0" data-test="forge-batches">{{ referenceOnly ? 'Inputs for ' : '' }}{{ project.batches }} requested batch{{ project.batches === 1 ? '' : 'es' }}</p>
         </section>
 
         <section v-if="project.currencies.length" data-test="forge-currencies">
@@ -147,17 +148,24 @@ async function back(): Promise<void> {
         </section>
 
         <section v-if="project.economics" data-test="forge-economics">
-          <h3>Estimated conditional economics</h3>
-          <p class="forge-note">Direct-input buy-all comparison; an estimate, not a guarantee. Excludes unpriced inputs and currencies.</p>
+          <h3>{{ project.economics.conditional ? 'Estimated conditional economics' : 'Economics' }}</h3>
+          <p class="forge-note">Direct-input buy-all comparison for the whole project; {{ project.economics.fixedOutput ? 'output is fixed' : 'an estimate, not a guarantee' }}. Excludes unpriced inputs and currencies.</p>
           <dl class="forge-dl">
-            <dt>Output unit quote</dt><dd>{{ quote(project.economics.outputUnitSellCopper) }}</dd>
-            <dt>Expected batch proceeds</dt><dd>{{ formatCopper(project.economics.expectedGrossProceedsCopper) }}</dd>
-            <dt>Trading Post fees</dt><dd>{{ formatCopper(project.economics.feeCopper) }}</dd>
-            <dt>Net proceeds</dt><dd>{{ formatCopper(project.economics.expectedNetProceedsCopper) }}</dd>
+            <dt>Per-item bid quote</dt><dd data-test="forge-unit-quote">{{ quote(project.economics.outputUnitSellCopper) }}</dd>
+            <template v-if="project.economics.expectedGrossProceedsCopper !== null">
+              <dt>{{ project.economics.fixedOutput ? 'Total project proceeds' : `Estimated total proceeds (${project.batches} batch${project.batches === 1 ? '' : 'es'})` }}</dt>
+              <dd data-test="forge-total-proceeds">{{ formatCopper(project.economics.expectedGrossProceedsCopper) }}</dd>
+              <dt>Total Trading Post fees</dt><dd>{{ quote(project.economics.feeCopper) }}</dd>
+              <dt>Total net proceeds</dt><dd>{{ quote(project.economics.expectedNetProceedsCopper) }}</dd>
+            </template>
             <dt>Gold inputs</dt><dd>{{ formatCopper(project.economics.goldInputCopper) }}</dd>
-            <dt>Estimated margin<template v-if="project.economics.conditional"> (conditional)</template></dt>
-            <dd data-test="forge-margin" :class="['money', moneyClass(project.economics.marginCopper)]">{{ signed(project.economics.marginCopper) }}</dd>
+            <template v-if="project.economics.marginCopper !== null">
+              <dt>{{ project.economics.fixedOutput ? 'Margin' : 'Estimated margin' }}<template v-if="project.economics.conditional"> (conditional)</template></dt>
+              <dd data-test="forge-margin" :class="['money', moneyClass(project.economics.marginCopper)]">{{ signed(project.economics.marginCopper) }}</dd>
+            </template>
           </dl>
+          <p v-if="project.economics.expectedGrossProceedsCopper === null" class="forge-note" data-test="forge-no-comparison">
+            No Trading Post sell quote for the output, so no proceeds or margin comparison is shown. Use the known remaining costs, unpriced requirements and path below.</p>
           <p v-for="c in project.economics.currencyInputs" :key="c.currencyId" class="forge-note">Plus {{ c.needed }} {{ c.name }} (not priced in gold)</p>
         </section>
         <section v-if="project.seed" data-test="forge-seed">
@@ -179,7 +187,7 @@ async function back(): Promise<void> {
 
         <section v-if="project.tree" data-test="forge-tree">
           <h3>How to make it</h3>
-          <ul class="forge-tree"><MysticForgeNode :node="project.tree" :depth="0" /></ul>
+          <ul class="forge-tree"><MysticForgeNode :node="project.tree" :depth="0" :reference="referenceOnly" /></ul>
         </section>
       </template>
     </div>

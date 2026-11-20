@@ -1,4 +1,4 @@
-import { computed, onScopeDispose, ref, shallowRef } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { connection } from '@/api/accountSession'
 import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
 import type { MysticForgeApi } from '@/api/mysticForgeApi'
@@ -62,6 +62,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   let catalogueRereads = 0
   let catalogueTimer: ReturnType<typeof setTimeout> | null = null
   let active = true
+  let disposed = false
 
   const rows = computed(() => catalogue.value?.recipes ?? [])
   const filtered = computed(() => {
@@ -74,6 +75,15 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
       .sort((a, b) => (a.name ?? `~${a.outputItemId}`).localeCompare(b.name ?? `~${b.outputItemId}`) || a.recipeId - b.recipeId)
   })
   const visible = computed(() => filtered.value.slice(0, visibleLimit.value))
+  /**
+   * The project is current only for the recipe and exact target now typed; a result for another quantity is never
+   * shown as current while the new answer is pending.
+   */
+  const currentProject = computed(() => {
+    const p = project.value
+    if (p === null) return null
+    return p.requestedTarget === parseTarget(targetText.value) ? p : null
+  })
   const selectedRow = computed(() => rows.value.find((row) => row.recipeId === selectedRecipeId.value) ?? null)
 
   function message(cause: unknown): string | null {
@@ -82,13 +92,14 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   }
 
   async function loadCatalogue(): Promise<void> {
-    if (catalogueLoading.value) return
+    if (catalogueLoading.value || disposed || !active) return
     const mine = ++catalogueToken
+    const generation = connection.generation
     catalogueLoading.value = true
     catalogueError.value = null
     try {
       const loaded = await api.loadCatalogue()
-      if (mine === catalogueToken && active) {
+      if (mine === catalogueToken && active && generation === connection.generation) {
         catalogue.value = loaded
         scheduleCatalogueReread(loaded)
       }
@@ -122,13 +133,14 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   async function loadProject(isReread = false): Promise<void> {
     const recipeId = selectedRecipeId.value
     const target = parseTarget(targetText.value)
-    if (recipeId === null || target === null) return
+    if (recipeId === null || target === null || disposed || !active) return
     const mine = ++token
+    const generation = connection.generation
     if (!isReread) { rereads = 0; projectLoading.value = true; stalled.value = false; sourceError.value = null }
     projectError.value = null
     try {
       const loaded = await api.loadProject(recipeId, target)
-      if (mine !== token || !active) return
+      if (mine !== token || !active || generation !== connection.generation) return
       pending.value = loaded.tree === null
       project.value = loaded.tree === null ? null : loaded
       if (loaded.tree === null && needsKeyedRefresh(loaded) && api.startSourceRefresh && api.readSourceTask) {
@@ -217,6 +229,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     selectedRecipeId.value = null
     project.value = null
     projectLoading.value = false
+    sourceRefreshing.value = false
     projectError.value = null
     pending.value = false
   }
@@ -224,19 +237,36 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   /** A modest debounce; an empty or invalid draft never posts. */
   function setTarget(text: string): void {
     targetText.value = text
+    // Any edit immediately invalidates the earlier answer, source refresh and bounded reread.
+    ++token
     if (debounce !== null) clearTimeout(debounce)
+    if (reread !== null) clearTimeout(reread)
     debounce = null
+    reread = null
+    projectLoading.value = false
+    sourceRefreshing.value = false
+    sourceError.value = null
+    pending.value = false
+    stalled.value = false
+    projectError.value = null
     if (parseTarget(text) === null) return
+    projectLoading.value = true
     debounce = setTimeout(() => { debounce = null; void loadProject() }, TARGET_DEBOUNCE_MS)
   }
 
   /** Deactivation discards anything still in flight; activation rereads the open project. */
   function deactivate(): void {
+    active = false
     clearTimers()
     ++token
+    ++catalogueToken
     projectLoading.value = false
+    catalogueLoading.value = false
+    sourceRefreshing.value = false
   }
   function activate(): void {
+    if (disposed) return
+    active = true
     if (catalogue.value === null) void loadCatalogue()
     if (selectedRecipeId.value !== null) void loadProject()
   }
@@ -245,11 +275,33 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   function setQuery(next: string): void { query.value = next; visibleLimit.value = INITIAL_VISIBLE }
   function showMore(): void { visibleLimit.value += INITIAL_VISIBLE }
 
-  onScopeDispose(() => { active = false; clearTimers() })
+  /** Account replacement: every earlier answer is discarded and the visible data is re-read for the new account. */
+  watch(() => connection.generation, () => {
+    clearTimers()
+    ++token
+    ++catalogueToken
+    catalogue.value = null
+    project.value = null
+    catalogueLoading.value = false
+    projectLoading.value = false
+    sourceRefreshing.value = false
+    sourceError.value = null
+    pending.value = false
+    stalled.value = false
+    catalogueRereads = 0
+    // A selected project belongs to the replaced account: close it rather than silently planning it for another.
+    selectedRecipeId.value = null
+    targetText.value = '1'
+    projectError.value = null
+    if (!active || disposed) return
+    void loadCatalogue()
+  })
+
+  onScopeDispose(() => { disposed = true; active = false; clearTimers(); ++token; ++catalogueToken })
 
   return {
     catalogue, catalogueLoading, catalogueError, tab, query, visibleLimit, filtered, visible, selectedRecipeId,
-    selectedRow, targetText, project, projectLoading, projectError, pending, sourceRefreshing, sourceError, stalled, retry, loadCatalogue, open, back, setTarget,
+    selectedRow, targetText, project, currentProject, projectLoading, projectError, pending, sourceRefreshing, sourceError, stalled, retry, loadCatalogue, open, back, setTarget,
     activate, deactivate, setTab, setQuery, showMore
   }
 }

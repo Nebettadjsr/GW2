@@ -10,10 +10,10 @@ import { accountLuck, itemMetadata, itemPrices } from '@/ecto/__tests__/currentE
 beforeAll(async () => { await import('../App.vue') }, 30_000)
 const KEY = 'synthetic-desktop-unit-key'
 const ACCOUNT = '00000000-0000-4000-8000-000000000243'
-const tools = ['crafting', 'discovery', 'ecto', 'synchronization', 'bank', 'materials', 'characters']
+const tools = ['crafting', 'discovery', 'forge', 'ecto', 'synchronization', 'bank', 'materials', 'characters']
 const WARNING = 'This page is not optimized for mobile use. You can scroll horizontally to use the whole page.'
 const toolContent: Record<string, string> = {
-  crafting: '[data-test="calculation-controls"]', discovery: '[data-test="discovery-calculation-controls"]',
+  crafting: '[data-test="calculation-controls"]', forge: '[data-test="forge-screen"]', discovery: '[data-test="discovery-calculation-controls"]',
   ecto: '#ecto-count', synchronization: '[data-test="api-key-input"]', bank: '[data-test="bank-slots"]',
   materials: '[data-test="material-category"]', characters: '[data-test="roster-empty"]'
 }
@@ -72,6 +72,7 @@ beforeEach(() => {
     if (path === '/api/session') return json({ accountId: ACCOUNT, accessContext: 'desktop-context',
       expiresAt: '2099-01-01T00:00:00Z', grants: ['account', 'inventories', 'characters', 'unlocks'] })
     if (path === '/api/crafting/selector-options') return json(selectorOptions)
+    if (path === '/api/mystic-forge/recipes') return json({ status: 'OK', source: 'wiki', license: 'CC', recipeCount: 0, referenceCount: 0, recipes: [] })
     if (path === '/api/crafting/profit') return heldProfit ?? json(profitResponse())
     if (path === '/api/crafting/discovery') return json(echoedDiscoveryResponse(JSON.parse(String(init?.body))))
     if (path === '/api/crafting/profit/resolution') return json(resolutionResponse(JSON.parse(String(init?.body))))

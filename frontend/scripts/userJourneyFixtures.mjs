@@ -8,7 +8,58 @@ export const ACCOUNT_A = '00000000-0000-4000-8000-000000000243'
 export const ACCOUNT_B = '00000000-0000-4000-8000-000000000244'
 export const FORGE_FIXED = -3105801
 export const FORGE_VARIABLE = -3105802
-export const forgeStorageKey = account => `gw2.craftingForge.v1.${account}`
+
+/* ---- Mystic Forge destination: literal backend answers (web.dto.MysticForgeDtos); the browser derives none of them. ---- */
+const fItem = (itemId, name) => ({ itemId, name, iconUrl: null, wikiUrl: null })
+const fRow = (recipeId, outputItemId, name, itemType, itemSubtype, category, extra = {}) => ({
+  recipeId, outputItemId, name, iconUrl: null, itemType, itemSubtype, category, outcome: 'FIXED', outputCount: 1,
+  expectedMean: null, expectedMax: null, buyUnitCopper: 5000, sellUnitCopper: 6000, sourcePage: null, sourceRevision: null,
+  wikiUrl: null, ingredientKinds: 3, ...extra })
+export const FORGE_BOW = -7001
+export const FORGE_SCRAP = -7002
+export const FORGE_CLOVER = -1100000001
+const FORGE_FILLER = Array.from({ length: 40 }, (_, index) =>
+  fRow(-7100 - index, 87100 + index, `Filler Sword ${String(index).padStart(2, '0')}`, 'Weapon', 'Sword', 'WEAPONS'))
+export const forgeCatalogue = {
+  status: 'OK', source: 'wiki', license: 'CC BY-NC-SA', recipeCount: 43, referenceCount: 1, completing: false,
+  recipes: [
+    fRow(FORGE_BOW, 87001, 'Sunrise Longbow', 'Weapon', 'LongBow', 'WEAPONS'),
+    fRow(FORGE_SCRAP, 19745, 'Gossamer Scrap', 'CraftingMaterial', null, 'MATERIALS',
+      { outcome: 'EXPECTED', outputCount: 10, expectedMean: '18.92', expectedMax: 40, buyUnitCopper: 100, sellUnitCopper: 120 }),
+    fRow(FORGE_CLOVER, 19675, 'Mystic Clover', 'CraftingMaterial', null, 'MATERIALS',
+      { outcome: 'REFERENCE_RANDOM', outputCount: 0, buyUnitCopper: null, sellUnitCopper: null }),
+    ...FORGE_FILLER]
+}
+const fNode = (itemId, name, o = {}) => ({ item: fItem(itemId, name), needed: 1, fromOwned: 0, fromSurplus: 0, toCraft: 0, toAcquire: 1,
+  recipeId: null, recipeSource: null, crafts: 0, minRating: 0, disciplines: null, cutoff: null, children: [], recipeKnown: null,
+  performable: true, assignedCharacter: null, hint: null, ...o })
+const fFresh = { requestId: 'r', calculationId: 'c', evaluatedAt: '2026-11-15T20:00:00Z', provisional: false, resultAvailable: true,
+  accountSources: [], tradingPost: {}, outstandingWork: [], failures: [] }
+export function forgeProject(recipeId, target) {
+  const base = { recipeId, requestedTarget: target, complete: false, incompleteReason: null, freshness: fFresh, note: null, seed: null,
+    unpricedItems: [], shopping: [], currencies: [], walletKnown: false, goldCostPartial: true, knownGoldCopper: 4200 }
+  if (recipeId === FORGE_BOW) return { ...base, output: fItem(87001, 'Sunrise Longbow'), outcome: 'FIXED', targetKind: 'OUTPUT_QUANTITY',
+    batches: target, guaranteedOutput: target, unpricedItems: [fItem(9001, 'Gift of Fortune')],
+    currencies: [{ currencyId: 23, name: 'Spirit Shards', iconUrl: null, wikiUrl: null, needed: 50 * target, owned: null, missing: null }],
+    tree: fNode(87001, 'Sunrise Longbow', { needed: target, toCraft: target, toAcquire: 0, recipeId, crafts: target, children: [
+      fNode(87010, 'Locked Plank', { needed: 3 * target, recipeId: 5501, recipeSource: 'CRAFT', recipeKnown: false, performable: false,
+        children: [fNode(19721, 'Glob of Ectoplasm', { needed: 9 * target, toAcquire: 9 * target })] }),
+      fNode(20796, "Philosopher's Stone", { needed: 5 * target, toCraft: 5 * target, toAcquire: 0, recipeId: -1000000001, recipeSource: 'VENDOR' })] }),
+    economics: { outputUnitSellCopper: 5000, expectedGrossProceedsCopper: 4250 * target, feeCopper: 750 * target,
+      expectedNetProceedsCopper: 3500 * target, knownShoppingCopper: 4200, goldInputCopper: 4200, currencyInputs: [], unpricedInputs: [],
+      marginOnShoppingCopper: 9999999, marginCopper: 3500 * target - 4200, conditional: true, fixedOutput: true } }
+  if (recipeId === FORGE_SCRAP) return { ...base, output: fItem(19745, 'Gossamer Scrap'), outcome: 'EXPECTED', targetKind: 'BATCHES',
+    batches: target, guaranteedOutput: null, goldCostPartial: false, walletKnown: true,
+    tree: fNode(19745, 'Gossamer Scrap', { needed: 10 * target, toCraft: 10 * target, toAcquire: 0, recipeId, crafts: target, children: [
+      fNode(19748, 'Bolt of Gossamer', { needed: 250 * target, toAcquire: 250 * target })] }),
+    economics: { outputUnitSellCopper: 100, expectedGrossProceedsCopper: 3684 * target, feeCopper: 553 * target,
+      expectedNetProceedsCopper: 3131 * target, knownShoppingCopper: 1300, goldInputCopper: 1300, currencyInputs: [], unpricedInputs: [],
+      marginOnShoppingCopper: 8888888, marginCopper: 1831 * target, conditional: true, fixedOutput: false } }
+  return { ...base, output: fItem(19675, 'Mystic Clover'), outcome: 'REFERENCE_RANDOM', targetKind: 'BATCHES', batches: target,
+    guaranteedOutput: null, economics: null, note: 'Random outcome: reference inputs only; no output, profit or completion is claimed.',
+    tree: fNode(19675, 'Mystic Clover', { needed: 0, toAcquire: 0, recipeId, crafts: target, children: [
+      fNode(19925, 'Obsidian Shard', { needed: target, toAcquire: target })] }) }
+}
 
 const NOTE_ESTIMATE = { perCraftNotes: 1, totalNotes: 1, perCraftCopper: 2, totalCopper: 2, basisRecipeId: 5001,
   variants: [{ recipeId: 5001, outputName: 'Research Note', notesPerBatch: 100, batchCostCopper: 200, per100NotesCopper: 200, basis: true,
@@ -75,6 +126,8 @@ export function createJourneyBackend() {
   let heldTask = null
   let holdProfit = false
   let forgeMode = false
+  let holdForgeProject = false
+  let heldForge = null
   let heldProfit = null
 
   function snapshot(owner = account) {
@@ -106,6 +159,23 @@ export function createJourneyBackend() {
         proofs.push({ account, context })
         return sendJson(200, { accountId: account, accessContext: context,
           expiresAt: '2099-01-01T00:00:00Z', grants: ['account', 'inventories', 'characters', 'unlocks'] })
+      }
+      if (path === '/api/mystic-forge/recipes') {
+        assert.equal(request.method, 'GET')
+        return sendJson(200, forgeCatalogue)
+      }
+      if (path === '/api/mystic-forge/project') {
+        assert.equal(request.method, 'POST')
+        assert.notEqual(context, null, 'Forge project preceded proof')
+        assert.equal(ticket, context, 'Wrong account context on Forge project')
+        const input = JSON.parse(body)
+        const value = forgeProject(input.recipeId, input.target)
+        if (holdForgeProject) {
+          holdForgeProject = false
+          heldForge = () => sendJson(200, value)
+          return
+        }
+        return sendJson(200, value)
       }
       const sharedItemRead = ['/api/items/metadata', '/api/items/prices'].includes(path)
       if (sharedItemRead) assert.equal(ticket, undefined, `Public item read carried account context on ${path}`)
@@ -207,6 +277,9 @@ export function createJourneyBackend() {
   return { answerApi, calls, proofs, failures,
     staleBank() { stale = true },
     useForgeFixtures() { forgeMode = true },
+    holdNextForgeProject() { holdForgeProject = true },
+    hasHeldForge: () => heldForge !== null,
+    releaseForge() { heldForge?.(); heldForge = null },
     holdNextBank() { holdBank = true },
     hasHeldBank: () => heldBank !== null,
     hasHeldTask: () => heldTask !== null,
@@ -216,6 +289,6 @@ export function createJourneyBackend() {
     releaseBank() { heldBank?.(); heldBank = null },
     failRefresh() { heldTask?.(); heldTask = null },
     verify() { assert.deepEqual(failures, [], 'Controlled HTTP boundary violations') },
-    cleanup() { heldBank?.(); heldTask?.(); heldProfit?.(); heldBank = null; heldTask = null; heldProfit = null }
+    cleanup() { heldForge?.(); heldForge = null; heldBank?.(); heldTask?.(); heldProfit?.(); heldBank = null; heldTask = null; heldProfit = null }
   }
 }

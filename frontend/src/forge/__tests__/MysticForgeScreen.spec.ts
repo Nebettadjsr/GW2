@@ -268,3 +268,105 @@ describe('first use source refresh and cold catalogue', () => {
     w.unmount()
   })
 })
+
+describe('lifecycle races, labels and reference-only Clover', () => {
+  it('hides a quantity-1 result the moment the target text changes, even before the debounce or when invalid', async () => {
+    const w = await mounted()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(true)
+    await w.get('[data-test="forge-target"]').setValue('2')
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(false)
+    expect(projectCalls).toHaveLength(1)
+    await w.get('[data-test="forge-target"]').setValue('')
+    vi.advanceTimersByTime(TARGET_DEBOUNCE_MS + 1)
+    await flushPromises()
+    expect(projectCalls).toHaveLength(1)
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(false)
+    w.unmount()
+  })
+  it('a delayed answer for quantity 1 never shows under quantity 2', async () => {
+    const w = await mounted(true)
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    await w.get('[data-test="forge-target"]').setValue('2')
+    pendingProject[0]!(project(1))
+    await flushPromises()
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(false)
+    vi.advanceTimersByTime(TARGET_DEBOUNCE_MS + 1)
+    await flushPromises()
+    pendingProject[1]!(project(2))
+    await flushPromises()
+    expect(w.get('[data-test="forge-output"]').text()).toContain('2')
+    w.unmount()
+  })
+  it('deactivation discards in-flight work and activation resumes; disposal is permanent', async () => {
+    const w = await mounted(true)
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    pendingProject[0]!(project(1))
+    await flushPromises()
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(true)
+    w.unmount()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(projectCalls).toHaveLength(1)
+  })
+  it('labels per-item quote separately from total multi-batch proceeds and uses the backend margin', async () => {
+    const w = await mounted()
+    await w.findAll('[data-test="forge-row"]').find((r) => r.text().includes('Gossamer'))!.trigger('click')
+    await flushPromises()
+    const text = w.get('[data-test="forge-economics"]').text()
+    expect(w.get('[data-test="forge-unit-quote"]').text()).toBe('1s 0c')
+    expect(text).toContain('Estimated total proceeds (1 batch)')
+    expect(w.get('[data-test="forge-total-proceeds"]').text()).toBe('36s 84c')
+    expect(w.get('[data-test="forge-margin"]').text()).toBe('-18s 31c')
+    w.unmount()
+  })
+  it('vendor steps are labelled Vendor / To buy, never Mystic Forge / To craft', async () => {
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) {
+        return project(target, { tree: node({ item: item(104, 'Root'), needed: 1, toCraft: 1, toAcquire: 0, recipeId: -1, children: [
+          node({ item: item(20796, 'Mystic Crystal'), needed: 5, toCraft: 5, toAcquire: 0, recipeId: -1_000_000_001, recipeSource: 'VENDOR' })] }) })
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    const nodes = w.findAll('[data-test="forge-node"]')
+    const vendor = nodes[1]!.text()
+    expect(vendor).toContain('Vendor')
+    expect(vendor).toContain('To buy 5')
+    expect(vendor).not.toContain('Mystic Forge')
+    expect(vendor).not.toContain('To craft')
+    expect(nodes[0]!.text()).toContain('Mystic Forge')
+    w.unmount()
+  })
+  it.each([1, 10])('reference-only Clover (%i-output variant) shows inputs for batches and no root claim', async (batches) => {
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) {
+        return project(target, { outcome: 'REFERENCE_RANDOM', targetKind: 'BATCHES', guaranteedOutput: null, economics: null, batches: target,
+          note: 'Random outcome: reference inputs only; no output, profit or completion is claimed.',
+          tree: node({ item: item(19675, 'Mystic Clover'), needed: 0, toCraft: 0, toAcquire: 0, recipeId: -1_100_000_001, children: [
+            node({ item: item(19925, 'Obsidian Shard'), needed: batches * target, toAcquire: batches * target })] }) })
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find((r) => r.text().includes('Clover'))!.trigger('click')
+    await flushPromises()
+    await w.get('[data-test="forge-target"]').setValue('3')
+    vi.advanceTimersByTime(TARGET_DEBOUNCE_MS + 1)
+    await flushPromises()
+    expect(w.find('[data-test="forge-output"]').exists()).toBe(false)
+    expect(w.find('[data-test="forge-economics"]').exists()).toBe(false)
+    expect(w.get('[data-test="forge-batches"]').text()).toContain('3 requested batches')
+    const nodes = w.findAll('[data-test="forge-node"]')
+    expect(nodes[0]!.get('.forge-node__head').find('[data-test="forge-node-needed"]').exists()).toBe(false)
+    expect(nodes[0]!.text()).not.toContain('To craft')
+    expect(nodes[1]!.get('[data-test="forge-node-needed"]').text()).toBe(`× ${batches * 3}`)
+    w.unmount()
+  })
+})

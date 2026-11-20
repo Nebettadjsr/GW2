@@ -214,14 +214,20 @@ public class MysticForgeApiController {
                 : null;
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
                 d.requestedTarget(), p.batches(), random ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
-                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty(), unpriced, node(p.tree(), info), shopping,
+                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty(), unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
                 cur, note, d.referenceOnly() ? null : seed, econ, freshness);
     }
 
-    private static NodeDto node(ForgeProjectPlanner.Node n, Map<Integer, ItemRepository.ItemInfo> info) {
+    private static NodeDto node(ForgeProjectPlanner.Node n, Map<Integer, ItemRepository.ItemInfo> info, boolean referenceRoot) {
         if (n == null) return null;
         List<NodeDto> kids = new ArrayList<>();
-        n.children().forEach(c -> kids.add(node(c, info)));
+        n.children().forEach(c -> kids.add(node(c, info, false)));
+        // A random reference root claims no output: its nominal quantity is neither needed, owned nor to craft.
+        if (referenceRoot) {
+            return new NodeDto(item(n.itemId(), info), 0, 0, 0, 0, 0,
+                    n.recipeId(), n.source() == null ? null : n.source().name(), n.crafts(), n.minRating(), n.disciplines(),
+                    n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint());
+        }
         return new NodeDto(item(n.itemId(), info), n.needed(), n.fromOwned(), n.fromSurplus(), n.toCraft(), n.toAcquire(),
                 n.recipeId(), n.source() == null ? null : n.source().name(), n.crafts(), n.minRating(), n.disciplines(),
                 n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint());
