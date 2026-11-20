@@ -120,4 +120,30 @@ class ForgeProjectNotesTest {
         assertTrue(ids.containsAll(java.util.Set.of(SHARED, B, PRR)), ids.toString());
         assertFalse(planner.pathItemIds(prrA).contains(B), "a path without Notes demand does not pull the other variant");
     }
+
+    private ForgeProjectPlanner.Project bigNotes(long need, long wallet) {
+        Recipe big = new Recipe(-11, 901, 1, 0, "", List.of(), List.of(new CurrencyRequirement(NOTE, (int) 1)), RecipeSource.MYSTIC_FORGE);
+        return planner.plan(big, need, true, ForgeProjectPlanner.Inventory.shared(Map.of()), ctx,
+                Map.of((int) NOTE, wallet), Map.of(SHARED, ask(150)));
+    }
+
+    @Test
+    void safeAggregateAboveIntMaxStaysExact() {
+        // 1,000,000,000 wallet Notes at variant A: 4*150=600c per 150 Notes -> exactly 4,000,000,000c
+        var p = bigNotes(1_000_000_000L, 1_000_000_000L);
+        assertTrue(p.complete());
+        assertEquals(4_000_000_000L, p.notes().estimateCopper());
+        assertNull(p.notes().estimateIssue());
+        assertEquals(0, p.notes().containersNeeded(), "wallet-used Notes are not produced/charged again");
+    }
+
+    @Test
+    void forgeRangeOverflowIsTruthfullyIncompleteNotWrappedOrZero() {
+        var p = bigNotes(ForgeProjectPlanner.MAX_SAFE, ForgeProjectPlanner.MAX_SAFE);
+        assertFalse(p.complete());
+        assertNotNull(p.incompleteReason());
+        assertNull(p.notes().estimateCopper());
+        assertEquals("estimate exceeds the supported range", p.notes().estimateIssue());
+        assertTrue(p.guaranteedOutput() < 0);
+    }
 }

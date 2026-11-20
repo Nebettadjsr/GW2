@@ -191,6 +191,7 @@ public final class ForgeProjectPlanner {
         if (quantity <= 0) throw new IllegalArgumentException("batches must be positive");
         Run run = new Run(new PlanState(inv.sellable(), inv.accountBound(), inv.characterBound()), prices, ctx);
         long batches = 0;
+        long netOut = -1; // batch target: NET guaranteed output (seed reuse deducted); -1 until computed
         Node tree = null;
         Notes notes = null;
         try {
@@ -208,6 +209,7 @@ public final class ForgeProjectPlanner {
                 if (rootOwned > 0) run.fromOwned.merge(target.outputItemId, rootOwned, ForgeProjectPlanner::add);
                 run.demand.merge(target.outputItemId, quantity, ForgeProjectPlanner::add);
             }
+            if (batchTarget) netOut = outUnits;
             List<Node> kids = batches > 0 ? run.craft(target, batches, 0, new HashSet<>()) : List.of();
             long surplusOut = batches > 0 && !batchTarget ? sub(mul(batches, (long) target.outputCount), quantity - rootOwned) : 0;
             boolean fixedRoot = !batchTarget;
@@ -261,7 +263,7 @@ public final class ForgeProjectPlanner {
             } catch (ArithmeticException ex) { run.stop("quantity exceeds the supported range"); }
         }
         long out;
-        try { out = mul(batches, (long) target.outputCount); } catch (ArithmeticException e) { out = -1; } // -1: unavailable, never a clamped number
+        try { out = batchTarget ? netOut : mul(batches, (long) target.outputCount); } catch (ArithmeticException e) { out = -1; } // -1: unavailable, never a clamped number
         Seed seed = null;
         Economics econ = null;
         if (run.reason == null && (target.hasExpectedYield() || !batchTarget)) {
@@ -299,8 +301,11 @@ public final class ForgeProjectPlanner {
         if (used > 0) {
             if (!estimate.available()) issue = "no completely priced Research Note recipe";
             else {
-                try { cost = (long) estimate.costCopper(used); }
-                catch (ArithmeticException e) { issue = "estimate exceeds the supported range"; }
+                try { cost = estimate.costCopperExact(used); }
+                catch (ArithmeticException e) {
+                    issue = "estimate exceeds the supported range";
+                    run.stop("Research Note estimate exceeds the supported range");
+                }
             }
         } else cost = 0L;
         long containers = Math.ceilDiv(shortfall, (long) production.yield());

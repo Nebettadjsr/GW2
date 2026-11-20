@@ -325,4 +325,20 @@ class ForgeProjectBindingSeedTest {
         assertNotNull(p.tree().children().getFirst().hint());
         assertTrue(p.tree().children().getFirst().hint().contains("Scholar of Secrets"));
     }
+
+    @Test
+    void expectedRootGuaranteedOutputIsNetOfReusedSeed() {
+        Recipe g = gossamer();
+        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        for (long[] c : new long[][] {{1, 10}, {2, 19}, {50, 451}}) {
+            var p = pl.plan(g, c[0], true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 1000L)),
+                    ForgeProjectPlanner.Context.NONE, Map.of(23, 1000L), gossamerPrices());
+            assertEquals(c[1], p.guaranteedOutput());
+            assertEquals(p.seed().netGuaranteedOutput(), p.guaranteedOutput());
+        }
+        // non-self-seeded fixed batch target keeps ordinary gross semantics
+        Recipe fixed = forge(5, WEAPON, 10, List.of(new Ingredient(ORE, 1)));
+        assertEquals(20, new ForgeProjectPlanner(List.of(fixed)).plan(fixed, 2, true,
+                ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(), Map.of()).guaranteedOutput());
+    }
 }

@@ -365,4 +365,21 @@ class MysticForgeApiControllerTest {
             }
         }
     }
+
+    @Test
+    void expectedBatchRootPublishesNetGuaranteedOutputInJson() throws Exception {
+        Recipe g = Recipe.forgeWithExpectedYield(-77, 19745, craft.ExpectedYield.of("18.92", 10, 40),
+                List.of(new Ingredient(19748, 250), new Ingredient(19745, 1)));
+        var project = new craft.ForgeProjectPlanner(List.of(g)).plan(g, 2, true,
+                craft.ForgeProjectPlanner.Inventory.shared(Map.of(19748, 1000L, 19745, 1L)),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(19745, new PriceQuote(100, 110), 19748, new PriceQuote(1, 2)));
+        var data = new CraftingProfitService.ForgeProjectData(project, false, true, 2, new HashMap<>(), Map.of(), true);
+        var dto = MysticForgeApiController.toProject(data, null);
+        assertEquals("EXPECTED", dto.outcome());
+        assertEquals("BATCHES", dto.targetKind());
+        assertEquals(2L, dto.batches());
+        assertTrue(project.complete(), project.incompleteReason());
+        assertEquals(19L, dto.guaranteedOutput());
+        assertTrue(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(dto).contains("\"guaranteedOutput\":19"));
+    }
 }

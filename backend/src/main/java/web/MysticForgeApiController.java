@@ -247,7 +247,7 @@ public class MysticForgeApiController {
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
-                d.requestedTarget(), p.batches(), random || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
+                d.requestedTarget(), p.batches(), d.referenceOnly() || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput(), p.complete(), p.incompleteReason(),
                 d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !p.complete() || partialLine, unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
                 cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness);
     }
