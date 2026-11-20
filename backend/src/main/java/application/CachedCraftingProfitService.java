@@ -286,19 +286,25 @@ public class CachedCraftingProfitService {
         String requestId = UUID.randomUUID().toString();
         CalculationInputVersions captured;
         CraftingProfitService.ForgeProjectData data = null;
+        // An unknown recipe is a structural fact, independent of account data: reject before proof, capture, refresh
+        // admission or planning (forgeProjectItemIds returns null before any graph/price read for such an id).
+        try (ProfitInputSession probe = sessions.open(scope)) {
+            if (profitServices.apply(probe).forgeProjectItemIds(recipeId) == null) {
+                return new ForgeProjectOutcome(null, true, null);
+            }
+        }
         verifyProof(keyed);
         boolean wallet = walletAuthorized(readContext, keyed);
         try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
             CraftingProfitService service = profitServices.apply(session);
             // Source identity and price demand are this project's own public path, never the ordinary set or the
-            // whole catalogue; a recipe id outside the catalogue has an empty path.
+            // whole catalogue.
             java.util.Set<Integer> pathIds = service.forgeProjectItemIds(recipeId);
             if (pathIds == null) pathIds = java.util.Set.of();
             captured = capture(session, scope, wallet, null, recipeId, pathIds);
             if (captured.usable()) data = service.planForgeProject(recipeId, target);
         }
-        boolean unknown = captured.usable() && data == null;
-        return new ForgeProjectOutcome(data, unknown, describe(requestId, captured, data != null, scope, keyed));
+        return new ForgeProjectOutcome(data, false, describe(requestId, captured, data != null, scope, keyed));
     }
 
     /** Validated session authority; a presented key must additionally have proved its own wallet scope. */
