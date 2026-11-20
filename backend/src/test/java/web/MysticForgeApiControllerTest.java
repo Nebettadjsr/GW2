@@ -321,6 +321,25 @@ class MysticForgeApiControllerTest {
         assertTrue(dto.economics().conditional());
     }
 
+    /** Selected value setting reconciles the displayed margin: No excludes the owned 100c input, Yes subtracts it once. */
+    @Test
+    void equipmentMarginReconcilesWithSelectedOwnValueSetting() {
+        Recipe t = new Recipe(-2, 900, 1, 0, "", List.of(new Ingredient(5001, 1), new Ingredient(5002, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        Map<Integer, PriceQuote> tp = Map.of(5001, new PriceQuote(1, 100), 5002, new PriceQuote(1, 50), 900, new PriceQuote(1000, 2000));
+        for (boolean value : new boolean[] {false, true}) {
+            var settings = new craft.ForgeSettings(craft.ForgeSettings.PriceMode.INSTANT_BUY, true, value,
+                    craft.ForgeSettings.DailyMode.CRAFT, true, craft.ForgeSettings.ReduceMode.YES);
+            var project = new craft.ForgeProjectPlanner(List.of(t)).plan(t, 1, false,
+                    new craft.ForgeProjectPlanner.Inventory(Map.of(5001, 1), Map.of(), Map.of()),
+                    craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp, settings);
+            var dto = MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                    project, false, false, 1, new HashMap<>(), tp, true), null);
+            assertEquals(850L, dto.economics().expectedNetProceedsCopper());
+            assertEquals(800L, dto.economics().marginOnShoppingCopper(), "cash-only margin never subtracts the owned input");
+            assertEquals(value ? 700L : 800L, dto.economics().marginCopper(), "owned 100c counted once only when valued");
+        }
+    }
+
     @Test
     void lateEconomicsOverflowPublishesNoGuaranteedOutput() {
         Recipe t = new Recipe(-1, 900, 1, 0, "", List.of(new Ingredient(5001, 1)), List.of(), RecipeSource.MYSTIC_FORGE);

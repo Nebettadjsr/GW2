@@ -59,6 +59,7 @@ public final class ForgeProjectPlanner {
 
     /** {@code owned}/{@code missing} are null when the wallet is unknown (never defaulted to zero). */
     public record CurrencyLine(int currencyId, long needed, Long owned, Long missing) { }
+    // For Research Notes, {@code missing} is the demand still uncovered AFTER planned Note production (notes.shortfall is the pre-production deficit).
 
     /**
      * One node of the hierarchical how-to. Explicit partition: {@code needed == fromOwned + fromSurplus + toCraft +
@@ -144,8 +145,12 @@ public final class ForgeProjectPlanner {
         for (Recipe r : sorted) {
             if (r.outputItemId == CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID
                     && ResearchNoteEstimate.VARIANT_RECIPE_IDS.contains(r.recipeId)) noteRecipes.put(r.recipeId, r);
-            if (r.hasExpectedYield() || r.outputCount <= 0) continue; // random outcomes never feed a guaranteed plan
-            producerByItem.putIfAbsent(r.outputItemId, r);
+            if (r.outputCount <= 0) continue;
+            // Random outcomes never feed a guaranteed plan, except a verified self-seeded promotion whose
+            // guaranteed MINIMUM (net of the reused seed) is the only stock it ever claims.
+            if (r.hasExpectedYield() && !CraftingResolver.isPromotion(r)) continue;
+            Recipe have = producerByItem.get(r.outputItemId);
+            if (have == null || (have.hasExpectedYield() && !r.hasExpectedYield())) producerByItem.put(r.outputItemId, r); // fixed producers win
         }
     }
 
@@ -243,10 +248,17 @@ public final class ForgeProjectPlanner {
                     fixedRoot ? Math.max(0, surplusOut) : 0); // only a fixed-output desired-quantity root has round-up surplus
             if (fixedRoot && surplusOut > 0) run.surplus.merge(target.outputItemId, surplusOut, ForgeProjectPlanner::add);
             if (run.reason == null) {
+                int stepsBefore = run.steps.size();
                 notes = planNotes(run, wallet, prices, tree, kids);
+                if (notes != null && run.steps.size() > stepsBefore) {
+                    // Note production precedes every craft that consumes its Notes (steps are executable in order).
+                    List<CraftStep> produced = new ArrayList<>(run.steps.subList(stepsBefore, run.steps.size()));
+                    run.steps.subList(stepsBefore, run.steps.size()).clear();
+                    run.steps.addAll(0, produced);
+                }
                 if (notes != null && notes.containersNeeded() > 0 && run.noteNode != null) {
                     kids = new ArrayList<>(kids);
-                    kids.add(run.noteNode);
+                    kids.add(0, run.noteNode);
                     tree = new Node(tree.itemId(), tree.needed(), tree.fromOwned(), tree.fromSurplus(), tree.toCraft(),
                             tree.toAcquire(), tree.recipeId(), tree.source(), tree.crafts(), tree.minRating(),
                             tree.disciplines(), run.reason, kids, null, true, null, null, tree.produced(), tree.newSurplus());
@@ -272,8 +284,11 @@ public final class ForgeProjectPlanner {
         List<CurrencyLine> currencies = new ArrayList<>();
         for (var e : run.currencyDemand.entrySet()) {
             Long have = wallet == null ? null : Math.max(0, wallet.getOrDefault(e.getKey(), 0L));
-            currencies.add(new CurrencyLine(e.getKey(), e.getValue(), have,
-                    have == null ? null : Math.max(0, e.getValue() - have)));
+            Long missing = have == null ? null : Math.max(0, e.getValue() - have);
+            // Research Notes: what remains to acquire is the authoritative UNCOVERED demand after Note production;
+            // the before-production deficit stays available as notes.shortfall.
+            if (e.getKey() == NOTES && notes != null && notes.walletKnown() && missing != null) missing = notes.uncoveredNotes();
+            currencies.add(new CurrencyLine(e.getKey(), e.getValue(), have, missing));
         }
         List<VendorPurchase> vendorPurchases = new ArrayList<>();
         for (Recipe v : run.vendorRecipes.values()) {
@@ -429,6 +444,20 @@ public final class ForgeProjectPlanner {
         if (s == 0 || !r.hasExpectedYield()) return 0;
         long reusedPerBatch = Math.min(s, r.expectedYield.min());
         return add(s, mul(batches - 1, s - reusedPerBatch));
+    }
+
+    /** Guaranteed NET units of {@code b} batches of a self-seeded promotion: one external seed, then minimum-only reuse. */
+    static long promotionNet(Recipe r, long b) {
+        long reused = Math.min(r.selfSeedUnits(), r.expectedYield.min());
+        return add(mul(b, (long) r.expectedYield.min()), -mul(b - 1, reused));
+    }
+
+    /** Smallest batch count whose guaranteed net output covers {@code units} (never an expected mean). */
+    static long promotionBatches(Recipe r, long units) {
+        long min = r.expectedYield.min();
+        long reused = Math.min(r.selfSeedUnits(), min);
+        long gain = min - reused; // > 0 for a promotion
+        return units <= min ? 1 : add(1, Math.ceilDiv(units - min, gain));
     }
 
     private static Seed seedOf(Recipe r, long batches) {
@@ -643,8 +672,15 @@ public final class ForgeProjectPlanner {
                 String cut = p == null ? null : "cycle: this item's producer is already being expanded above";
                 return new Node(itemId, qty, use, spare, 0, unmet, null, null, 0, 0, "", cut, List.of(), null, true, null, null, 0, 0);
             }
-            long crafts = Math.ceilDiv(unmet, (long) p.outputCount);
-            long extra = sub(mul(crafts, (long) p.outputCount), unmet);
+            long crafts, produced;
+            if (p.hasExpectedYield()) {
+                crafts = promotionBatches(p, unmet);
+                produced = promotionNet(p, crafts);
+            } else {
+                crafts = Math.ceilDiv(unmet, (long) p.outputCount);
+                produced = mul(crafts, (long) p.outputCount);
+            }
+            long extra = sub(produced, unmet);
             Boolean known = p.source == RecipeSource.ORDINARY && ctx.knownRecipeIds() != null
                     ? ctx.knownRecipeIds().contains(p.recipeId) : null;
             String who = null;
@@ -662,7 +698,7 @@ public final class ForgeProjectPlanner {
                     p.disciplinesText, reason, kids, known, performable, who,
                     p.isVendor() ? (VendorAcquisitions.merchantStep(p.outputItemId) != null ? VendorAcquisitions.merchantStep(p.outputItemId) : VendorAcquisitions.hintFor(p.outputItemId))
                             : DailyCrafts.isDailyOutput(itemId) ? "Daily/time-gated output: not every batch is available today" : null,
-                    mul(crafts, (long) p.outputCount), extra);
+                    produced, extra);
         }
 
         /** Estimated, never guaranteed: ceil(missing / 31%) one-Clover Forge attempts, inputs charged once. */

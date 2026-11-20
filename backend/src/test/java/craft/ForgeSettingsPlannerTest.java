@@ -100,8 +100,9 @@ class ForgeSettingsPlannerTest {
         Recipe top = forge(4, WEAPON, List.of(new Ingredient(PLATE, 1), new Ingredient(gift2, 1)));
         var producers = List.of(promo, fortune, mastery);
         var on = run(top, producers, sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
-        // Random-yield promotions are never planner producers (no guaranteed output), so Allow adds no step for them.
-        assertTrue(on.steps().stream().noneMatch(s -> s.recipeId() == promo.recipeId));
+        // Allow: the verified promotion supplies the Plate with its guaranteed minimum (2, seed 1 external).
+        assertTrue(on.steps().stream().anyMatch(s -> s.recipeId() == promo.recipeId));
+        assertEquals(0, line(on, PLATE).missing() - 1, "only the self-seed is acquired externally");
         assertTrue(on.steps().stream().anyMatch(s -> s.recipeId() == mastery.recipeId));
         var off = run(top, producers, sellable(Map.of()), Map.of(),
                 with(ForgeSettings.PriceMode.INSTANT_BUY, true, true, ForgeSettings.DailyMode.CRAFT, false, ForgeSettings.ReduceMode.YES));
@@ -192,5 +193,57 @@ class ForgeSettingsPlannerTest {
     @Test
     void ordinaryVendorFactsAreUnchangedForProfitAndDiscovery() {
         assertTrue(VendorAcquisitions.recipes().stream().noneMatch(r -> r.outputItemId == OBSIDIAN || r.outputItemId == 20797));
+    }
+
+    @Test
+    void promotionAllowUsesGuaranteedNetOutputWithSelfSeedReuseAndOffLeavesAcquisition() {
+        int scrap = 19745, inputA = 19748;
+        Recipe gossamer = Recipe.forgeWithExpectedYield(-50, scrap, ExpectedYield.of("18.92", 10, 40),
+                List.of(new Ingredient(inputA, 250), new Ingredient(scrap, 1)));
+        Recipe top = forge(60, WEAPON, List.of(new Ingredient(scrap, 20)));
+        var on = run(top, List.of(gossamer), sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        var step = on.steps().stream().filter(s -> s.recipeId() == gossamer.recipeId).findFirst().orElseThrow();
+        assertEquals(3, step.crafts(), "min10/seed1 needs 3 batches (net 28), not 2 (net 19)");
+        assertEquals(750, line(on, inputA).needed());
+        assertEquals(1, line(on, scrap).missing(), "one external seed only");
+        assertEquals(10, ForgeProjectPlanner.promotionNet(gossamer, 1));
+        assertEquals(19, ForgeProjectPlanner.promotionNet(gossamer, 2));
+        assertEquals(28, ForgeProjectPlanner.promotionNet(gossamer, 3));
+        assertEquals(8, on.tree().children().get(0).newSurplus(), "net 28 - 20 demanded");
+        Recipe t6 = Recipe.forgeWithExpectedYield(-51, 5001, ExpectedYield.of("5.5", 5, 8),
+                List.of(new Ingredient(5001, 1), new Ingredient(ORE, 1)));
+        assertEquals(201, ForgeProjectPlanner.promotionNet(t6, 50));
+        assertEquals(50, ForgeProjectPlanner.promotionBatches(t6, 201));
+        var off = run(top, List.of(gossamer), sellable(Map.of()), Map.of(),
+                with(ForgeSettings.PriceMode.INSTANT_BUY, true, true, ForgeSettings.DailyMode.CRAFT, false, ForgeSettings.ReduceMode.YES));
+        assertEquals(20, line(off, scrap).missing());
+        assertTrue(off.steps().stream().noneMatch(s -> s.recipeId() == gossamer.recipeId));
+    }
+
+    @Test
+    void researchNotesRemainingAcquisitionUsesUncoveredDemandAndProductionPrecedesConsumer() {
+        int note = CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID;
+        Recipe consumer = new Recipe(-70, WEAPON, 1, 0, "", List.of(new Ingredient(ORE, 1)),
+                List.of(new CurrencyRequirement(note, 30)), RecipeSource.MYSTIC_FORGE);
+        Recipe prr = new Recipe(15120, CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID, 1, 0, "Artificer",
+                List.of(new Ingredient(ORE + 1, 4)));
+        var planner = new ForgeProjectPlanner(List.of(consumer, prr));
+        var covered = planner.plan(consumer, 1, true, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
+        assertEquals(30, covered.notes().shortfall(), "before-production deficit stays available");
+        assertEquals(0, covered.notes().uncoveredNotes());
+        var cur = covered.currencies().get(0);
+        assertEquals(30, cur.needed());
+        assertEquals(0, cur.missing(), "one planned 150-Note container leaves nothing to acquire");
+        assertEquals(prr.recipeId, covered.steps().get(0).recipeId(), "production precedes the consumer craft");
+        assertEquals(consumer.recipeId, covered.steps().get(covered.steps().size() - 1).recipeId());
+        assertEquals(prr.recipeId, covered.tree().children().get(0).recipeId(), "tree order is executable");
+        assertEquals(4, line(covered, ORE + 1).needed(), "container inputs counted once");
+        // Genuinely uncovered: no producer available, so the whole deficit remains to acquire.
+        var none = new ForgeProjectPlanner(List.of(consumer)).plan(consumer, 1, true, sellable(Map.of()),
+                ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
+        assertEquals(30, none.currencies().get(0).missing());
+        // Unknown wallet: nothing claimed.
+        var unknown = planner.plan(consumer, 1, true, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, null, Map.of());
+        assertNull(unknown.currencies().get(0).missing());
     }
 }

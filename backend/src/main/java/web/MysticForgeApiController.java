@@ -253,9 +253,24 @@ public class MysticForgeApiController {
                 inputs.add(new CurrencyDto(c.currencyId(), cname, CurrencyIcons.urlFor(c.currencyId()),
                         currencyWiki(c.currencyId(), cname), c.needed(), null, null));
             }
+            Long cash = e.marginOnShoppingCopper(), margin = e.marginCopper();
+            boolean conditionalEcon = e.conditional();
+            if (e.fixedOutput()) {
+                // Equipment full-path margin from the actual consumed quantities: cash-only subtracts only what is bought;
+                // valueOwn=Yes also subtracts the authoritative value of consumed owned inputs exactly once.
+                Long net = e.expectedNetProceedsCopper();
+                boolean known = net != null && p.complete() && p.unpricedItemIds().isEmpty();
+                try {
+                    cash = known ? ForgeProjectPlanner.sub(net, p.knownCopper()) : null;
+                    if (p.ownValue() == null) margin = cash;
+                    else if (known && p.ownValue().unpricedItemIds().isEmpty()) margin = ForgeProjectPlanner.sub(cash, p.ownValue().knownCopper());
+                    else margin = null;
+                } catch (ArithmeticException overflow) { cash = null; margin = null; }
+                conditionalEcon = conditionalEcon || !p.currencies().isEmpty() || p.clover() != null;
+            }
             econ = new EconomicsDto(e.outputUnitSellCopper(), e.expectedGrossProceedsCopper(), e.feeCopper(),
                     e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.goldInputCopper(), inputs, unpricedInputs,
-                    e.marginOnShoppingCopper(), e.marginCopper(), e.conditional(), e.fixedOutput());
+                    cash, margin, conditionalEcon, e.fixedOutput());
         }
         NotesDto notes = null;
         if (p.notes() != null && !d.referenceOnly()) {
