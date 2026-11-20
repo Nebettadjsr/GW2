@@ -213,6 +213,21 @@ public class CraftingProfitService {
         return new craft.ForgeProjectPlanner(forgeProducers()).pathItemIds(root);
     }
 
+    /**
+     * Every quote id this project's calculation reads: its public path plus, when own-stock valuation is on, the
+     * ordinary valuation closure beneath the owned path items (all alternative producers). One dependency definition
+     * shared with {@link #planForgeProject}'s valuer, read from the same session snapshot.
+     */
+    public Set<Integer> forgeProjectPriceIds(int recipeId, craft.ForgeSettings settings) throws SQLException {
+        Set<Integer> path = forgeProjectItemIds(recipeId);
+        if (path == null || !settings.valueOwn()) return path;
+        InventoryRepository.CoordinatedInventory inv =
+                invRepo.loadOwnedInventoryForCharacters(session.connection(), session.scope(), Set.of(), true);
+        Set<Integer> all = new java.util.TreeSet<>(path);
+        all.addAll(ownedValuationClosure(forgeProducers(), path, inv));
+        return all;
+    }
+
     private List<Recipe> forgeProducers() throws SQLException {
         List<Recipe> producers = new ArrayList<>();
         try {
@@ -285,14 +300,25 @@ public class CraftingProfitService {
      */
     private craft.OwnedValuer forgeOwnedValuer(Connection con, List<Recipe> producers, Set<Integer> pathIds,
                                                InventoryRepository.CoordinatedInventory inv) throws SQLException {
-        List<Recipe> all = new java.util.ArrayList<>(producers);
-        try {
-            all.addAll(graphCache.loadForSnapshot(con).getRecipes());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to load crafting graph cache", e);
-        }
+        Map<Integer, List<Recipe>> byOutput = valuationProducers(producers);
+        Set<Integer> closure = ownedValuationClosure(producers, pathIds, inv);
+        Map<Integer, PriceQuote> quotes = tpRepo.loadCurrentTradeableQuotes(con, closure);
+        Map<Integer, Integer> vendor = ItemRepository.vendorValues(itemRepo.loadItems(con, closure));
+        CraftingSettings ordinary = new CraftingSettings(true, true, 0, false, false, false); // instant sell / instant buy
+        PlannerContext pc = new PlannerContext(byOutput, quotes, ordinary, null).withVendorValues(vendor);
+        return new craft.CraftingResolver().ownedValuer(pc);
+    }
+
+    private static Map<Integer, List<Recipe>> valuationProducers(List<Recipe> producers) {
         Map<Integer, List<Recipe>> byOutput = new HashMap<>();
-        for (Recipe r : all) byOutput.computeIfAbsent(r.outputItemId, k -> new java.util.ArrayList<>()).add(r);
+        for (Recipe r : producers) byOutput.computeIfAbsent(r.outputItemId, k -> new java.util.ArrayList<>()).add(r);
+        return byOutput;
+    }
+
+    /** Owned path items plus the ingredient closure beneath them across every alternative producer. */
+    private static Set<Integer> ownedValuationClosure(List<Recipe> producers, Set<Integer> pathIds,
+                                                      InventoryRepository.CoordinatedInventory inv) {
+        Map<Integer, List<Recipe>> byOutput = valuationProducers(producers);
         Set<Integer> owned = new HashSet<>(inv.sellable().keySet());
         owned.addAll(inv.accountBound().keySet());
         inv.characterBound().values().forEach(m -> owned.addAll(m.keySet()));
@@ -304,11 +330,7 @@ public class CraftingProfitService {
                 for (Ingredient i : r.ingredients) if (closure.add(i.itemId)) work.add(i.itemId);
             }
         }
-        Map<Integer, PriceQuote> quotes = tpRepo.loadCurrentTradeableQuotes(con, closure);
-        Map<Integer, Integer> vendor = ItemRepository.vendorValues(itemRepo.loadItems(con, closure));
-        CraftingSettings ordinary = new CraftingSettings(true, true, 0, false, false, false); // instant sell / instant buy
-        PlannerContext pc = new PlannerContext(byOutput, quotes, ordinary, null).withVendorValues(vendor);
-        return new craft.CraftingResolver().ownedValuer(pc);
+        return closure;
     }
 
     /**

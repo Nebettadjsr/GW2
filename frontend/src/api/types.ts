@@ -957,6 +957,8 @@ export interface ForgeNode {
   produced: number
   /** produced beyond this node's own unmet demand, kept for later reuse. */
   newSurplus: number
+  /** 1-based position in the backend's dependency-ordered step list; null when the node is not a planned step. */
+  step?: number | null
 }
 
 export interface ForgeCurrency {

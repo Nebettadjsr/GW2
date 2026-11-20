@@ -7,17 +7,23 @@ const props = defineProps<{ tree: ForgeNode | null }>()
 
 // Present the supplied path in dependency order. No acquisition choice or amount is calculated here.
 const steps = computed(() => {
-  const result: { node: ForgeNode; key: string }[] = []
-  function visit(node: ForgeNode, key: string): void {
-    node.children.forEach((child, index) => visit(child, `${key}.${index}`))
+  const result: { node: ForgeNode; key: string; rank: number }[] = []
+  // The backend numbers each planned step in true dependency order; tree traversal only supplies the tie-break and the
+  // position of unnumbered (estimated) attempts, which sit just before the step that consumes them.
+  function visit(node: ForgeNode, key: string, parentRank: number): void {
+    const own = node.step ?? null
+    const rank = own !== null ? own : parentRank
+    node.children.forEach((child, index) => visit(child, `${key}.${index}`, rank))
     // Real crafting/Forge operations, merchant visits that say where and for what, and the estimated Clover attempt.
     // A bare "buy it" leaf only repeats Shopping and is never a step.
     const crafting = node.recipeId !== null && node.crafts > 0 && (node.recipeSource !== 'VENDOR' || node.hint !== null)
     const estimated = node.recipeId === null && node.toAcquire > 0 && node.hint !== null && node.children.length > 0
-    if (crafting || estimated) result.push({ node, key })
+    if (crafting || estimated) result.push({ node, key, rank: own !== null ? own : parentRank - 0.5 })
   }
-  if (props.tree) visit(props.tree, 'root')
-  return result
+  if (props.tree) visit(props.tree, 'root', Number.MAX_SAFE_INTEGER)
+  return result.map((entry, order) => ({ entry, order }))
+    .sort((a, b) => a.entry.rank - b.entry.rank || a.order - b.order)
+    .map(({ entry }) => ({ node: entry.node, key: entry.key }))
 })
 
 function action(node: ForgeNode): string {

@@ -45,12 +45,13 @@ public final class MysticForgeDtos {
     /**
      * produced = units the node's step actually makes/buys (crafts x output; differs from demand for batch outputs);
      * newSurplus = produced beyond this node's own unmet demand, kept for later reuse (never paid twice).
+     * step = 1-based position of this node's recipe in the backend's dependency-ordered step list (null = none).
      * needed == fromOwned + fromSurplus + toCraft + toAcquire; toCraft is planned work, never owned progress. */
     public record NodeDto(Item item, long needed, long fromOwned, long fromSurplus, long toCraft, long toAcquire,
                           Integer recipeId, String recipeSource, long crafts, int minRating, String disciplines,
                           String cutoff, List<NodeDto> children, Boolean recipeKnown, boolean performable,
                           String assignedCharacter, String hint,
-                          long produced, long newSurplus) { }
+                          long produced, long newSurplus, Integer step) { }
 
     /** null owned/missing = wallet unknown. */
     public record CurrencyDto(int currencyId, String name, String iconUrl, String wikiUrl, long needed, Long owned,

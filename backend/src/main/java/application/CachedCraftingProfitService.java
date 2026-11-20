@@ -304,7 +304,7 @@ public class CachedCraftingProfitService {
             CraftingProfitService service = profitServices.apply(session);
             // Source identity and price demand are this project's own public path, never the ordinary set or the
             // whole catalogue.
-            java.util.Set<Integer> pathIds = service.forgeProjectItemIds(recipeId);
+            java.util.Set<Integer> pathIds = service.forgeProjectPriceIds(recipeId, settings);
             if (pathIds == null) pathIds = java.util.Set.of();
             captured = capture(session, scope, wallet, null, recipeId, pathIds, settings);
             if (captured.usable()) data = service.planForgeProject(recipeId, target, settings);

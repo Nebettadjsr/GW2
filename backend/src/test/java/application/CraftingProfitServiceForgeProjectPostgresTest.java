@@ -131,10 +131,50 @@ class CraftingProfitServiceForgeProjectPostgresTest {
         assertFalse(c.project().unpricedItemIds().contains(12976));
     }
 
+    @Test
+    void ownedValuationDependenciesOfAlternativeProducersJoinTheProjectPriceDemand() throws Exception {
+        // 19976 (a path item B owns, unquoted) has two ordinary producers; only one is the structural route, the other's
+        // ingredient (7002) is valuation-only. Both producers' ingredients must be demanded for the owning account.
+        var graph = new CraftingGraph(List.of(
+                new Recipe(901, 19976, 1, 0, "Artificer", List.of(new craft.Ingredient(7001, 1))),
+                new Recipe(902, 19976, 1, 0, "Artificer", List.of(new craft.Ingredient(7002, 1)))));
+        var b = service(con, AccountScope.of(UUID.fromString(ACC_B)), graph);
+        var c = service(con, AccountScope.of(UUID.fromString(ACC_C)), graph);
+        var structural = b.forgeProjectItemIds(SCEPTER_RECIPE);
+        assertTrue(structural.contains(7001), "the structural producer's ingredient is already a path item");
+        assertFalse(structural.contains(7002));
+
+        var withValue = b.forgeProjectPriceIds(SCEPTER_RECIPE, craft.ForgeSettings.DEFAULT);
+        assertTrue(withValue.containsAll(structural));
+        assertTrue(withValue.contains(7001) && withValue.contains(7002), "every alternative producer's ingredient is covered");
+        var extra = new java.util.TreeSet<>(withValue);
+        extra.removeAll(structural);
+        assertEquals(Set.of(7002), extra, "no global or unrelated ids are added");
+
+        var noValue = new craft.ForgeSettings(craft.ForgeSettings.DEFAULT.priceMode(), true, false,
+                craft.ForgeSettings.DEFAULT.daily(), craft.ForgeSettings.DEFAULT.promotions(), craft.ForgeSettings.DEFAULT.reduce());
+        assertEquals(structural, b.forgeProjectPriceIds(SCEPTER_RECIPE, noValue), "valueOwn=false adds no valuation work");
+        assertEquals(c.forgeProjectItemIds(SCEPTER_RECIPE), c.forgeProjectPriceIds(SCEPTER_RECIPE, craft.ForgeSettings.DEFAULT),
+                "an account owning nothing has no owned valuation closure");
+
+        // The valuation reads the quote of the valuation-only ingredient once it is retained: observed authoritative value.
+        var before = b.planForgeProject(SCEPTER_RECIPE, 1).project().ownValue();
+        assertTrue(before.unpricedItemIds().contains(19976), "no quote anywhere: owned 19976 stays unvalued");
+        sql("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price, fetched_at) VALUES (7002, 5, 7, now())");
+        sql("INSERT INTO tp_tradeable_items (item_id) VALUES (7002)");
+        var after = b.planForgeProject(SCEPTER_RECIPE, 1).project().ownValue();
+        assertFalse(after.unpricedItemIds().contains(19976), "the valuation-only quote now prices the owned item");
+        assertTrue(after.knownCopper() > before.knownCopper());
+    }
+
     private static CraftingProfitService service(Connection con, AccountScope scope) {
+        return service(con, scope, new CraftingGraph(List.of()));
+    }
+
+    private static CraftingProfitService service(Connection con, AccountScope scope, CraftingGraph graph) {
         return new CraftingProfitService(new RecipeRepository(), new InventoryRepository(), new TpPriceRepository(),
                 new ItemRepository(), new CharacterRepository(), new CraftingGraphCache(new RecipeRepository()) {
-            @Override public CraftingGraph load() { return new CraftingGraph(List.of()); }
+            @Override public CraftingGraph load() { return graph; }
             @Override public CraftingGraph loadForSnapshot(Connection con) { return load(); }
         }, new CraftingPlanner(), session(con, scope));
     }

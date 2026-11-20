@@ -307,7 +307,7 @@ public class MysticForgeApiController {
         Long guaranteed = d.referenceOnly() || cmpOverflow || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput();
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
                 d.requestedTarget(), p.batches(), guaranteed, complete, reason,
-                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !complete || partialLine, unpriced, node(p.tree(), info, d.referenceOnly()), shopping,
+                d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !complete || partialLine, unpriced, node(p.tree(), info, d.referenceOnly(), stepPositions(p)), shopping,
                 cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness, settingsDto(p.settings()), ownValue, cloverDto,
                 p.rootOwned(), cmp);
     }
@@ -356,19 +356,27 @@ public class MysticForgeApiController {
         return new ComparisonDto(unitBuy, unitSell, total, savings, conditional, own == null);
     }
 
-    private static NodeDto node(ForgeProjectPlanner.Node n, Map<Integer, ItemRepository.ItemInfo> info, boolean referenceRoot) {
+    private static NodeDto node(ForgeProjectPlanner.Node n, Map<Integer, ItemRepository.ItemInfo> info, boolean referenceRoot,
+                                Map<Integer, Integer> steps) {
         if (n == null) return null;
         List<NodeDto> kids = new ArrayList<>();
-        n.children().forEach(c -> kids.add(node(c, info, false)));
+        n.children().forEach(c -> kids.add(node(c, info, false, steps)));
         // A random reference root claims no output: its nominal quantity is neither needed, owned nor to craft.
         if (referenceRoot) {
             return new NodeDto(item(n.itemId(), info), 0, 0, 0, 0, 0,
                     n.recipeId(), n.source() == null ? null : n.source().name(), n.crafts(), n.minRating(), n.disciplines(),
-                    n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint(), 0, 0);
+                    n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint(), 0, 0, null);
         }
         return new NodeDto(item(n.itemId(), info), n.needed(), n.fromOwned(), n.fromSurplus(), n.toCraft(), n.toAcquire(),
                 n.recipeId(), n.source() == null ? null : n.source().name(), n.crafts(), n.minRating(), n.disciplines(),
-                n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint(), n.produced(), n.newSurplus());
+                n.cutoff(), kids, n.recipeKnown(), n.performable(), n.assignedCharacter(), n.hint(), n.produced(), n.newSurplus(),
+                n.recipeId() == null ? null : steps.get(n.recipeId()));
+    }
+
+    private static Map<Integer, Integer> stepPositions(ForgeProjectPlanner.Project p) {
+        Map<Integer, Integer> m = new java.util.HashMap<>();
+        for (int k = 0; k < p.steps().size(); k++) m.put(p.steps().get(k).recipeId(), k + 1);
+        return m;
     }
 
     private static Item item(int id, Map<Integer, ItemRepository.ItemInfo> info) {

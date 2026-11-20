@@ -249,14 +249,8 @@ public final class ForgeProjectPlanner {
                     fixedRoot ? Math.max(0, surplusOut) : 0); // only a fixed-output desired-quantity root has round-up surplus
             if (fixedRoot && surplusOut > 0) run.surplus.merge(target.outputItemId, surplusOut, ForgeProjectPlanner::add);
             if (run.reason == null) {
-                int stepsBefore = run.steps.size();
                 notes = planNotes(run, wallet, prices, tree, kids);
-                if (notes != null && run.steps.size() > stepsBefore) {
-                    // Note production runs after every step producing a surplus item it consumes and before the first Note consumer.
-                    List<CraftStep> produced = new ArrayList<>(run.steps.subList(stepsBefore, run.steps.size()));
-                    run.steps.subList(stepsBefore, run.steps.size()).clear();
-                    run.steps.addAll(noteStepPosition(target, run.steps, produced), produced);
-                }
+                orderSteps(run, target);
                 if (notes != null && notes.containersNeeded() > 0 && run.noteNode != null) {
                     kids = new ArrayList<>(kids);
                     Set<Integer> consumed = noteConsumedItems(run.noteNode);
@@ -370,31 +364,63 @@ public final class ForgeProjectPlanner {
     }
 
     /**
-     * Index where the Note production steps go: after the last step producing an item they consume from surplus,
-     * and no later than the first step that needs Notes (when that does not precede such a producer).
+     * Puts the selected plan's steps in true dependency order (stable: the existing order breaks ties). A step follows
+     * every other step that makes an item it consumes, and a step that spends Research Notes follows the Note
+     * production. A genuine cycle is reported as incomplete rather than presented as executable.
      */
-    private int noteStepPosition(Recipe target, List<CraftStep> steps, List<CraftStep> produced) {
-        Set<Integer> made = new HashSet<>();
-        Set<Integer> used = new HashSet<>();
+    private void orderSteps(Run run, Recipe target) {
+        List<CraftStep> steps = run.steps;
+        int n = steps.size();
+        if (n < 2) return;
         Map<Integer, Recipe> byId = new java.util.HashMap<>();
         for (Recipe r : producerByItem.values()) byId.put(r.recipeId, r);
         byId.putAll(noteRecipes);
+        byId.putAll(run.vendorRecipes);
         byId.put(target.recipeId, target);
-        for (CraftStep st : produced) {
-            made.add(st.outputItemId());
-            Recipe r = byId.get(st.recipeId());
-            if (r != null) for (Ingredient i : r.ingredients) used.add(i.itemId);
+        List<Set<Integer>> deps = new ArrayList<>();
+        List<Set<Integer>> noteDeps = new ArrayList<>(); // the Note edges can never be waived
+        for (int k = 0; k < n; k++) {
+            Set<Integer> d = new HashSet<>();
+            Set<Integer> nd = new HashSet<>();
+            Recipe r = byId.get(steps.get(k).recipeId());
+            boolean spendsNotes = r != null && r.currencies.stream().anyMatch(c -> c.currencyId() == NOTES);
+            for (int j = 0; j < n; j++) {
+                if (j == k) continue;
+                CraftStep other = steps.get(j);
+                if (r != null && r.ingredients.stream().anyMatch(i -> i.itemId == other.outputItemId())) d.add(j);
+                if (spendsNotes && noteRecipes.containsKey(other.recipeId()) && r != null
+                        && !noteRecipes.containsKey(r.recipeId)) { d.add(j); nd.add(j); }
+            }
+            deps.add(d);
+            noteDeps.add(nd);
         }
-        used.removeAll(made);
-        int after = 0;
-        int firstConsumer = steps.size();
-        for (int k = 0; k < steps.size(); k++) {
-            CraftStep st = steps.get(k);
-            if (used.contains(st.outputItemId())) after = k + 1;
-            Recipe r = byId.get(st.recipeId());
-            if (r != null && firstConsumer == steps.size() && r.currencies.stream().anyMatch(c -> c.currencyId() == NOTES)) firstConsumer = k;
+        List<CraftStep> ordered = new ArrayList<>(n);
+        boolean[] done = new boolean[n];
+        while (ordered.size() < n) {
+            int pick = -1;
+            for (int k = 0; k < n && pick < 0; k++) {
+                if (done[k]) continue;
+                boolean ready = true;
+                for (int d : deps.get(k)) if (!done[d]) { ready = false; break; }
+                if (ready) pick = k;
+            }
+            // A pure item cycle was already cut into an acquired leaf by the tree, so its edge is not a real order
+            // constraint; a Note cycle is a true impossibility.
+            for (int k = 0; k < n && pick < 0; k++) {
+                if (done[k]) continue;
+                boolean ready = true;
+                for (int d : noteDeps.get(k)) if (!done[d]) { ready = false; break; }
+                if (ready) pick = k;
+            }
+            if (pick < 0) {
+                run.stop("the planned steps depend on each other in a cycle and cannot be ordered");
+                return;
+            }
+            done[pick] = true;
+            ordered.add(steps.get(pick));
         }
-        return Math.max(after, firstConsumer);
+        steps.clear();
+        steps.addAll(ordered);
     }
 
     /**
