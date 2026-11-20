@@ -156,6 +156,13 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
       if (needsKeyedRefresh(loaded) && api.startSourceRefresh && api.readSourceTask && sourceRecoveries < SOURCE_MAX_RECOVERIES) {
         sourceRecoveries += 1
         void runSourceRefresh(mine)
+      } else if (needsKeyedRefresh(loaded) && api.startSourceRefresh && api.readSourceTask) {
+        // Recovery cap exhausted and the answer still needs keyed data: stop visibly (the usable stale plan stays shown)
+        // with Retry instead of silently idling; no further automatic admission or reread.
+        if (reread !== null) clearTimeout(reread)
+        reread = null
+        sourceError.value = 'Account data is still out of date after synchronizing; automatic checking has stopped.'
+        pending.value = false
       } else scheduleReread(loaded)
     } catch (cause) {
       const text = message(cause)

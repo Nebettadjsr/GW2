@@ -146,6 +146,7 @@ async function back(): Promise<void> {
           <p data-test="forge-known-gold">Known remaining gold cost{{ referenceOnly ? ' of the inputs' : '' }}: <strong class="numeric">{{ formatCopper(project.knownGoldCopper) }}</strong>
             <template v-if="project.goldCostPartial"> (partial: {{ project.complete ? 'some requirements are unpriced' : 'the plan is incomplete, so this is only the priced part' }})</template></p>
           <p v-if="project.unpricedItems.length" data-test="forge-unpriced">Unpriced: {{ project.unpricedItems.map((i) => i.name ?? `Item ${i.itemId}`).join(', ') }}</p>
+          <p v-if="row?.outcome === 'EXPECTED' && row.expectedMax !== null" data-test="forge-yield">Per batch: {{ row.outputCount }}–{{ row.expectedMax }}, expected {{ row.expectedMean ?? '?' }}. Only the guaranteed minimum counts as stock.</p>
           <p v-if="project.guaranteedOutput !== null && !referenceOnly" data-test="forge-output">Guaranteed output: {{ project.guaranteedOutput }}</p>
           <p v-else-if="project.batches > 0" data-test="forge-batches">{{ referenceOnly ? 'Inputs for ' : '' }}{{ project.batches }} requested batch{{ project.batches === 1 ? '' : 'es' }}</p>
         </section>

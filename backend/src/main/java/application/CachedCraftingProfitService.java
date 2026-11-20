@@ -351,8 +351,10 @@ public class CachedCraftingProfitService {
             String identity = "project=" + projectRecipeId + "|" + parser.MysticForgeCatalogLoader.bundled().fingerprint()
                     + "|" + craft.VendorAcquisitions.fingerprint() + "|" + craft.ForgeReferenceRecipes.fingerprint()
                     + "|ids=" + projectPathIds;
+            boolean metadataGap = priceCoverage.metadataIncomplete(session.connection(), projectPathIds);
             return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
-                    evaluatedAt).withWalletTracked(wallet).withProject(identity, projectPathIds);
+                    evaluatedAt).withWalletTracked(wallet).withProject(identity, projectPathIds)
+                    .withProjectMetadataIncomplete(metadataGap);
         }
         CalculationFreshness.PriceCoverage coverage = priceCoverage.read(session.connection(), scope);
         return new CalculationInputVersions(scope.id(), versions, generations, coverage, accountMaxAge,
@@ -390,7 +392,8 @@ public class CachedCraftingProfitService {
                         stateOf(admission.taskId()), admission.reuse()));
             }
         }
-        if (!captured.coverage().covered()) {
+        if (!captured.coverage().covered() || captured.projectMetadataIncomplete()) {
+            // A selected project also needs admission when its ingredient metadata is incomplete although quotes are fresh.
             // Trading Post quotes are shared, account-free data and need no key, so the on-demand
             // shared refresh is admitted without a key.
             // A project demands exactly its own path ids on the shared single-flight run; ordinary calculations

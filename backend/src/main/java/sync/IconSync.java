@@ -320,6 +320,15 @@ public final class IconSync {
         return complete;
     }
 
+    /** The positive ids of {@code itemIds} whose stored metadata row is missing or incomplete (read-only, one short query). */
+    public static Set<Integer> incompleteIds(Connection con, Collection<Integer> itemIds) throws SQLException {
+        Set<Integer> wanted = new java.util.TreeSet<>();
+        for (Integer id : itemIds) if (id != null && id > 0) wanted.add(id);
+        if (wanted.isEmpty()) return wanted;
+        wanted.removeAll(completeIds(con, wanted));
+        return wanted;
+    }
+
     /**
      * Connection-free completion of item metadata for {@code itemIds}: a short read finds the ids whose stored
      * row is incomplete, the batched upstream fetch runs with no database connection held, and each batch is

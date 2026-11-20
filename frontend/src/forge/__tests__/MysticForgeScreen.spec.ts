@@ -18,7 +18,7 @@ const catalogue: ForgeCatalogue = {
     row({ recipeId: -1, outputItemId: 101, name: 'Sunrise Longbow', itemSubtype: 'LongBow' }),
     row({ recipeId: -2, outputItemId: 102, name: 'Shadow Shortbow', itemSubtype: 'ShortBow' }),
     row({ recipeId: -3, outputItemId: 103, name: 'Gift Coat', itemType: 'Armor', itemSubtype: 'Coat', category: 'ARMOR', buyUnitCopper: null, sellUnitCopper: null }),
-    row({ recipeId: -4, outputItemId: 19745, name: 'Gossamer Scrap', itemType: 'CraftingMaterial', itemSubtype: null, category: 'MATERIALS', outcome: 'EXPECTED', outputCount: 10, expectedMean: '18.92' }),
+    row({ recipeId: -4, outputItemId: 19745, name: 'Gossamer Scrap', itemType: 'CraftingMaterial', itemSubtype: null, category: 'MATERIALS', outcome: 'EXPECTED', outputCount: 10, expectedMean: '18.92', expectedMax: 40 }),
     row({ recipeId: -5, outputItemId: 104, name: 'Mystic Clover', itemType: 'CraftingMaterial', itemSubtype: null, category: 'MATERIALS', outcome: 'REFERENCE_RANDOM', outputCount: 0 })
   ]
 }
@@ -272,6 +272,49 @@ describe('first use source refresh and cold catalogue', () => {
     await vi.advanceTimersByTimeAsync(120_000)
     await flushPromises()
     expect(calls.start).toBe(2)
+    w.unmount()
+  })
+
+  it('after the recovery cap a still-stale answer stops with a visible Retry, keeps the plan, and Retry resets the bound', async () => {
+    const calls = { start: 0, load: 0 }
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(_id, target) { calls.load++; return staleUsable(target) },
+      async startSourceRefresh() { calls.start++; return { statusUrl: '/t/1', coversRequest: true } as never },
+      async readSourceTask() { return { state: 'SUCCEEDED', failure: null } as never }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await vi.advanceTimersByTimeAsync(120_000)
+    await flushPromises()
+    expect(calls.start).toBe(2)
+    expect(w.find('[data-test="forge-source-failed"]').exists()).toBe(true)
+    expect(w.find('[data-test="forge-retry"]').exists()).toBe(true)
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(true)
+    const loads = calls.load
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(calls.start).toBe(2)
+    expect(calls.load).toBe(loads)
+    await w.get('[data-test="forge-retry"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(120_000)
+    await flushPromises()
+    expect(calls.start).toBe(4)
+    w.unmount()
+  })
+
+  it('shows the per-batch yield range only for an EXPECTED recipe', async () => {
+    const w = await mounted()
+    await w.get('[data-recipe-id="-4"]').trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 10)
+    await flushPromises()
+    expect(w.get('[data-test="forge-yield"]').text()).toContain('10–40')
+    expect(w.get('[data-test="forge-yield"]').text()).toContain('expected 18.92')
+    await w.get('[data-test="forge-back"]').trigger('click')
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="forge-yield"]').exists()).toBe(false)
     w.unmount()
   })
 

@@ -63,6 +63,11 @@ public final class CalculationInputVersions {
             return read(con, scope);
         }
 
+        /** True when any explicit positive id lacks complete item metadata (names/icons/flags); independent of quote coverage. */
+        default boolean metadataIncomplete(Connection con, java.util.Set<Integer> itemIds) throws SQLException {
+            return false;
+        }
+
         default CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope, boolean allowForge)
                 throws SQLException {
             return read(con, scope);
@@ -114,6 +119,16 @@ public final class CalculationInputVersions {
     private java.util.Set<Integer> projectPriceIds = java.util.Set.of();
 
     public java.util.Set<Integer> projectPriceIds() { return projectPriceIds; }
+
+    private boolean projectMetadataIncomplete;
+
+    /** True when a selected project's own path ids have missing/incomplete item metadata (needs admission even with fresh quotes). */
+    public boolean projectMetadataIncomplete() { return projectMetadataIncomplete; }
+
+    public CalculationInputVersions withProjectMetadataIncomplete(boolean incomplete) {
+        this.projectMetadataIncomplete = incomplete;
+        return this;
+    }
 
     /**
      * Identity of one selected Forge project source: the Forge/Clover/vendor fact fingerprint, the project's own
@@ -326,6 +341,11 @@ public final class CalculationInputVersions {
         public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {
             if (con == null) return CalculationFreshness.PriceCoverage.none();
             return map(collector.coverage(con, scope));
+        }
+
+        @Override
+        public boolean metadataIncomplete(Connection con, java.util.Set<Integer> itemIds) throws SQLException {
+            return con != null && !sync.IconSync.incompleteIds(con, itemIds).isEmpty();
         }
 
         @Override
