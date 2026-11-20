@@ -239,7 +239,8 @@ public class CraftingProfitService {
         // Clover references are never producers: they are deliberately not in this list.
         craft.ForgeProjectPlanner planner = new craft.ForgeProjectPlanner(producers);
         // Quotes for exactly this project's public path (the same ids its source identity/admission cover).
-        Map<Integer, PriceQuote> tp = tpRepo.loadCurrentTradeableQuotes(con, planner.pathItemIds(root));
+        Set<Integer> pathIds = planner.pathItemIds(root);
+        Map<Integer, PriceQuote> tp = tpRepo.loadCurrentTradeableQuotes(con, pathIds);
 
         // Binding pools stay separate (sellable / account-bound / per-owner carried and Bank namespaces): the planner
         // applies the shared PlanState rules, so a Forge step may use any owner's Bank stock and an ordinary step only
@@ -247,8 +248,10 @@ public class CraftingProfitService {
         InventoryRepository.CoordinatedInventory inv = invRepo.loadOwnedInventoryForCharacters(con, session.scope(), Set.of(), true);
         craft.ForgeProjectPlanner.Inventory inventory = new craft.ForgeProjectPlanner.Inventory(
                 inv.sellable(), inv.accountBound(), inv.characterBound());
+        craft.OwnedValuer valuer = null;
+        if (settings.valueOwn()) valuer = forgeOwnedValuer(con, producers, pathIds, inv);
         craft.ForgeProjectPlanner.Context context = new craft.ForgeProjectPlanner.Context(
-                buildCoordinatedRoster(null), recipeRepo.loadKnownRecipeIds(con, session.scope()));
+                buildCoordinatedRoster(null), recipeRepo.loadKnownRecipeIds(con, session.scope()), valuer);
 
         Map<Integer, Long> wallet = null;
         if (session.walletAuthorized()) {
@@ -273,6 +276,39 @@ public class CraftingProfitService {
         }
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(con, shown);
         return new ForgeProjectData(project, ref != null, batchTarget, target, items, tp, wallet != null);
+    }
+
+    /**
+     * Owned-stock valuation for one Forge project through the ordinary section 11/11.2 rules (instant-sell side, instant-buy
+     * crafting inputs, vendor sell fallback), independent of the project's acquisition price mode. Reads the same
+     * session snapshot: owned path items plus the ordinary crafting subgraph beneath them.
+     */
+    private craft.OwnedValuer forgeOwnedValuer(Connection con, List<Recipe> producers, Set<Integer> pathIds,
+                                               InventoryRepository.CoordinatedInventory inv) throws SQLException {
+        List<Recipe> all = new java.util.ArrayList<>(producers);
+        try {
+            all.addAll(graphCache.loadForSnapshot(con).getRecipes());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load crafting graph cache", e);
+        }
+        Map<Integer, List<Recipe>> byOutput = new HashMap<>();
+        for (Recipe r : all) byOutput.computeIfAbsent(r.outputItemId, k -> new java.util.ArrayList<>()).add(r);
+        Set<Integer> owned = new HashSet<>(inv.sellable().keySet());
+        owned.addAll(inv.accountBound().keySet());
+        inv.characterBound().values().forEach(m -> owned.addAll(m.keySet()));
+        owned.retainAll(pathIds);
+        Set<Integer> closure = new HashSet<>(owned);
+        java.util.ArrayDeque<Integer> work = new java.util.ArrayDeque<>(owned);
+        while (!work.isEmpty()) {
+            for (Recipe r : byOutput.getOrDefault(work.poll(), List.of())) {
+                for (Ingredient i : r.ingredients) if (closure.add(i.itemId)) work.add(i.itemId);
+            }
+        }
+        Map<Integer, PriceQuote> quotes = tpRepo.loadCurrentTradeableQuotes(con, closure);
+        Map<Integer, Integer> vendor = ItemRepository.vendorValues(itemRepo.loadItems(con, closure));
+        CraftingSettings ordinary = new CraftingSettings(true, true, 0, false, false, false); // instant sell / instant buy
+        PlannerContext pc = new PlannerContext(byOutput, quotes, ordinary, null).withVendorValues(vendor);
+        return new craft.CraftingResolver().ownedValuer(pc);
     }
 
     /**

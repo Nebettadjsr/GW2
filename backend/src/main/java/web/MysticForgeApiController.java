@@ -242,6 +242,17 @@ public class MysticForgeApiController {
                 p.seed().grossGuaranteedOutput(), p.seed().netGuaranteedOutput(),
                 p.seed().grossExpectedOutput().stripTrailingZeros().toPlainString(),
                 p.seed().netExpectedOutput().stripTrailingZeros().toPlainString());
+        OwnValueDto ownValue = null;
+        if (p.ownValue() != null) {
+            List<Item> unknownOwn = new ArrayList<>();
+            p.ownValue().unpricedItemIds().forEach(id -> unknownOwn.add(item(id, info)));
+            ownValue = new OwnValueDto(p.ownValue().knownCopper(), unknownOwn);
+        }
+        ComparisonDto cmp = comparison(d, p, ownValue);
+        // A whole-amount buy total beyond the exact range is decided here: the project is incomplete, never a guaranteed result.
+        boolean cmpOverflow = cmp != null && cmp.outputBuyTotalCopper() == null && cmp.unitBuyCopper() != null;
+        boolean complete = p.complete() && !cmpOverflow;
+        String reason = cmpOverflow && p.complete() ? "quantity exceeds the supported range" : p.incompleteReason();
         EconomicsDto econ = null;
         if (p.economics() != null && !d.referenceOnly()) {
             var e = p.economics();
@@ -259,7 +270,7 @@ public class MysticForgeApiController {
                 // Equipment full-path margin from the actual consumed quantities: cash-only subtracts only what is bought;
                 // valueOwn=Yes also subtracts the authoritative value of consumed owned inputs exactly once.
                 Long net = e.expectedNetProceedsCopper();
-                boolean known = net != null && p.complete() && p.unpricedItemIds().isEmpty();
+                boolean known = net != null && complete && p.unpricedItemIds().isEmpty();
                 try {
                     cash = known ? ForgeProjectPlanner.sub(net, p.knownCopper()) : null;
                     if (p.ownValue() == null) margin = cash;
@@ -280,22 +291,11 @@ public class MysticForgeApiController {
                     n.estimateIssue(), n.estimate().basisRecipeId(), CraftingRowMapper.variantDtos(n.estimate(), info),
                     n.ownedContainers(), n.ownedNotes(), n.acquireContainers(), n.uncoveredNotes(), n.producerLocked());
         }
-        OwnValueDto ownValue = null;
-        if (p.ownValue() != null) {
-            List<Item> unknownOwn = new ArrayList<>();
-            p.ownValue().unpricedItemIds().forEach(id -> unknownOwn.add(item(id, info)));
-            ownValue = new OwnValueDto(p.ownValue().knownCopper(), unknownOwn);
-        }
         CloverEstimateDto cloverDto = p.clover() == null ? null
                 : new CloverEstimateDto(p.clover().missing(), p.clover().attempts(), p.clover().percent());
         String outcome = d.referenceOnly() ? "REFERENCE_RANDOM" : d.batchTarget() ? "EXPECTED" : "FIXED";
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
-        ComparisonDto cmp = comparison(d, p, ownValue);
-        // A whole-amount buy total beyond the exact range is decided here: the project is incomplete, never a guaranteed result.
-        boolean cmpOverflow = cmp != null && cmp.outputBuyTotalCopper() == null && cmp.unitBuyCopper() != null;
-        boolean complete = p.complete() && !cmpOverflow;
-        String reason = cmpOverflow && p.complete() ? "quantity exceeds the supported range" : p.incompleteReason();
         Long guaranteed = d.referenceOnly() || cmpOverflow || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput();
         return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
                 d.requestedTarget(), p.batches(), guaranteed, complete, reason,

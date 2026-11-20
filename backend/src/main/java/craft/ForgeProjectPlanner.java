@@ -82,8 +82,9 @@ public final class ForgeProjectPlanner {
     }
 
     /** Roster ratings and known recipe ids ({@code knownRecipeIds} null = unknown, never "none known"). */
-    public record Context(List<CharacterCraftingProfile> roster, Set<Integer> knownRecipeIds) {
-        public static final Context NONE = new Context(List.of(), null);
+    public record Context(List<CharacterCraftingProfile> roster, Set<Integer> knownRecipeIds, OwnedValuer valuer) {
+        public static final Context NONE = new Context(List.of(), null, null);
+        public Context(List<CharacterCraftingProfile> roster, Set<Integer> knownRecipeIds) { this(roster, knownRecipeIds, null); }
     }
 
     /** Self-seed accounting of an expected-yield root: one external seed, then guaranteed reuse only. */
@@ -317,15 +318,26 @@ public final class ForgeProjectPlanner {
         if (settings.valueOwn()) {
             long known = 0;
             List<Integer> unknown = new ArrayList<>();
+            OwnedValuer valuer = ctx.valuer() != null ? ctx.valuer() : defaultValuer(prices);
             try {
-                for (var e : run.fromOwned.entrySet()) {
-                    if (e.getKey() == target.outputItemId || e.getValue() <= 0) continue; // the root output is not an input
-                    Long unit = unitPrice(prices.get(e.getKey()), settings.priceMode());
-                    if (unit == null) unknown.add(e.getKey()); else known = add(known, mul(unit, e.getValue()));
+                java.util.TreeSet<Integer> ids = new java.util.TreeSet<>(run.ownSellable.keySet());
+                ids.addAll(run.ownBound.keySet());
+                for (int id : ids) {
+                    if (id == target.outputItemId) continue; // the root output is not an input
+                    OwnedValuer.Value v = valuer.value(id, run.ownSellable.getOrDefault(id, 0L), run.ownBound.getOrDefault(id, 0L));
+                    if (v.unvalued()) unknown.add(id);
+                    known = add(known, v.copper());
                 }
-            } catch (ArithmeticException ex) { run.stop("own-material value exceeds the supported range"); out = -1; }
+            } catch (ArithmeticException ex) { run.stop("own-material value exceeds the supported range"); }
             java.util.Collections.sort(unknown);
-            ownValue = new OwnValue(known, List.copyOf(unknown));
+            ownValue = new OwnValue(known, List.copyOf(unknown)); // after a range stop: safe partial subtotal only
+        }
+        if (run.reason != null) {
+            out = -1;
+            // A supported-range stop leaves no authoritative full margin, only the safe subfacts.
+            if (econ != null) econ = new Economics(econ.outputUnitSellCopper(), econ.expectedGrossProceedsCopper(), econ.feeCopper(),
+                    econ.expectedNetProceedsCopper(), econ.knownShoppingCopper(), econ.goldInputCopper(), econ.currencyInputs(),
+                    econ.unpricedInputItemIds(), null, null, econ.conditional(), econ.fixedOutput());
         }
         CloverEstimate clover = run.cloverMissing > 0 ? new CloverEstimate(run.cloverMissing, run.cloverAttempts, CLOVER_PERCENT) : null;
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
@@ -424,6 +436,14 @@ public final class ForgeProjectPlanner {
     }
 
     /** Cost side of the Trading Post: the lowest listing (ask, sell_unit_price). */
+    /** Fallback valuation over this planner's own producers and the supplied quotes (no vendor sell values known). */
+    private OwnedValuer defaultValuer(Map<Integer, PriceQuote> prices) {
+        Map<Integer, List<Recipe>> byOutput = new java.util.HashMap<>();
+        for (Recipe r : producerByItem.values()) byOutput.computeIfAbsent(r.outputItemId, k -> new ArrayList<>()).add(r);
+        PlannerContext pc = new PlannerContext(byOutput, prices, new CraftingSettings(true, true, 0, false, false, false), null);
+        return new CraftingResolver().ownedValuer(pc.withVendorValues(Map.of()));
+    }
+
     private static Long unitPrice(PriceQuote q) { return unitPrice(q, ForgeSettings.PriceMode.INSTANT_BUY); }
 
     /** Instant buy = ask (sell_unit_price); Buy order = bid (buy_unit_price). A missing quote is unknown, never free. */
@@ -527,6 +547,8 @@ public final class ForgeProjectPlanner {
         final Map<Integer, Long> surplus = new java.util.HashMap<>();
         final Map<Integer, Long> demand = new TreeMap<>();
         final Map<Integer, Long> fromOwned = new java.util.HashMap<>();
+        final Map<Integer, Long> ownSellable = new java.util.HashMap<>(); // consumed input pools, for valuation only
+        final Map<Integer, Long> ownBound = new java.util.HashMap<>();
         final Map<Integer, Long> leaf = new java.util.HashMap<>();
         final Map<Integer, Long> currencyDemand = new TreeMap<>();
         final Map<Integer, CraftStep> stepByRecipe = new TreeMap<>();
@@ -557,7 +579,11 @@ public final class ForgeProjectPlanner {
         long consume(int itemId, long qty, String assignee) {
             if (!settings.useOwn()) return 0; // intermediates are planned without owned stock
             int ask = (int) Math.min(Integer.MAX_VALUE, qty);
-            return ask <= 0 ? 0 : state.consumeInventoryWithBinding(itemId, ask, assignee).total();
+            if (ask <= 0) return 0;
+            PlanState.InventoryConsumption c = state.consumeInventoryWithBinding(itemId, ask, assignee);
+            if (c.usedSellable() > 0) ownSellable.merge(itemId, (long) c.usedSellable(), ForgeProjectPlanner::add);
+            if (c.usedBound() > 0) ownBound.merge(itemId, (long) c.usedBound(), ForgeProjectPlanner::add);
+            return c.total();
         }
 
         /** Owned goal output counts once from actual output ownership, independent of the input assignee. */

@@ -336,7 +336,7 @@ class MysticForgeApiControllerTest {
                     project, false, false, 1, new HashMap<>(), tp, true), null);
             assertEquals(850L, dto.economics().expectedNetProceedsCopper());
             assertEquals(800L, dto.economics().marginOnShoppingCopper(), "cash-only margin never subtracts the owned input");
-            assertEquals(value ? 700L : 800L, dto.economics().marginCopper(), "owned 100c counted once only when valued");
+            assertEquals(value ? 799L : 800L, dto.economics().marginCopper(), "owned stock valued once at the instant-sell bid 1 (not the ask 100) only when valued");
         }
     }
 
@@ -370,6 +370,8 @@ class MysticForgeApiControllerTest {
         assertNull(dto.comparison().outputBuyTotalCopper(), "no saturated or zero total");
         assertNull(dto.comparison().savingsCopper());
         assertTrue(dto.goldCostPartial());
+        assertNull(dto.economics().marginCopper(), "a range stop leaves no authoritative full margin");
+        assertNull(dto.economics().marginOnShoppingCopper());
     }
 
     /** Both reference-only Clover variants at several batch counts: inputs scale, the root claims no output or craft. */

@@ -1017,6 +1017,27 @@ public class CraftingResolver {
         }
     }
 
+    /**
+     * Reusable entry point for exact owned-stock valuation of an aggregate consumed quantity (Forge projects). Uses the
+     * same sell/fallback rules and exact rational rounding as {@code resolveNeedCore}, but with long-wide aggregates.
+     */
+    public OwnedValuer ownedValuer(PlannerContext ctx) {
+        return (itemId, sellable, bound) -> {
+            int sellUnit = sellable > 0 ? resolveDirectSellUnit(itemId, ctx.tp, ctx.settings) : 0;
+            boolean quoted = sellUnit > 0;
+            BigInteger total = quoted ? BigInteger.valueOf(sellUnit).multiply(BigInteger.valueOf(sellable)) : BigInteger.ZERO;
+            long fallbackQty = bound + (quoted ? 0 : sellable);
+            boolean unvalued = false;
+            if (fallbackQty > 0) {
+                OwnedValue f = resolveOwnedFallbackValue(itemId, ctx);
+                BigInteger num = f.copper().multiply(BigInteger.valueOf(fallbackQty));
+                total = total.add(num.add(f.units()).subtract(BigInteger.ONE).divide(f.units()));
+                unvalued = f.isZero();
+            }
+            return new OwnedValuer.Value(total.longValueExact(), unvalued);
+        };
+    }
+
     public int resolveDirectSellUnit(
             int itemId,
             Map<Integer, PriceQuote> tp,

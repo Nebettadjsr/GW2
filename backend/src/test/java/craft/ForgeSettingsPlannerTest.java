@@ -60,7 +60,7 @@ class ForgeSettingsPlannerTest {
         var inv = sellable(Map.of(ORE, 4, UNPRICED, 1));
         var useYes = run(root, List.of(), inv, prices, ForgeSettings.DEFAULT);
         assertEquals(4, line(useYes, ORE).fromOwned());
-        assertEquals(20, useYes.ownValue().knownCopper(), "4 owned Ore at the selected ask");
+        assertEquals(12, useYes.ownValue().knownCopper(), "4 owned sellable Ore at the instant-sell bid 3, not the ask 5");
         assertEquals(List.of(UNPRICED), useYes.ownValue().unpricedItemIds(), "unpriced owned stays unknown, never free");
         var valueNo = run(root, List.of(), inv, prices,
                 with(ForgeSettings.PriceMode.INSTANT_BUY, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
@@ -245,5 +245,95 @@ class ForgeSettingsPlannerTest {
         // Unknown wallet: nothing claimed.
         var unknown = planner.plan(consumer, 1, true, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, null, Map.of());
         assertNull(unknown.currencies().get(0).missing());
+    }
+
+    private static ForgeProjectPlanner.Inventory pools(Map<Integer, Integer> sell, Map<Integer, Integer> bound) {
+        return new ForgeProjectPlanner.Inventory(sell, bound, Map.of());
+    }
+
+    private static final int BOUND = 7001, PART = 7002, VPART = 7003;
+
+    private ForgeProjectPlanner.Project ownRun(Recipe r, List<Recipe> prod, ForgeProjectPlanner.Inventory inv,
+                                               Map<Integer, PriceQuote> prices, ForgeProjectPlanner.Context ctx, ForgeSettings s) {
+        List<Recipe> all = new ArrayList<>(prod);
+        all.add(r);
+        return new ForgeProjectPlanner(all).plan(r, 1, false, inv, ctx, null, prices, s);
+    }
+
+    @Test
+    void ownValueUsesBidForSellableAndCraftingCostForBoundCopiesOfTheSameItem() {
+        Recipe r = forge(10, WEAPON, List.of(new Ingredient(BOUND, 3)));
+        Recipe producer = new Recipe(70, BOUND, 1, 0, "", List.of(new Ingredient(PART, 2)), List.of(), RecipeSource.ORDINARY);
+        Map<Integer, PriceQuote> prices = Map.of(BOUND, new PriceQuote(40, 90), PART, new PriceQuote(5, 7));
+        // 1 sellable (bid 40) + 2 bound (crafting 2 parts x ask 7 = 14 each); the bound ones are NOT valued at the 40 quote.
+        var p = ownRun(r, List.of(producer), pools(Map.of(BOUND, 1), Map.of(BOUND, 2)), prices,
+                ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+        assertEquals(40 + 2 * 14, p.ownValue().knownCopper());
+        assertTrue(p.ownValue().unpricedItemIds().isEmpty());
+        assertEquals(3, line(p, BOUND).fromOwned());
+        assertEquals(0, p.knownCopper(), "valuing owned stock never buys anything");
+        // Value own = No: same physical use, no valuation.
+        var no = ownRun(r, List.of(producer), pools(Map.of(BOUND, 1), Map.of(BOUND, 2)), prices, ForgeProjectPlanner.Context.NONE,
+                with(ForgeSettings.PriceMode.INSTANT_BUY, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
+        assertNull(no.ownValue());
+        assertEquals(3, line(no, BOUND).fromOwned());
+    }
+
+    @Test
+    void ownValueIsIndependentOfTheAcquisitionPriceMode() {
+        Recipe r = forge(11, WEAPON, List.of(new Ingredient(ORE, 2)));
+        Map<Integer, PriceQuote> prices = Map.of(ORE, new PriceQuote(30, 50));
+        var ask = ownRun(r, List.of(), sellable(Map.of(ORE, 2)), prices, ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+        var bid = ownRun(r, List.of(), sellable(Map.of(ORE, 2)), prices, ForgeProjectPlanner.Context.NONE,
+                with(ForgeSettings.PriceMode.BUY_ORDER, true, true, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
+        assertEquals(60, ask.ownValue().knownCopper());
+        assertEquals(60, bid.ownValue().knownCopper());
+    }
+
+    @Test
+    void unquotedSellableAndBoundStockFallBackToCraftingThenVendorValueAndUnpricedStaysExplicit() {
+        Recipe r = forge(12, WEAPON, List.of(new Ingredient(VPART, 2), new Ingredient(UNPRICED, 1), new Ingredient(BOUND, 1)));
+        Recipe cycA = new Recipe(71, BOUND, 1, 0, "", List.of(new Ingredient(PART, 1)), List.of(), RecipeSource.ORDINARY);
+        Recipe cycB = new Recipe(72, PART, 1, 0, "", List.of(new Ingredient(BOUND, 1)), List.of(), RecipeSource.ORDINARY);
+        // VPART: no quote, vendor value 33 via a valuer built the way the application captures vendor values.
+        PlannerContext pc = new PlannerContext(Map.of(BOUND, List.of(cycA), PART, List.of(cycB)), Map.of(),
+                new CraftingSettings(true, true, 0, false, false, false), null).withVendorValues(Map.of(VPART, 33));
+        var ctx = new ForgeProjectPlanner.Context(List.of(), null, new CraftingResolver().ownedValuer(pc));
+        var p = ownRun(r, List.of(), pools(Map.of(VPART, 1, UNPRICED, 1), Map.of(VPART, 1, BOUND, 1)), Map.of(), ctx, ForgeSettings.DEFAULT);
+        assertEquals(66, p.ownValue().knownCopper(), "sellable + bound vendor-fallback copies, 33 each");
+        assertEquals(List.of(BOUND, UNPRICED), p.ownValue().unpricedItemIds(), "cycle and no-value stay explicit, never free");
+    }
+
+    @Test
+    void fractionalCraftingValueRoundsOnceOverTheAggregateConsumedQuantity() {
+        Recipe r = forge(13, WEAPON, List.of(new Ingredient(BOUND, 3)));
+        // 3 parts at 10c -> 2 outputs: 15c each; 3 bound copies = 45, aggregate (3 parts... exact), vs per-unit rounding.
+        Recipe producer = new Recipe(73, BOUND, 2, 0, "", List.of(new Ingredient(PART, 1)), List.of(), RecipeSource.ORDINARY);
+        Map<Integer, PriceQuote> prices = Map.of(PART, new PriceQuote(1, 5));
+        var p = ownRun(r, List.of(producer), pools(Map.of(), Map.of(BOUND, 3)), prices, ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+        assertEquals(8, p.ownValue().knownCopper(), "ceil(3 x 5/2) = 8 once, not 3 x ceil(2.5) = 9");
+    }
+
+    @Test
+    void ownValueAggregateBeyondIntButWithinTheExactRangeIsKept() {
+        Recipe r = forge(14, WEAPON, List.of(new Ingredient(ORE, 2_000_000_000)));
+        var p = ownRun(r, List.of(), sellable(Map.of(ORE, 2_000_000_000)), Map.of(ORE, new PriceQuote(2_000_000, 3_000_000)),
+                ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+        assertTrue(p.complete());
+        assertEquals(4_000_000_000_000_000L, p.ownValue().knownCopper());
+    }
+
+    @Test
+    void ownValueBeyondTheExactRangeStopsWithNoGuaranteedOutputAndNoFullMargin() {
+        Recipe r = forge(15, WEAPON, List.of(new Ingredient(ORE, 2_000_000_000)));
+        var p = ownRun(r, List.of(), sellable(Map.of(ORE, 2_000_000_000)),
+                Map.of(ORE, new PriceQuote(2_000_000_000, null), WEAPON, new PriceQuote(5, 6)),
+                ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+        assertFalse(p.complete());
+        assertEquals("own-material value exceeds the supported range", p.incompleteReason());
+        assertEquals(-1, p.guaranteedOutput());
+        assertNotNull(p.economics());
+        assertNull(p.economics().marginCopper());
+        assertNull(p.economics().marginOnShoppingCopper());
     }
 }
