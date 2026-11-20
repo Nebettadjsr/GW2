@@ -98,6 +98,9 @@ class MysticForgeApiControllerTest {
                 }
                 return m;
             }
+            @Override public Set<Integer> incompleteMetadataIds(Set<Integer> ids) {
+                return complete.get() ? Set.of() : new java.util.TreeSet<>(ids);
+            }
         };
         var controller = new MysticForgeApiController(null, null, () -> catalog, items, new TpPriceRepository() {
             @Override public Map<Integer, PriceQuote> loadCurrentTradeableQuotes(Set<Integer> ids) { return Map.of(); }
@@ -122,7 +125,7 @@ class MysticForgeApiControllerTest {
         assertEquals(1, admitted.size());
     }
 
-    private static MysticForgeApiController catalogueController(String subtype, Set<Integer> staleQuoteIds,
+    private static MysticForgeApiController catalogueController(String subtype, boolean iconPresent, Set<Integer> staleQuoteIds,
                                                                  List<Set<Integer>> demanded, List<Integer> tasksAdmitted) {
         Recipe bow = new Recipe(-1, 500, 1, 0, "", List.of(new Ingredient(1, 2)), List.of(), RecipeSource.MYSTIC_FORGE);
         var gateway = new sync.TradingPostPriceRefreshGateway() {
@@ -141,6 +144,11 @@ class MysticForgeApiControllerTest {
                         : new ItemInfo(id, "Item " + id, null, 0, "CraftingMaterial", null));
                 return m;
             }
+            /** Stands in for the canonical IconSync policy: the output row lacks a subtype or an accepted icon. */
+            @Override public Set<Integer> incompleteMetadataIds(Set<Integer> ids) {
+                boolean bad = subtype == null || subtype.isBlank() || !iconPresent;
+                return bad && ids.contains(500) ? Set.of(500) : Set.of();
+            }
         };
         return new MysticForgeApiController(null, null, () -> new MysticForgeCatalog(List.of(bow), 0, "test"), items,
                 new TpPriceRepository() {
@@ -154,12 +162,21 @@ class MysticForgeApiControllerTest {
     void knownNameAndTypeWithMissingOrBlankWeaponSubtypeStillDemandsCompletion() throws Exception {
         for (String subtype : new String[] {null, "  "}) {
             var tasks = new java.util.ArrayList<Integer>();
-            var out = catalogueController(subtype, Set.of(), new java.util.ArrayList<>(), tasks).recipes();
+            var out = catalogueController(subtype, true, Set.of(), new java.util.ArrayList<>(), tasks).recipes();
             assertTrue(out.completing(), "subtype=" + subtype);
             assertEquals(1, tasks.size());
         }
-        assertFalse(MysticForgeApiController.metadataIncomplete(
-                new ItemRepository.ItemInfo(1, "Mat", null, 0, "CraftingMaterial", null)), "non-gear needs no subtype");
+    }
+
+    /** Valid name/type/subtype but an absent/rejected icon still admits completion; a fully complete item admits nothing. */
+    @Test
+    void missingIconWithOtherwiseValidMetadataDemandsCompletionAndCompleteItemDoesNot() throws Exception {
+        var tasks = new java.util.ArrayList<Integer>();
+        assertTrue(catalogueController("LongBow", false, Set.of(), new java.util.ArrayList<>(), tasks).recipes().completing());
+        assertEquals(1, tasks.size());
+        var none = new java.util.ArrayList<Integer>();
+        assertFalse(catalogueController("LongBow", true, Set.of(), new java.util.ArrayList<>(), none).recipes().completing());
+        assertEquals(0, none.size(), "no redundant admission");
     }
 
     /** Complete metadata with a stale/missing eligible quote demands exactly those ids; fresh/nontradeable reads admit nothing. */
@@ -167,13 +184,13 @@ class MysticForgeApiControllerTest {
     void completeMetadataWithStaleQuoteDemandsOnlyStaleEligibleIdsAndFreshReadsAdmitNothing() throws Exception {
         var demanded = new java.util.ArrayList<Set<Integer>>();
         var tasks = new java.util.ArrayList<Integer>();
-        var stale = catalogueController("LongBow", Set.of(500), demanded, tasks);
+        var stale = catalogueController("LongBow", true, Set.of(500), demanded, tasks);
         assertTrue(stale.recipes().completing());
         assertEquals(1, tasks.size(), "scoped demand admitted on the shared run");
         assertEquals(List.of(), demanded, "the request thread did no upstream work");
 
         var tasks2 = new java.util.ArrayList<Integer>();
-        var fresh = catalogueController("LongBow", Set.of(), new java.util.ArrayList<>(), tasks2); // fresh or nontradeable
+        var fresh = catalogueController("LongBow", true, Set.of(), new java.util.ArrayList<>(), tasks2); // fresh or nontradeable
         assertFalse(fresh.recipes().completing());
         fresh.recipes();
         fresh.recipes();

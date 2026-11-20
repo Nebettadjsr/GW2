@@ -101,17 +101,18 @@ public class MysticForgeApiController {
         // planner). This request never waits for it; the client rereads while "completing" is true.
         boolean completing = false;
         if (priceRefresh != null) {
-            Set<Integer> incomplete = new HashSet<>();
-            for (int id : ids) {
-                ItemRepository.ItemInfo it = info.get(id);
-                if (id > 0 && metadataIncomplete(it)) incomplete.add(id);
+            // Same canonical completeness policy as IconSync/project path (name, type, rarity, icon, forge flag,
+            // gear subtype). Short read, connection closed before admission; a failed read skips that demand only.
+            Set<Integer> positive = new HashSet<>();
+            for (int id : ids) if (id > 0) positive.add(id);
+            Set<Integer> demand = new HashSet<>();
+            try {
+                demand.addAll(items.incompleteMetadataIds(positive));
+            } catch (Exception metadataReadFailure) {
+                // truthful: only quote demand (if any) is admitted
             }
             // Complete metadata is not a current quote: stale/missing tradeable quotes get the same scoped demand.
-            // The short read closes its connection before admission; a failed read just skips quote demand.
-            Set<Integer> demand = new HashSet<>(incomplete);
             try {
-                Set<Integer> positive = new HashSet<>();
-                for (int id : ids) if (id > 0) positive.add(id);
                 demand.addAll(tp.staleOrMissingTradeable(positive));
             } catch (Exception quoteReadFailure) {
                 // truthful: only metadata demand (if any) is admitted
@@ -127,12 +128,6 @@ public class MysticForgeApiController {
         }
         return new Catalogue(c.status(), c.source(), c.license(), c.recipes().size(), ForgeReferenceRecipes.all().size(), rows,
                 completing);
-    }
-
-    /** Missing name/type, or a Weapon/Armor with a missing/blank subtype (the V18 rows have NULL subtype). */
-    static boolean metadataIncomplete(ItemRepository.ItemInfo it) {
-        if (it == null || it.name == null || it.type == null) return true;
-        return ("Weapon".equals(it.type) || "Armor".equals(it.type)) && (it.subtype == null || it.subtype.isBlank());
     }
 
     private static RecipeRow row(int recipeId, int out, String outcome, int count, String mean, Integer max, int kinds,

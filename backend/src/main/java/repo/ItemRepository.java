@@ -53,6 +53,13 @@ public class ItemRepository {
         return out;
     }
 
+    /** Positive ids whose stored row is missing/incomplete under the canonical {@link sync.IconSync} policy (one short read). */
+    public Set<Integer> incompleteMetadataIds(Set<Integer> itemIds) throws SQLException {
+        try (Connection con = Db.open()) {
+            return sync.IconSync.incompleteIds(con, itemIds);
+        }
+    }
+
     public Map<Integer, ItemInfo> loadItems(Set<Integer> itemIds) throws SQLException {
         if (itemIds.isEmpty()) return new HashMap<>();
         try (Connection con = repo.Db.open()) {

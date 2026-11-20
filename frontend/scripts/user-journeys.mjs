@@ -4,7 +4,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { setTimeout as pause } from 'node:timers/promises'
-import { chromium, selectors } from 'playwright-core'
+import { selectors } from 'playwright-core'
+import { launchOwnedBrowser, closeOwnedBrowser } from './ownedBrowser.mjs'
 import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
@@ -17,10 +18,11 @@ const WIDE = { width: 1440, height: 900 }
 const WARNING = 'This page is not optimized for mobile use. You can scroll horizontally to use the whole page.'
 const results = []
 let browser
+let owned
 process.on('message', async message => {
   if (message?.type !== 'gw2-journey-timeout') return
   process.exitCode = 1
-  await browser?.close().catch(() => {}) // Cancels waits, then each active journey's finally closes its origin.
+  await closeOwnedBrowser(owned).catch(() => {}) // Cancels waits, then each active journey's finally closes its origin.
 })
 process.channel?.unref()
 
@@ -593,7 +595,8 @@ export async function runUserJourneys({ recoveryOnly = false } = {}) {
   ]
   try {
     console.log(`Bundle: ${requireFreshBundle()}`)
-    browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    owned = await launchOwnedBrowser({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    browser = owned.browser
     for (const [name, run, viewport] of cases) {
       try { await journey(name, run, viewport) }
       catch (error) { console.error(`${name}: ${error.stack}`); process.exitCode = 1 }
@@ -605,7 +608,12 @@ export async function runUserJourneys({ recoveryOnly = false } = {}) {
     process.exitCode = 1
     console.error(error.stack)
   } finally {
-    await browser?.close()
+    // Report first-class even when teardown fails; an unconfirmed cleanup is a recorded failure and nonzero exit.
+    try { await closeOwnedBrowser(owned) } catch (error) {
+      results.push({ name: 'browser-cleanup', status: 'failed', error: error.message })
+      process.exitCode = 1
+      console.error(error.message)
+    }
     await writeFile(join(OUTPUT, 'user-journeys.json'), JSON.stringify({ measurement: 'controlled-browser-journeys', results }, null, 2))
   }
 }
