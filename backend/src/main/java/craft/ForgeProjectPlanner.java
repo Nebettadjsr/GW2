@@ -387,46 +387,40 @@ public final class ForgeProjectPlanner {
      * Buy-all-direct-inputs -> instantly-sell-outputs comparison (not the how-to's cheapest path, and owned stock is
      * never free). Each direct input costs its valid Trading Post ask, else a verified vendor purchase (cash counted
      * once, currencies kept separate and never converted to gold), else it is listed as unpriced. A self-seed counts
-     * only the external units. Proceeds use the bid; the 15% fee is applied once over the gross, half-up.
+     * only the external units. Proceeds use the bid; the 15% fee is applied once over the gross, half-up. Range overflow propagates (ArithmeticException) so the caller stops the run instead of returning a complete-looking null.
      */
     private Economics economics(Recipe r, long batches, Seed seed, Map<Integer, PriceQuote> prices, long shopping) {
         long gold = 0;
         Map<Integer, Long> currency = new TreeMap<>();
         List<Integer> unpricedInputs = new ArrayList<>();
         boolean conditional = false;
-        try {
-            gold = mul((long) r.vendorCopper, batches);
-            for (CurrencyRequirement c : r.currencies) {
-                currency.merge(c.currencyId(), mul((long) c.count(), batches), ForgeProjectPlanner::add);
-                conditional = true;
-            }
-            for (Ingredient i : r.ingredients) {
-                boolean seedInput = seed != null && i.itemId == r.outputItemId;
-                long qty = seedInput ? seed.externalSeedUnits() : mul((long) i.count, batches);
-                if (qty <= 0) continue;
-                Long ask = unitPrice(prices.get(i.itemId));
-                Recipe vendor = producerByItem.get(i.itemId);
-                if (ask != null) gold = add(gold, mul(ask, qty));
-                else if (vendor != null && vendor.isVendor()) {
-                    long buys = Math.ceilDiv(qty, (long) vendor.outputCount);
-                    gold = add(gold, mul((long) vendor.vendorCopper, buys));
-                    for (CurrencyRequirement c : vendor.currencies) {
-                        currency.merge(c.currencyId(), mul((long) c.count(), buys), ForgeProjectPlanner::add);
-                        conditional = true;
-                    }
-                } else if (!unpricedInputs.contains(i.itemId)) unpricedInputs.add(i.itemId);
-            }
-        } catch (ArithmeticException e) {
-            return null;
+        gold = mul((long) r.vendorCopper, batches);
+        for (CurrencyRequirement c : r.currencies) {
+            currency.merge(c.currencyId(), mul((long) c.count(), batches), ForgeProjectPlanner::add);
+            conditional = true;
+        }
+        for (Ingredient i : r.ingredients) {
+            boolean seedInput = seed != null && i.itemId == r.outputItemId;
+            long qty = seedInput ? seed.externalSeedUnits() : mul((long) i.count, batches);
+            if (qty <= 0) continue;
+            Long ask = unitPrice(prices.get(i.itemId));
+            Recipe vendor = producerByItem.get(i.itemId);
+            if (ask != null) gold = add(gold, mul(ask, qty));
+            else if (vendor != null && vendor.isVendor()) {
+                long buys = Math.ceilDiv(qty, (long) vendor.outputCount);
+                gold = add(gold, mul((long) vendor.vendorCopper, buys));
+                for (CurrencyRequirement c : vendor.currencies) {
+                    currency.merge(c.currencyId(), mul((long) c.count(), buys), ForgeProjectPlanner::add);
+                    conditional = true;
+                }
+            } else if (!unpricedInputs.contains(i.itemId)) unpricedInputs.add(i.itemId);
         }
         Long bid = bidPrice(prices.get(r.outputItemId));
         Long gross = null, fee = null, net = null;
         if (bid != null) {
-            try {
-                gross = seed != null
-                        ? safeCopper(ExpectedYield.floorCopper(seed.netExpectedOutput(), (int) Math.min(Integer.MAX_VALUE, bid)))
-                        : mul(bid, mul(batches, (long) r.outputCount));
-            } catch (ArithmeticException e) { return null; }
+            gross = seed != null
+                    ? safeCopper(ExpectedYield.floorCopper(seed.netExpectedOutput(), (int) Math.min(Integer.MAX_VALUE, bid)))
+                    : mul(bid, mul(batches, (long) r.outputCount));
             fee = gross > 0 ? tradingpost.TradingPostFeePolicy.feeOn(gross) : 0L;
             net = gross - fee;
         }

@@ -116,6 +116,19 @@ class ForgeProjectPlannerTest {
     }
 
     @Test
+    void unsafeProceedsWithSafeInputsStopTheRunInsteadOfACompleteNullEstimate() {
+        Recipe r = forge(5, WEAPON, 1, List.of(new Ingredient(ORE, 1)), List.of());
+        Map<Integer, PriceQuote> prices = Map.of(ORE, new PriceQuote(1, 2), WEAPON, new PriceQuote(10_000_001, 20_000_000));
+        var p = new ForgeProjectPlanner(List.of(r)).planOutput(r, 1_000_000_000L, ForgeProjectPlanner.Inventory.shared(Map.of()),
+                ForgeProjectPlanner.Context.NONE, Map.of(), prices);
+        assertFalse(p.complete());
+        assertNotNull(p.incompleteReason());
+        assertNull(p.economics(), "no clamped or fake margin");
+        assertEquals(1_000_000_000L, line(p, ORE).missing(), "safe subtree quantities are preserved");
+        assertEquals(2_000_000_000L, p.knownCopper(), "safe subtotal preserved");
+    }
+
+    @Test
     void rejectsNonForgeTargetAndNonPositiveBatches() {
         assertThrows(IllegalArgumentException.class, () -> planner.plan(plate, 1, Map.of(), Map.of(), Map.of()));
         assertThrows(IllegalArgumentException.class, () -> planner.plan(target, 0, Map.of(), Map.of(), Map.of()));

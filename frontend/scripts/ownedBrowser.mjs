@@ -43,6 +43,25 @@ async function forceStop({ server, child }) {
   return waitForExit(child, EXIT_WAIT_MS)
 }
 
+/**
+ * Releases the Node-side resources this script created for the browser (driver connection, BrowserServer websocket,
+ * the child's stdio pipes). Only called AFTER the owned process is confirmed gone, so nothing live is cut off. Each
+ * step is bounded and idempotent: repeated or timed-out cleanup stays safe and never hangs.
+ */
+async function releaseOwnedResources({ browser, server, child }) {
+  const bounded = async (promise, ms) => {
+    let timer
+    try { await Promise.race([Promise.resolve(promise).catch(() => {}), new Promise(r => { timer = setTimeout(r, ms) })]) }
+    finally { clearTimeout(timer) }
+  }
+  await bounded(browser.close(), 1_000)
+  await bounded(server.close(), 1_000)
+  for (const stream of [child.stdin, child.stdout, child.stderr]) {
+    try { if (stream && !stream.destroyed) stream.destroy() } catch { /* already released */ }
+  }
+  try { child.unref() } catch { /* already released */ }
+}
+
 /** Resolves when the owned browser process is confirmed gone; throws otherwise so the caller fails nonzero. */
 export async function closeOwnedBrowser(handle) {
   if (!handle) return
@@ -54,7 +73,8 @@ export async function closeOwnedBrowser(handle) {
   ])
   const clean = await graceful
   clearTimeout(timer)
-  if (clean) return
+  if (clean) { await releaseOwnedResources(handle); return }
   console.error(`Owned browser (pid ${child.pid}) did not close within ${GRACEFUL_MS}ms; force-stopping only that process`)
   if (!(await forceStop(handle))) throw new Error(`Owned browser process ${child.pid} could not be confirmed stopped`)
+  await releaseOwnedResources(handle)
 }
