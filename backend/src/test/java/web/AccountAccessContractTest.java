@@ -235,6 +235,32 @@ class AccountAccessContractTest {
                 .andExpect(header().string("Cache-Control", containsString("no-store")));
     }
 
+    /** The selected Forge project is personal: same guard as the other scoped crafting routes; account is never a body field. */
+    @Test
+    void mysticForgeProjectRouteRequiresASessionMatchingContextAndGrantsAnd() throws Exception {
+        var a = prove("fixture-key-a");
+        var b = prove("fixture-key-b");
+        var restricted = prove("fixture-key-restricted");
+        String path = "/api/mystic-forge/project";
+        String body = "{\"recipeId\":-1,\"target\":1}";
+        http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
+        http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body)
+                        .cookie(a.cookie()).header("X-Account-Context", b.context()))
+                .andExpect(status().isForbidden());
+        http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body)
+                        .cookie(restricted.cookie()).header("X-Account-Context", restricted.context()))
+                .andExpect(status().isForbidden());
+        http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body)
+                        .param("accountId", ACCOUNT_B).cookie(a.cookie()).header("X-Account-Context", a.context()))
+                .andExpect(status().isForbidden());
+        http.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body)
+                        .cookie(a.cookie()).header("X-Account-Context", a.context()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Account-Context", a.context()));
+    }
+
     @Test
     void globalCraftingRoutesStayAccountIndependent() throws Exception {
         http.perform(get("/api/crafting/ingredient-search").param("q", "ore"))

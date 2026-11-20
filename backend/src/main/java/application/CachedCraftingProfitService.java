@@ -271,6 +271,32 @@ public class CachedCraftingProfitService {
         return new ResolutionOutcome(detail, consistency, describe(requestId, captured, detail != null, scope, keyed));
     }
 
+    /** One selected Forge project over one account snapshot; {@code data} is null when no usable cached inputs existed. */
+    public record ForgeProjectOutcome(CraftingProfitService.ForgeProjectData data, boolean unknownRecipe,
+                                      CalculationFreshness freshness) {
+        public boolean hasResult() { return data != null; }
+    }
+
+    /**
+     * Exact planning of one Forge project in one account-scoped snapshot. Same freshness/admission contract as
+     * {@link #profit}: a keyless request is a pure cached read and admits no account work.
+     */
+    public ForgeProjectOutcome forgeProject(AccountScope scope, int recipeId, long target, KeyedAdmission keyed,
+                                            application.access.AccountContext readContext) throws Exception {
+        CraftingSettings settings = CraftingSettings.ordinaryOnly(null);
+        String requestId = UUID.randomUUID().toString();
+        CalculationInputVersions captured;
+        CraftingProfitService.ForgeProjectData data = null;
+        verifyProof(keyed);
+        boolean wallet = walletAuthorized(readContext, keyed);
+        try (ProfitInputSession session = sessions.open(scope).authorizeWallet(wallet)) {
+            captured = capture(session, scope, wallet, settings);
+            if (captured.usable()) data = profitServices.apply(session).planForgeProject(recipeId, target);
+        }
+        boolean unknown = captured.usable() && data == null;
+        return new ForgeProjectOutcome(data, unknown, describe(requestId, captured, data != null, scope, keyed));
+    }
+
     /** Validated session authority; a presented key must additionally have proved its own wallet scope. */
     private static boolean walletAuthorized(application.access.AccountContext context, KeyedAdmission keyed) {
         if (context == null || !context.permits(application.access.AccountOperation.WALLET_READ)) return false;

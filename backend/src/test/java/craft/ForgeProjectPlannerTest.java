@@ -57,8 +57,8 @@ class ForgeProjectPlannerTest {
         var c = p.currencies().get(0);
         assertEquals(23, c.currencyId());
         assertEquals(10, c.needed());
-        assertEquals(7, c.owned());
-        assertEquals(3, c.missing());
+        assertEquals(7L, c.owned());
+        assertEquals(3L, c.missing());
         assertEquals(0, p.knownCopper());
     }
 
@@ -117,5 +117,82 @@ class ForgeProjectPlannerTest {
                 List.of(new CurrencyRequirement(23, 3)), 0))).plan(t, 1, Map.of(), Map.of(), Map.of());
         assertEquals(2, p.steps().get(0).crafts());
         assertEquals(6, p.currencies().get(0).needed());
+    }
+
+    private static ForgeProjectPlanner.Node child(ForgeProjectPlanner.Node n, int itemId) {
+        return n.children().stream().filter(c -> c.itemId() == itemId).findFirst().orElseThrow();
+    }
+
+    @Test
+    void treeSeparatesPlannedCraftingFromOwnedProgressAndPartitionsEveryNode() {
+        var p = planner.plan(target, 1, Map.of(ORE, 5L), Map.of(), Map.of());
+        var root = p.tree();
+        assertEquals(WEAPON, root.itemId());
+        var plates = child(root, PLATE);
+        // 3 plates needed, none owned: fully planned crafting (2 crafts), NOT progress.
+        assertEquals(3, plates.needed());
+        assertEquals(0, plates.fromOwned());
+        assertEquals(3, plates.toCraft());
+        assertEquals(0, plates.toAcquire());
+        assertEquals(2, plates.crafts());
+        var ore = child(plates, ORE);
+        assertEquals(10, ore.needed());
+        assertEquals(5, ore.fromOwned());
+        assertEquals(5, ore.toAcquire());
+        var mystery = child(root, MYSTERY);
+        assertEquals(2, mystery.toAcquire());
+        assertEquals(0, mystery.fromOwned());
+        assertPartition(root);
+    }
+
+    private static void assertPartition(ForgeProjectPlanner.Node n) {
+        if (n.recipeId() == null || n.children().isEmpty()) {
+            assertEquals(n.needed(), n.fromOwned() + n.fromSurplus() + n.toCraft() + n.toAcquire(), "node " + n.itemId());
+        }
+        n.children().forEach(ForgeProjectPlannerTest::assertPartition);
+    }
+
+    @Test
+    void surplusFromOneBranchServesALaterBranchOnceAndIsReportedAsSurplusNotOwned() {
+        // Two sibling demands for plates: 3 plates (2 crafts -> 4 produced) then 1 more -> served from the 1 surplus.
+        Recipe twice = forge(2, WEAPON + 1, 1, List.of(new Ingredient(PLATE, 3), new Ingredient(PLATE, 1)), List.of());
+        var pl = new ForgeProjectPlanner(List.of(twice, plate));
+        var p = pl.plan(twice, 1, Map.of(), Map.of(), Map.of());
+        assertEquals(2, p.steps().stream().filter(s -> s.recipeId() == 10).findFirst().orElseThrow().crafts());
+        var second = p.tree().children().get(1);
+        assertEquals(1, second.fromSurplus());
+        assertEquals(0, second.fromOwned());
+        assertEquals(0, second.toCraft());
+    }
+
+    @Test
+    void unknownWalletStaysUnknownWhileAnEmptyKnownWalletIsZero() {
+        var unknown = planner.plan(target, 1, Map.of(), null, Map.of());
+        assertNull(unknown.currencies().get(0).owned());
+        assertNull(unknown.currencies().get(0).missing());
+        var empty = planner.plan(target, 1, Map.of(), Map.of(23, 0L), Map.of());
+        assertEquals(0L, empty.currencies().get(0).owned());
+        assertEquals(5L, empty.currencies().get(0).missing());
+    }
+
+    @Test
+    void cloverReferenceRecipesAreNeverProducersAndNestedCloverDemandStaysAnAcquireLeaf() {
+        var refs = ForgeReferenceRecipes.all();
+        assertEquals(2, refs.size());
+        assertEquals(List.of(19925, 19976, 19721, 20796), refs.get(0).ingredients().stream().map(i -> i.itemId).toList());
+        assertEquals(6, refs.get(0).ingredients().get(3).count);
+        assertEquals(20799, refs.get(1).ingredients().get(3).itemId);
+        assertEquals(10, refs.get(1).ingredients().get(3).count);
+        // A Forge recipe needing 77 Clovers: even if the planner is (wrongly) offered a reference-derived recipe it only
+        // becomes a producer when passed explicitly; the production producer list never includes references.
+        Recipe needsClover = forge(3, WEAPON + 2, 1, List.of(new Ingredient(19675, 77)), List.of());
+        var pl = new ForgeProjectPlanner(List.of(needsClover, plate));
+        var p = pl.plan(needsClover, 1, Map.of(), Map.of(), Map.of());
+        assertEquals(77, line(p, 19675).missing());
+        assertTrue(p.steps().stream().noneMatch(s -> s.outputItemId() == 19675));
+        // A reference target plans only its inputs and claims no output units from the random outcome.
+        var refPlan = pl.plan(refs.get(0).asPlanningTarget(), 1, Map.of(19925, 1L), Map.of(), Map.of());
+        assertEquals(1, line(refPlan, 19925).fromOwned());
+        assertEquals(6, line(refPlan, 20796).missing());
     }
 }

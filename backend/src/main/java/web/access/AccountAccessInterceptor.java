@@ -205,7 +205,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
 
     /** The account-dependent crafting routes (STORY-API-011); other crafting routes are global. */
     private static boolean isScopedCraftingRoute(String path) {
-        return path.equals("/api/crafting/profit") || path.equals("/api/crafting/profit/resolution")
+        return path.equals("/api/crafting/profit") || path.equals("/api/crafting/profit/resolution") || path.equals("/api/mystic-forge/project")
                 || path.equals("/api/crafting/selector-options") || isDiscoveryRoute(path);
     }
 
@@ -235,7 +235,7 @@ public final class AccountAccessInterceptor implements HandlerInterceptor {
             // /api/account/characters[/{name}] deliberately declare no operation here: the read
             // reports GRANT_REQUIRED / ENDPOINT_RESTRICTED as explicit states (STORY-CHAR-001), still
             // against AccountOperation.CHARACTERS_READ, and still behind a live session.
-            case "/api/crafting/profit", "/api/crafting/profit/resolution" -> AccountOperation.CRAFTING_PROFIT_READ;
+            case "/api/crafting/profit", "/api/crafting/profit/resolution", "/api/mystic-forge/project" -> AccountOperation.CRAFTING_PROFIT_READ;
             case "/api/crafting/selector-options" -> AccountOperation.CHARACTERS_READ;
             case "/api/crafting/discovery", "/api/crafting/discovery/resolution" -> AccountOperation.CRAFTING_PROFIT_READ;
             case "/api/sync/account" -> AccountOperation.ACCOUNT_REFRESH;

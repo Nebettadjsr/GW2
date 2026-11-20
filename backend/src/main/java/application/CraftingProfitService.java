@@ -190,6 +190,66 @@ public class CraftingProfitService {
         }
     }
 
+    /** One selected Forge project over this session's snapshot: the plan plus the names/quotes it needs. */
+    public record ForgeProjectData(craft.ForgeProjectPlanner.Project project, boolean referenceOnly, boolean batchTarget,
+                                   long requestedTarget, Map<Integer, ItemRepository.ItemInfo> items,
+                                   Map<Integer, PriceQuote> tp, boolean walletKnown) {
+    }
+
+    /**
+     * Exact planning of ONE Mystic Forge target (no profit simulation, no budget, no per-root loop). Shared stock is the
+     * account Materials/Bank pool plus account-bound and Bank-resident soulbound stock (Forge Bank exception); carried
+     * character-bound stock is not pooled across owners. Returns null when {@code recipeId} is not a known Forge recipe.
+     */
+    public ForgeProjectData planForgeProject(int recipeId, long target) throws SQLException {
+        craft.ForgeReferenceRecipes.Reference ref = craft.ForgeReferenceRecipes.byId(recipeId);
+        Recipe root = ref != null ? ref.asPlanningTarget()
+                : MysticForgeCatalogLoader.bundled().recipes().stream().filter(r -> r.recipeId == recipeId).findFirst().orElse(null);
+        if (root == null) return null;
+        Connection con = session.connection();
+        List<Recipe> producers = new ArrayList<>();
+        try {
+            producers.addAll(graphCache.loadForSnapshot(con).getRecipes());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load crafting graph cache", e);
+        }
+        producers.addAll(MysticForgeCatalogLoader.bundled().recipes());
+        producers.addAll(craft.VendorAcquisitions.recipes());
+        // Clover references are never producers: they are deliberately not in this list.
+        Set<Integer> itemIds = new HashSet<>();
+        for (Recipe r : producers) { itemIds.add(r.outputItemId); for (Ingredient i : r.ingredients) itemIds.add(i.itemId); }
+        itemIds.add(root.outputItemId);
+        for (Ingredient i : root.ingredients) itemIds.add(i.itemId);
+        Map<Integer, PriceQuote> tp = tpRepo.loadTpQuotes(con, itemIds);
+
+        InventoryRepository.CoordinatedInventory inv = invRepo.loadOwnedInventoryForCharacters(con, session.scope(), Set.of(), true);
+        Map<Integer, Long> owned = new HashMap<>();
+        inv.sellable().forEach((k, v) -> owned.merge(k, (long) v, Long::sum));
+        inv.accountBound().forEach((k, v) -> owned.merge(k, (long) v, Long::sum));
+        String bankPrefix = craft.PlanState.bankOwnerKey("");
+        inv.characterBound().forEach((key, items) -> {
+            if (key.startsWith(bankPrefix)) items.forEach((k, v) -> owned.merge(k, (long) v, Long::sum));
+        });
+
+        Map<Integer, Long> wallet = null;
+        if (session.walletAuthorized()) {
+            Map<Integer, Integer> w = walletRepo.load(con, session.scope(), session.walletEvaluatedAt(), session.walletMaxAge()).orElse(null);
+            if (w != null) { wallet = new HashMap<>(); for (var e : w.entrySet()) wallet.put(e.getKey(), (long) e.getValue()); }
+        }
+
+        boolean batchTarget = ref != null || root.hasExpectedYield();
+        long batches = batchTarget ? target : Math.ceilDiv(target, (long) root.outputCount);
+        craft.ForgeProjectPlanner.Project project = new craft.ForgeProjectPlanner(producers)
+                .plan(root, batches, owned, wallet, tp);
+        Set<Integer> shown = new HashSet<>();
+        shown.add(root.outputItemId);
+        for (Ingredient i : root.ingredients) shown.add(i.itemId);
+        project.items().forEach(l -> shown.add(l.itemId()));
+        project.steps().forEach(st -> shown.add(st.outputItemId()));
+        Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(con, shown);
+        return new ForgeProjectData(project, ref != null, batchTarget, target, items, tp, wallet != null);
+    }
+
     /**
      * The roster, inventory pools, quotes and item metadata captured for one operation. Both the
      * table calculation and one row's fresh detail use one captured set of inputs.

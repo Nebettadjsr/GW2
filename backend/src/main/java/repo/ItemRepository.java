@@ -26,7 +26,17 @@ public class ItemRepository {
             this(itemId, name, iconUrl, 0);
         }
 
+        /** API item type (Weapon/Armor/CraftingMaterial...) and base subtype (LongBow/Coat...); null when not retained. */
+        public final String type;
+        public final String subtype;
+
         public ItemInfo(int itemId, String name, String iconUrl, int vendorValue) {
+            this(itemId, name, iconUrl, vendorValue, null, null);
+        }
+
+        public ItemInfo(int itemId, String name, String iconUrl, int vendorValue, String type, String subtype) {
+            this.type = type;
+            this.subtype = subtype;
             this.vendorValue = vendorValue;
             this.itemId = itemId;
             this.name = name;
@@ -60,7 +70,7 @@ public class ItemRepository {
         if (itemIds.isEmpty()) return out;
 
         String sql = """
-            SELECT item_id, name, icon_url, vendor_value
+            SELECT item_id, name, icon_url, vendor_value, type, subtype
             FROM items
             WHERE item_id = ANY(?)
         """;
@@ -75,7 +85,8 @@ public class ItemRepository {
                     int id = rs.getInt("item_id");
                     String name = rs.getString("name");
                     String iconUrl = rs.getString("icon_url");
-                    out.put(id, new ItemInfo(id, name, iconUrl, rs.getInt("vendor_value")));
+                    out.put(id, new ItemInfo(id, name, iconUrl, rs.getInt("vendor_value"),
+                            rs.getString("type"), rs.getString("subtype")));
                 }
             }
         }
