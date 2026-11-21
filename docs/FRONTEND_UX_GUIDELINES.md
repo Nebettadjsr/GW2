@@ -166,10 +166,19 @@ priorities and secondary caveats in side notes. Do not turn it into an exhaustiv
 patronizing instructions or a guaranteed farming-profit guide. Preserve direct Product
 Owner text edits when maintaining spelling, spacing and layout.
 
-In the Gear & salvaging and magic/materials sections, explanatory text sits left and the
-relevant screenshots form a smaller right-hand column at desktop widths; stack them on
-narrow screens. Gear's two screenshots have no repeated captions underneath. Salvage-kit
-recommendations include recognizable small kit images. Screenshots use compressed local
+In Gear & salvaging, explanatory text sits left and the relevant screenshots form a smaller
+right-hand column at desktop widths; stack them on narrow screens. Gear's two screenshots
+have no repeated captions underneath. Salvage-kit recommendations include recognizable small
+kit images.
+
+The magic/materials chapter pairs its three-step process with the wider vendor screenshot
+and its sale notes with a smaller sale screenshot. Its gathering section contains the loot
+example and Dragonfall image and ends the chapter. Hide repeated picture captions in this
+chapter. The gathering-tools Wiki link uses the shared gold highlight. Present the Dragonfall
+waypoint as a linked name plus a separate clickable chat code, with brief copy feedback and
+the same hover/focus treatment as Mystic Forge.
+
+Screenshots use compressed local
 WebP assets, useful alternative text, intrinsic dimensions, lazy loading and responsive
 sources where available; a link opens the full image. Unfilled screenshot positions render
 nothing until an image is supplied. Essential instructions remain readable without images.

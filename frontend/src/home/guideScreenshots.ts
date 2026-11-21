@@ -12,6 +12,9 @@ import intermediateMaterialsSmall from './images/intermediate-crafting-materials
 import intermediateMaterialsMedium from './images/intermediate-crafting-materials-480.webp?no-inline'
 import craftingBags from './images/crafting-bags.webp?no-inline'
 import craftingBagsSmall from './images/crafting-bags-320.webp?no-inline'
+import gatheringMagic from './images/gathering-magic.webp?no-inline'
+import dragonfallMap from './images/dragonfall-map.webp?no-inline'
+import dragonfallMapSmall from './images/dragonfall-map-320.webp?no-inline'
 
 export type GuideScreenshotId =
   | 'connect-key' | 'account-data' | 'crafting-settings' | 'crafting-plan'
@@ -19,6 +22,7 @@ export type GuideScreenshotId =
   | 'gathering-glyphs' | 'trophy-shipments' | 'vault-objectives' | 'vault-rewards'
   | 'trophy-materials' | 'trophy-sale'
   | 'intermediate-crafting-materials' | 'crafting-bags'
+  | 'gathering-magic' | 'dragonfall-map'
   | 'mount-keybinds' | 'mount-abilities' | 'combat-positioning'
 
 interface GuideScreenshot {
@@ -71,6 +75,17 @@ export const guideScreenshots: Partial<Record<GuideScreenshotId, GuideScreenshot
     width: 1536, height: 388,
     alt: 'Crafting trophies from four Trophy Shipments, with Vials of Powerful Blood being sold instantly on the Trading Post.',
     caption: 'The materials from this batch, with one of the Trading Post sales open.'
+  },
+  'gathering-magic': {
+    src: gatheringMagic, width: 392, height: 560,
+    alt: 'Harvested cabbage and Volatile Magic rewards in the loot feed.',
+    caption: 'Cabbage and bonus Volatile Magic.'
+  },
+  'dragonfall-map': {
+    src: dragonfallMap, srcset: `${dragonfallMapSmall} 320w, ${dragonfallMap} 567w`,
+    width: 567, height: 261,
+    alt: 'Dragonfall’s map label, showing level 80 and the Volatile Magic icon.',
+    caption: 'Dragonfall.'
   },
   'trophy-sale': {
     src: trophySale, width: 469, height: 179,

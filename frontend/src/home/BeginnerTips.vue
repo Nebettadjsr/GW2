@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref } from 'vue'
 import GuideScreenshot from './GuideScreenshot.vue'
 import copperFedIcon from './images/copper-fed.webp?no-inline'
 import runecraftersIcon from './images/runecrafters.webp?no-inline'
@@ -16,6 +16,21 @@ type HabitId = typeof HABITS[number]['id']
 const selected = ref<HabitId>('loot')
 const currentIndex = computed(() => HABITS.findIndex(habit => habit.id === selected.value))
 const readingRegion = ref<HTMLElement>()
+const DRAGONFALL_WAYPOINT = '[&BN4LAAA=]'
+const waypointCopyStatus = ref('')
+let waypointFeedbackTimer: ReturnType<typeof setTimeout> | undefined
+onUnmounted(() => clearTimeout(waypointFeedbackTimer))
+
+async function copyDragonfallWaypoint(): Promise<void> {
+  clearTimeout(waypointFeedbackTimer)
+  try {
+    await navigator.clipboard.writeText(DRAGONFALL_WAYPOINT)
+    waypointCopyStatus.value = 'Copied'
+  } catch {
+    waypointCopyStatus.value = `Copy manually: ${DRAGONFALL_WAYPOINT}`
+  }
+  waypointFeedbackTimer = setTimeout(() => { waypointCopyStatus.value = '' }, 2000)
+}
 
 async function advanceHabit(): Promise<void> {
   selected.value = HABITS[(currentIndex.value + 1) % HABITS.length]!.id
@@ -32,7 +47,7 @@ async function advanceHabit(): Promise<void> {
       <h2 id="beginner-heading">Things I wish I knew sooner</h2>
       <p>Looking for ways to <strong>make more gold in Guild Wars 2</strong>?
       <br>Long time i felt poor in GW2. Saving for Ascended Gear took forever and affording Legendarys was unthinkable. Here is a few habits that started making a difference.
-      <br>Not Farming, No grinding the same Map/ Event over and over. Just everyday i was flushing good gold down the drain without knowing. - Don`t be like me, be smarter! ;-)
+      <br>Not Farming, No grinding the same Map/ Event over and over. Just everyday i was flushing good gold down the drain without knowing.
       </p>
     </header>
 
@@ -145,79 +160,49 @@ async function advanceHabit(): Promise<void> {
           <p>Some things are almost as good as gold!</p>
         </header>
 
-        <div class="beginner__materials-overview">
-          <div>
-            <section>
-              <h4>Intermediate crafting materials</h4>
-              <p>Blood, bones, claws… they might look like bag clutter, but they’re ingredients for valuable crafts. Material storage groups them into tiers, from T1 to T6.</p>
-              <p>Some tiers are worth a lot more than others. You either need the materials yourself, or you can fetch a nice price selling them on the Trading Post.</p>
-            </section>
+        <div class="beginner__shipment-example">
+          <div class="beginner__shipment-overview">
+            <div class="beginner__shipment-process">
+              <p>The process in a nutshell:</p>
+              <ol class="beginner__shipment-steps">
+                <li><strong>Gather Volatile Magic</strong></li>
+                <li><strong>Trade for Trophy Shipments</strong></li>
+                <li><strong>Sell crafting materials</strong></li>
+              </ol>
+            </div>
+            <GuideScreenshot name="trophy-shipments" hide-caption />
+          </div>
 
-            <section class="beginner__section">
-              <h4>But where do you get them?</h4>
-              <p><strong>Crafting Bags and Trophy Shipments!</strong> Both turn currency you’ve collected into useful materials.</p>
-              <ul class="beginner__material-options">
-                <li><strong>Laurels → Crafting Bags.</strong> A Laurel Merchant sells bags for <strong>1 Laurel each</strong>. Choose the tier you need: Light Crafting Bags contain T3 materials, for example.</li>
-                <li><strong>Volatile Magic → Trophy Shipments.</strong> Living World Season 4 vendors sell each shipment for <strong>250 Volatile Magic + 1 gold</strong>. Volatile Magic is another currency in your Wallet — more on getting it below.</li>
-              </ul>
-              <p class="beginner__side-note">I’d check Tier 3 bags as well as Tier 6. Compare the contents’ current prices on the Wiki or Trading Post before spending your Laurels; the highest tier isn’t automatically the best value.</p>
-              <p class="beginner__main-point"><strong>Open the bags or shipments, keep what you need, and sell the rest.</strong> Useful for your own crafts, or gold toward your next upgrade.</p>
-            </section>
+          <div class="beginner__shipment-sale">
+            <ul class="beginner__shipment-notes">
+              <li>In this example, I bought four Trophy Shipments.</li>
+              <li>They cost 1,000 Volatile Magic and 4 gold.</li>
+              <li>I sold the materials instantly on the Trading Post and received roughly twice the gold I spent.</li>
+              <li>Usually its even safe to list the materials for more profit since these items have a high trade volume.</li>
+            </ul>
+            <GuideScreenshot name="trophy-sale" hide-caption />
           </div>
-          <div class="beginner__image-pair">
-            <GuideScreenshot name="intermediate-crafting-materials" hide-caption sizes="(max-width: 24rem) calc(100vw - 80px), 18rem" />
-            <GuideScreenshot name="crafting-bags" hide-caption sizes="(max-width: 24rem) calc(100vw - 80px), 18rem" />
-          </div>
+
+          <GuideScreenshot name="trophy-materials" hide-caption />
         </div>
 
-        <section class="beginner__section">
-          <h4>Volatile Magic from gathering you’d do anyway</h4>
-          <p>This was the bit I was missing: a <strong>Glyph of Volatility</strong> adds Volatile Magic to the ore, wood or plants I’m gathering anyway. I stop at nodes on my way across a map, and the extra currency builds up in the background.</p>
-          <p><strong>Gather on the way → let the Magic build up → buy Trophy Shipments.</strong> It fits around whatever I was going to play that day. The trophies can go into my next craft or onto the Trading Post.</p>
-          <p class="beginner__side-note">Season 4 events and gathering nodes also award Volatile Magic. You’ll need access to a Season 4 map with a shipment vendor to spend it this way.</p>
-        </section>
-
-        <section class="beginner__section">
-          <h4>The next upgrade I’d save for</h4>
-          <p>After the salvage kits, I’d save for <strong>a sickle, axe and pick with Glyphs of Volatility</strong>. Unlimited charges make gathering convenient; the glyphs provide the extra Magic.</p>
-          <p>Watch Gem Store sales and check that the set includes <strong>three glyphs or glyph-selection containers</strong>. The <a href="https://wiki.guildwars2.com/wiki/Infinite_Volatile_Magic_Gathering_Tools" target="_blank" rel="noopener noreferrer">Infinite Volatile Magic Gathering Tools</a> are one option. I’d also watch the gold-to-Gems rate while saving up.</p>
-          <GuideScreenshot name="gathering-glyphs" />
-          <p class="beginner__side-note">Ordinary gathering tools work while you’re saving. A Glyph of Volatility or a Volatile gathering tool is what adds the bonus currency.</p>
-        </section>
-        <details class="beginner__details">
-          <summary>Sharing a set between characters & choosing glyphs</summary>
-          <div class="beginner__detail-body">
-            <p>Gathering tools need to be equipped. Shared inventory slots or the bank make moving one set between characters easier. Unlike the salvage kits, a shared set isn’t automatically equipped on every character.</p>
-            <p>Volatility is my pick for this routine. Watchknight adds sprockets, Bounty can add gathering strikes, and Industry speeds up gathering. Pick what suits the way you play.</p>
+        <section class="beginner__magic-overview" aria-labelledby="beginner-magic-title">
+          <div>
+            <h4 id="beginner-magic-title">How I like to gather Volatile Magic</h4>
+            <p>Personally, I like using my <a class="beginner__tool-link" href="https://wiki.guildwars2.com/wiki/Gathering_tool#Unlimited_Gathering_Tools" target="_blank" rel="noopener noreferrer">infinite gathering tools</a> with a glyph that gives me Volatile Magic whenever I gather, whether I’m playing WvW or PvE. For me, the bonus magic is the main reason to gather.</p>
+            <p>There are even farming guides that list waypoints near large groups of gathering nodes. Try <a href="https://www.true-farming.com/garden" target="_blank" rel="noopener noreferrer">True Farming’s garden guide</a> if you like this approach.</p>
+            <p>If you’re more into Meta Events and battle, I recommend Dragonfall Map.
+              <span class="beginner__waypoint">
+                <a href="https://wiki.guildwars2.com/wiki/Pact_Command" target="_blank" rel="noopener noreferrer">Pact Command Waypoint</a>
+                <button type="button" class="beginner__chat-code" title="Copy waypoint chat code" aria-label="Copy Pact Command Waypoint chat code" @click="copyDragonfallWaypoint">{{ DRAGONFALL_WAYPOINT }}</button>
+                <span v-if="waypointCopyStatus" class="beginner__waypoint-status" role="status">{{ waypointCopyStatus }}</span>
+              </span>
+            </p>
+            <GuideScreenshot name="dragonfall-map"  hide-caption  />
           </div>
-        </details>
+          <GuideScreenshot name="gathering-magic" class="beginner__gathering-image" hide-caption sizes="15rem" />
 
-        <section class="beginner__section">
-          <h4>Four shipments from my own bags</h4>
-          <p>Here’s one batch: I spent <strong>1,000 Volatile Magic and 4 gold</strong>, opened the shipments, and sold the materials instantly on the Trading Post.</p>
-          <dl class="beginner__example">
-            <div><dt>Gold spent</dt><dd>4g</dd></div>
-            <div><dt>Gold received after fees</dt><dd>8g 76s 10c</dd></div>
-            <div><dt>Left after the purchase cost</dt><dd>4g 76s 10c</dd></div>
-          </dl>
-          <p class="beginner__side-note">That’s one batch at the prices in my screenshots. The 1,000 Volatile Magic is spent as well; different contents and market prices change the return.</p>
-          <details class="beginner__details">
-            <summary>See the screenshots for this batch</summary>
-            <div class="beginner__detail-body">
-              <GuideScreenshot name="trophy-shipments" />
-              <GuideScreenshot name="trophy-materials" />
-              <GuideScreenshot name="trophy-sale" />
-            </div>
-          </details>
         </section>
-        <footer class="beginner__sources">
-          <span>For the details on the GW2 Wiki</span>
-          <a href="https://wiki.guildwars2.com/wiki/Laurel_Merchant" target="_blank" rel="noopener noreferrer">Laurel Merchants ↗</a>
-          <a href="https://wiki.guildwars2.com/wiki/Light_Crafting_Bag" target="_blank" rel="noopener noreferrer">Tier 3 bag contents ↗</a>
-          <a href="https://wiki.guildwars2.com/wiki/Trophy_Shipment" target="_blank" rel="noopener noreferrer">Trophy Shipments ↗</a>
-          <a href="https://wiki.guildwars2.com/wiki/Volatile_Magic" target="_blank" rel="noopener noreferrer">Volatile Magic ↗</a>
-          <a href="https://wiki.guildwars2.com/wiki/Glyph_of_Volatility" target="_blank" rel="noopener noreferrer">Gathering glyphs ↗</a>
-        </footer>
       </article>
 
       <article v-show="selected === 'vault'" id="beginner-vault" class="beginner__article" aria-labelledby="beginner-vault-title">
@@ -335,16 +320,27 @@ async function advanceHabit(): Promise<void> {
 .beginner__article p + p { margin-top: var(--space-3); }
 .beginner__eyebrow { color: var(--color-highlight); font-size: var(--text-sm); font-weight: 600; }
 .beginner__main-point { padding-left: var(--space-4); border-left: 3px solid var(--color-highlight); font-size: var(--text-lg); }
-.beginner__gear-notes { display: grid; gap: var(--space-2); margin: 0; padding-left: var(--space-5); line-height: 1.7; }
-.beginner__gear-steps { display: grid; gap: var(--space-2); margin-block: var(--space-5); padding-left: var(--space-6); border-left: 3px solid var(--color-highlight); font-size: var(--text-lg); line-height: 1.5; }
-.beginner__gear-steps li { padding-left: var(--space-1); }
-.beginner__gear-steps li::marker { color: var(--color-highlight); font-weight: 600; }
+.beginner__gear-notes, .beginner__shipment-notes { display: grid; gap: var(--space-2); margin: 0; padding-left: var(--space-5); line-height: 1.7; }
+.beginner__gear-steps, .beginner__shipment-steps { display: grid; gap: var(--space-2); margin-block: var(--space-5); padding-left: var(--space-6); border-left: 3px solid var(--color-highlight); font-size: var(--text-lg); line-height: 1.5; }
+.beginner__gear-steps li, .beginner__shipment-steps li { padding-left: var(--space-1); }
+.beginner__gear-steps li::marker, .beginner__shipment-steps li::marker { color: var(--color-highlight); font-weight: 600; }
 .beginner__section { margin-top: var(--space-6); }
 .beginner__image-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); align-items: start; }
-.beginner__gear-overview, .beginner__materials-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 18rem); gap: var(--space-6); align-items: start; }
-.beginner__gear-overview .beginner__image-pair, .beginner__materials-overview .beginner__image-pair { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
-.beginner__gear-overview .guide-screenshot, .beginner__materials-overview .guide-screenshot { margin: 0; }
-.beginner__material-options { display: grid; gap: var(--space-3); margin-block: var(--space-4); padding-left: var(--space-5); line-height: 1.7; }
+.beginner__gear-overview, .beginner__shipment-sale { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 18rem); gap: var(--space-6); align-items: start; }
+.beginner__gear-overview .beginner__image-pair { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.beginner__gear-overview .guide-screenshot, .beginner__shipment-sale .guide-screenshot { margin: 0; }
+.beginner__shipment-example { display: grid; gap: var(--space-5); margin-bottom: var(--space-6); }
+.beginner__shipment-example > .guide-screenshot { margin: 0; }
+.beginner__shipment-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--space-6); align-items: start; }
+.beginner__shipment-overview .guide-screenshot { min-width: 0; margin: 0; }
+.beginner__magic-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 15rem); gap: var(--space-6); align-items: start; margin-bottom: var(--space-6); }
+.beginner__magic-overview .guide-screenshot { min-width: 0; margin: 0; }
+.beginner__tool-link { color: var(--color-highlight); }
+.beginner__waypoint { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); max-width: 100%; }
+.beginner__chat-code { padding: 0 var(--space-1); min-height: 0; background: transparent; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--color-secondary); font-family: monospace; font-size: inherit; line-height: inherit; white-space: nowrap; cursor: pointer; }
+.beginner__chat-code:hover, .beginner__chat-code:focus-visible { border-color: var(--color-border); background: var(--color-raised); }
+.beginner__waypoint-status { color: var(--color-muted); }
+.beginner__dragonfall-image { grid-column: 1 / -1; width: 40%; }
 .beginner__kit-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin-block: var(--space-4); }
 .beginner__kit-list > div { border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
 .beginner__kit-list span { display: block; margin-bottom: var(--space-2); color: var(--color-muted); font-size: var(--text-sm); }
@@ -364,9 +360,6 @@ async function advanceHabit(): Promise<void> {
 .beginner__reward-list dl > div { border-top: 1px solid var(--color-border); padding-top: var(--space-3); }
 .beginner__reward-list dt { font-weight: 600; margin-bottom: var(--space-2); }
 .beginner__reward-list dd { margin: 0; color: var(--color-muted); line-height: 1.65; }
-.beginner__example { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-5) 0; padding-block: var(--space-4); border-block: 1px solid var(--color-border); }
-.beginner__example dt { color: var(--color-muted); font-size: var(--text-sm); margin-bottom: var(--space-2); }
-.beginner__example dd { margin: 0; font-size: var(--text-xl); font-weight: 600; }
 .beginner__closing { margin-top: var(--space-5); }
 .beginner__sources { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-border); font-size: var(--text-sm); }
 .beginner__sources > span { flex-basis: 100%; color: var(--color-muted); }
@@ -381,12 +374,12 @@ async function advanceHabit(): Promise<void> {
 }
 @media (max-width: 48rem) {
   .beginner__reading { padding: var(--space-5) var(--space-4); }
-  .beginner__gear-overview, .beginner__materials-overview { grid-template-columns: minmax(0, 1fr); }
-  .beginner__gear-overview .beginner__image-pair, .beginner__materials-overview .beginner__image-pair { width: 100%; max-width: 18rem; justify-self: center; }
+  .beginner__gear-overview, .beginner__shipment-overview, .beginner__shipment-sale, .beginner__magic-overview { grid-template-columns: minmax(0, 1fr); }
+  .beginner__gear-overview .beginner__image-pair { width: 100%; max-width: 18rem; justify-self: center; }
+  .beginner__shipment-sale .guide-screenshot { width: min(100%, 18rem); justify-self: center; }
+  .beginner__gathering-image { width: min(100%, 15rem); justify-self: center; }
+  .beginner__dragonfall-image { width: min(100%, 22rem); justify-self: center; }
   .beginner__image-pair, .beginner__illustrated, .beginner__reward-list dl { grid-template-columns: minmax(0, 1fr); }
-  .beginner__example, .beginner__kit-list { grid-template-columns: minmax(0, 1fr); }
-  .beginner__example { gap: var(--space-3); }
-  .beginner__example > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
-  .beginner__example dd { font-size: var(--text-lg); }
+  .beginner__kit-list { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
