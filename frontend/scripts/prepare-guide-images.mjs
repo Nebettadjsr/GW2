@@ -17,7 +17,12 @@ const images = [
   { source: 'intermCraftingMaterials.jpg', name: 'intermediate-crafting-materials', widths: [320, 480, 1005] },
   { source: 'craftingBags.jpg', name: 'crafting-bags', widths: [320, 885] },
   { source: 'gatheringMagicExample.jpg', name: 'gathering-magic', widths: [392] },
-  { source: 'DragonfallMap.jpg', name: 'dragonfall-map', widths: [320, 567] }
+  { source: 'DragonfallMap.jpg', name: 'dragonfall-map', widths: [320, 567] },
+  { source: 'GolgCrafting.png', name: 'gold-crafting', widths: [640, 960, 1774] },
+  { source: 'runeList.jpg', name: 'rune-list', widths: [320, 498] },
+  { source: 'necroRuneCraft.jpg', name: 'necro-rune-craft', widths: [640, 960, 1785] },
+  { source: 'teachMeSmall.jpg', name: 'teach-me-small', widths: [320, 569] },
+  { source: 'teachMeBig.jpg', name: 'teach-me-big', widths: [640, 1280, 2488] }
 ]
 
 await mkdir(outputDirectory, { recursive: true })

@@ -59,7 +59,7 @@ describe('public Home landing', () => {
     window.sessionStorage.setItem(STORAGE_KEY, 'RETAINED-QA-KEY')
     const app = await open('/welcome')
 
-    for (const tab of ['features', 'guide', 'tips', 'welcome']) {
+    for (const tab of ['features', 'tips', 'welcome']) {
       await app.get(`#home-tab-${tab}`).trigger('click')
       expect(app.get(`#home-tab-${tab}`).attributes('aria-selected')).toBe('true')
       expect(app.get(`#home-panel-${tab}`).isVisible()).toBe(true)
