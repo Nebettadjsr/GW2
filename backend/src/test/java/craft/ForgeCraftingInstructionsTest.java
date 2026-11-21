@@ -56,8 +56,8 @@ class ForgeCraftingInstructionsTest {
     }
 
     @Test
-    void differentAssignedCharactersOrStatusesStayOneInstructionEach() {
-        // Two Red occurrences that are performed by different characters, plus one unperformable, must not be merged.
+    void sameCharacterOccurrencesMergeWhileDifferentCharactersStaySeparate() {
+        // Ann's two Red occurrences merge into one instruction; Bob's occurrence has another assigned character and stays separate.
         var node = (java.util.function.Function<String, ForgeProjectPlanner.Node>) character -> new ForgeProjectPlanner.Node(
                 RED, 2, 0, 0, 2, 0, red.recipeId, RecipeSource.MYSTIC_FORGE, 2, 0, "", null, List.of(), true, true, character, null, 2, 0);
         var ann = node.apply("Ann");

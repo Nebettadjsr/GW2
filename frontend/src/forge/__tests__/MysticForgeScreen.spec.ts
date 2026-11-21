@@ -440,7 +440,7 @@ describe('first use source refresh and cold catalogue', () => {
     await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 10)
     await flushPromises()
     expect(w.get('[data-test="forge-yield"]').text()).toContain('10–40')
-    expect(w.get('[data-test="forge-yield"]').text()).toContain('18.92 expected')
+    expect(w.get('[data-test="forge-yield"]').text()).toMatch(/18[.,]92 expected/)
     await w.get('[data-test="forge-back"]').trigger('click')
     await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
     await flushPromises()
@@ -628,6 +628,43 @@ describe('vendor shopping and bounded catalogue completion', () => {
     expect(w.find('[data-test="forge-setting-promotions"]').exists()).toBe(false)
     await vi.advanceTimersByTimeAsync(30_000)
     expect(projectCalls).toHaveLength(3) // no endless planning
+    w.unmount()
+  })
+
+  it('metadata completing while a plan for the OLD settings is in flight converges once to the neutralized settings', async () => {
+    let calls = 0
+    let hold: ((p: ForgeProject) => void) | null = null
+    let held = 0
+    const cold = (r: ForgeRecipeRow) => r.recipeId === -4 ? { ...r, itemType: null, itemSubtype: null, category: 'OTHER' as const } : r
+    const api: MysticForgeApi = {
+      async loadCatalogue() {
+        calls++
+        const warm = calls > 1
+        return { ...catalogue, completing: !warm, recipes: warm ? catalogue.recipes : catalogue.recipes.map(cold) }
+      },
+      loadProject(recipeId, target, settings) {
+        projectCalls.push({ recipeId, target, settings })
+        if (settings!.promotions && held === 0) { held++; return new Promise<ForgeProject>((resolve) => { hold = resolve }) }
+        return Promise.resolve(project(target, { recipeId, settings: settings!, batches: 7 }))
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Gossamer Scrap'))!.trigger('click')
+    await flushPromises()
+    await w.get('[data-test="forge-setting-promotions"]').setValue('YES')
+    await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1) // this request for the raw settings stays in flight
+    expect(projectCalls.at(-1)!.settings).toMatchObject({ promotions: true })
+    const before = projectCalls.length
+    await vi.advanceTimersByTimeAsync(5100) // metadata completes WHILE it is in flight
+    await flushPromises()
+    expect(projectCalls).toHaveLength(before + 1)
+    expect(projectCalls.at(-1)!.settings).toMatchObject({ daily: 'CRAFT', promotions: false, reduce: 'NO' })
+    hold!(project(1, { recipeId: -4, settings: projectCalls[before - 1]!.settings as ForgeProject["settings"], batches: 99 })) // the stale answer arrives late
+    await flushPromises()
+    expect(w.get('[data-test="forge-estimated-batches"]').text()).toBe('≈7') // only the current-settings answer paints
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(projectCalls).toHaveLength(before + 1) // one convergence, no duplicate or endless requests
     w.unmount()
   })
 

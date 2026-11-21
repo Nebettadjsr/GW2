@@ -235,12 +235,16 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     reread = null
   }
 
+  /** The effective settings the newest project request was made for; a later change while it is in flight replans once. */
+  let requestedSettingsKey = ''
+
   async function loadProject(isReread = false): Promise<void> {
     const recipeId = selectedRecipeId.value
     const target = parseTarget(targetText.value)
     if (recipeId === null || target === null || disposed || !active) return
     const mine = ++token
     const generation = connection.generation
+    requestedSettingsKey = JSON.stringify(effectiveSettings.value)
     if (!isReread) { rereads = 0; sourceRecoveries = 0; projectLoading.value = true; stalled.value = false; sourceError.value = null }
     projectError.value = null
     try {
@@ -454,7 +458,12 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   // daily/promotions/reduce). The plan held for the old effective settings no longer paints, so replan once for the change,
   // keeping the selection, target and shared preferences. A user edit already has its debounced plan pending and is skipped.
   watch(() => JSON.stringify(effectiveSettings.value), () => {
-    if (selectedRecipeId.value === null || debounce !== null || projectLoading.value || !active || disposed) return
+    if (selectedRecipeId.value === null || debounce !== null || !active || disposed) return
+    // A request still in flight for the OLD settings is superseded once (its token goes stale) by one for the current ones.
+    if (projectLoading.value) {
+      if (requestedSettingsKey !== JSON.stringify(effectiveSettings.value)) void loadProject()
+      return
+    }
     if (currentProject.value !== null || project.value === null) return
     void loadProject()
   })
