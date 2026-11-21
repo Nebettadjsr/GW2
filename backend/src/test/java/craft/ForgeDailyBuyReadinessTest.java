@@ -60,4 +60,18 @@ class ForgeDailyBuyReadinessTest {
         assertEquals(craft.percent(), buy.percent());
         assertEquals(75.0, buy.percent(), "plain ingredient half owned -> (1 + 0.5)/2");
     }
+
+    @Test
+    void recipeTreeStopsProgressBelowBoughtDailyProducer() {
+        var inv = new ForgeProjectPlanner.Inventory(Map.of(ING, 6, PLAIN_ING, 2), Map.of(), Map.of());
+        var ctx = ForgeProjectPlanner.Context.NONE;
+        var buy = planner.recipeTree(root, 1, inv, ctx, Map.of(), true, ForgeSettings.ReduceMode.NO, ForgeSettings.DailyMode.BUY);
+        var craft = planner.recipeTree(root, 1, inv, ctx, Map.of(), true, ForgeSettings.ReduceMode.NO, ForgeSettings.DailyMode.CRAFT);
+        var buyMith = buy.children().stream().filter(c -> c.itemId() == MITH).findFirst().orElseThrow();
+        var craftMith = craft.children().stream().filter(c -> c.itemId() == MITH).findFirst().orElseThrow();
+        assertEquals(1, buyMith.children().size(), "reference rows are preserved");
+        assertEquals(0, buyMith.children().getFirst().acquired(), "no stock credited below the bought daily output");
+        assertEquals(0, buyMith.progressPercent());
+        assertTrue(craftMith.children().getFirst().acquired() > 0, "Craft still credits the ingredients");
+    }
 }

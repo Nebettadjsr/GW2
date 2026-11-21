@@ -288,7 +288,7 @@ public class CraftingProfitService {
                 : root.hasExpectedYield() ? root.expectedYield.estimatedBatchesForOutput(target, root.selfSeedUnits()) : target;
         craft.ForgeProjectPlanner.Project project = planner.plan(root, planQuantity, batchTarget, inventory, context, wallet, tp, settings);
         craft.ForgeProjectPlanner.RecipePart recipeTree = batchTarget ? null
-                : planner.recipeTree(root, target, inventory, context, wallet, settings.useOwn(), settings.reduce());
+                : planner.recipeTree(root, target, inventory, context, wallet, settings.useOwn(), settings.reduce(), settings.daily());
         craft.ForgeMaterialProgress.Progress materialProgress = batchTarget || !settings.useOwn() ? null
                 : planner.materialProgress(root, target, inventory, context, wallet, project);
         Set<Integer> shown = new HashSet<>();

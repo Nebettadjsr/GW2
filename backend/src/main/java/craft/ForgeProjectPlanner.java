@@ -307,12 +307,19 @@ public final class ForgeProjectPlanner {
     /** As above, consuming owned root copies only as the project's reduction policy does. */
     public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Context ctx,
                                  Map<Integer, Long> wallet, boolean includeProgress, ForgeSettings.ReduceMode reduce) {
+        return recipeTree(target, quantity, inventory, ctx, wallet, includeProgress, reduce, ForgeSettings.DailyMode.CRAFT);
+    }
+
+    /** As above; with Daily Buy, progress and stock debits stop below a daily producer the project purchases. */
+    public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Context ctx,
+                                 Map<Integer, Long> wallet, boolean includeProgress, ForgeSettings.ReduceMode reduce,
+                                 ForgeSettings.DailyMode daily) {
         Context context = ctx == null ? Context.NONE : ctx;
         PlanState available = new PlanState(inventory.sellable(), inventory.accountBound(), inventory.characterBound());
         Map<Integer, Long> availableWallet = includeProgress && wallet != null ? new java.util.HashMap<>(wallet) : null;
         try {
             return recipePart(target.outputItemId, quantity, target, 0, Set.of(), false, new int[]{0}, 0,
-                    available, availableWallet, includeProgress, context, null, reduce);
+                    available, availableWallet, includeProgress, context, null, reduce, daily);
         } catch (ArithmeticException overflow) {
             return new RecipePart(target.outputItemId, quantity, List.of(), List.of(), null, null, false,
                     "Quantity exceeds the supported range", 0, 0, false);
@@ -322,7 +329,8 @@ public final class ForgeProjectPlanner {
     private RecipePart recipePart(int itemId, long quantity, Recipe selected, int depth, Set<Integer> path,
                                   boolean approximate, int[] visited, long covered, PlanState available,
                                   Map<Integer, Long> availableWallet, boolean includeProgress, Context ctx,
-                                  String assignee, ForgeSettings.ReduceMode reduce) {
+                                  String assignee, ForgeSettings.ReduceMode reduce,
+                                  ForgeSettings.DailyMode daily) {
         long acquired = 0;
         int progress = 0;
         if (includeProgress) {
@@ -356,19 +364,22 @@ public final class ForgeProjectPlanner {
         Long copper = recipe != null && recipe.vendorCopper > 0 ? mul(recipe.vendorCopper, crafts) : null;
         List<RecipePart> children = new ArrayList<>();
         String cutoff = null;
+        // Daily Buy: the shortfall of a daily output is purchased, so its reference rows stay but never credit stock.
+        boolean boughtDaily = includeProgress && depth > 0 && daily == ForgeSettings.DailyMode.BUY
+                && DailyCrafts.isDailyOutput(itemId) && remainingCrafts > 0;
         if (recipe != null && depth < 3) {
             if (path.contains(recipe.recipeId)) cutoff = "Recipe cycle";
             else {
                 Set<Integer> next = new HashSet<>(path);
                 next.add(recipe.recipeId);
-                String stepAssignee = !includeProgress ? null
+                String stepAssignee = !includeProgress || boughtDaily ? null
                         : recipe.isMysticForge() ? assignForge(available, recipe)
                         : recipe.source == RecipeSource.ORDINARY ? assignOrdinary(available, ctx, recipe) : null;
                 for (Ingredient ingredient : recipe.ingredients) {
                     children.add(recipePart(ingredient.itemId, mul(ingredient.count, crafts), null, depth + 1,
                             next, approximate || clover, visited,
-                            includeProgress ? mul(ingredient.count, crafts - remainingCrafts) : 0,
-                            available, availableWallet, includeProgress, ctx, stepAssignee, reduce));
+                            includeProgress && !boughtDaily ? mul(ingredient.count, crafts - remainingCrafts) : 0,
+                            available, availableWallet, includeProgress && !boughtDaily, ctx, stepAssignee, reduce, daily));
                 }
             }
         }
