@@ -29,14 +29,23 @@ public class ItemRepository {
         /** API item type (Weapon/Armor/CraftingMaterial...) and base subtype (LongBow/Coat...); null when not retained. */
         public final String type;
         public final String subtype;
+        public final String rarity;
+        public final String weightClass;
 
         public ItemInfo(int itemId, String name, String iconUrl, int vendorValue) {
             this(itemId, name, iconUrl, vendorValue, null, null);
         }
 
         public ItemInfo(int itemId, String name, String iconUrl, int vendorValue, String type, String subtype) {
+            this(itemId, name, iconUrl, vendorValue, type, subtype, null, null);
+        }
+
+        public ItemInfo(int itemId, String name, String iconUrl, int vendorValue, String type, String subtype,
+                        String rarity, String weightClass) {
             this.type = type;
             this.subtype = subtype;
+            this.rarity = rarity;
+            this.weightClass = weightClass;
             this.vendorValue = vendorValue;
             this.itemId = itemId;
             this.name = name;
@@ -77,9 +86,11 @@ public class ItemRepository {
         if (itemIds.isEmpty()) return out;
 
         String sql = """
-            SELECT item_id, name, icon_url, vendor_value, type, subtype
-            FROM items
-            WHERE item_id = ANY(?)
+            SELECT i.item_id, i.name, i.icon_url, i.vendor_value, i.type,
+                   COALESCE(NULLIF(i.subtype, ''), d.details->>'subtype') AS subtype, i.rarity,
+                   d.details->>'weightClass' AS weight_class
+            FROM items i LEFT JOIN equipment_item_details d ON d.item_id = i.item_id
+            WHERE i.item_id = ANY(?)
         """;
 
         try (PreparedStatement ps = con.prepareStatement(sql)) {
@@ -93,7 +104,8 @@ public class ItemRepository {
                     String name = rs.getString("name");
                     String iconUrl = rs.getString("icon_url");
                     out.put(id, new ItemInfo(id, name, iconUrl, rs.getInt("vendor_value"),
-                            rs.getString("type"), rs.getString("subtype")));
+                            rs.getString("type"), rs.getString("subtype"), rs.getString("rarity"),
+                            rs.getString("weight_class")));
                 }
             }
         }

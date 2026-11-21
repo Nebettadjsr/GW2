@@ -125,6 +125,13 @@ def yield_category(f, seed_name, slots, qty, upper):
     return None
 
 
+def reviewed_fixed_output(recipe, facts):
+    """A page-wide randomness warning can be cleared only for the exact reviewed recipe and revision."""
+    fields = ("forgeId", "page", "revision", "outputItemId", "outputCount", "ingredients")
+    return any(all(review.get(key) == recipe[key] for key in fields)
+               for review in facts.get("fixedOutputReviews", []))
+
+
 def build(raw, pages, facts, rawsha, tplsha):
     means = facts["promotionMeans"]
     excluded = Counter()
@@ -200,7 +207,7 @@ def build(raw, pages, facts, rawsha, tplsha):
                 drop("random output without a verified mean for its category")
                 continue
             rec["yield"] = {"category": cat, "mean": means[cat], "min": qty, "max": int(up)}
-        elif info.get("randomMentioned"):
+        elif info.get("randomMentioned") and not reviewed_fixed_output(rec, facts):
             drop("page mentions random outcomes and the template has no verified fixed output")
             continue
         candidates.append(rec)

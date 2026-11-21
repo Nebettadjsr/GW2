@@ -1,0 +1,122 @@
+package craft;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
+/** Equal ingredient shares at each level; reads owned resources without spending or modifying account data. */
+public final class ForgeMaterialProgress {
+    public record Progress(double percent, boolean estimated, boolean partial) { }
+    private record Coverage(double fraction, boolean ready, boolean estimated, boolean partial) { }
+    private static final int COINS = 1;
+
+    private final Map<Integer, Recipe> producers;
+
+    ForgeMaterialProgress(Map<Integer, Recipe> producers) { this.producers = producers; }
+
+    Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory, Map<Integer, Long> wallet) {
+        Run run = new Run(inventory, wallet);
+        try {
+            Coverage coverage = run.item(target.outputItemId, quantity, target, 0, Set.of());
+            double percent = coverage.ready() ? 100 : Math.min(99.9, Math.floor(coverage.fraction() * 1000) / 10);
+            return new Progress(percent, coverage.estimated(), coverage.partial());
+        } catch (ArithmeticException unsupported) {
+            return new Progress(0, false, true);
+        }
+    }
+
+    private final class Run {
+        private final Map<Integer, Long> items = new HashMap<>();
+        private final Map<Integer, Long> currencies;
+        private final boolean walletKnown;
+        private int visited;
+
+        Run(ForgeProjectPlanner.Inventory inventory, Map<Integer, Long> wallet) {
+            inventory.sellable().forEach(this::addItems);
+            inventory.accountBound().forEach(this::addItems);
+            inventory.characterBound().values().forEach(stock -> stock.forEach(this::addItems));
+            walletKnown = wallet != null;
+            currencies = walletKnown ? new HashMap<>(wallet) : new HashMap<>();
+        }
+
+        private void addItems(int itemId, int count) {
+            if (count > 0) items.merge(itemId, (long) count, ForgeProjectPlanner::add);
+        }
+
+        private Coverage item(int itemId, long needed, Recipe selected, int depth, Set<Integer> path) {
+            if (needed <= 0) return new Coverage(1, true, false, false);
+            long owned = take(items, itemId, needed);
+            long missing = needed - owned;
+            if (missing == 0) return new Coverage(1, true, false, false);
+            double ownedFraction = (double) owned / needed;
+            if (++visited > ForgeProjectPlanner.MAX_NODES || depth >= ForgeProjectPlanner.MAX_DEPTH) {
+                return new Coverage(ownedFraction, false, false, true);
+            }
+            boolean clover = itemId == ForgeProjectPlanner.MYSTIC_CLOVER;
+            Recipe recipe = clover ? ForgeReferenceRecipes.all().getFirst().asPlanningTarget()
+                    : selected != null ? selected : producers.get(itemId);
+            if (recipe == null || recipe.hasExpectedYield()) return new Coverage(ownedFraction, false, false, false);
+            if (path.contains(recipe.recipeId)) return new Coverage(ownedFraction, false, false, true);
+            long crafts = clover ? Math.ceilDiv(ForgeProjectPlanner.mul(missing, 100L), ForgeProjectPlanner.CLOVER_PERCENT)
+                    : Math.ceilDiv(missing, (long) recipe.outputCount);
+            Set<Integer> next = new HashSet<>(path);
+            next.add(recipe.recipeId);
+            double sum = 0;
+            int shares = 0;
+            boolean ready = true, estimated = clover, partial = false;
+            for (Ingredient ingredient : recipe.ingredients) {
+                Coverage child = item(ingredient.itemId, ForgeProjectPlanner.mul(ingredient.count, crafts), null, depth + 1, next);
+                sum += child.fraction(); shares++;
+                ready &= child.ready(); estimated |= child.estimated(); partial |= child.partial();
+            }
+            for (CurrencyRequirement currency : recipe.currencies) {
+                Coverage child = currency(currency.currencyId(), ForgeProjectPlanner.mul(currency.count(), crafts), depth + 1, next);
+                sum += child.fraction(); shares++;
+                ready &= child.ready(); estimated |= child.estimated(); partial |= child.partial();
+            }
+            if (recipe.vendorCopper > 0) {
+                Coverage gold = currency(COINS, ForgeProjectPlanner.mul(recipe.vendorCopper, crafts), depth + 1, next);
+                sum += gold.fraction(); shares++;
+                ready &= gold.ready(); partial |= gold.partial();
+            }
+            if (shares == 0) return new Coverage(ownedFraction, false, false, true);
+            if (ready && !clover) {
+                long surplus = ForgeProjectPlanner.mul(crafts, (long) recipe.outputCount) - missing;
+                if (surplus > 0) items.merge(itemId, surplus, ForgeProjectPlanner::add);
+            }
+            return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, estimated, partial);
+        }
+
+        private Coverage currency(int currencyId, long needed, int depth, Set<Integer> path) {
+            long owned = take(currencies, currencyId, needed);
+            long missing = needed - owned;
+            if (missing <= 0) return new Coverage(1, true, false, false);
+            var production = CurrencyProduction.forCurrency(currencyId);
+            if (production.isEmpty()) return new Coverage((double) owned / needed, false, false, !walletKnown);
+            var source = production.get();
+            long ownedContainers = take(items, source.itemId(), Math.ceilDiv(missing, (long) source.yield()));
+            long credits = ForgeProjectPlanner.mul(ownedContainers, (long) source.yield());
+            long used = Math.min(missing, credits);
+            owned += used;
+            missing -= used;
+            if (credits > used) currencies.merge(currencyId, credits - used, ForgeProjectPlanner::add);
+            if (missing == 0) return new Coverage(1, true, false, false);
+            double fraction = (double) owned / needed;
+            long containers = Math.ceilDiv(missing, (long) source.yield());
+            Coverage crafted = item(source.itemId(), containers, null, depth, path);
+            if (crafted.ready()) {
+                long surplus = ForgeProjectPlanner.mul(containers, (long) source.yield()) - missing;
+                if (surplus > 0) currencies.merge(currencyId, surplus, ForgeProjectPlanner::add);
+            }
+            return new Coverage(fraction + (1 - fraction) * crafted.fraction(), crafted.ready(), crafted.estimated(),
+                    !crafted.ready() && (!walletKnown || crafted.partial()));
+        }
+    }
+
+    private static long take(Map<Integer, Long> stock, int id, long needed) {
+        long used = Math.min(needed, Math.max(0, stock.getOrDefault(id, 0L)));
+        if (used > 0) stock.put(id, stock.get(id) - used);
+        return used;
+    }
+}

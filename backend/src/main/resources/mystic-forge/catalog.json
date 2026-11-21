@@ -12,8 +12,8 @@
  },
  "coverage": {
   "sourceRows": 2569,
-  "includedRecipes": 1557,
-  "fixedOutput": 1479,
+  "includedRecipes": 1560,
+  "fixedOutput": 1482,
   "expectedYield": 78,
   "expectedYieldByCategory": {
    "commonLowerTiers": 35,
@@ -21,12 +21,12 @@
    "fineLowerTiers": 28,
    "fineTierFiveToSix": 7
   },
-  "excludedRows": 1012,
+  "excludedRows": 1009,
   "excludedByReason": {
    "ingredient slot missing index/quantity/id/name": 13,
    "no unique matching source template": 341,
    "output quantity is missing or not a positive integer (display-only/average row)": 1,
-   "page mentions random outcomes and the template has no verified fixed output": 175,
+   "page mentions random outcomes and the template has no verified fixed output": 172,
    "random output without a verified mean for its category": 32,
    "source row lacks wiki forge id / output id / ingredient ids (older or custom page)": 447,
    "source template marks the output random/average/alternative": 3
@@ -416,6 +416,7 @@
  {"forgeId":3069001,"page":"The Juggernaut#recipe1","revision":2887031,"outputItemId":30690,"outputCount":1,"ingredients":[[29170,1],[19649,1],[19626,1],[19674,1]]},
  {"forgeId":3069101,"page":"Kamohoali'i Kotaki#recipe1","revision":3031653,"outputItemId":30691,"outputCount":1,"ingredients":[[29171,1],[19657,1],[19626,1],[19674,1]]},
  {"forgeId":3069201,"page":"The Moot#recipe1","revision":2951292,"outputItemId":30692,"outputCount":1,"ingredients":[[29173,1],[19650,1],[19626,1],[19674,1]]},
+ {"forgeId":3069301,"page":"Quip#recipe1","revision":2887025,"outputItemId":30693,"outputCount":1,"ingredients":[[29174,1],[19651,1],[19626,1],[19674,1]]},
  {"forgeId":3069401,"page":"The Predator#recipe1","revision":3219177,"outputItemId":30694,"outputCount":1,"ingredients":[[29175,1],[19661,1],[19626,1],[19674,1]]},
  {"forgeId":3069501,"page":"Meteorlogicus#recipe1","revision":3211574,"outputItemId":30695,"outputCount":1,"ingredients":[[29176,1],[19652,1],[19626,1],[19674,1]]},
  {"forgeId":3069601,"page":"The Flameseeker Prophecies#recipe1","revision":2887030,"outputItemId":30696,"outputCount":1,"ingredients":[[29177,1],[19653,1],[19626,1],[19674,1]]},
@@ -765,6 +766,7 @@
  {"forgeId":7259101,"page":"Attuned Ossa Family Signet Ring (Infused)#recipe1","revision":2809859,"outputItemId":72591,"outputCount":1,"ingredients":[[39603,1],[73381,1],[49424,1],[20796,1]]},
  {"forgeId":7259102,"page":"Attuned Ossa Family Signet Ring (Infused)#recipe2","revision":2809859,"outputItemId":72591,"outputCount":1,"ingredients":[[74848,1],[38024,1],[38023,3],[38014,5]]},
  {"forgeId":7268001,"page":"Essence of the East#recipe1","revision":2072171,"outputItemId":72680,"outputCount":1,"ingredients":[[70915,1],[76597,1],[72427,1],[19976,50]]},
+ {"forgeId":7271301,"page":"HOPE#recipe1","revision":3127416,"outputItemId":72713,"outputCount":1,"ingredients":[[76399,1],[71820,1],[77086,1],[73239,1]]},
  {"forgeId":7287301,"page":"Mini Snuggles#recipe1","revision":2757503,"outputItemId":72873,"outputCount":1,"ingredients":[[76608,3],[24277,1],[19925,1],[37070,1]]},
  {"forgeId":7293201,"page":"Attuned Healing Signet (Infused)#recipe1","revision":2809848,"outputItemId":72932,"outputCount":1,"ingredients":[[39599,1],[73381,1],[49424,1],[20796,1]]},
  {"forgeId":7293202,"page":"Attuned Healing Signet (Infused)#recipe2","revision":2809848,"outputItemId":72932,"outputCount":1,"ingredients":[[71854,1],[38024,1],[38023,3],[38014,5]]},
@@ -1387,6 +1389,7 @@
  {"forgeId":9573701,"page":"Master Specter's Ring (Infused)#recipe1","revision":2701007,"outputItemId":95737,"outputCount":1,"ingredients":[[96515,1],[38024,1],[38023,3],[38014,5]]},
  {"forgeId":9574001,"page":"Poem on Shields#recipe1","revision":3106072,"outputItemId":95740,"outputCount":1,"ingredients":[[96151,10],[97790,10],[45858,1],[71148,1]]},
  {"forgeId":9577701,"page":"Gift of Aurene's Flight#recipe1","revision":2503621,"outputItemId":95777,"outputCount":1,"ingredients":[[97800,1],[79418,100],[97655,1],[76427,1]]},
+ {"forgeId":9580801,"page":"Aurene's Argument#recipe1","revision":3162026,"outputItemId":95808,"outputCount":1,"ingredients":[[96493,1],[96915,1],[96033,1],[96137,1]]},
  {"forgeId":9580901,"page":"Poem on Pistols#recipe1","revision":2419029,"outputItemId":95809,"outputCount":1,"ingredients":[[96151,10],[97790,10],[45833,1],[71148,1]]},
  {"forgeId":9584601,"page":"Gift of Aurene's Tail#recipe1","revision":2503630,"outputItemId":95846,"outputCount":1,"ingredients":[[96035,1],[79418,100],[97655,1],[76427,1]]},
  {"forgeId":9592201,"page":"Gift of Aurene's Breath#recipe1","revision":2503617,"outputItemId":95922,"outputCount":1,"ingredients":[[97257,1],[79418,100],[97655,1],[76427,1]]},

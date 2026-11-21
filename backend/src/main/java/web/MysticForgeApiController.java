@@ -26,6 +26,7 @@ import web.dto.MysticForgeDtos.*;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -52,12 +53,19 @@ public class MysticForgeApiController {
     private final ItemRepository items;
     private final TpPriceRepository tp;
     private final application.TradingPostRefreshCoordinator priceRefresh;
+    private final application.BackgroundTasks tasks;
 
     @Autowired
     public MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
-                                    application.TradingPostRefreshCoordinator priceRefresh) {
+                                    application.TradingPostRefreshCoordinator priceRefresh,
+                                    application.BackgroundTasks tasks) {
         this(profitService, accessHttp, MysticForgeCatalogLoader::bundled, new ItemRepository(), new TpPriceRepository(),
-                priceRefresh);
+                priceRefresh, tasks);
+    }
+
+    public MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
+                                    application.TradingPostRefreshCoordinator priceRefresh) {
+        this(profitService, accessHttp, priceRefresh, null);
     }
 
     MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
@@ -68,6 +76,14 @@ public class MysticForgeApiController {
     MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
                              Supplier<MysticForgeCatalog> catalog, ItemRepository items, TpPriceRepository tp,
                              application.TradingPostRefreshCoordinator priceRefresh) {
+        this(profitService, accessHttp, catalog, items, tp, priceRefresh, null);
+    }
+
+    private MysticForgeApiController(CachedCraftingProfitService profitService, web.access.AccountAccessHttp accessHttp,
+                                    Supplier<MysticForgeCatalog> catalog, ItemRepository items, TpPriceRepository tp,
+                                    application.TradingPostRefreshCoordinator priceRefresh,
+                                    application.BackgroundTasks tasks) {
+        this.tasks = tasks;
         this.priceRefresh = priceRefresh;
         this.profitService = profitService;
         this.accessHttp = accessHttp;
@@ -82,7 +98,12 @@ public class MysticForgeApiController {
         Set<Integer> ids = new HashSet<>();
         for (Recipe r : c.recipes()) ids.add(r.outputItemId);
         for (var ref : ForgeReferenceRecipes.all()) ids.add(ref.outputItemId());
-        Map<Integer, ItemRepository.ItemInfo> info = items.loadItems(ids);
+        var paths = ForgeRecipePaths.differences(c.recipes());
+        Set<Integer> pathItemIds = new HashSet<>();
+        paths.values().forEach(ingredients -> ingredients.forEach(ingredient -> pathItemIds.add(ingredient.itemId)));
+        Set<Integer> metadataIds = new HashSet<>(ids);
+        metadataIds.addAll(pathItemIds);
+        Map<Integer, ItemRepository.ItemInfo> info = items.loadItems(metadataIds);
         Map<Integer, PriceQuote> quotes = tp.loadCurrentTradeableQuotes(ids);
         List<RecipeRow> rows = new ArrayList<>();
         for (Recipe r : c.recipes()) {
@@ -90,16 +111,18 @@ public class MysticForgeApiController {
             MysticForgeCatalog.Provenance p = c.provenance(r.recipeId);
             rows.add(row(r.recipeId, r.outputItemId, y != null ? "EXPECTED" : "FIXED", r.outputCount,
                     y == null ? null : y.mean().toPlainString(), y == null ? null : y.max(), r.ingredients.size(),
-                    p == null ? null : p.page(), p == null ? null : p.revision(), info, quotes));
+                    p == null ? null : p.page(), p == null ? null : p.revision(), info, quotes,
+                    ForgeRecipePaths.label(paths.get(r.recipeId), info, r.outputItemId)));
         }
         for (var ref : ForgeReferenceRecipes.all()) {
             rows.add(row(ref.recipeId(), ref.outputItemId(), "REFERENCE_RANDOM", 0, null, null, ref.ingredients().size(),
-                    ForgeReferenceRecipes.SOURCE_PAGE, ref.revision(), info, quotes));
+                    ForgeReferenceRecipes.SOURCE_PAGE, ref.revision(), info, quotes,
+                    ref.possibleOutputs() == 1 ? "Single-Clover recipe" : "Ten-Clover recipe"));
         }
         // Cold catalogue: output items whose cached metadata is incomplete (no name/type, so no Weapon subtype to
         // search) are completed in the background on the shared single-flight run (public ids only, no account, no
         // planner). This request never waits for it; the client rereads while "completing" is true.
-        boolean completing = false;
+        boolean completing = completeCatalogueDetails(info, pathItemIds);
         if (priceRefresh != null) {
             // A failed completeness/quote check or failed admission is unknown, never "complete": it is reported as
             // completing so the client's bounded rereads (and manual Retry) repair it without a raw error.
@@ -107,7 +130,7 @@ public class MysticForgeApiController {
             // Same canonical completeness policy as IconSync/project path (name, type, rarity, icon, forge flag,
             // gear subtype). Short read, connection closed before admission; a failed read skips that demand only.
             Set<Integer> positive = new HashSet<>();
-            for (int id : ids) if (id > 0) positive.add(id);
+            for (int id : metadataIds) if (id > 0) positive.add(id);
             Set<Integer> demand = new HashSet<>();
             try {
                 demand.addAll(items.incompleteMetadataIds(positive));
@@ -116,7 +139,7 @@ public class MysticForgeApiController {
             }
             // Complete metadata is not a current quote: stale/missing tradeable quotes get the same scoped demand.
             try {
-                demand.addAll(tp.staleOrMissingTradeable(positive));
+                demand.addAll(tp.staleOrMissingTradeable(ids));
             } catch (Exception quoteReadFailure) {
                 checkFailed = true; // unknown, not complete; metadata demand (if any) is still admitted
             }
@@ -127,26 +150,52 @@ public class MysticForgeApiController {
                     checkFailed = true; // nothing was admitted: still pending so the bounded reread retries admission
                 }
             }
-            completing = checkFailed || !demand.isEmpty();
+            completing |= checkFailed || !demand.isEmpty();
         }
         return new Catalogue(c.status(), c.source(), c.license(), c.recipes().size(), ForgeReferenceRecipes.all().size(), rows,
                 completing);
     }
 
+    private boolean completeCatalogueDetails(Map<Integer, ItemRepository.ItemInfo> info, Set<Integer> pathItemIds) {
+        if (tasks == null) return false;
+        Set<Integer> missing = new HashSet<>();
+        for (var item : info.values()) {
+            boolean missingWeight = "Armor".equals(item.type) && (item.weightClass == null || item.weightClass.isBlank());
+            boolean missingPathType = pathItemIds.contains(item.itemId) && "Trinket".equals(item.type)
+                    && (item.subtype == null || item.subtype.isBlank());
+            if (missingWeight || missingPathType) {
+                missing.add(item.itemId);
+            }
+        }
+        if (missing.isEmpty()) return false;
+        try {
+            tasks.submit("FORGE_CATALOGUE_DETAILS", () -> sync.EquipmentDetailsSync.repair(
+                    missing, Set.of(), sync.EquipmentDetailsSync.LIVE, Clock.systemUTC()));
+        } catch (application.BackgroundTasks.OperationAlreadyRunning active) {
+            // The existing bounded catalogue reread picks up the completed public cache.
+        }
+        return true;
+    }
+
     private static RecipeRow row(int recipeId, int out, String outcome, int count, String mean, Integer max, int kinds,
                                  String page, Long revision, Map<Integer, ItemRepository.ItemInfo> info,
-                                 Map<Integer, PriceQuote> quotes) {
+                                 Map<Integer, PriceQuote> quotes, String pathLabel) {
         ItemRepository.ItemInfo it = info.get(out);
         PriceQuote q = quotes.get(out);
         String type = it == null ? null : it.type;
-        String category = "EXPECTED".equals(outcome) || "REFERENCE_RANDOM".equals(outcome) || "CraftingMaterial".equals(type)
+        boolean gift = page != null && page.startsWith("Gift of ")
+                || it != null && it.name != null && it.name.startsWith("Gift of ");
+        String category = gift ? "OTHER"
+                : "EXPECTED".equals(outcome) || "REFERENCE_RANDOM".equals(outcome) || "CraftingMaterial".equals(type)
                 ? "MATERIALS"
                 : "Weapon".equals(type) ? "WEAPONS" : "Armor".equals(type) ? "ARMOR" : "OTHER";
         return new RecipeRow(recipeId, out, it == null ? null : it.name, it == null ? null : application.icons.ItemIconUrls.iconUrlFor(out, it.iconUrl), type,
                 it == null ? null : it.subtype, category, outcome, count, mean, max,
                 q == null || q.buyUnit == null || q.buyUnit <= 0 ? null : q.buyUnit,
                 q == null || q.sellUnit == null || q.sellUnit <= 0 ? null : q.sellUnit,
-                page, revision, wiki(it == null ? null : it.name), kinds);
+                page, revision, wiki(it == null ? null : it.name), kinds,
+                it == null ? null : it.rarity, it == null ? null : it.weightClass, pathLabel,
+                "MATERIALS".equals(category) ? craft.MaterialTier.of(out) : null);
     }
 
     static String currencyWiki(int id, String name) {
@@ -183,7 +232,7 @@ public class MysticForgeApiController {
             // No source ever synchronized: never an empty plan that reads as "nothing needed".
             return ResponseEntity.status(HttpStatus.ACCEPTED).body(new Project(recipeId, null, null, null, target, 0, null, false, "account data not yet available",
                     false, 0, true, List.of(), null, List.of(), List.of(), null, null, null, null, freshness,
-                    settingsDto(settings), null, null, 0, null));
+                    settingsDto(settings), null, null, 0, null, List.of(), null, null, List.of(), List.of()));
         }
         return ResponseEntity.ok(toProject(outcome.data(), freshness));
     }
@@ -211,7 +260,6 @@ public class MysticForgeApiController {
     static Project toProject(CraftingProfitService.ForgeProjectData d, CalculationFreshnessDto freshness) {
         ForgeProjectPlanner.Project p = d.project();
         Map<Integer, ItemRepository.ItemInfo> info = d.items();
-        boolean random = d.referenceOnly() || d.batchTarget();
         List<ShoppingDto> shopping = new ArrayList<>();
         List<Item> unpriced = new ArrayList<>();
         boolean partialLine = false;
@@ -253,10 +301,9 @@ public class MysticForgeApiController {
         }
         // Combined full-path deduction (bought + valued wallet Notes + valued own materials): each subtotal is safe, the
         // sum may not be. Range failure is decided independently of any output quote or comparison.
-        boolean fixedPath = !d.referenceOnly() && !d.batchTarget();
         boolean deductionOverflow = false;
         Long deduction = null;
-        if (fixedPath && p.complete()) {
+        if (!d.referenceOnly() && p.complete()) {
             try { deduction = fullPathDeduction(p, ownValue); }
             catch (ArithmeticException overflow) { deductionOverflow = true; }
         }
@@ -276,20 +323,16 @@ public class MysticForgeApiController {
                 inputs.add(new CurrencyDto(c.currencyId(), cname, CurrencyIcons.urlFor(c.currencyId()),
                         currencyWiki(c.currencyId(), cname), c.needed(), null, null));
             }
-            Long cash = e.marginOnShoppingCopper(), margin = e.marginCopper();
-            boolean conditionalEcon = e.conditional();
-            if (e.fixedOutput()) {
-                // Equipment full-path margin from the actual consumed quantities: cash-only subtracts only what is bought;
-                // the full margin also subtracts valued wallet Notes and (valueOwn=Yes) consumed owned inputs exactly once.
-                Long net = e.expectedNetProceedsCopper();
-                boolean known = net != null && complete && p.unpricedItemIds().isEmpty();
-                try {
-                    cash = known ? ForgeProjectPlanner.sub(net, p.knownCopper()) : null;
-                    margin = known && deduction != null ? ForgeProjectPlanner.sub(net, deduction) : null;
-                } catch (ArithmeticException overflow) { cash = null; margin = null; }
-                // Recomputed from full-path facts, not the structural flag of untradeable direct gifts.
-                conditionalEcon = fullPathConditional(p, ownValue) || !complete;
-            }
+            // Both fixed projects and promotion batches use the actual consumed path. Expected proceeds stay estimates;
+            // owned materials and valued wallet Notes enter the deduction exactly once under the selected settings.
+            Long net = e.expectedNetProceedsCopper();
+            boolean known = net != null && complete && p.unpricedItemIds().isEmpty();
+            Long cash, margin;
+            try {
+                cash = known ? ForgeProjectPlanner.sub(net, p.knownCopper()) : null;
+                margin = known && deduction != null ? ForgeProjectPlanner.sub(net, deduction) : null;
+            } catch (ArithmeticException overflow) { cash = null; margin = null; }
+            boolean conditionalEcon = fullPathConditional(p, ownValue) || !complete;
             econ = new EconomicsDto(e.outputUnitSellCopper(), e.expectedGrossProceedsCopper(), e.feeCopper(),
                     e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.goldInputCopper(), inputs, unpricedInputs,
                     cash, margin, conditionalEcon, e.fixedOutput());
@@ -308,11 +351,42 @@ public class MysticForgeApiController {
         String note = d.referenceOnly() ? "Random outcome: reference inputs only; no output, profit or completion is claimed."
                 : null;
         Long guaranteed = d.referenceOnly() || cmpOverflow || p.guaranteedOutput() < 0 ? null : p.guaranteedOutput();
-        return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, random ? "BATCHES" : "OUTPUT_QUANTITY",
+        return new Project(p.recipeId(), item(p.outputItemId(), info), outcome, "OUTPUT_QUANTITY",
                 d.requestedTarget(), p.batches(), guaranteed, complete, reason,
                 d.walletKnown(), p.knownCopper(), !p.unpricedItemIds().isEmpty() || !complete || partialLine, unpriced, node(p.tree(), info, d.referenceOnly(), stepPositions(p)), shopping,
                 cur, note, d.referenceOnly() ? null : seed, econ, notes, freshness, settingsDto(p.settings()), ownValue, cloverDto,
-                p.rootOwned(), cmp);
+                p.rootOwned(), cmp, p.items().stream().filter(l -> l.fromOwned() > 0)
+                        .map(l -> new OwnedItemDto(item(l.itemId(), info), l.fromOwned(),
+                                d.ownedLocations().getOrDefault(l.itemId(), List.of()),
+                                p.ownValue() == null ? Long.valueOf(0) : p.ownValue().itemCopper().get(l.itemId()))).toList(), recipePart(d.recipeTree(), info),
+                d.materialProgress() == null ? null : new MaterialProgressDto(d.materialProgress().percent(),
+                        d.materialProgress().estimated(), d.materialProgress().partial()),
+                d.baseIngredients().stream().map(ingredient -> new BaseIngredientDto(
+                        item(ingredient.itemId, info), ingredient.count)).toList(),
+                craft.ForgeCraftingInstructions.of(p).stream().map(instruction -> {
+                    var operation = instruction.operation();
+                    return new CraftingStepDto(item(operation.itemId(), info), operation.recipeId(),
+                            operation.source() == null ? null : operation.source().name(), instruction.crafts(),
+                            d.referenceOnly() && instruction.root() ? 0 : instruction.produced(), instruction.toAcquire(), instruction.newSurplus(),
+                            operation.disciplines(), operation.hint(), operation.recipeKnown(), operation.performable(),
+                            operation.assignedCharacter(), operation.cutoff(), instruction.root(),
+                            instruction.ingredients().stream().map(ingredient -> new CraftingIngredientDto(
+                                    item(ingredient.itemId(), info), ingredient.quantity())).toList());
+                }).toList());
+    }
+
+    private static RecipePartDto recipePart(ForgeProjectPlanner.RecipePart part, Map<Integer, ItemRepository.ItemInfo> info) {
+        if (part == null) return null;
+        List<RecipeCurrencyDto> currencies = part.currencies().stream().map(c -> {
+            String name = craft.KnownCurrencies.name(c.currencyId());
+            return new RecipeCurrencyDto(c.currencyId(), name, CurrencyIcons.urlFor(c.currencyId()),
+                    currencyWiki(c.currencyId(), name), c.needed(), c.acquired(), c.progressPercent(),
+                    c.coveredByParent(), c.approximate());
+        }).toList();
+        return new RecipePartDto(item(part.itemId(), info), part.quantity(),
+                part.children().stream().map(child -> recipePart(child, info)).toList(), currencies,
+                part.copper(), part.attempts(), part.approximate(), part.cutoff(),
+                part.acquired(), part.progressPercent(), part.coveredByParent());
     }
 
     /** Valued wallet Notes (estimate) replace nothing already charged: produced Notes are priced through their inputs. */

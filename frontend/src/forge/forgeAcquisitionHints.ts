@@ -1,29 +1,40 @@
-/** Player-facing source hints, not acquisition recipes or inputs to the calculation. */
-export interface ForgeAcquisitionHint {
-  action: string
-  source: string
-  detail: string
-  href: string
+/** Display metadata only; quantities and costs come from the backend plan. */
+export interface ForgeMerchant {
+  name: string
+  wikiUrl: string
+  waypoint: { name: string; wikiUrl: string; chatCode: string }
+  condition?: string
 }
 
-// Verified against the linked official Wiki pages. These per-item hints never alter plan totals.
-const hints: Readonly<Record<number, ForgeAcquisitionHint>> = {
-  20797: {
-    action: 'Buy', source: 'Miyani / Mystic Forge Attendant',
-    detail: '200 Spirit Shards each.', href: 'https://wiki.guildwars2.com/wiki/Bloodstone_Shard'
-  },
-  19925: {
-    action: 'Buy', source: 'Tactician Deathstrider · Straits of Devastation',
-    detail: '2,100 Karma each at the Temple of Balthazar, while the temple is secured.',
-    href: 'https://wiki.guildwars2.com/wiki/Obsidian_Shard#Acquisition'
-  },
-  19675: {
-    action: 'Acquire', source: 'Mystic Forge / other sources',
-    detail: 'Forge attempts use Obsidian Shards, Mystic Coins, ectoplasm and Philosopher’s Stones or Mystic Crystals. The outcome is random; vendor and reward options are also available.',
-    href: 'https://wiki.guildwars2.com/wiki/Mystic_Clover#Acquisition'
+const miyani: ForgeMerchant = {
+  name: 'Miyani',
+  wikiUrl: 'https://wiki.guildwars2.com/wiki/Miyani',
+  waypoint: {
+    name: 'Trader’s Forum Waypoint',
+    wikiUrl: 'https://wiki.guildwars2.com/wiki/Trader%27s_Forum_Waypoint',
+    chatCode: '[&BBAEAAA=]'
   }
 }
 
-export function forgeAcquisitionHint(itemId: number): ForgeAcquisitionHint | undefined {
-  return hints[itemId]
+const merchants: Readonly<Record<number, ForgeMerchant>> = {
+  20797: miyani,
+  20796: miyani,
+  20799: miyani,
+  20852: miyani,
+  19663: miyani,
+  79418: { ...miyani, condition: 'Scholar of Secrets mastery' },
+  19925: {
+    name: 'Tactician Deathstrider',
+    wikiUrl: 'https://wiki.guildwars2.com/wiki/Tactician_Deathstrider',
+    waypoint: {
+      name: 'Glorious Victory Waypoint',
+      wikiUrl: 'https://wiki.guildwars2.com/wiki/Glorious_Victory_Waypoint',
+      chatCode: '[&BPoCAAA=]'
+    },
+    condition: 'Temple secured'
+  }
+}
+
+export function forgeMerchant(itemId: number): ForgeMerchant | undefined {
+  return merchants[itemId]
 }

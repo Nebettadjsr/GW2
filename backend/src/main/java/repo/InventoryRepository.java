@@ -52,6 +52,43 @@ public class InventoryRepository {
         return inv;
     }
 
+    /** Cached places to find the requested items, from the same account snapshot as the plan. */
+    public Map<Integer, List<String>> loadItemLocations(Connection con, model.AccountScope scope,
+                                                       Set<Integer> itemIds) throws SQLException {
+        if (itemIds.isEmpty()) return Map.of();
+        ManagedSchema.requireManagedAccountSchema(con, "owned item locations");
+        String sql = """
+                SELECT item_id, location FROM (
+                    SELECT item_id, 'Storage' AS location, 0 AS location_order
+                    FROM account_materials WHERE account_id = ? AND count > 0
+                    UNION
+                    SELECT item_id, 'Bank' AS location, 1 AS location_order
+                    FROM account_bank WHERE account_id = ? AND count > 0
+                    UNION
+                    SELECT i.item_id, c.name AS location, 2 AS location_order
+                    FROM character_items i
+                    JOIN characters c ON c.account_id = i.account_id AND c.character_id = i.character_id
+                    WHERE i.account_id = ? AND i.count > 0
+                ) places
+                WHERE item_id = ANY (?)
+                ORDER BY location_order, location, item_id
+                """;
+        Map<Integer, List<String>> result = new HashMap<>();
+        java.sql.Array ids = con.createArrayOf("integer", itemIds.toArray(Integer[]::new));
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            for (int index = 1; index <= 3; index++) ps.setObject(index, scope.accountId());
+            ps.setArray(4, ids);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) result.computeIfAbsent(rs.getInt("item_id"), id -> new ArrayList<>())
+                        .add(rs.getString("location"));
+            }
+        } finally {
+            ids.free();
+        }
+        result.replaceAll((id, locations) -> List.copyOf(locations));
+        return Map.copyOf(result);
+    }
+
     /**
      * One account's owned quantity split by binding usability for {@code selectedCharacterName} (DOMAIN_SPEC.md section 11.1 / DQ-007).
      *

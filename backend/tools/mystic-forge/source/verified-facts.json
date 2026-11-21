@@ -10,6 +10,32 @@
     "fineTierFiveToSix": "6.91"
   },
   "meanScope": "Apply only to the respective verified category and tier. No dust, clover or generic-random mean is inferred from these values.",
+  "fixedOutputReviews": [
+    {
+      "forgeId": 9580801, "page": "Aurene's Argument#recipe1", "revision": 3162026,
+      "outputItemId": 95808, "outputCount": 1,
+      "ingredients": [[96493, 1], [96915, 1], [96033, 1], [96137, 1]],
+      "source": "https://wiki.guildwars2.com/wiki/Aurene%27s_Argument",
+      "checkedDate": "2026-11-21",
+      "reason": "The four-input recipe produces one fixed legendary pistol. Randomness mentioned elsewhere on the page does not describe its crafting output."
+    },
+    {
+      "forgeId": 3069301, "page": "Quip#recipe1", "revision": 2887025,
+      "outputItemId": 30693, "outputCount": 1,
+      "ingredients": [[29174, 1], [19651, 1], [19626, 1], [19674, 1]],
+      "source": "https://wiki.guildwars2.com/wiki/Quip",
+      "checkedDate": "2026-11-21",
+      "reason": "The four-input recipe produces one fixed legendary pistol. The page-wide randomness signal is unrelated to this recipe."
+    },
+    {
+      "forgeId": 7271301, "page": "HOPE#recipe1", "revision": 3127416,
+      "outputItemId": 72713, "outputCount": 1,
+      "ingredients": [[76399, 1], [71820, 1], [77086, 1], [73239, 1]],
+      "source": "https://wiki.guildwars2.com/wiki/HOPE",
+      "checkedDate": "2026-11-21",
+      "reason": "The four-input recipe produces one fixed legendary pistol. Random shots and footfall colors describe cosmetic effects."
+    }
+  ],
   "vendors": [
     { "itemId": 20796, "name": "Philosopher's Stone", "quantity": 10, "currencyId": 23, "currencyUnits": 1, "source": "https://wiki.guildwars2.com/wiki/Philosopher%27s_Stone" },
     { "itemId": 20799, "name": "Mystic Crystal", "quantity": 5, "currencyId": 23, "currencyUnits": 3, "source": "https://wiki.guildwars2.com/wiki/Mystic_Crystal" },

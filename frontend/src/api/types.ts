@@ -907,6 +907,10 @@ export interface ForgeRecipeRow {
   iconUrl: string | null
   itemType: string | null
   itemSubtype: string | null
+  rarity?: string | null
+  weightClass?: string | null
+  pathLabel?: string | null
+  materialTier?: number | null
   category: 'WEAPONS' | 'ARMOR' | 'MATERIALS' | 'OTHER'
   outcome: ForgeOutcome
   outputCount: number
@@ -935,6 +939,58 @@ export interface ForgeCatalogue {
 
 export interface ForgeItem { itemId: number; name: string | null; iconUrl: string | null; wikiUrl: string | null }
 
+/** Direct ingredients for one batch of the selected recipe. */
+export interface ForgeBaseIngredient { item: ForgeItem; quantity: number }
+
+export interface ForgeItemSummary {
+  type: string | null
+  subtype: string | null
+  rarity: string | null
+  level: number | null
+  minPower: number | null
+  maxPower: number | null
+  damageType: string | null
+  defense: number | null
+  weightClass: string | null
+  binding: string | null
+  prefix: string | null
+  complete: boolean
+}
+
+export interface ForgeItemSummaryResponse {
+  item: ForgeItemSummary | null
+  instantBuyCopper: number | null
+  instantSellCopper: number | null
+  completing: boolean
+}
+
+/** Complete reference ingredients for the requested output, independent of the remaining-work plan. */
+export interface ForgeRecipePart {
+  item: ForgeItem
+  quantity: number
+  children: ForgeRecipePart[]
+  currencies: ForgeRecipeCurrency[]
+  copper: number | null
+  attempts: number | null
+  approximate: boolean
+  cutoff: string | null
+  acquired: number
+  progressPercent: number
+  coveredByParent: boolean
+}
+
+export interface ForgeRecipeCurrency {
+  currencyId: number
+  name: string
+  iconUrl: string | null
+  wikiUrl: string | null
+  needed: number
+  acquired: number | null
+  progressPercent: number | null
+  coveredByParent: boolean
+  approximate: boolean
+}
+
 export interface ForgeNode {
   item: ForgeItem
   needed: number
@@ -959,6 +1015,24 @@ export interface ForgeNode {
   newSurplus: number
   /** 1-based position in the backend's dependency-ordered step list; null when the node is not a planned step. */
   step?: number | null
+}
+
+export interface ForgeCraftingStep {
+  item: ForgeItem
+  recipeId: number | null
+  recipeSource: string | null
+  crafts: number
+  produced: number
+  toAcquire: number
+  newSurplus: number
+  disciplines: string | null
+  hint: string | null
+  recipeKnown: boolean | null
+  performable: boolean
+  assignedCharacter: string | null
+  cutoff: string | null
+  root: boolean
+  ingredients: { item: ForgeItem; quantity: number }[]
 }
 
 export interface ForgeCurrency {
@@ -1025,7 +1099,12 @@ export interface ForgeProject {
   goldCostPartial: boolean
   unpricedItems: ForgeItem[]
   tree: ForgeNode | null
+  recipeTree?: ForgeRecipePart | null
+  materialProgress?: { percent: number; estimated: boolean; partial: boolean } | null
+  baseIngredients?: ForgeBaseIngredient[]
+  craftingSteps?: ForgeCraftingStep[]
   shopping: ForgeShoppingLine[]
+  ownedItems?: { item: ForgeItem; count: number; locations?: string[]; valueCopper?: number | null }[]
   currencies: ForgeCurrency[]
   note: string | null
   seed: ForgeSeed | null

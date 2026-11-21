@@ -10,7 +10,8 @@ public final class MysticForgeDtos {
     public record RecipeRow(int recipeId, int outputItemId, String name, String iconUrl, String itemType,
                             String itemSubtype, String category, String outcome, int outputCount,
                             String expectedMean, Integer expectedMax, Integer buyUnitCopper, Integer sellUnitCopper,
-                            String sourcePage, Long sourceRevision, String wikiUrl, int ingredientKinds) { }
+                            String sourcePage, Long sourceRevision, String wikiUrl, int ingredientKinds,
+                            String rarity, String weightClass, String pathLabel, Integer materialTier) { }
 
     public record Catalogue(String status, String source, String license, int recipeCount, int referenceCount,
                             List<RecipeRow> recipes, boolean completing) { }
@@ -88,11 +89,36 @@ public final class MysticForgeDtos {
     /** A currency cost of a vendor purchase: exact, never converted to gold. */
     public record CurrencyCostDto(int currencyId, String name, long count) { }
 
+    /** Total consumed-stock value: zero when valuation is off; null when its value is unavailable. */
+    public record OwnedItemDto(Item item, long count, List<String> locations, Long valueCopper) { }
+
+    public record RecipeCurrencyDto(int currencyId, String name, String iconUrl, String wikiUrl, long needed,
+                                    Long acquired, Integer progressPercent, boolean coveredByParent, boolean approximate) { }
+
+    public record RecipePartDto(Item item, long quantity, List<RecipePartDto> children, List<RecipeCurrencyDto> currencies,
+                                Long copper, Long attempts, boolean approximate, String cutoff,
+                                long acquired, int progressPercent, boolean coveredByParent) { }
+
+    public record MaterialProgressDto(double percent, boolean estimated, boolean partial) { }
+
+    /** Direct inputs for exactly one batch of the selected recipe, independent of target quantity and owned stock. */
+    public record BaseIngredientDto(Item item, long quantity) { }
+
+    public record CraftingIngredientDto(Item item, long quantity) { }
+
+    /** Aggregated, dependency-ordered work; distinct recipes and assigned crafting characters stay distinct. */
+    public record CraftingStepDto(Item item, Integer recipeId, String recipeSource, long crafts, long produced,
+                                  long toAcquire, long newSurplus, String disciplines, String hint, Boolean recipeKnown,
+                                  boolean performable, String assignedCharacter, String cutoff, boolean root,
+                                  List<CraftingIngredientDto> ingredients) { }
+
     public record Project(int recipeId, Item output, String outcome, String targetKind, long requestedTarget, long batches,
                           Long guaranteedOutput, boolean complete, String incompleteReason, boolean walletKnown,
                           long knownGoldCopper, boolean goldCostPartial, List<Item> unpricedItems, NodeDto tree,
                           List<ShoppingDto> shopping, List<CurrencyDto> currencies, String note,
                           SeedDto seed, EconomicsDto economics, NotesDto notes, CalculationFreshnessDto freshness,
                           SettingsDto settings, OwnValueDto ownValue, CloverEstimateDto clover, long rootOwned,
-                          ComparisonDto comparison) { }
+                          ComparisonDto comparison, List<OwnedItemDto> ownedItems, RecipePartDto recipeTree,
+                          MaterialProgressDto materialProgress, List<BaseIngredientDto> baseIngredients,
+                          List<CraftingStepDto> craftingSteps) { }
 }

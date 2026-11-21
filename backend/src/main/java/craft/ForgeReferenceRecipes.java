@@ -17,6 +17,14 @@ public final class ForgeReferenceRecipes {
 
     public record Reference(int recipeId, int outputItemId, int possibleOutputs, List<Ingredient> ingredients,
                             String wikiUrl, long revision) {
+        /** About 31% success for either Clover recipe; this sizes inputs, never promises output or profit.
+         * https://wiki.guildwars2.com/wiki/Mystic_Clover#Probability_notes */
+        public long estimatedBatchesForOutput(long outputUnits) {
+            if (outputUnits <= 0) throw new IllegalArgumentException("output must be positive");
+            return Math.ceilDiv(ForgeProjectPlanner.mul(outputUnits, 100L),
+                    ForgeProjectPlanner.mul(possibleOutputs, ForgeProjectPlanner.CLOVER_PERCENT));
+        }
+
         /** A planning-only target (never a producer): same inputs, one nominal output, MYSTIC_FORGE source. */
         public Recipe asPlanningTarget() {
             return new Recipe(recipeId, outputItemId, 1, 0, "", ingredients, List.of(), RecipeSource.MYSTIC_FORGE);

@@ -190,10 +190,19 @@ public class CraftingProfitService {
         }
     }
 
-    /** One selected Forge project over this session's snapshot: the plan plus the names/quotes it needs. */
+    /** One selected Forge project; requestedTarget is desired output, while batchTarget marks a random root plan. */
     public record ForgeProjectData(craft.ForgeProjectPlanner.Project project, boolean referenceOnly, boolean batchTarget,
                                    long requestedTarget, Map<Integer, ItemRepository.ItemInfo> items,
-                                   Map<Integer, PriceQuote> tp, boolean walletKnown) {
+                                   Map<Integer, PriceQuote> tp, boolean walletKnown,
+                                   Map<Integer, List<String>> ownedLocations,
+                                   craft.ForgeProjectPlanner.RecipePart recipeTree,
+                                   craft.ForgeMaterialProgress.Progress materialProgress,
+                                   List<Ingredient> baseIngredients) {
+        public ForgeProjectData(craft.ForgeProjectPlanner.Project project, boolean referenceOnly, boolean batchTarget,
+                                long requestedTarget, Map<Integer, ItemRepository.ItemInfo> items,
+                                Map<Integer, PriceQuote> tp, boolean walletKnown) {
+            this(project, referenceOnly, batchTarget, requestedTarget, items, tp, walletKnown, Map.of(), null, null, List.of());
+        }
     }
 
     /**
@@ -275,10 +284,15 @@ public class CraftingProfitService {
         }
 
         boolean batchTarget = ref != null || root.hasExpectedYield();
-        craft.ForgeProjectPlanner.Project project = batchTarget
-                ? planner.plan(root, target, true, inventory, context, wallet, tp, settings)
-                : planner.plan(root, target, false, inventory, context, wallet, tp, settings);
+        long planQuantity = ref != null ? ref.estimatedBatchesForOutput(target)
+                : root.hasExpectedYield() ? root.expectedYield.estimatedBatchesForOutput(target, root.selfSeedUnits()) : target;
+        craft.ForgeProjectPlanner.Project project = planner.plan(root, planQuantity, batchTarget, inventory, context, wallet, tp, settings);
+        craft.ForgeProjectPlanner.RecipePart recipeTree = batchTarget ? null
+                : planner.recipeTree(root, target, inventory, wallet, settings.useOwn());
+        craft.ForgeMaterialProgress.Progress materialProgress = batchTarget || !settings.useOwn() ? null
+                : planner.materialProgress(root, target, inventory, wallet);
         Set<Integer> shown = new HashSet<>();
+        if (recipeTree != null) collectRecipeItems(recipeTree, shown);
         shown.add(root.outputItemId);
         for (Ingredient i : root.ingredients) shown.add(i.itemId);
         project.items().forEach(l -> shown.add(l.itemId()));
@@ -290,7 +304,16 @@ public class CraftingProfitService {
             }
         }
         Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(con, shown);
-        return new ForgeProjectData(project, ref != null, batchTarget, target, items, tp, wallet != null);
+        Set<Integer> ownedIds = project.items().stream().filter(l -> l.fromOwned() > 0)
+                .map(craft.ForgeProjectPlanner.ItemLine::itemId).collect(Collectors.toSet());
+        Map<Integer, List<String>> locations = invRepo.loadItemLocations(con, session.scope(), ownedIds);
+        return new ForgeProjectData(project, ref != null, batchTarget, target, items, tp, wallet != null, locations,
+                recipeTree, materialProgress, root.ingredients);
+    }
+
+    private static void collectRecipeItems(craft.ForgeProjectPlanner.RecipePart part, Set<Integer> ids) {
+        ids.add(part.itemId());
+        part.children().forEach(child -> collectRecipeItems(child, ids));
     }
 
     /**

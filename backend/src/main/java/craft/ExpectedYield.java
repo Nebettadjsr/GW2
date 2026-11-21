@@ -21,6 +21,17 @@ public record ExpectedYield(BigDecimal mean, int min, int max) {
         return new ExpectedYield(new BigDecimal(mean), min, max);
     }
 
+    /** Whole batches for a desired expected net output; seeds reused by later batches are not new output. */
+    public long estimatedBatchesForOutput(long outputUnits, int selfSeedUnits) {
+        if (outputUnits <= 0 || selfSeedUnits < 0) throw new IllegalArgumentException("positive output and nonnegative seed required");
+        long reusedPerBatch = Math.min(selfSeedUnits, min);
+        BigDecimal required = BigDecimal.valueOf(outputUnits).subtract(BigDecimal.valueOf(reusedPerBatch));
+        if (required.signum() <= 0) return 1;
+        BigDecimal netPerBatch = mean.subtract(BigDecimal.valueOf(reusedPerBatch));
+        if (netPerBatch.signum() <= 0) throw new IllegalArgumentException("recipe has no expected net output gain");
+        return required.divide(netPerBatch, 0, java.math.RoundingMode.CEILING).longValueExact();
+    }
+
     /**
      * Gross copper for {@code units} expected units (may be fractional) at {@code unitCopper}: the single documented
      * copper boundary, rounded down so an estimate never claims a fraction of a copper it cannot sell.

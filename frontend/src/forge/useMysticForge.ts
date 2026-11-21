@@ -3,16 +3,24 @@ import { connection } from '@/api/accountSession'
 import { ACCOUNT_CHANGED_CODE, ApiRequestError } from '@/api/http'
 import type { MysticForgeApi } from '@/api/mysticForgeApi'
 import type { ForgeCatalogue, ForgeProject, ForgeRecipeRow, ForgeSettings } from '@/api/types'
+import { readForgePreferences, saveForgePreferences } from './forgePreferences'
 
-export const DEFAULT_FORGE_SETTINGS: ForgeSettings = {
-  priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES'
-}
+export { DEFAULT_FORGE_SETTINGS } from './forgePreferences'
 
 export type ForgeTab = 'ALL' | 'WEAPONS' | 'ARMOR' | 'MATERIALS' | 'OTHER'
 export const FORGE_TABS: readonly { id: ForgeTab; label: string }[] = [
   { id: 'ALL', label: 'All' }, { id: 'WEAPONS', label: 'Weapons' }, { id: 'ARMOR', label: 'Armor' },
   { id: 'MATERIALS', label: 'Materials' }, { id: 'OTHER', label: 'Other' }
 ]
+export interface ForgeFilterOption { id: string; label: string }
+const RARITY_ORDER: readonly string[] = ['Legendary', 'Ascended', 'Exotic', 'Rare', 'Masterwork', 'Fine', 'Basic', 'Junk']
+const OTHER_TYPE_LABELS: Readonly<Record<string, string>> = {
+  Back: 'Back item', CraftingMaterial: 'Crafting material', MiniPet: 'Miniature', UpgradeComponent: 'Upgrade component'
+}
+export function forgeSubtypeLabel(subtype: string): string {
+  if (subtype === 'Harpoon') return 'Spear'
+  return subtype.replace(/([a-z])([A-Z])/g, '$1 $2')
+}
 /** Rows rendered before the user asks for more; search always covers the whole catalogue. */
 export const INITIAL_VISIBLE = 60
 export const TARGET_DEBOUNCE_MS = 400
@@ -30,8 +38,29 @@ const SOURCE_ADMISSION_DELAY_MAX_MS = 10_000
 
 /** Text searched per row: name, ids and the real item type/subtype ("bow" matches LongBow and ShortBow). */
 export function searchText(row: ForgeRecipeRow): string {
-  return [row.name, row.outputItemId, row.recipeId, row.itemType, row.itemSubtype, row.category]
+  return [row.name, row.outputItemId, row.recipeId, row.itemType, row.itemSubtype,
+    row.itemSubtype ? forgeSubtypeLabel(row.itemSubtype) : null, row.category, row.rarity, row.weightClass,
+    row.materialTier ? `T${row.materialTier}` : null,
+    row.category === 'OTHER' ? otherTypeLabel(otherType(row)) : null]
     .filter((part) => part !== null && part !== undefined).join(' ').toLowerCase()
+}
+
+function otherType(row: ForgeRecipeRow): string {
+  if (row.name?.startsWith('Gift of ') || row.sourcePage?.startsWith('Gift of ')) return 'Gift'
+  return row.itemSubtype ?? row.itemType ?? 'Other'
+}
+
+function otherTypeLabel(type: string): string { return OTHER_TYPE_LABELS[type] ?? forgeSubtypeLabel(type) }
+
+export function forgeItemTypeLabel(row: ForgeRecipeRow): string | null {
+  if (row.category === 'OTHER') return otherTypeLabel(otherType(row))
+  return row.itemSubtype ? forgeSubtypeLabel(row.itemSubtype) : row.itemType ? otherTypeLabel(row.itemType) : null
+}
+
+/** Named Other variants share one browse entry; each exact output and recipe remains a detail choice. */
+function itemGroup(row: ForgeRecipeRow): string {
+  return row.category === 'OTHER' && row.name && row.itemType
+    ? JSON.stringify([row.category, row.itemType, row.name]) : `item:${row.outputItemId}`
 }
 
 export function parseTarget(text: string): number | null {
@@ -54,12 +83,15 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   /** True when bounded background completion rereads ran out while public metadata is still completing. */
   const catalogueStalled = ref(false)
   const tab = ref<ForgeTab>('ALL')
+  const subtype = ref('ALL')
+  const rarity = ref('ALL')
   const query = ref('')
   const visibleLimit = ref(INITIAL_VISIBLE)
   const selectedRecipeId = ref<number | null>(null)
   const targetText = ref('1')
-  /** Menu choices survive Back within the session; an account change resets them (no cross-account leakage). */
-  const settings = ref<ForgeSettings>({ ...DEFAULT_FORGE_SETTINGS })
+  const savedPreferences = readForgePreferences(connection.accountId)
+  const settings = ref<ForgeSettings>(savedPreferences.settings)
+  const preferencesUnavailable = ref(savedPreferences.unavailable)
   const project = shallowRef<ForgeProject | null>(null)
   const projectLoading = ref(false)
   const projectError = ref<string | null>(null)
@@ -80,16 +112,46 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   let disposed = false
 
   const rows = computed(() => catalogue.value?.recipes ?? [])
+  const subtypeOptions = computed<ForgeFilterOption[]>(() => {
+    if (tab.value === 'ARMOR') return ['ALL', 'Light', 'Medium', 'Heavy'].map(id => ({ id, label: id === 'ALL' ? 'All weights' : id }))
+    if (tab.value === 'MATERIALS') return [{ id: 'ALL', label: 'All tiers' },
+      ...[2, 3, 4, 5, 6].map(tier => ({ id: `T${tier}`, label: `T${tier}` }))]
+    if (tab.value === 'OTHER') {
+      const types = [...new Set(rows.value.filter(row => row.category === 'OTHER').map(otherType))]
+        .map(id => ({ id, label: otherTypeLabel(id) })).sort((a, b) => a.label.localeCompare(b.label))
+      return [{ id: 'ALL', label: 'All types' }, ...types]
+    }
+    if (tab.value !== 'WEAPONS') return []
+    const types = [...new Set(rows.value.filter(row => row.category === 'WEAPONS' && row.itemSubtype).map(row => row.itemSubtype!))]
+      .map(id => ({ id, label: forgeSubtypeLabel(id) })).sort((a, b) => a.label.localeCompare(b.label))
+    return [{ id: 'ALL', label: 'All types' }, ...types]
+  })
+  const rarityOptions = computed<ForgeFilterOption[]>(() => {
+    const rarities = [...new Set(rows.value.map(row => row.rarity).filter((value): value is string => !!value))]
+    const rank = (value: string) => { const index = RARITY_ORDER.indexOf(value); return index < 0 ? RARITY_ORDER.length : index }
+    rarities.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    return [{ id: 'ALL', label: 'All rarities' }, ...rarities.map(id => ({ id, label: id }))]
+  })
   const filtered = computed(() => {
     const needle = query.value.trim().toLowerCase()
     const words = needle === '' ? [] : needle.split(/\s+/)
-    return rows.value
+    const matching = rows.value
       .filter((row) => tab.value === 'ALL' || row.category === tab.value)
+      .filter((row) => subtype.value === 'ALL' || (tab.value === 'ARMOR' ? row.weightClass
+        : tab.value === 'MATERIALS' ? `T${row.materialTier}` : tab.value === 'OTHER' ? otherType(row) : row.itemSubtype) === subtype.value)
+      .filter((row) => rarity.value === 'ALL' || row.rarity === rarity.value)
       .filter((row) => words.every((w) => searchText(row).includes(w)))
-      .slice()
+    // Filter before grouping so a rarity or exact item/recipe-id search can open that variant directly.
+    const unique = new Map<string, ForgeRecipeRow>()
+    for (const row of matching) if (!unique.has(itemGroup(row))) unique.set(itemGroup(row), row)
+    return [...unique.values()]
       .sort((a, b) => (a.name ?? `~${a.outputItemId}`).localeCompare(b.name ?? `~${b.outputItemId}`) || a.recipeId - b.recipeId)
   })
   const visible = computed(() => filtered.value.slice(0, visibleLimit.value))
+  const selectedRow = computed(() => rows.value.find((row) => row.recipeId === selectedRecipeId.value) ?? null)
+  // Material pages expose only their applicable controls; hidden equipment options must not affect their plan.
+  const effectiveSettings = computed<ForgeSettings>(() => selectedRow.value?.category === 'MATERIALS'
+    ? { ...settings.value, daily: 'CRAFT', promotions: false, reduce: 'NO' } : settings.value)
   /**
    * The project is current only for the recipe and exact target now typed; a result for another quantity is never
    * shown as current while the new answer is pending.
@@ -99,10 +161,13 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     if (p === null) return null
     // Only an answer for this exact target AND these exact settings is current; a stale one never paints.
     const s = p.settings
-    const same = s === undefined || (Object.keys(settings.value) as (keyof ForgeSettings)[]).every((k) => s[k] === settings.value[k])
+    const same = s === undefined || (Object.keys(effectiveSettings.value) as (keyof ForgeSettings)[]).every((k) => s[k] === effectiveSettings.value[k])
     return p.requestedTarget === parseTarget(targetText.value) && same ? p : null
   })
-  const selectedRow = computed(() => rows.value.find((row) => row.recipeId === selectedRecipeId.value) ?? null)
+  const selectedPaths = computed(() => {
+    const selected = selectedRow.value
+    return selected ? rows.value.filter(row => itemGroup(row) === itemGroup(selected)) : []
+  })
 
   function message(cause: unknown): string | null {
     if (cause instanceof ApiRequestError && cause.code === ACCOUNT_CHANGED_CODE) return null
@@ -179,7 +244,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     if (!isReread) { rereads = 0; sourceRecoveries = 0; projectLoading.value = true; stalled.value = false; sourceError.value = null }
     projectError.value = null
     try {
-      const loaded = await api.loadProject(recipeId, target, { ...settings.value })
+      const loaded = await api.loadProject(recipeId, target, { ...effectiveSettings.value })
       if (mine !== token || !active || generation !== connection.generation) return
       const unavailable = hasNoResult(loaded)
       pending.value = unavailable
@@ -283,11 +348,11 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     void loadProject()
   }
 
-  function open(recipeId: number): void {
+  function open(recipeId: number, keepTarget = false): void {
     clearTimers()
     ++token
     selectedRecipeId.value = recipeId
-    targetText.value = '1'
+    if (!keepTarget) targetText.value = selectedRow.value?.category === 'MATERIALS' ? '250' : '1'
     project.value = null
     pending.value = false
     sourceRefreshing.value = false
@@ -297,6 +362,11 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     // metadata reread running while its detail is open so weapon/armor controls appear in place.
     if (selectedRow.value?.category === 'OTHER') resumeCatalogue()
     void loadProject()
+  }
+
+  function selectPath(recipeId: number): void {
+    if (recipeId === selectedRecipeId.value || !selectedPaths.value.some(row => row.recipeId === recipeId)) return
+    open(recipeId, true)
   }
 
   function back(): void {
@@ -334,6 +404,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   /** A menu change recalculates only the selected project after the same debounce; earlier answers are invalidated. */
   function setSettings(patch: Partial<ForgeSettings>): void {
     settings.value = { ...settings.value, ...patch }
+    preferencesUnavailable.value = !saveForgePreferences(connection.accountId, settings.value)
     setTarget(targetText.value)
   }
 
@@ -355,9 +426,34 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     if (selectedRecipeId.value !== null) void loadProject()
   }
 
-  function setTab(next: ForgeTab): void { tab.value = next; visibleLimit.value = INITIAL_VISIBLE }
+  function setTab(next: ForgeTab): void {
+    if (tab.value !== next) subtype.value = 'ALL'
+    tab.value = next
+    visibleLimit.value = INITIAL_VISIBLE
+  }
+  function setSubtype(next: string): void {
+    if (!subtypeOptions.value.some(option => option.id === next)) return
+    subtype.value = next
+    visibleLimit.value = INITIAL_VISIBLE
+  }
+  function setRarity(next: string): void {
+    if (!rarityOptions.value.some(option => option.id === next)) return
+    rarity.value = next
+    visibleLimit.value = INITIAL_VISIBLE
+  }
   function setQuery(next: string): void { query.value = next; visibleLimit.value = INITIAL_VISIBLE }
   function showMore(): void { visibleLimit.value += INITIAL_VISIBLE }
+
+  function restorePreferences(): void {
+    const saved = readForgePreferences(connection.accountId)
+    settings.value = saved.settings
+    preferencesUnavailable.value = saved.unavailable
+  }
+
+  watch(() => connection.accountId, () => {
+    restorePreferences()
+    if (active && selectedRecipeId.value !== null) setTarget(targetText.value)
+  })
 
   /** Account replacement: every earlier answer is discarded and the visible data is re-read for the new account. */
   watch(() => connection.generation, () => {
@@ -377,7 +473,7 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     // A selected project belongs to the replaced account: close it rather than silently planning it for another.
     selectedRecipeId.value = null
     targetText.value = '1'
-    settings.value = { ...DEFAULT_FORGE_SETTINGS }
+    restorePreferences()
     projectError.value = null
     if (!active || disposed) return
     void loadCatalogue()
@@ -386,9 +482,9 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
   onScopeDispose(() => { disposed = true; active = false; clearTimers(); ++token; ++catalogueToken })
 
   return {
-    catalogue, catalogueLoading, catalogueError, catalogueStalled, retryCatalogue, tab, query, visibleLimit, filtered, visible, selectedRecipeId,
-    selectedRow, targetText, settings, setSettings, project, currentProject, projectLoading, projectError, pending, sourceRefreshing, sourceError, stalled, retry, loadCatalogue, open, back, setTarget,
-    activate, deactivate, setTab, setQuery, showMore
+    catalogue, catalogueLoading, catalogueError, catalogueStalled, retryCatalogue, tab, subtype, subtypeOptions, rarity, rarityOptions, query, visibleLimit, filtered, visible, selectedRecipeId,
+    selectedRow, selectedPaths, selectPath, targetText, settings: effectiveSettings, setSettings, preferencesUnavailable, project, currentProject, projectLoading, projectError, pending, sourceRefreshing, sourceError, stalled, retry, loadCatalogue, open, back, setTarget,
+    activate, deactivate, setTab, setSubtype, setRarity, setQuery, showMore
   }
 }
 

@@ -15,6 +15,7 @@ import java.util.TreeMap;
  * owned stock is aggregated once and consumed in expansion order (owned intermediates before unmet demand), a
  * craft's surplus output is conserved for later demand, and each unmet item is produced by one fixed-output
  * producer (ordinary crafting, then Mystic Forge, then vendor; lowest recipe id) or reported as a leaf to acquire.
+ * Optional promotions compete with direct buying on fully priced batch economics and never promote their own inputs.
  * It never claims global optimality, never prices a currency in gold, never treats a random-output recipe as a
  * producer, and never defaults an unknown price to zero: unpriced leaves are listed, and the known gold cost
  * covers only what was actually priced. Quantities are checked; a hit bound yields a truthful incomplete result.
@@ -117,7 +118,7 @@ public final class ForgeProjectPlanner {
                         boolean producerLocked) { }
 
     /** Opportunity value of consumed owned intermediates at the selected quote: known subtotal plus unpriced remainder. */
-    public record OwnValue(long knownCopper, List<Integer> unpricedItemIds) { }
+    public record OwnValue(long knownCopper, List<Integer> unpricedItemIds, Map<Integer, Long> itemCopper) { }
 
     /**
      * Planning estimate for Mystic Clovers produced by the owner-selected one-Clover Forge attempt (about 31% per
@@ -157,6 +158,121 @@ public final class ForgeProjectPlanner {
 
     private static int rank(RecipeSource s) {
         return s == RecipeSource.VENDOR ? 2 : s == RecipeSource.MYSTIC_FORGE ? 1 : 0;
+    }
+
+    /** Currency coverage in the reference; null progress means the remaining wallet balance is unknown. */
+    public record RecipeCurrency(int currencyId, long needed, Long acquired, Integer progressPercent,
+                                 boolean coveredByParent, boolean approximate) { }
+
+    /** Full reference requirements, with owned progress recorded separately from those requirements. */
+    public record RecipePart(int itemId, long quantity, List<RecipePart> children, List<RecipeCurrency> currencies,
+                             Long copper, Long attempts, boolean approximate, String cutoff,
+                             long acquired, int progressPercent, boolean coveredByParent) { }
+
+    /** Material readiness follows the complete recipe path, independently of the three-column display limit. */
+    public ForgeMaterialProgress.Progress materialProgress(Recipe target, long quantity, Inventory inventory, Map<Integer, Long> wallet) {
+        return new ForgeMaterialProgress(producerByItem).calculate(target, quantity, inventory, wallet);
+    }
+
+    /** The reference table has three ingredient columns, so expansion stops at its component-material column. */
+    public RecipePart recipeTree(Recipe target, long quantity) {
+        return recipeTree(target, quantity, new Inventory(Map.of(), Map.of(), Map.of()));
+    }
+
+    public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory) {
+        return recipeTree(target, quantity, inventory, null);
+    }
+
+    public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Map<Integer, Long> wallet) {
+        return recipeTree(target, quantity, inventory, wallet, true);
+    }
+
+    public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Map<Integer, Long> wallet,
+                                 boolean includeProgress) {
+        Map<Integer, Long> available = new java.util.HashMap<>();
+        if (includeProgress) {
+            inventory.sellable().forEach((id, count) -> available.merge(id, (long) count, ForgeProjectPlanner::add));
+            inventory.accountBound().forEach((id, count) -> available.merge(id, (long) count, ForgeProjectPlanner::add));
+            inventory.characterBound().values().forEach(items -> items.forEach(
+                    (id, count) -> available.merge(id, (long) count, ForgeProjectPlanner::add)));
+        }
+        Map<Integer, Long> availableWallet = includeProgress && wallet != null ? new java.util.HashMap<>(wallet) : null;
+        try {
+            return recipePart(target.outputItemId, quantity, target, 0, Set.of(), false, new int[]{0}, 0,
+                    available, availableWallet, includeProgress);
+        } catch (ArithmeticException overflow) {
+            return new RecipePart(target.outputItemId, quantity, List.of(), List.of(), null, null, false,
+                    "Quantity exceeds the supported range", 0, 0, false);
+        }
+    }
+
+    private RecipePart recipePart(int itemId, long quantity, Recipe selected, int depth, Set<Integer> path,
+                                  boolean approximate, int[] visited, long covered, Map<Integer, Long> available,
+                                  Map<Integer, Long> availableWallet, boolean includeProgress) {
+        long acquired = 0;
+        int progress = 0;
+        if (includeProgress) {
+            long owned = Math.min(quantity - covered, Math.max(0, available.getOrDefault(itemId, 0L)));
+            available.merge(itemId, -owned, Long::sum);
+            acquired = add(covered, owned);
+            // Both operands are at most MAX_SAFE; multiplying by 100 fits a Java long before integer division.
+            progress = quantity > 0 ? (int) (acquired * 100L / quantity) : 100;
+        }
+        if (++visited[0] > MAX_NODES) {
+            return new RecipePart(itemId, quantity, List.of(), List.of(), null, null, approximate,
+                    "Recipe display limit reached", acquired, progress, covered > 0);
+        }
+        boolean clover = itemId == MYSTIC_CLOVER;
+        Recipe recipe = clover ? ForgeReferenceRecipes.all().getFirst().asPlanningTarget()
+                : selected != null ? selected : producerByItem.get(itemId);
+        // A reference material stays a material; never expand a promotion into increasingly large lower tiers.
+        if (recipe != null && recipe.hasExpectedYield()) recipe = null;
+        Long attempts = clover ? Math.ceilDiv(mul(quantity, 100L), (long) CLOVER_PERCENT) : null;
+        long crafts = attempts != null ? attempts : recipe == null ? 0 : Math.ceilDiv(quantity, (long) recipe.outputCount);
+        long remainingCrafts = crafts;
+        if (includeProgress) {
+            remainingCrafts = clover ? Math.ceilDiv(mul(quantity - acquired, 100L), (long) CLOVER_PERCENT)
+                    : recipe == null ? 0 : Math.ceilDiv(quantity - acquired, (long) recipe.outputCount);
+        }
+        List<RecipeCurrency> currencies = new ArrayList<>();
+        if (recipe != null) for (CurrencyRequirement c : recipe.currencies) {
+            currencies.add(recipeCurrency(c, crafts, remainingCrafts, approximate, availableWallet, includeProgress));
+        }
+        Long copper = recipe != null && recipe.vendorCopper > 0 ? mul(recipe.vendorCopper, crafts) : null;
+        List<RecipePart> children = new ArrayList<>();
+        String cutoff = null;
+        if (recipe != null && depth < 3) {
+            if (path.contains(recipe.recipeId)) cutoff = "Recipe cycle";
+            else {
+                Set<Integer> next = new HashSet<>(path);
+                next.add(recipe.recipeId);
+                for (Ingredient ingredient : recipe.ingredients) {
+                    children.add(recipePart(ingredient.itemId, mul(ingredient.count, crafts), null, depth + 1,
+                            next, approximate || clover, visited,
+                            includeProgress ? mul(ingredient.count, crafts - remainingCrafts) : 0,
+                            available, availableWallet, includeProgress));
+                }
+            }
+        }
+        return new RecipePart(itemId, quantity, List.copyOf(children), List.copyOf(currencies), copper, attempts,
+                approximate, cutoff, acquired, progress, covered > 0);
+    }
+
+    private static RecipeCurrency recipeCurrency(CurrencyRequirement currency, long crafts, long remainingCrafts,
+                                                   boolean approximate, Map<Integer, Long> availableWallet,
+                                                   boolean includeProgress) {
+        long needed = mul(currency.count(), crafts);
+        if (!includeProgress) return new RecipeCurrency(currency.currencyId(), needed, null, null, false, approximate);
+        long covered = mul(currency.count(), crafts - remainingCrafts);
+        Long acquired = covered == needed ? needed : null;
+        if (availableWallet != null) {
+            long used = Math.min(needed - covered,
+                    Math.max(0, availableWallet.getOrDefault(currency.currencyId(), 0L)));
+            availableWallet.merge(currency.currencyId(), -used, Long::sum);
+            acquired = add(covered, used);
+        }
+        Integer progress = acquired == null ? null : needed > 0 ? (int) (acquired * 100L / needed) : 100;
+        return new RecipeCurrency(currency.currencyId(), needed, acquired, progress, covered > 0, approximate);
     }
 
     /**
@@ -315,6 +431,9 @@ public final class ForgeProjectPlanner {
         if (settings.valueOwn()) {
             long known = 0;
             List<Integer> unknown = new ArrayList<>();
+            Map<Integer, Long> itemCopper = new java.util.HashMap<>();
+            // Reducing the requested output by owned copies incurs no input opportunity cost.
+            if (rootOwnedOut > 0) itemCopper.put(target.outputItemId, 0L);
             OwnedValuer valuer = ctx.valuer() != null ? ctx.valuer() : defaultValuer(prices);
             try {
                 java.util.TreeSet<Integer> ids = new java.util.TreeSet<>(run.ownSellable.keySet());
@@ -323,11 +442,12 @@ public final class ForgeProjectPlanner {
                     // Root already-owned reduction never enters these pools (consumeRoot); an external self-seed does and is valued.
                     OwnedValuer.Value v = valuer.value(id, run.ownSellable.getOrDefault(id, 0L), run.ownBound.getOrDefault(id, 0L));
                     if (v.unvalued()) unknown.add(id);
+                    else itemCopper.put(id, v.copper());
                     known = add(known, v.copper());
                 }
             } catch (ArithmeticException ex) { run.stop("own-material value exceeds the supported range"); }
             java.util.Collections.sort(unknown);
-            ownValue = new OwnValue(known, List.copyOf(unknown)); // after a range stop: safe partial subtotal only
+            ownValue = new OwnValue(known, List.copyOf(unknown), Map.copyOf(itemCopper)); // after a range stop: safe partial subtotal only
         }
         if (run.reason != null) {
             out = -1;
@@ -641,6 +761,7 @@ public final class ForgeProjectPlanner {
         final ForgeSettings settings;
         long cloverMissing;
         long cloverAttempts;
+        int promotionDepth;
 
         Run(PlanState state, Map<Integer, PriceQuote> prices, Context ctx, ForgeSettings settings) {
             this.state = state; this.prices = prices; this.ctx = ctx; this.settings = settings;
@@ -723,6 +844,8 @@ public final class ForgeProjectPlanner {
             List<Node> kids = new ArrayList<>();
             if (reason != null) return kids;
             if (depth > MAX_DEPTH || ++nodes > MAX_NODES) { stop("planning bound reached"); return kids; }
+            boolean promotion = CraftingResolver.isPromotion(r);
+            if (promotion) promotionDepth++;
             try {
                 vendorCopper = add(vendorCopper, mul((long) r.vendorCopper, crafts));
                 if (r.isVendor()) vendorRecipes.putIfAbsent(r.recipeId, r);
@@ -744,8 +867,79 @@ public final class ForgeProjectPlanner {
                 steps.add(step);
             } catch (ArithmeticException e) {
                 stop("quantity exceeds the supported range");
+            } finally {
+                if (promotion) promotionDepth--;
             }
             return kids;
+        }
+
+        /** Full batches must beat buying the shortfall; expected surplus is never guaranteed project stock. */
+        boolean preferPromotion(Recipe recipe, long missing) {
+            Long buyUnit = unitPrice(prices.get(recipe.outputItemId), settings.priceMode());
+            if (buyUnit == null) return false;
+            try {
+                Long cost = promotionGoldCost(recipe, promotionBatches(recipe, missing));
+                return cost != null && cost < mul(buyUnit, missing);
+            } catch (ArithmeticException overflow) {
+                return false; // an optional route outside the supported range cannot beat a known purchase
+            }
+        }
+
+        Long promotionGoldCost(Recipe recipe, long batches) {
+            Economics comparison = economics(recipe, batches, seedOf(recipe, batches), prices, 0, settings);
+            return comparison.unpricedInputItemIds().isEmpty()
+                    && comparison.marginCopper() != null && comparison.marginCopper() > 0
+                    ? comparison.goldInputCopper() : null;
+        }
+
+        /** Try the seed before the final demand, restoring the exact binding pools after both previews. */
+        long seedFirstBatches(Recipe recipe, long qty, String assignee) {
+            if (!settings.useOwn()) return 0;
+            Long buyUnit = unitPrice(prices.get(recipe.outputItemId), settings.priceMode());
+            if (buyUnit == null) return 0;
+            int itemId = recipe.outputItemId;
+            int ask = (int) Math.min(Integer.MAX_VALUE, qty);
+            int mark = state.mark();
+            try {
+                long owned = state.consumeInventoryWithBinding(itemId, ask, assignee).total();
+                long availableSurplus = surplus.getOrDefault(itemId, 0L);
+                long missing = Math.max(0, qty - owned - availableSurplus);
+                if (missing == 0) return 0;
+                state.rollbackTo(mark);
+                int seed = recipe.selfSeedUnits();
+                long ownedSeed = state.consumeInventoryWithBinding(itemId, seed, forgeAssignee(recipe)).total();
+                if (ownedSeed < seed) return 0;
+                long remainingOwned = state.consumeInventoryWithBinding(itemId, ask, assignee).total();
+                long seedFirstMissing = Math.max(0, qty - remainingOwned - availableSurplus);
+                long batches = promotionBatches(recipe, seedFirstMissing);
+                Long seedFirstCost = promotionGoldCost(recipe, batches);
+                if (seedFirstCost == null) return 0;
+                // The diverted owned units already count toward the goal; charging their seed price again buys them twice.
+                seedFirstCost = sub(seedFirstCost, mul(buyUnit, owned - remainingOwned));
+                Long buyingSeedCost = promotionGoldCost(recipe, promotionBatches(recipe, missing));
+                return seedFirstCost < mul(buyUnit, missing)
+                        && (buyingSeedCost == null || seedFirstCost <= buyingSeedCost) ? batches : 0;
+            } catch (ArithmeticException overflow) {
+                return 0;
+            } finally {
+                state.rollbackTo(mark);
+            }
+        }
+
+        /** Forge first so the existing seed is consumed once, then assign the remaining owned units to the goal. */
+        Node needWithOwnedSeed(Recipe recipe, long qty, long crafts, int depth, Set<Integer> path, String assignee) {
+            List<Node> kids = craft(recipe, crafts, depth, path, forgeAssignee(recipe));
+            long use = consume(recipe.outputItemId, qty, assignee);
+            if (use > 0) fromOwned.merge(recipe.outputItemId, use, ForgeProjectPlanner::add);
+            long spare = Math.min(surplus.getOrDefault(recipe.outputItemId, 0L), qty - use);
+            if (spare > 0) surplus.merge(recipe.outputItemId, -spare, Long::sum);
+            long unmet = qty - use - spare;
+            long produced = promotionNet(recipe, crafts);
+            long extra = sub(produced, unmet);
+            if (extra > 0 && reason == null) surplus.merge(recipe.outputItemId, extra, ForgeProjectPlanner::add);
+            return new Node(recipe.outputItemId, qty, use, spare, unmet, 0, recipe.recipeId, recipe.source, crafts,
+                    recipe.minRating, recipe.disciplinesText, reason, kids, null, true, null,
+                    "Mystic Forge · " + crafts + " attempts · minimum yield", produced, extra);
         }
 
         /** One external seed, then each later batch reuses only the guaranteed minimum output. */
@@ -757,6 +951,12 @@ public final class ForgeProjectPlanner {
         Node need(int itemId, long qty, int depth, Set<Integer> path, String assignee, boolean seedLeaf) {
             if (reason != null || qty <= 0) return null;
             demand.merge(itemId, qty, ForgeProjectPlanner::add);
+            Recipe promotion = seedLeaf ? null : producerByItem.get(itemId);
+            if (promotion != null && CraftingResolver.isPromotion(promotion) && settings.promotions()
+                    && promotionDepth == 0 && !path.contains(promotion.recipeId)) {
+                long seedFirst = seedFirstBatches(promotion, qty, assignee);
+                if (seedFirst > 0) return needWithOwnedSeed(promotion, qty, seedFirst, depth, path, assignee);
+            }
             long use = consume(itemId, qty, assignee);
             if (use > 0) fromOwned.merge(itemId, use, ForgeProjectPlanner::add);
             long unmet = qty - use;
@@ -769,8 +969,9 @@ public final class ForgeProjectPlanner {
                     : producerByItem.get(itemId);
             // Daily Buy: the shortfall is purchased at the selected price, never recursively crafted.
             if (p != null && settings.daily() == ForgeSettings.DailyMode.BUY && DailyCrafts.isDailyOutput(itemId)) p = null;
-            // Promotions: optional material-promotion producers only (the selected root is not expanded here).
-            if (p != null && !settings.promotions() && CraftingResolver.isPromotion(p)) p = null; // required fixed Forge gifts stay
+            // Compare optional shortcuts once; their own ingredients are bought/owned, never promoted recursively.
+            if (p != null && CraftingResolver.isPromotion(p)
+                    && (!settings.promotions() || promotionDepth > 0 || !preferPromotion(p, unmet))) p = null;
             if (p == null || path.contains(p.recipeId)) {
                 leaf.merge(itemId, unmet, ForgeProjectPlanner::add);
                 String cut = p == null ? null : "cycle: this item's producer is already being expanded above";
@@ -801,6 +1002,7 @@ public final class ForgeProjectPlanner {
             return new Node(itemId, qty, use, spare, unmet, 0, p.recipeId, p.source, crafts, p.minRating,
                     p.disciplinesText, reason, kids, known, performable, who,
                     p.isVendor() ? (VendorAcquisitions.merchantStep(p.outputItemId) != null ? VendorAcquisitions.merchantStep(p.outputItemId) : VendorAcquisitions.hintFor(p.outputItemId))
+                            : CraftingResolver.isPromotion(p) ? "Mystic Forge · " + crafts + " attempts · minimum yield"
                             : DailyCrafts.isDailyOutput(itemId) ? "Daily/time-gated output: not every batch is available today" : null,
                     produced, extra);
         }

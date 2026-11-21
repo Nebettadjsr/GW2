@@ -1,71 +1,68 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ForgeNode } from '@/api/types'
+import type { ForgeCraftingStep, ForgeCurrency, ForgeNode, ForgeShoppingLine } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
+import ForgeMerchantDetails from './ForgeMerchantDetails.vue'
 
-const props = defineProps<{ tree: ForgeNode | null }>()
+const props = withDefaults(defineProps<{
+  tree?: ForgeNode | null
+  steps?: ForgeCraftingStep[]
+  shopping?: ForgeShoppingLine[]
+  currencies?: ForgeCurrency[]
+  batchTarget?: boolean
+}>(), { steps: () => [], shopping: () => [], currencies: () => [] })
+const vendorPurchases = computed(() => new Map(props.shopping
+  .filter(line => line.source === 'VENDOR').map(line => [line.item.itemId, line])))
 
-// Present the supplied path in dependency order. No acquisition choice or amount is calculated here.
-const steps = computed(() => {
-  const result: { node: ForgeNode; key: string; rank: number }[] = []
-  // The backend numbers each planned step in true dependency order; tree traversal only supplies the tie-break and the
-  // position of unnumbered (estimated) attempts, which sit just before the step that consumes them.
-  function visit(node: ForgeNode, key: string, parentRank: number): void {
-    const own = node.step ?? null
-    const rank = own !== null ? own : parentRank
-    node.children.forEach((child, index) => visit(child, `${key}.${index}`, rank))
-    // Real crafting/Forge operations, merchant visits that say where and for what, and the estimated Clover attempt.
-    // A bare "buy it" leaf only repeats Shopping and is never a step.
-    const crafting = node.recipeId !== null && node.crafts > 0 && (node.recipeSource !== 'VENDOR' || node.hint !== null)
-    const estimated = node.recipeId === null && node.toAcquire > 0 && node.hint !== null && node.children.length > 0
-    if (crafting || estimated) result.push({ node, key, rank: own !== null ? own : parentRank - 0.5 })
-  }
-  if (props.tree) visit(props.tree, 'root', Number.MAX_SAFE_INTEGER)
-  return result.map((entry, order) => ({ entry, order }))
-    .sort((a, b) => a.entry.rank - b.entry.rank || a.order - b.order)
-    .map(({ entry }) => ({ node: entry.node, key: entry.key }))
-})
-
-function action(node: ForgeNode): string {
-  if (node.recipeSource === 'VENDOR') return 'Buy'
-  if (node.recipeId !== null) return 'Craft'
-  return 'Forge attempts (estimated)'
+function action(node: ForgeCraftingStep): string {
+  if (props.batchTarget && node.root) return 'Forge'
+  return node.recipeSource === 'VENDOR' ? 'Buy' : 'Craft'
 }
 
-function location(node: ForgeNode): string {
-  if (node.recipeSource === 'VENDOR') return node.hint ?? 'Merchant'
-  if (node.recipeId !== null && node.recipeId < 0) return 'Mystic Forge'
+function quantity(node: ForgeCraftingStep): number {
+  if (props.batchTarget && node.root) return node.crafts
+  if (node.recipeSource === 'VENDOR') return vendorPurchases.value.get(node.item.itemId)?.toAcquire ?? node.produced
+  return node.recipeId !== null ? node.produced : node.toAcquire
+}
+
+function location(node: ForgeCraftingStep): string {
+  if (props.batchTarget && node.root) return 'Mystic Forge · random output'
+  if (node.recipeId !== null && node.recipeId < 0) {
+    return node.hint?.endsWith('minimum yield')
+      ? `Mystic Forge · ${node.crafts.toLocaleString()} attempts · minimum yield` : node.hint ?? 'Mystic Forge'
+  }
   if (node.recipeId !== null) return node.assignedCharacter ?? node.disciplines ?? 'Crafting station'
-  return 'Mystic Forge · random outcome, not guaranteed'
+  return `Mystic Forge · ≈${node.crafts.toLocaleString()} attempts · estimated`
 }
 </script>
 
 <template>
   <ol v-if="steps.length" class="crafting-steps" data-test="forge-crafting-steps">
-    <li v-for="(step, index) in steps" :key="step.key" class="crafting-step" data-test="forge-crafting-step">
+    <li v-for="(step, index) in steps" :key="`${step.recipeId ?? step.item.itemId}-${index}`" class="crafting-step" data-test="forge-crafting-step" :data-item-id="step.item.itemId">
       <span class="step-number">{{ index + 1 }}</span>
-      <div class="step-content">
+      <div class="step-content" :class="{ 'step-content--purchase': step.recipeSource === 'VENDOR' }">
         <div class="step-output">
-          <span>{{ action(step.node) }}</span>
-          <strong class="numeric">{{ step.node.recipeId !== null ? step.node.produced : (step.node.crafts || step.node.toAcquire) }}</strong>
-          <ItemIcon :icon-url="step.node.item.iconUrl" :item-id="step.node.item.itemId" :size="28" />
-          <a v-if="step.node.item.wikiUrl" :href="step.node.item.wikiUrl" target="_blank" rel="noopener noreferrer">{{ step.node.item.name ?? `Item ${step.node.item.itemId}` }}</a>
-          <span v-else>{{ step.node.item.name ?? `Item ${step.node.item.itemId}` }}</span>
+          <span>{{ action(step) }}</span>
+          <strong class="numeric">{{ quantity(step).toLocaleString() }}</strong>
+          <span v-if="batchTarget && step.root">{{ step.crafts === 1 ? 'batch' : 'batches' }}</span>
+          <ItemIcon :icon-url="step.item.iconUrl" :item-id="step.item.itemId" :size="28" />
+          <a v-if="step.item.wikiUrl" :href="step.item.wikiUrl" target="_blank" rel="noopener noreferrer">{{ step.item.name ?? `Item ${step.item.itemId}` }}</a>
+          <span v-else>{{ step.item.name ?? `Item ${step.item.itemId}` }}</span>
         </div>
-        <p class="step-source">{{ location(step.node) }}</p>
-        <ul v-if="step.node.children.length" class="step-ingredients">
-          <li v-for="(ingredient, childIndex) in step.node.children" :key="childIndex">
-            <span class="numeric">{{ ingredient.needed }}</span>
+        <ForgeMerchantDetails v-if="step.recipeSource === 'VENDOR'" :item-id="step.item.itemId" :purchase="vendorPurchases.get(step.item.itemId)" :currencies="currencies" compact />
+        <p v-else class="step-source">{{ location(step) }}</p>
+        <ul v-if="step.ingredients.length && step.recipeSource !== 'VENDOR'" class="step-ingredients">
+          <li v-for="(ingredient, childIndex) in step.ingredients" :key="childIndex">
+            <span class="numeric">{{ ingredient.quantity.toLocaleString() }}</span>
             <ItemIcon :icon-url="ingredient.item.iconUrl" :item-id="ingredient.item.itemId" :size="22" />
             <a v-if="ingredient.item.wikiUrl" :href="ingredient.item.wikiUrl" target="_blank" rel="noopener noreferrer">{{ ingredient.item.name ?? `Item ${ingredient.item.itemId}` }}</a>
             <span v-else>{{ ingredient.item.name ?? `Item ${ingredient.item.itemId}` }}</span>
           </li>
         </ul>
-        <p v-if="step.node.hint" class="step-hint">{{ step.node.hint }}</p>
-        <p v-if="step.node.newSurplus > 0" class="step-hint">{{ step.node.newSurplus }} extra batch units available for later steps.</p>
-        <p v-if="step.node.recipeKnown === false" class="step-warning">Recipe not unlocked</p>
-        <p v-else-if="step.node.recipeId !== null && step.node.recipeId > 0 && !step.node.performable" class="step-warning">No eligible crafting character</p>
-        <p v-if="step.node.cutoff" class="step-warning">{{ step.node.cutoff }}</p>
+        <p v-if="step.newSurplus > 0 && step.recipeSource !== 'VENDOR'" class="step-hint">{{ step.newSurplus }} extra batch units available for later steps.</p>
+        <p v-if="step.recipeKnown === false" class="step-warning">Recipe not unlocked</p>
+        <p v-else-if="step.recipeId !== null && step.recipeId > 0 && !step.performable" class="step-warning">No eligible crafting character</p>
+        <p v-if="step.cutoff" class="step-warning">{{ step.cutoff }}</p>
       </div>
     </li>
   </ol>
@@ -79,6 +76,9 @@ function location(node: ForgeNode): string {
 .crafting-step:last-child { border: 0; padding-bottom: 0; }
 .step-number { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--radius-control); background: var(--color-raised); color: var(--color-highlight); font-weight: 700; }
 .step-content { min-width: 0; }
+.step-content--purchase { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) max-content; gap: var(--space-2) var(--space-4); align-items: center; }
+.step-content--purchase > .step-output { grid-column: 1 / 3; grid-row: 1; }
+.step-content--purchase > .step-warning { grid-column: 1 / -1; }
 .step-output { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-weight: 600; }
 .step-output a, .step-ingredients a { min-width: 0; overflow-wrap: anywhere; }
 .step-source, .step-hint, .muted { color: var(--color-muted); font-size: var(--text-sm); }

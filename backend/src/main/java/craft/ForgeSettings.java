@@ -1,8 +1,8 @@
 package craft;
 
 /**
- * The Forge equipment calculation menu (backend authority). Defaults equal the paired controls: instant buy, use and
- * value own materials, daily outputs crafted, promotions allowed, reduce the amount by every eligible owned output.
+ * The Forge equipment calculation menu (backend authority). Defaults: instant buy, daily outputs crafted,
+ * with owned-material use, owned-material valuation, promotions and owned-output reduction switched off.
  */
 public record ForgeSettings(PriceMode priceMode, boolean useOwn, boolean valueOwn, DailyMode daily,
                             boolean promotions, ReduceMode reduce) {
@@ -10,8 +10,8 @@ public record ForgeSettings(PriceMode priceMode, boolean useOwn, boolean valueOw
     public enum DailyMode { CRAFT, BUY }
     public enum ReduceMode { NO, YES, TRADABLE, UNTRADABLE }
 
-    public static final ForgeSettings DEFAULT = new ForgeSettings(PriceMode.INSTANT_BUY, true, true, DailyMode.CRAFT,
-            true, ReduceMode.YES);
+    public static final ForgeSettings DEFAULT = new ForgeSettings(PriceMode.INSTANT_BUY, false, false, DailyMode.CRAFT,
+            false, ReduceMode.NO);
 
     public ForgeSettings {
         if (priceMode == null || daily == null || reduce == null) throw new IllegalArgumentException("incomplete settings");
