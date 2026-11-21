@@ -187,4 +187,39 @@ class ForgeProjectNotesTest {
         for (int i = 0; i < instructions.size(); i++) if (instructions.get(i).operation().itemId() == PRR) prrAt = i;
         assertTrue(prrAt >= 0 && prrAt < rootAt, "the Note work still runs before the Note-spending root");
     }
+
+    private static Map<Integer, Long> inputsByItem(ForgeCraftingInstructions.Instruction instruction) {
+        return instruction.ingredients().stream().collect(java.util.stream.Collectors.toMap(
+                ForgeCraftingInstructions.Input::itemId, ForgeCraftingInstructions.Input::quantity));
+    }
+
+    @Test
+    void genuineDirectPeerReviewedResearchIngredientStaysAnIngredientOfTheRoot() {
+        // The root recipe itself lists 2 Peer Reviewed Research as an ordinary ingredient and spends no Notes.
+        var direct = new Recipe(-20, 901, 1, 0, "", List.of(new Ingredient(PRR, 2), new Ingredient(SHARED, 1)),
+                List.of(), RecipeSource.MYSTIC_FORGE);
+        var p = LegacyForge.planner(List.of(direct, prrA, prrB)).plan(direct, 1, true,
+                ForgeProjectPlanner.Inventory.shared(Map.of()), ctx, Map.of((int) NOTE, 0L), Map.of(SHARED, ask(10), B, ask(100)));
+        var instructions = ForgeCraftingInstructions.of(p);
+        var root = instructions.get(instructions.size() - 1);
+        assertTrue(root.root());
+        assertEquals(Map.of(PRR, 2L, SHARED, 1L), inputsByItem(root), "a real recipe ingredient is never filtered out by recipe id");
+        assertEquals(2, instructions.stream().filter(i -> i.operation().itemId() == PRR).mapToLong(ForgeCraftingInstructions.Instruction::crafts).sum(),
+                "its production is its own ordered instruction before the root");
+    }
+
+    @Test
+    void genuineIngredientAndSyntheticNoteSchedulingAreKeptApartOnTheSameRoot() {
+        // The root needs 1 genuine Peer Reviewed Research AND spends Notes through two Note branches (wallet 10 -> scheduling).
+        var both = new Recipe(-21, 902, 1, 0, "", List.of(new Ingredient(OUT1, 1), new Ingredient(OUT2, 1), new Ingredient(PRR, 1)),
+                List.of(), RecipeSource.MYSTIC_FORGE);
+        var p = LegacyForge.planner(List.of(both, branch1, branch2, prrA, prrB)).plan(both, 1, true,
+                ForgeProjectPlanner.Inventory.shared(Map.of()), ctx, Map.of((int) NOTE, 10L), Map.of(SHARED, ask(10), B, ask(100)));
+        var instructions = ForgeCraftingInstructions.of(p);
+        var root = instructions.get(instructions.size() - 1);
+        assertTrue(root.root());
+        assertEquals(1L, inputsByItem(root).get(PRR), "exactly the one genuine ingredient, not the scheduled Note production");
+        long totalPrrCrafts = instructions.stream().filter(i -> i.operation().itemId() == PRR).mapToLong(ForgeCraftingInstructions.Instruction::crafts).sum();
+        assertTrue(totalPrrCrafts > 1, "the synthetic Note production is still crafted beyond the one ingredient: " + totalPrrCrafts);
+    }
 }

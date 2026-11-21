@@ -66,7 +66,7 @@ class ForgeCraftingInstructionsTest {
                 List.of(ann, bob, ann), true, true, null, null, 1, 0);
         var project = new ForgeProjectPlanner.Project(root.recipeId, ROOT, 1, 1,
                 List.of(), List.of(), List.of(), rootNode, 0, List.of(), true, null, null, null, null, List.of(),
-                ForgeSettings.DEFAULT, null, null, 0);
+                ForgeSettings.DEFAULT, null, null, 0, null);
         var instructions = ForgeCraftingInstructions.of(project);
         var reds = instructions.stream().filter(i -> i.operation().itemId() == RED).toList();
         assertEquals(2, reds.size(), "Ann's two occurrences merge, Bob's stays separate");

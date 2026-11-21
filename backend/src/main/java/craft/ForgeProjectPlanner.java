@@ -126,12 +126,18 @@ public final class ForgeProjectPlanner {
      */
     public record CloverEstimate(long missing, long attempts, int percent) { }
 
+    /**
+     * @param noteScheduling the Research Note production subtree the planner attached to the root only to order that work
+     *                       before the Note-spending craft (null when none); compared by identity, so a genuine direct
+     *                       Peer Reviewed Research recipe ingredient of the root is never mistaken for it
+     */
     public record Project(int recipeId, int outputItemId, long batches, long guaranteedOutput,
                           List<CraftStep> steps, List<ItemLine> items, List<CurrencyLine> currencies,
                           Node tree, long knownCopper, List<Integer> unpricedItemIds, boolean complete, String incompleteReason,
                           Seed seed, Economics economics, Notes notes,
                           List<VendorPurchase> vendorPurchases, ForgeSettings settings, OwnValue ownValue,
-                          CloverEstimate clover, long rootOwned) { }
+                          CloverEstimate clover, long rootOwned,
+                          Node noteScheduling) { }
 
     public static final int MYSTIC_CLOVER = 19675;
     public static final int CLOVER_PERCENT = 31;
@@ -386,6 +392,7 @@ public final class ForgeProjectPlanner {
         long batches = 0;
         long netOut = -1; // batch target: NET guaranteed output (seed reuse deducted); -1 until computed
         Node tree = null;
+        Node noteScheduling = null;
         long rootOwnedOut = 0;
         Notes notes = null;
         try {
@@ -422,6 +429,7 @@ public final class ForgeProjectPlanner {
                     int at = 0;
                     for (int k = 0; k < kids.size(); k++) if (producesAny(kids.get(k), consumed)) at = k + 1;
                     kids.add(at, run.noteNode);
+                    noteScheduling = run.noteNode;
                     tree = new Node(tree.itemId(), tree.needed(), tree.fromOwned(), tree.fromSurplus(), tree.toCraft(),
                             tree.toAcquire(), tree.recipeId(), tree.source(), tree.crafts(), tree.minRating(),
                             tree.disciplines(), run.reason, kids, null, true, null, null, tree.produced(), tree.newSurplus());
@@ -508,7 +516,7 @@ public final class ForgeProjectPlanner {
         CloverEstimate clover = run.cloverMissing > 0 ? new CloverEstimate(run.cloverMissing, run.cloverAttempts, CLOVER_PERCENT) : null;
         return new Project(target.recipeId, target.outputItemId, batches, out, List.copyOf(run.steps), items, currencies,
                 tree, copper, unpriced, run.reason == null, run.reason, seed, econ, notes, List.copyOf(vendorPurchases),
-                settings, ownValue, clover, rootOwnedOut);
+                settings, ownValue, clover, rootOwnedOut, noteScheduling);
     }
 
     /** Items the Note production subtree draws on (its own produced items excluded). */

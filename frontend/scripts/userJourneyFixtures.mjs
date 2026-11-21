@@ -23,7 +23,7 @@ const FORGE_FILLER = Array.from({ length: 40 }, (_, index) =>
 export const forgeCatalogue = {
   status: 'OK', source: 'wiki', license: 'CC BY-NC-SA', recipeCount: 43, referenceCount: 1, completing: false,
   recipes: [
-    fRow(FORGE_BOW, 87001, 'Sunrise Longbow', 'Weapon', 'LongBow', 'WEAPONS'),
+    fRow(FORGE_BOW, 87001, 'Sunrise Longbow', 'Weapon', 'LongBow', 'WEAPONS', { rarity: 'Exotic' }),
     fRow(FORGE_SCRAP, 19745, 'Gossamer Scrap', 'CraftingMaterial', null, 'MATERIALS',
       { outcome: 'EXPECTED', outputCount: 10, expectedMean: '18.92', expectedMax: 40, buyUnitCopper: 100, sellUnitCopper: 120 }),
     fRow(FORGE_CLOVER, 19675, 'Mystic Clover', 'CraftingMaterial', null, 'MATERIALS',
@@ -35,40 +35,69 @@ const fNode = (itemId, name, o = {}) => ({ item: fItem(itemId, name), needed: 1,
   performable: true, assignedCharacter: null, hint: null, ...o })
 const fFresh = { requestId: 'r', calculationId: 'c', evaluatedAt: '2026-11-15T20:00:00Z', provisional: false, resultAvailable: true,
   accountSources: [], tradingPost: {}, outstandingWork: [], failures: [] }
-export const FORGE_DEFAULT_SETTINGS = { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' }
+export const FORGE_DEFAULT_SETTINGS = { priceMode: 'INSTANT_BUY', useOwn: false, valueOwn: false, daily: 'CRAFT', promotions: false, reduce: 'NO' }
+const fPart = (itemId, name, quantity, children = []) => ({ item: fItem(itemId, name), quantity, children, currencies: [], copper: null,
+  attempts: null, approximate: false, cutoff: null, acquired: 0, progressPercent: 0, coveredByParent: false })
+const fStep = (itemId, name, o = {}) => ({ item: fItem(itemId, name), recipeId: null, recipeSource: null, crafts: 0, produced: 0, toAcquire: 0,
+  newSurplus: 0, disciplines: null, hint: null, recipeKnown: null, performable: true, assignedCharacter: null, cutoff: null, root: false,
+  ingredients: [], ...o })
+const fVendor = (itemId, name, count, currencyCosts, o = {}) => ({ item: fItem(itemId, name), needed: count, fromOwned: 0, toAcquire: count,
+  unitCopper: null, knownCopper: null, source: 'VENDOR', purchases: count, currencyCosts, hint: null, ...o })
+/** Literal backend oracles for Gossamer Scrap#recipe1 (mean 18.92, 1-unit self seed): 2 batches -> 36.84 expected, 1831c margin. */
+const SCRAP_BATCHES = { 250: 14, 19: 2 }
+const SCRAP_BASE = [[19748, 'Bolt of Gossamer', 250], [19745, 'Gossamer Scrap', 1], [24277, 'Pile of Crystalline Dust', 5], [20796, "Philosopher's Stone", 5]]
 export function forgeProject(recipeId, target, requested = {}) {
   const settings = { ...FORGE_DEFAULT_SETTINGS, ...Object.fromEntries(Object.entries(requested).filter(([key]) => key in FORGE_DEFAULT_SETTINGS)) }
   const base = { settings, ownValue: null, clover: null, rootOwned: 0, notes: null, comparison: null, recipeId, requestedTarget: target, complete: false, incompleteReason: null, freshness: fFresh, note: null, seed: null,
-    unpricedItems: [], shopping: [], currencies: [], walletKnown: false, goldCostPartial: true, knownGoldCopper: 4200 }
+    unpricedItems: [], shopping: [], currencies: [], walletKnown: false, goldCostPartial: true, knownGoldCopper: 4200,
+    recipeTree: null, ownedItems: [], materialProgress: null, baseIngredients: [], craftingSteps: [] }
   if (recipeId === FORGE_BOW) return { ...base, output: fItem(87001, 'Sunrise Longbow'), outcome: 'FIXED', targetKind: 'OUTPUT_QUANTITY',
     batches: target, guaranteedOutput: null, unpricedItems: [fItem(9001, 'Gift of Fortune')],
     clover: { missing: 18, attempts: 59, percent: 31 },
     ownValue: settings.valueOwn ? { knownCopper: 100, unpricedItems: [] } : null,
     comparison: { unitBuyCopper: 6000, unitSellCopper: 5000, outputBuyTotalCopper: 6000 * target, savingsCopper: 6000 * target - 4200,
       conditional: true, excludesOwnValue: !settings.valueOwn },
-    currencies: [{ currencyId: 23, name: 'Spirit Shards', iconUrl: null, wikiUrl: null, needed: 50 * target, owned: null, missing: null }],
-    tree: fNode(87001, 'Sunrise Longbow', { needed: target, toCraft: target, toAcquire: 0, recipeId, crafts: target, children: [
-      fNode(87010, 'Locked Plank', { needed: 3 * target, recipeId: 5501, recipeSource: 'CRAFT', recipeKnown: false, performable: false,
-        children: [fNode(19721, 'Glob of Ectoplasm', { needed: 9 * target, toAcquire: 9 * target })] }),
-      fNode(20796, "Philosopher's Stone", { needed: 5 * target, toCraft: 5 * target, toAcquire: 0, recipeId: -1000000001, recipeSource: 'VENDOR' }),
-      fNode(19675, 'Mystic Clover', { needed: 18, toAcquire: 18, crafts: 59,
-        hint: 'Estimated: Mystic Forge one-Clover attempt, about 31% chance per attempt - 59 attempts to cover 18 missing Clovers; not guaranteed',
-        children: [fNode(19925, 'Obsidian Shard', { needed: 59, toCraft: 59, toAcquire: 0, recipeId: -1000000002, recipeSource: 'VENDOR', crafts: 59,
-          hint: 'Tactician Deathstrider, Temple of Balthazar (Glorious Victory Waypoint): 2100 Karma each' })] })] }),
+    currencies: [{ currencyId: 23, name: 'Spirit Shards', iconUrl: null, wikiUrl: null, needed: 50 * target, owned: null, missing: null },
+      { currencyId: 2, name: 'Karma', iconUrl: null, wikiUrl: null, needed: 2100 * 59, owned: null, missing: null }],
+    shopping: [fVendor(20796, "Philosopher's Stone", 5 * target, [{ currencyId: 23, name: 'Spirit Shards', count: 50 * target }]),
+      fVendor(19925, 'Obsidian Shard', 59, [{ currencyId: 2, name: 'Karma', count: 2100 * 59 }])],
+    recipeTree: fPart(87001, 'Sunrise Longbow', target, [fPart(87010, 'Locked Plank', 3 * target, [fPart(19721, 'Glob of Ectoplasm', 9 * target)])]),
+    craftingSteps: [
+      fStep(87010, 'Locked Plank', { recipeId: 5501, recipeSource: 'CRAFT', recipeKnown: false, performable: false, crafts: 3 * target, produced: 3 * target,
+        ingredients: [{ item: fItem(19721, 'Glob of Ectoplasm'), quantity: 9 * target }] }),
+      fStep(20796, "Philosopher's Stone", { recipeId: -1000000001, recipeSource: 'VENDOR', crafts: 5 * target, produced: 5 * target, toAcquire: 5 * target }),
+      fStep(19675, 'Mystic Clover', { toAcquire: 18, crafts: 59 }),
+      fStep(19925, 'Obsidian Shard', { recipeId: -1000000002, recipeSource: 'VENDOR', crafts: 59, produced: 59, toAcquire: 59,
+        hint: 'Tactician Deathstrider, Temple of Balthazar (Glorious Victory Waypoint): 2100 Karma each' }),
+      fStep(87001, 'Sunrise Longbow', { recipeId, crafts: target, produced: target, root: true })],
+    tree: fNode(87001, 'Sunrise Longbow', { needed: target, toCraft: target, toAcquire: 0, recipeId, crafts: target }),
     economics: { outputUnitSellCopper: 5000, expectedGrossProceedsCopper: 4250 * target, feeCopper: 750 * target,
       expectedNetProceedsCopper: 3500 * target, knownShoppingCopper: 4200, goldInputCopper: 4200, currencyInputs: [], unpricedInputs: [],
       marginOnShoppingCopper: 9999999, marginCopper: 3500 * target - 4200, conditional: true, fixedOutput: true } }
-  if (recipeId === FORGE_SCRAP) return { ...base, output: fItem(19745, 'Gossamer Scrap'), outcome: 'EXPECTED', targetKind: 'BATCHES',
-    batches: target, guaranteedOutput: null, goldCostPartial: false, walletKnown: true,
-    tree: fNode(19745, 'Gossamer Scrap', { needed: 10 * target, toCraft: 10 * target, toAcquire: 0, recipeId, crafts: target, children: [
-      fNode(19748, 'Bolt of Gossamer', { needed: 250 * target, toAcquire: 250 * target })] }),
-    economics: { outputUnitSellCopper: 100, expectedGrossProceedsCopper: 3684 * target, feeCopper: 553 * target,
-      expectedNetProceedsCopper: 3131 * target, knownShoppingCopper: 1300, goldInputCopper: 1300, currencyInputs: [], unpricedInputs: [],
-      marginOnShoppingCopper: 8888888, marginCopper: 1831 * target, conditional: true, fixedOutput: false } }
+  if (recipeId === FORGE_SCRAP) return { ...base, output: fItem(19745, 'Gossamer Scrap'), outcome: 'EXPECTED', targetKind: 'OUTPUT_QUANTITY',
+    batches: SCRAP_BATCHES[target] ?? 1, guaranteedOutput: null, goldCostPartial: false, walletKnown: true,
+    baseIngredients: SCRAP_BASE.map(([itemId, name, quantity]) => ({ item: fItem(itemId, name), quantity })),
+    seed: { externalSeedUnits: 1, reusedSeedUnits: 1, grossGuaranteedOutput: 20, netGuaranteedOutput: 19, grossExpectedOutput: '37.84', netExpectedOutput: '36.84' },
+    tree: fNode(19745, 'Gossamer Scrap', { needed: 10, toCraft: 10, toAcquire: 0, recipeId, crafts: SCRAP_BATCHES[target] ?? 1, children: [
+      fNode(19748, 'Bolt of Gossamer', { needed: 250, toAcquire: 250 })] }),
+    economics: { outputUnitSellCopper: 100, expectedGrossProceedsCopper: 3684, feeCopper: 553,
+      expectedNetProceedsCopper: 3131, knownShoppingCopper: 1300, goldInputCopper: 1300, currencyInputs: [], unpricedInputs: [],
+      marginOnShoppingCopper: 8888888, marginCopper: 1831, conditional: true, fixedOutput: false } }
   return { ...base, output: fItem(19675, 'Mystic Clover'), outcome: 'REFERENCE_RANDOM', targetKind: 'BATCHES', batches: target,
     guaranteedOutput: null, economics: null, note: 'Random outcome: reference inputs only; no output, profit or completion is claimed.',
+    baseIngredients: [{ item: fItem(19925, 'Obsidian Shard'), quantity: 1 }],
     tree: fNode(19675, 'Mystic Clover', { needed: 0, toAcquire: 0, recipeId, crafts: target, children: [
       fNode(19925, 'Obsidian Shard', { needed: target, toAcquire: target })] }) }
+}
+
+/** Public item summary route: literal applicable cached metadata only (no damage for a material, no invented fields). */
+export function forgeItemSummary(itemId) {
+  const empty = { type: null, subtype: null, rarity: null, level: null, minPower: null, maxPower: null, damageType: null, defense: null,
+    weightClass: null, binding: null, prefix: null, complete: true }
+  if (itemId === 87001) return { item: { ...empty, type: 'Weapon', subtype: 'LongBow', rarity: 'Exotic', level: 80, minPower: 970, maxPower: 1100,
+    damageType: 'Physical', binding: 'Account' }, instantBuyCopper: 6000, instantSellCopper: 5000, completing: false }
+  if (itemId === 19745) return { item: { ...empty, type: 'CraftingMaterial', rarity: 'Basic', level: 0 }, instantBuyCopper: 100, instantSellCopper: 120, completing: false }
+  return { item: null, instantBuyCopper: null, instantSellCopper: null, completing: false }
 }
 
 const NOTE_ESTIMATE = { perCraftNotes: 1, totalNotes: 1, perCraftCopper: 2, totalCopper: 2, basisRecipeId: 5001,
@@ -186,6 +215,13 @@ export function createJourneyBackend() {
           return
         }
         return sendJson(200, value)
+      }
+      const summary = /^\/api\/mystic-forge\/items\/(\d+)\/summary$/.exec(path)
+      if (summary) {
+        assert.equal(request.method, 'GET')
+        assert.equal(ticket, undefined, 'Public Forge item summary carried account context')
+        assert.equal(key, undefined, 'Public Forge item summary carried a key')
+        return sendJson(200, forgeItemSummary(Number(summary[1])))
       }
       const sharedItemRead = ['/api/items/metadata', '/api/items/prices'].includes(path)
       if (sharedItemRead) assert.equal(ticket, undefined, `Public item read carried account context on ${path}`)
