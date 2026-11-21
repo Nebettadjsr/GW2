@@ -89,7 +89,9 @@ class ForgeCraftingInstructionsTest {
 
     @Test
     void combinedGroupOverflowFallsBackToIndividuallySafeOccurrencesWithoutClamping() {
-        long half = Long.MAX_VALUE / 2 + 1; // each occurrence is individually safe; their sum is not
+        long half = ForgeProjectPlanner.MAX_SAFE / 2 + 1; // each occurrence is individually safe; their sum is not
+        assertTrue(half <= ForgeProjectPlanner.MAX_SAFE, "precondition: each occurrence is individually supported");
+        assertTrue(half + half > ForgeProjectPlanner.MAX_SAFE, "precondition: the combined group exceeds the exact range");
         var one = redNode(half, true, true, null);
         var rootNode = new ForgeProjectPlanner.Node(ROOT, 1, 0, 0, 1, 0, root.recipeId, RecipeSource.MYSTIC_FORGE, 1, 0, "", null,
                 List.of(one, one), true, true, null, null, 1, 0);

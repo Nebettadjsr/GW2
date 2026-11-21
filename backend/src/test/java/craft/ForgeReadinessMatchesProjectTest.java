@@ -118,7 +118,7 @@ class ForgeReadinessMatchesProjectTest {
     }
 
     @Test
-    void unknownWalletUsesTheSameSelectedVariantAndNeverClaimsReady() {
+    void unknownWalletCountsOnlyOwnedInputsOfTheSelectedVariantAndPlansNoProduction() {
         var progress = run(ForgeSettings.PriceMode.INSTANT_BUY, Map.of(A_IN, 4), null);
         assertNull(progress.project().notes().producerRecipeId(), "an unknown wallet plans no production");
         assertTrue(progress.percent() < 100.0);
