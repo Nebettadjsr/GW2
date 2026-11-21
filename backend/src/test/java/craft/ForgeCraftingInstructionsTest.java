@@ -76,6 +76,41 @@ class ForgeCraftingInstructionsTest {
         assertEquals(2, bobInstruction.crafts());
     }
 
+    private ForgeProjectPlanner.Project projectOf(ForgeProjectPlanner.Node rootNode) {
+        return new ForgeProjectPlanner.Project(root.recipeId, ROOT, 1, 1,
+                List.of(), List.of(), List.of(), rootNode, 0, List.of(), true, null, null, null, null, List.of(),
+                ForgeSettings.DEFAULT, null, null, 0, null);
+    }
+
+    private ForgeProjectPlanner.Node redNode(long crafts, Boolean known, boolean performable, String cutoff) {
+        return new ForgeProjectPlanner.Node(RED, crafts, 0, 0, crafts, 0, red.recipeId, RecipeSource.MYSTIC_FORGE, crafts, 0, "",
+                cutoff, List.of(), known, performable, "Ann", null, crafts, 0);
+    }
+
+    @Test
+    void combinedGroupOverflowFallsBackToIndividuallySafeOccurrencesWithoutClamping() {
+        long half = Long.MAX_VALUE / 2 + 1; // each occurrence is individually safe; their sum is not
+        var one = redNode(half, true, true, null);
+        var rootNode = new ForgeProjectPlanner.Node(ROOT, 1, 0, 0, 1, 0, root.recipeId, RecipeSource.MYSTIC_FORGE, 1, 0, "", null,
+                List.of(one, one), true, true, null, null, 1, 0);
+        var instructions = ForgeCraftingInstructions.of(projectOf(rootNode));
+        var reds = instructions.stream().filter(i -> i.operation().itemId() == RED).toList();
+        assertEquals(2, reds.size(), "the unsafe combined group is not merged");
+        assertTrue(reds.stream().allMatch(i -> i.crafts() == half && i.produced() == half), "no clamped or wrapped totals");
+    }
+
+    @Test
+    void differentKnowledgePerformableAndCutoffStatusesNeverMerge() {
+        var rootNode = new ForgeProjectPlanner.Node(ROOT, 1, 0, 0, 1, 0, root.recipeId, RecipeSource.MYSTIC_FORGE, 1, 0, "", null,
+                List.of(redNode(1, true, true, null), redNode(2, false, true, null), redNode(4, true, false, null),
+                        redNode(8, true, true, "Recipe display limit reached"), redNode(16, true, true, null)),
+                true, true, null, null, 1, 0);
+        var reds = ForgeCraftingInstructions.of(projectOf(rootNode)).stream().filter(i -> i.operation().itemId() == RED).toList();
+        assertEquals(4, reds.size(), "known/unknown, performable/not and cutoff each stay separate; identical ones merge");
+        assertEquals(java.util.Set.of(17L, 2L, 4L, 8L), reds.stream().map(ForgeCraftingInstructions.Instruction::crafts)
+                .collect(java.util.stream.Collectors.toSet()));
+    }
+
     private static Map<Integer, Long> inputs(ForgeCraftingInstructions.Instruction i) {
         var m = new java.util.TreeMap<Integer, Long>();
         i.ingredients().forEach(in -> m.merge(in.itemId(), in.quantity(), Long::sum));

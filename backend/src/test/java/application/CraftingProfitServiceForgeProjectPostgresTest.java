@@ -119,6 +119,27 @@ class CraftingProfitServiceForgeProjectPostgresTest {
     }
 
     @Test
+    void useOwnNoComputesNoReadinessOrItemProgressWhileYesPopulatesBoth() throws Exception {
+        var settings = craft.LegacyForge.SETTINGS;
+        var noOwn = new craft.ForgeSettings(settings.priceMode(), false, false, settings.daily(), settings.promotions(), settings.reduce());
+        var yesOwn = new craft.ForgeSettings(settings.priceMode(), true, false, settings.daily(), settings.promotions(), settings.reduce());
+        var svc = service(con, AccountScope.of(UUID.fromString(ACC_B))); // synthetic account with a full Bank set
+        var no = svc.planForgeProject(SCEPTER_RECIPE, 1, noOwn);
+        assertNull(no.materialProgress(), "No: no overall readiness is calculated");
+        assertNotNull(no.recipeTree(), "the static requirement table is still returned");
+        assertTrue(no.recipeTree().children().stream().allMatch(c -> c.acquired() == 0 && c.progressPercent() == 0),
+                "No: no per-item progress is calculated");
+        var yes = svc.planForgeProject(SCEPTER_RECIPE, 1, yesOwn);
+        assertNotNull(yes.materialProgress());
+        assertEquals(100.0, yes.materialProgress().percent());
+        for (int[] in : INPUTS) {
+            var part = yes.recipeTree().children().stream().filter(c -> c.itemId() == in[0]).findFirst().orElseThrow();
+            assertEquals(in[1], part.acquired(), "Yes: item " + in[0] + " is fully acquired from the Bank");
+            assertEquals(100, part.progressPercent());
+        }
+    }
+
+    @Test
     void retainedQuoteOfRetiredItemIsNotACurrentAskButTradeableQuoteIs() throws Exception {
         sql("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price, fetched_at) VALUES (19976, 50, 60, now()), (12976, 70, 80, now())");
         sql("INSERT INTO tp_tradeable_items (item_id) VALUES (12976)"); // 19976 was retired from the tradeable catalogue

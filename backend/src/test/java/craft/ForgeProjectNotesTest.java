@@ -188,6 +188,29 @@ class ForgeProjectNotesTest {
         assertTrue(prrAt >= 0 && prrAt < rootAt, "the Note work still runs before the Note-spending root");
     }
 
+    @Test
+    void ownedNoteContainersScheduledWithoutACraftStillLeaveTheRealRootIngredientsAndOrderedFacts() {
+        // wallet 10 -> two containers are needed, and both are already owned: no Peer Reviewed Research craft is required,
+        // so the scheduling subtree is an owned container (recipeId null) that must not replace any root ingredient.
+        var p = run(Map.of(PRR, 2L), Map.of((int) NOTE, 10L), Map.of(SHARED, ask(10), B, ask(100)));
+        var instructions = ForgeCraftingInstructions.of(p);
+        var root = instructions.get(instructions.size() - 1);
+        assertTrue(root.root());
+        assertEquals(Map.of(OUT1, 1L, OUT2, 1L, SHARED, 1L), inputsByItem(root),
+                "the actual root ingredients remain; the owned Note container is not one of them");
+        assertTrue(instructions.stream().noneMatch(i -> i.operation().itemId() == PRR && i.crafts() > 0),
+                "owned containers need no crafting instruction");
+        assertEquals(1, instructions.stream().filter(i -> i.operation().itemId() == OUT1).count());
+        assertEquals(1, instructions.stream().filter(i -> i.operation().itemId() == OUT2).count());
+        int out1 = -1, out2 = -1;
+        for (int i = 0; i < instructions.size(); i++) {
+            if (instructions.get(i).operation().itemId() == OUT1) out1 = i;
+            if (instructions.get(i).operation().itemId() == OUT2) out2 = i;
+        }
+        assertTrue(out1 >= 0 && out2 >= 0 && out1 < instructions.size() - 1 && out2 < instructions.size() - 1,
+                "Note-spending branches stay visible and ordered before the root");
+    }
+
     private static Map<Integer, Long> inputsByItem(ForgeCraftingInstructions.Instruction instruction) {
         return instruction.ingredients().stream().collect(java.util.stream.Collectors.toMap(
                 ForgeCraftingInstructions.Input::itemId, ForgeCraftingInstructions.Input::quantity));

@@ -244,17 +244,18 @@ public final class ForgeProjectPlanner {
 
     public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Map<Integer, Long> wallet,
                                  boolean includeProgress) {
-        Map<Integer, Long> available = new java.util.HashMap<>();
-        if (includeProgress) {
-            inventory.sellable().forEach((id, count) -> available.merge(id, (long) count, ForgeProjectPlanner::add));
-            inventory.accountBound().forEach((id, count) -> available.merge(id, (long) count, ForgeProjectPlanner::add));
-            inventory.characterBound().values().forEach(items -> items.forEach(
-                    (id, count) -> available.merge(id, (long) count, ForgeProjectPlanner::add)));
-        }
+        return recipeTree(target, quantity, inventory, Context.NONE, wallet, includeProgress);
+    }
+
+    /** Per-item acquisition uses the same binding pools and step assignees as {@link #materialProgress}. */
+    public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Context ctx,
+                                 Map<Integer, Long> wallet, boolean includeProgress) {
+        Context context = ctx == null ? Context.NONE : ctx;
+        PlanState available = new PlanState(inventory.sellable(), inventory.accountBound(), inventory.characterBound());
         Map<Integer, Long> availableWallet = includeProgress && wallet != null ? new java.util.HashMap<>(wallet) : null;
         try {
             return recipePart(target.outputItemId, quantity, target, 0, Set.of(), false, new int[]{0}, 0,
-                    available, availableWallet, includeProgress);
+                    available, availableWallet, includeProgress, context, null);
         } catch (ArithmeticException overflow) {
             return new RecipePart(target.outputItemId, quantity, List.of(), List.of(), null, null, false,
                     "Quantity exceeds the supported range", 0, 0, false);
@@ -262,13 +263,15 @@ public final class ForgeProjectPlanner {
     }
 
     private RecipePart recipePart(int itemId, long quantity, Recipe selected, int depth, Set<Integer> path,
-                                  boolean approximate, int[] visited, long covered, Map<Integer, Long> available,
-                                  Map<Integer, Long> availableWallet, boolean includeProgress) {
+                                  boolean approximate, int[] visited, long covered, PlanState available,
+                                  Map<Integer, Long> availableWallet, boolean includeProgress, Context ctx,
+                                  String assignee) {
         long acquired = 0;
         int progress = 0;
         if (includeProgress) {
-            long owned = Math.min(quantity - covered, Math.max(0, available.getOrDefault(itemId, 0L)));
-            available.merge(itemId, -owned, Long::sum);
+            int ask = (int) Math.min(Integer.MAX_VALUE, Math.max(0, quantity - covered));
+            long owned = ask == 0 ? 0 : depth == 0 ? available.consumeOwnedOutput(itemId, ask).total()
+                    : available.consumeInventoryWithBinding(itemId, ask, assignee).total();
             acquired = add(covered, owned);
             // Both operands are at most MAX_SAFE; multiplying by 100 fits a Java long before integer division.
             progress = quantity > 0 ? (int) (acquired * 100L / quantity) : 100;
@@ -301,11 +304,14 @@ public final class ForgeProjectPlanner {
             else {
                 Set<Integer> next = new HashSet<>(path);
                 next.add(recipe.recipeId);
+                String stepAssignee = !includeProgress ? null
+                        : recipe.isMysticForge() ? assignForge(available, recipe)
+                        : recipe.source == RecipeSource.ORDINARY ? assignOrdinary(available, ctx, recipe) : null;
                 for (Ingredient ingredient : recipe.ingredients) {
                     children.add(recipePart(ingredient.itemId, mul(ingredient.count, crafts), null, depth + 1,
                             next, approximate || clover, visited,
                             includeProgress ? mul(ingredient.count, crafts - remainingCrafts) : 0,
-                            available, availableWallet, includeProgress));
+                            available, availableWallet, includeProgress, ctx, stepAssignee));
                 }
             }
         }

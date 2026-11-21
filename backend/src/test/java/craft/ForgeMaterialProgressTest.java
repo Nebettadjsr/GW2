@@ -116,4 +116,66 @@ class ForgeMaterialProgressTest {
         var c = progress(cyc, List.of(cyc, loopA, loopB), inv(Map.of(), Map.of()), NONE, Map.of());
         assertTrue(c.percent() < 100 && c.partial(), "cycle cutoff is partial, never complete");
     }
+
+    // ---- per-item table values must agree with the overall bar (same binding pools, assignees, stock conserved once) ----
+
+    private static ForgeProjectPlanner.RecipePart table(Recipe root, List<Recipe> all, ForgeProjectPlanner.Inventory inv,
+                                                        ForgeProjectPlanner.Context ctx) {
+        return LegacyForge.planner(all).recipeTree(root, 1, inv, ctx, Map.of(), true);
+    }
+
+    private static ForgeProjectPlanner.RecipePart child(ForgeProjectPlanner.RecipePart part, int itemId) {
+        return part.children().stream().filter(c -> c.itemId() == itemId).findFirst().orElseThrow();
+    }
+
+    @Test
+    void splitCarriedCopiesAgreeBetweenTheTableAndTheOverallBar() {
+        Recipe root = forge(1, WEAPON, List.of(new Ingredient(ORE, 2)));
+        var split = inv(Map.of(), Map.of("A", Map.of(ORE, 1), "B", Map.of(ORE, 1)));
+        assertEquals(50.0, progress(root, List.of(root), split, NONE, Map.of()).percent());
+        var part = child(table(root, List.of(root), split, NONE), ORE);
+        assertEquals(1, part.acquired(), "only one carrier's copy is usable for the single Forge operation");
+        assertEquals(50, part.progressPercent());
+    }
+
+    @Test
+    void bankBoundCopiesAreAcceptedByTheForgeInTheTableAndTheBar() {
+        Recipe root = forge(1, WEAPON, List.of(new Ingredient(ORE, 3)));
+        var bank = inv(Map.of(), Map.of(PlanState.bankOwnerKey("A"), Map.of(ORE, 1), PlanState.bankOwnerKey("B"), Map.of(ORE, 1),
+                "C", Map.of(ORE, 1)));
+        assertEquals(100.0, progress(root, List.of(root), bank, NONE, Map.of()).percent());
+        var part = child(table(root, List.of(root), bank, NONE), ORE);
+        assertEquals(3, part.acquired());
+        assertEquals(100, part.progressPercent());
+    }
+
+    @Test
+    void nestedOrdinaryTableRowUsesOnlyTheAssignedCharactersStockAndConservesItOnce() {
+        Recipe root = forge(1, WEAPON, List.of(new Ingredient(PLATE, 2)));
+        Recipe plate = new Recipe(10, PLATE, 2, 400, "Weaponsmith", List.of(new Ingredient(ORE, 5)));
+        var ctx = new ForgeProjectPlanner.Context(List.of(
+                new CharacterCraftingProfile("Smith", Map.of("Weaponsmith", 500)),
+                new CharacterCraftingProfile("Novice", Map.of("Weaponsmith", 100))), Set.of(10));
+        var split = inv(Map.of(), Map.of("Smith", Map.of(ORE, 3), "Novice", Map.of(ORE, 50)));
+        assertEquals(60.0, progress(root, List.of(root, plate), split, ctx, Map.of()).percent());
+        var plateRow = child(table(root, List.of(root, plate), split, ctx), PLATE);
+        var ore = child(plateRow, ORE);
+        assertEquals(3, ore.acquired(), "the ineligible Novice's 50 ore never count; Smith's 3 are counted once");
+        assertEquals(60, ore.progressPercent());
+        assertEquals(5, ore.quantity(), "the full reference expansion stays visible");
+    }
+
+    @Test
+    void ownedParentKeepsFullReferenceExpansionAndMarksChildrenCovered() {
+        Recipe root = forge(1, WEAPON, List.of(new Ingredient(PLATE, 2)));
+        Recipe plate = new Recipe(10, PLATE, 2, 0, "", List.of(new Ingredient(ORE, 5)));
+        var owned = inv(Map.of(PLATE, 2), Map.of());
+        assertEquals(100.0, progress(root, List.of(root, plate), owned, NONE, Map.of()).percent());
+        var plateRow = child(table(root, List.of(root, plate), owned, NONE), PLATE);
+        assertEquals(2, plateRow.acquired());
+        var ore = child(plateRow, ORE);
+        assertEquals(5, ore.quantity());
+        assertEquals(5, ore.acquired());
+        assertTrue(ore.coveredByParent());
+    }
 }

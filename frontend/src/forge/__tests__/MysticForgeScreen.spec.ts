@@ -695,6 +695,71 @@ describe('vendor shopping and bounded catalogue completion', () => {
     })
   })
 
+  describe('named Material with a missing icon', () => {
+    const noIcon = (r: ForgeRecipeRow) => r.recipeId === -4 ? { ...r, iconUrl: null } : r
+    const withIcon = (r: ForgeRecipeRow) => r.recipeId === -4 ? { ...r, iconUrl: '/api/items/19745/icon' } : r
+    const gossamer = (w: ReturnType<typeof mount>) => w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Gossamer Scrap'))!
+
+    it('keeps the bounded completion running for a named row without an icon and shows the icon once, without extra plans', async () => {
+      let calls = 0
+      const api: MysticForgeApi = {
+        async loadCatalogue() {
+          calls++
+          const warm = calls > 1
+          return { ...catalogue, completing: !warm, recipes: catalogue.recipes.map(warm ? withIcon : noIcon) }
+        },
+        loadProject(recipeId, target, settings) {
+          projectCalls.push({ recipeId, target, settings })
+          return Promise.resolve(project(target, { recipeId, settings: settings!, batches: 7 }))
+        }
+      }
+      const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+      await flushPromises()
+      await gossamer(w).trigger('click')
+      await flushPromises()
+      expect(w.find('[data-test="forge-item-summary"] img').exists()).toBe(false)
+      await vi.advanceTimersByTimeAsync(5100)
+      await flushPromises()
+      expect(calls).toBe(2)
+      expect(w.get('[data-test="forge-item-summary"] img').attributes('src')).toContain('/api/items/19745/icon')
+      expect(projectCalls).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(calls).toBe(2)
+      w.unmount()
+    })
+
+    it('stops at the bound with Retry that recovers the icon, and deactivation leaves no timer behind', async () => {
+      let calls = 0
+      let recover = false
+      const api: MysticForgeApi = {
+        async loadCatalogue() {
+          calls++
+          return { ...catalogue, completing: !recover, recipes: catalogue.recipes.map(recover ? withIcon : noIcon) }
+        },
+        loadProject(recipeId, target, settings) {
+          projectCalls.push({ recipeId, target, settings })
+          return Promise.resolve(project(target, { recipeId, settings: settings! }))
+        }
+      }
+      const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+      await flushPromises()
+      await gossamer(w).trigger('click')
+      await flushPromises()
+      for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(5100)
+      const bounded = calls
+      expect(bounded).toBeLessThanOrEqual(7)
+      expect(w.find('[data-test="forge-detail-catalogue-retry"]').exists()).toBe(true)
+      recover = true
+      await w.get('[data-test="forge-detail-catalogue-retry-button"]').trigger('click')
+      await flushPromises()
+      expect(calls).toBe(bounded + 1)
+      expect(w.get('[data-test="forge-item-summary"] img').attributes('src')).toContain('/api/items/19745/icon')
+      w.unmount()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(calls).toBe(bounded + 1)
+    })
+  })
+
   it('metadata completing while a plan for the OLD settings is in flight converges once to the neutralized settings', async () => {
     let calls = 0
     let hold: ((p: ForgeProject) => void) | null = null

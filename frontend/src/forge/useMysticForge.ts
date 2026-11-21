@@ -364,10 +364,10 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     stalled.value = false
     // A row whose type is not cached yet (category OTHER) must not stay generic: keep the same bounded public
     // metadata reread running while its detail is open so weapon/armor controls appear in place.
-    // A Material row whose name/icon metadata is still missing keeps the same bounded completion too, so its heading,
+    // A Material row whose name or icon metadata is still missing keeps the same bounded completion too, so its heading,
     // icon and Wiki link replace the item-ID placeholder once the public metadata arrives.
     const opened = selectedRow.value
-    if (opened?.category === 'OTHER' || (opened?.category === 'MATERIALS' && !opened.name)) resumeCatalogue()
+    if (opened?.category === 'OTHER' || (opened?.category === 'MATERIALS' && (!opened.name || !opened.iconUrl))) resumeCatalogue()
     void loadProject()
   }
 
