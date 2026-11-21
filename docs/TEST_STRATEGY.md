@@ -134,6 +134,14 @@ In that case:
 3. change the implementation,
 4. update or remove the obsolete characterization test.
 
+### Mystic Forge catalog tests
+
+The bundled `mystic-forge/catalog.json` is tested from the real generated resource (source-shaped vectors such as
+Gossamer Scrap and Wool Scrap with their lower bound, verified category mean and exact ingredient slots; absence of
+display-only/unverified random rows) and from controlled malformed JSON (strict scalar types, duplicate identity,
+unusable resource). `generate_catalog.py --check` verifies the bundled file matches the captured sources offline;
+no test calls the Wiki. CI also runs the offline generator unit tests and the `--check` regeneration comparison.
+
 ## 5. Domain Spec as Test Source
 
 [`DOMAIN_SPEC.md`](DOMAIN_SPEC.md) is the primary source of acceptance cases; each important stable
@@ -551,6 +559,24 @@ not close/reopen them, clear the form draft/key or trigger refetch. Never confir
 The 18 November owner decision explicitly replaces earlier blocking, no-request-at-narrow and
 forced-modal-close assertions. Preserve the unaffected account/desktop user-story regressions.
 
+The Forge-only browser journey gate drives the built app against scripted backend answers only (never live
+ArenaNet/Wiki/owner data): the Forge destination lists fixed, variable and reference rows from the cached
+catalogue, and the selected-project journeys (12 in total) open one recipe, show the backend's literal
+needed/owned/to-craft/to-acquire partition, expected/net/seed facts, vendor and Research Note facts, and re-plan
+only when the target or an effective calculation setting changes. Crafting Profit has no Forge toggle: no
+`allowMysticForge` is sent or honoured. The browser performs no Forge arithmetic and renders the server-built
+crafting instructions, not a tree-derived how-to. The journey is the controlled desktop Forge check; real-backend
+Forge accuracy remains a separate supervised check. Backend domain coverage includes desired output and server
+instructions in `ForgeDesiredOutputOracleTest` and `ForgeCraftingInstructionsTest`; readiness, promotions and
+Notes in `ForgeMaterialProgressTest`, `ForgePromotionBoundaryTest` and `ForgeProjectNotesTest`; and agreement
+with the project's root reduction and selected Note producer in `ForgeReadinessMatchesProjectTest`.
+Browser preferences and grouped recipe paths are covered by `ForgePreferences.spec.ts`; rendered behaviour,
+including the one-batch base recipe, is covered by `MysticForgeScreen.spec.ts`.
+Research Notes in a project are covered by `ForgeProjectNotesTest`
+(210-Note aggregate, wallet cases, shared stock, locked producer, cheaper variant, incomplete quote basis) and
+`MysticForgeApiControllerTest` (notes DTO, overflowing line total stays an incomplete project). The rules
+themselves live in DOMAIN_SPEC and the crafting GLOSSARY.
+
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to
 eight minutes. Close owned pages, contexts, browser processes and stub servers on success and
@@ -927,11 +953,11 @@ Formalizes §10's closing line into its own layer:
 
 - covers a small number of selected, critical endpoints only,
 - is not part of the normal deterministic `./mvnw test` run: the `*IT` naming (e.g. `Gw2ApiLiveSmokeIT`) matches none of the Surefire include patterns (§28),
-- is explicitly invoked, never run automatically as part of local or CI `mvn test`,
+- stays outside the default local or CI `mvn test` selection; CI explicitly invokes the public compatibility gate described below,
 - is allowed to fail because of external network/API unavailability without ever making the normal unit/integration suite flaky,
-- must never be the only coverage for parser/sync behavior — Layer 3's fixture-based tests remain the authoritative, always-run coverage; Layer 4 only adds a manual reality-check against the live API.
+- must never be the only coverage for parser/sync behavior — Layer 3's fixture-based tests remain the authoritative, always-run coverage; Layer 4 adds bounded checks against the live API.
 
-`ApiCompatibilityLiveIT` runs the owner API compatibility checker (`api.ApiCompatibilityChecker`) against the real public endpoints on demand (`./mvnw test -Dtest=ApiCompatibilityLiveIT`). It prints every probe, fails on a mismatch or unavailable probe, never hardcodes volatile values, and reports the known Jade coverage gap and any newer schema version as attention rather than hiding or failing on them. The automatic schedule is covered offline in `ApiCompatibilitySchedulerTest` (fake task facility; test contexts defer the timer via `src/test/resources/config/application.properties`), and the compact card in `OwnerApiCompatibility.spec.ts`. The same checker is covered offline in `ApiCompatibilityCheckerTest`/`ApiCompatibilityApiControllerTest` with a fake transport and clocks.
+`ApiCompatibilityLiveIT` runs the production owner API compatibility checker (`api.ApiCompatibilityChecker`) against the real public endpoints. It is outside the ordinary offline default selection, but CI runs it as its own bounded step ("Live public GW2 API compatibility gate") in the required backend job, with no account key or database. It prints every probe and fails unless the completed overall result is OK with all seven probes, so a mismatch, an unreviewed newer schema (attention), or an unavailable/not-run probe fails and names the probe; a temporary ArenaNet outage can therefore block a release. It never hardcodes volatile values. The directory's description-only `item_ingredients`/`currency_ingredients` wording versus the supported typed `ingredients` payload is classified OK (`DIRECTORY_DESCRIPTION_SUPPORTED`) only after all identity, ingredient and quantity checks pass. Run locally with `./mvnw test -Dtest=ApiCompatibilityLiveIT`. The automatic schedule is covered offline in `ApiCompatibilitySchedulerTest` (fake task facility; test contexts defer the timer via `src/test/resources/config/application.properties`), and the compact card in `OwnerApiCompatibility.spec.ts`. The same checker is covered offline in `ApiCompatibilityCheckerTest`/`ApiCompatibilityApiControllerTest` with a fake transport and clocks.
 
 ### 31.5 General Principles
 
@@ -1083,7 +1109,7 @@ is, what it runs, what it cannot run, and what "verified" therefore means.
 | Where | Runs | Authoritative for |
 |---|---|---|
 | Local, during implementation | the narrowest scope covering the change: one test, one class, at most the directly related suite (§20) | that the change under construction behaves as intended |
-| GitHub Actions (`.github/workflows/ci.yml`) | complete default suites with coverage, type/build, workflow checks, and the STORY-COV-006 controlled browser selection after build | that required deterministic checks and named synthetic journeys pass on the PR head |
+| GitHub Actions (`.github/workflows/ci.yml`) | complete default suites with coverage, type/build, workflow checks, the STORY-COV-006 controlled browser selection after build, and the explicit public API compatibility gate (§31.4) | that required deterministic checks, named synthetic journeys and the bounded live API compatibility check pass on the PR head |
 | Local, explicitly invoked | live GW2 API smoke (§31.4), real-backend/full-stack browser checks, focused additional controlled journeys, owner-data `*IT` checks (§34, §35.2) | the explicitly observed integration/state/measurement scope that default CI does not establish |
 
 CI runs the complete default selection at the identified commit; local checks stay focused on
@@ -1097,7 +1123,9 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
   against a `postgres:17` service container. Surefire's include patterns (`Test*`, `*Test`, `*Tests`,
   `*TestCase`, `*Properties`; §28) do not match `*IT`, so every `*IT` class stays
   outside the default run exactly as it is locally. The build has no platform-specific classifier, so the same command
-  runs on a developer machine and on the Linux runner.
+  runs on a developer machine and on the Linux runner. A separate required step explicitly runs
+  `./mvnw -B -ntp test -Dtest=ApiCompatibilityLiveIT -Djacoco.skip=true` against public ArenaNet
+  endpoints (§31.4), with a six-minute step timeout. A missing selected test fails the step.
 - **Frontend** — `npm ci`, Vitest coverage with `npm run test:coverage -- --reporter=default --reporter=github-actions`, and the type-checking `npm run build`. STORY-COV-006 adds the locked Chromium installation and `npm run smoke:ci` after that build, as a separately named step inside the existing required frontend job (§12.5). Its failure fails that job; keep journey outcomes separate from code-coverage percentages. Upload available journey results/failure artifacts with `if: always()`.
 - **Workflow checks** — actionlint validates the workflows; `python -m unittest discover -s .github/scripts` runs the helper and configuration tests, with native Nginx supplied where required.
 
@@ -1126,8 +1154,8 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
 
 ### 36.4 What the gate deliberately cannot verify
 
-- **Layer 4 live GW2 API smoke (§31.4)** must never run automatically anywhere,
-  by definition.
+- **Additional Layer 4 live GW2 API smoke (§31.4)** stays explicitly invoked outside the gate;
+  the seven-probe public API compatibility check is the named CI exception, not full API coverage.
 - **Owner-data `*IT` checks and performance measurements (§34, §35.2)** read a
   populated real database; CI has an empty one. They stay local and explicit. Controlled
   PostgreSQL HTTP parity (§35.2) is not in this category: it runs in the default suite.
@@ -1135,8 +1163,8 @@ Backend, frontend and workflow-check jobs run on pushes, pull requests and expli
   application/data environments and remain separately invoked. Installing Chromium does not
   make a controlled fixture equivalent to a live backend, database or production deployment.
 
-A green gate means the default deterministic suites and controlled journeys pass, not that
-every layer or live integration passed. Browser evidence is limited to the actual curated
+A green gate means the default deterministic suites, controlled journeys and the named public API
+compatibility check pass, not that every layer or live integration passed. Browser evidence is limited to the actual curated
 scenarios and supported desktop boundary; reading-page exemptions retain their own narrow
 checks. A local browser pass or an older green frontend run cannot replace required checks
 on the current PR head.

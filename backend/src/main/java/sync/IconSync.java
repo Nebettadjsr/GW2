@@ -283,19 +283,7 @@ public final class IconSync {
             if (id != null) wanted.add(id);
         if (wanted.isEmpty()) return failed;
 
-        Set<Integer> hasIcon = new HashSet<>();
-        try (PreparedStatement ps = con.prepareStatement(
-                "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL"
-                        + " AND btrim(coalesce(name, '')) <> '' AND btrim(coalesce(type, '')) <> ''"
-                        + " AND btrim(coalesce(rarity, '')) <> '' AND no_mystic_forge IS NOT NULL")) {
-            ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    if (IconSourcePolicy.accept(rs.getString(2)).isPresent()) hasIcon.add(rs.getInt(1));
-                }
-            }
-        }
-        wanted.removeAll(hasIcon);
+        wanted.removeAll(completeIds(con, wanted));
 
         for (List<Integer> batch : BatchUtils.chunk(new ArrayList<>(wanted), SyncConstants.HTTP_IDS_BATCH)) {
             try {
@@ -309,6 +297,74 @@ public final class IconSync {
                 failed.addAll(batch);
                 System.out.println("Icon metadata unavailable for " + batch.size()
                                            + " account item(s), left for a later sync: " + unavailable);
+            }
+        }
+        return failed;
+    }
+
+    /** The subset of {@code wanted} whose stored row already carries every canonical metadata field and an accepted icon. */
+    private static Set<Integer> completeIds(Connection con, Collection<Integer> wanted) throws SQLException {
+        Set<Integer> complete = new HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL"
+                        + " AND btrim(coalesce(name, '')) <> '' AND btrim(coalesce(type, '')) <> ''"
+                        + " AND btrim(coalesce(rarity, '')) <> '' AND no_mystic_forge IS NOT NULL"
+                        + " AND (type NOT IN ('Weapon', 'Armor') OR btrim(coalesce(subtype, '')) <> '')")) {
+            ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    if (IconSourcePolicy.accept(rs.getString(2)).isPresent()) complete.add(rs.getInt(1));
+                }
+            }
+        }
+        return complete;
+    }
+
+    /** The positive ids of {@code itemIds} whose stored metadata row is missing or incomplete (read-only, one short query). */
+    public static Set<Integer> incompleteIds(Connection con, Collection<Integer> itemIds) throws SQLException {
+        Set<Integer> wanted = new java.util.TreeSet<>();
+        for (Integer id : itemIds) if (id != null && id > 0) wanted.add(id);
+        if (wanted.isEmpty()) return wanted;
+        wanted.removeAll(completeIds(con, wanted));
+        return wanted;
+    }
+
+    /**
+     * Connection-free completion of item metadata for {@code itemIds}: a short read finds the ids whose stored
+     * row is incomplete, the batched upstream fetch runs with no database connection held, and each batch is
+     * written in its own short transaction. A failed batch is reported and stays incomplete, so the next call
+     * retries it; an interrupt propagates with the flag restored.
+     *
+     * @return the ids whose metadata request failed
+     */
+    public static Set<Integer> completeMissingMetadata(Collection<Integer> itemIds) throws Exception {
+        return completeMissingMetadata(itemIds, IconSync::fetchItemMetadata);
+    }
+
+    static Set<Integer> completeMissingMetadata(Collection<Integer> itemIds, ItemMetadataSource source)
+            throws Exception {
+        Set<Integer> failed = new LinkedHashSet<>();
+        Set<Integer> wanted = new java.util.TreeSet<>();
+        for (Integer id : itemIds) if (id != null && id > 0) wanted.add(id);
+        if (wanted.isEmpty()) return failed;
+        try (Connection con = Db.open()) {
+            wanted.removeAll(completeIds(con, wanted));
+        }
+        for (List<Integer> batch : BatchUtils.chunk(new ArrayList<>(wanted), SyncConstants.HTTP_IDS_BATCH)) {
+            try {
+                JsonNode root = source.fetchByIds(batch);
+                if (root == null || !root.isArray()) throw new IllegalArgumentException("Item metadata must be an array");
+                List<ItemParser.ItemRow> rows = parseRequested(root, batch);
+                try (Connection con = Db.open()) {
+                    applyItemMetadata(con, rows);
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw interrupted;
+            } catch (Exception unavailable) {
+                failed.addAll(batch);
+                System.out.println("Item metadata unavailable for " + batch.size()
+                                           + " Forge item(s), left for a later refresh: " + unavailable);
             }
         }
         return failed;
@@ -465,17 +521,29 @@ public final class IconSync {
      * reads the referenced families directly rather than through {@code items}, so a referenced id
      * with no metadata row is still discovered, and it filters by no tradeability source.
      */
-    static List<Integer> globalReferencedOrUnknownItemIds(Connection con) throws SQLException {
+    /** Test seam: the bundled Forge/Clover/vendor reference ids that join the global selection. */
+    static volatile java.util.function.Supplier<Set<Integer>> forgeReferenceIds =
+            parser.MysticForgeCatalogLoader::referencedItemIds;
 
-        return selectItemIds(con, """
+    static List<Integer> globalReferencedOrUnknownItemIds(Connection con) throws SQLException {
+        // Bundled Forge/Clover/vendor references join the same global selection (no new refresh path).
+        List<Integer> ids = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("""
         SELECT item_id FROM (
             SELECT item_id FROM items WHERE icon_url IS NULL
             UNION SELECT item_id FROM material_category_items
             UNION SELECT output_item_id FROM recipes WHERE output_item_id IS NOT NULL
             UNION SELECT item_id FROM recipe_ingredients WHERE item_id IS NOT NULL
+            UNION SELECT unnest(?::int[])
         ) referenced
         ORDER BY item_id
-        """);
+        """)) {
+            ps.setArray(1, con.createArrayOf("int", forgeReferenceIds.get().toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
     }
 
     /** Runs one parameterless item-id selection, in the order the statement itself established. */

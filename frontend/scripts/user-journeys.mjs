@@ -4,11 +4,12 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { setTimeout as pause } from 'node:timers/promises'
-import { chromium, selectors } from 'playwright-core'
+import { selectors } from 'playwright-core'
+import { launchOwnedBrowser, closeOwnedBrowser } from './ownedBrowser.mjs'
 import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
-import { createJourneyBackend, KEY_A, KEY_B, BAD_KEY, ACCOUNT_A, ACCOUNT_B, storageKey } from './userJourneyFixtures.mjs'
+import { createJourneyBackend, KEY_A, KEY_B, BAD_KEY, ACCOUNT_A, ACCOUNT_B, storageKey, FORGE_BOW, FORGE_SCRAP, FORGE_DEFAULT_SETTINGS } from './userJourneyFixtures.mjs'
 
 selectors.setTestIdAttribute('data-test')
 const OUTPUT = resolve(process.env.GW2_SMOKE_OUTPUT ?? 'quality-reports/desktop-journeys')
@@ -17,10 +18,11 @@ const WIDE = { width: 1440, height: 900 }
 const WARNING = 'This page is not optimized for mobile use. You can scroll horizontally to use the whole page.'
 const results = []
 let browser
+let owned
 process.on('message', async message => {
   if (message?.type !== 'gw2-journey-timeout') return
   process.exitCode = 1
-  await browser?.close().catch(() => {}) // Cancels waits, then each active journey's finally closes its origin.
+  await closeOwnedBrowser(owned).catch(() => {}) // Cancels waits, then each active journey's finally closes its origin.
 })
 process.channel?.unref()
 
@@ -428,6 +430,199 @@ async function modalResize({ page, api, origin, step }, kind) {
   step(`${kind} stays modal/usable at 390/1023; normal close then Home works, with draft/key retained and no deletion or extra requests`)
 }
 
+const rowFor = (page, name) => get(page, 'profit-row').filter({ hasText: name })
+const forgeFlag = call => JSON.parse(call.body).settings?.allowMysticForge ?? false
+
+/** Forge left Crafting Profit (issue #378): no toggle, no Forge rows, no retired flag; ordinary Note popup intact. */
+async function forgeJourney({ page, api, origin, step }) {
+  api.useForgeFixtures()
+  await page.goto(`${origin}/#/synchronization`)
+  await connect(page, KEY_A)
+  await go(page, 'crafting')
+  await get(page, 'profit-table').waitFor()
+  const profit = () => api.calls.filter(call => call.path === '/api/crafting/profit')
+  assert.equal(forgeFlag(profit().at(-1)), false, 'Profit must never request Forge')
+  assert.equal(await get(page, 'forge-source').count(), 0)
+  assert.equal(await get(page, 'setting-allowMysticForge').count(), 0)
+  assert.equal(await rowFor(page, 'Gossamer Scrap').count(), 0)
+  step('Crafting Profit is ordinary again: no Forge toggle, rows or request flag')
+
+  await rowFor(page, 'Iron Ingot').getByTestId('select-row').click()
+  await get(page, 'note-estimate-trigger').click()
+  await get(page, 'note-estimate-dialog').waitFor()
+  assert.equal(await get(page, 'note-estimate-dialog').evaluate(node => node.open && node.matches(':modal')), true)
+  assert.equal(await get(page, 'note-estimate-basis').count(), 1)
+  await get(page, 'note-estimate-close').click()
+  await get(page, 'note-estimate-dialog').waitFor({ state: 'hidden' })
+  step('ordinary Research Note estimate popup still opens as a modal and closes beside Forge rows')
+}
+
+const forgeCalls = (api, path) => api.calls.filter(call => call.path === path)
+const forgeProjects = api => forgeCalls(api, '/api/mystic-forge/project').map(call => JSON.parse(call.body))
+
+/** Mystic Forge destination (issue #378): catalogue-only browsing, one selected project, exact target, late answers discarded. */
+async function mysticForgeJourney({ page, api, origin, step }) {
+  await page.goto(`${origin}/#/synchronization`)
+  await connect(page, KEY_A)
+  const nav = await page.locator('[data-test^="nav-"]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-test')))
+  assert.ok(nav.indexOf('nav-discovery') >= 0 && nav.indexOf('nav-forge') === nav.indexOf('nav-discovery') + 1 &&
+    nav.indexOf('nav-ecto') === nav.indexOf('nav-forge') + 1, `Forge must sit between Discovery and Ecto: ${nav}`)
+  step('navigation places Mystic Forge between Crafting Discovery and Ecto Salvage')
+
+  await go(page, 'forge')
+  await get(page, 'forge-screen').waitFor()
+  await get(page, 'forge-count').waitFor()
+  assert.equal(await get(page, 'forge-count').innerText(), '43 items')
+  assert.equal(await get(page, 'forge-filter-subtype').isDisabled(), true, 'Type stays present but disabled for All categories')
+  await get(page, 'forge-search').fill('bow')
+  assert.equal(await get(page, 'forge-count').innerText(), '1 items', 'bow must match the actual LongBow subtype only')
+  await get(page, 'forge-search').fill('')
+  await get(page, 'forge-filter-category').selectOption('MATERIALS')
+  assert.equal(await get(page, 'forge-count').innerText(), '2 items')
+  await get(page, 'forge-filter-category').selectOption('ARMOR')
+  assert.equal(await get(page, 'forge-count').innerText(), '0 items')
+  assert.equal(await get(page, 'forge-filter-subtype').isDisabled(), false, 'Armor offers its weight classes')
+  assert.equal(forgeProjects(api).length, 0, 'Browsing must not plan any project')
+  assert.equal(count(api, '/api/crafting/profit'), 0, 'Browsing must not call Profit')
+  step('catalogue search, tab and category cause no project and no Profit request; Bow matches the real subtype')
+
+  await get(page, 'forge-filter-category').selectOption('WEAPONS')
+  await get(page, 'forge-search').fill('weapon')
+  assert.equal(await get(page, 'forge-count').innerText(), '41 items')
+  const bowRow = get(page, 'forge-row').filter({ hasText: 'Sunrise Longbow' })
+  await bowRow.scrollIntoViewIfNeeded()
+  const listScroll = await page.evaluate(() => window.scrollY)
+  assert.ok(listScroll > 100, 'the long list must actually scroll')
+  await bowRow.click()
+  await get(page, 'forge-detail').waitFor()
+  await get(page, 'forge-summary').waitFor()
+  assert.deepEqual(forgeProjects(api), [{ recipeId: FORGE_BOW, target: 1, ...FORGE_DEFAULT_SETTINGS }], 'accepted defaults, shared settings and one request')
+  assert.equal(forgeCalls(api, '/api/mystic-forge/items/87001/summary').length, 1, 'the public item summary is read once for the selected item')
+  const summaryText = await get(page, 'forge-item-summary').innerText()
+  assert.match(summaryText, /Sunrise Longbow/)
+  assert.match(summaryText, /Exotic/)
+  assert.match(summaryText, /970/, 'applicable weapon strength comes from the literal backend summary')
+  const stepList = get(page, 'forge-crafting-step')
+  assert.equal(await stepList.count(), 5, 'the server crafting steps, not a tree walk, are rendered')
+  const plank = await stepList.filter({ hasText: 'Locked Plank' }).innerText()
+  assert.match(plank, /Craft\s+3/)
+  assert.match(plank, /Recipe not unlocked/)
+  assert.match(await get(page, 'forge-shopping-currency').first().textContent(), /wallet unknown/)
+  assert.match(await get(page, 'forge-known-gold').innerText(), /partial/)
+  assert.match(await get(page, 'forge-unpriced').textContent(), /Gift of Fortune/, 'unpriced requirement named in its collapsed disclosure')
+  const vendorText = await stepList.filter({ hasText: "Philosopher's Stone" }).innerText()
+  assert.match(vendorText, /Buy\s+5/)
+  assert.match(vendorText, /Miyani/)
+  assert.doesNotMatch(vendorText, /Craft/)
+  assert.equal(await get(page, 'forge-material-progress').count(), 0, 'Use own materials = No computes and shows no progress bar')
+  assert.equal(await get(page, 'forge-setting-daily').inputValue(), 'CRAFT')
+  step('opening one root plans exactly that recipe: locked ordinary how-to, vendor step, partial cost and unknown wallet')
+
+  assert.equal(await get(page, 'forge-unit-buy').innerText(), '60s 0c')
+  assert.doesNotMatch(await get(page, 'forge-margin').innerText(), /999g/, 'marginOnShopping must never be the margin')
+  assert.equal(await get(page, 'forge-output').count(), 0, 'an estimated Clover dependency never shows a guaranteed output')
+  const bowText = await get(page, 'forge-detail').innerText()
+  assert.match(await get(page, 'forge-clover-estimate').innerText(), /59 Mystic Forge attempts for 18 missing Clovers/)
+  assert.match(await stepList.filter({ hasText: 'Mystic Clover' }).innerText(), /≈59 attempts · estimated/, 'the backend attempt count, not the missing Clover count')
+  assert.match(bowText, /Tactician Deathstrider/)
+  assert.match(bowText, /Glorious Victory Waypoint/)
+  await get(page, 'forge-target').fill('3')
+  await waitFor(() => forgeProjects(api).length === 2, 'Expected exactly one project read for the new target')
+  await waitFor(async () => (await get(page, 'forge-unit-buy').count()) > 0, 'Expected the target-3 project to paint')
+  assert.equal(await get(page, 'forge-output').count(), 0)
+  assert.deepEqual(forgeProjects(api).at(-1), { recipeId: FORGE_BOW, target: 3, ...FORGE_DEFAULT_SETTINGS })
+  assert.equal(forgeProjects(api).length, 2)
+  assert.match(await stepList.filter({ hasText: 'Locked Plank' }).innerText(), /Craft\s+9/, 'the backend step quantities follow the target')
+  step('target change re-plans only the selected project; per-item quote and multi-batch totals are labelled separately')
+
+  api.holdNextForgeProject()
+  await get(page, 'forge-target').fill('4')
+  await waitFor(api.hasHeldForge, 'Expected a held target-4 answer')
+  assert.equal(await get(page, 'forge-summary').count(), 0, 'an earlier quantity must not stay current while 4 is pending')
+  await get(page, 'forge-target').fill('5')
+  await waitFor(() => forgeProjects(api).length === 4, 'Expected the target-5 read')
+  await waitFor(async () => (await get(page, 'forge-savings').count()) > 0, 'Expected the target-5 project to paint')
+  api.releaseForge()
+  await quietFrame(page)
+  await pause(100)
+  assert.equal(await get(page, 'forge-savings').innerText(), '+2g 58s 0c', 'target 5 savings (6000*5-4200c), not the late target 4')
+  step('a late answer for an earlier target is discarded')
+
+  await get(page, 'forge-setting-price').selectOption('BUY_ORDER')
+  await waitFor(() => forgeProjects(api).at(-1)?.priceMode === 'BUY_ORDER', 'Expected a read carrying the price setting')
+  await get(page, 'forge-setting-promotions').selectOption('YES')
+  await waitFor(() => forgeProjects(api).at(-1)?.promotions === true, 'Expected a read carrying the promotions setting')
+  await get(page, 'forge-setting-value-own').selectOption('YES')
+  await waitFor(() => forgeProjects(api).at(-1)?.valueOwn === true, 'Expected a read carrying the value-own setting')
+  assert.deepEqual(forgeProjects(api).at(-1), { recipeId: FORGE_BOW, target: 5, ...FORGE_DEFAULT_SETTINGS,
+    priceMode: 'BUY_ORDER', valueOwn: true, promotions: true })
+  await waitFor(async () => (await get(page, 'forge-own-value').innerText()) !== 'Not valued', 'Expected the own-value answer to paint')
+  step('functional settings reach the backend request; Clover attempts and merchant waypoint instructions come from backend facts')
+
+  await get(page, 'forge-back').click()
+  await get(page, 'forge-overview').waitFor()
+  assert.equal(await get(page, 'forge-search').inputValue(), 'weapon')
+  assert.equal(await get(page, 'forge-filter-category').inputValue(), 'WEAPONS')
+  assert.ok(Math.abs((await page.evaluate(() => window.scrollY)) - listScroll) <= 2, 'list scroll must be restored')
+  await focusIs(bowRow)
+  assert.equal(forgeCalls(api, '/api/crafting/profit').length, 0)
+  step('Back restores category, query, scroll position and focus on the opened row')
+
+  await get(page, 'forge-search').fill('')
+  await get(page, 'forge-filter-category').selectOption('MATERIALS')
+  await get(page, 'forge-row').filter({ hasText: 'Gossamer Scrap' }).click()
+  await get(page, 'forge-base-recipe').waitFor()
+  await get(page, 'forge-summary').waitFor()
+  assert.deepEqual(forgeProjects(api).at(-1), { recipeId: FORGE_SCRAP, target: 250, ...FORGE_DEFAULT_SETTINGS,
+    priceMode: 'BUY_ORDER', valueOwn: true, promotions: false }, 'Materials plan a desired output of 250 with the shared price/own-value choices and the hidden promotions choice neutralized')
+  assert.equal(await get(page, 'forge-target').inputValue(), '250')
+  assert.equal(await get(page, 'forge-estimated-batches').innerText(), '≈14', 'the batch estimate is the backend answer')
+  const baseRecipe = await get(page, 'forge-base-recipe').innerText()
+  assert.match(baseRecipe, /Bolt of Gossamer/)
+  assert.equal(await get(page, 'forge-base-ingredient').count(), 4, 'one-batch base recipe is independent of the desired output')
+  for (const hidden of ['daily', 'promotions', 'reduce']) assert.equal(await get(page, `forge-setting-${hidden}`).count(), 0, `${hidden} is not a Material control`)
+  assert.equal(await get(page, 'forge-crafting-steps').count(), 0, 'Materials show no crafting steps')
+  await get(page, 'forge-target').fill('19')
+  await waitFor(() => forgeProjects(api).at(-1)?.target === 19, 'Expected Gossamer desired-output 19 read')
+  await waitFor(async () => (await get(page, 'forge-estimated-batches').innerText()) === '≈2', 'Expected the 2-batch backend estimate')
+  assert.equal(await get(page, 'forge-expected-output').innerText(), '≈36.84')
+  const economics = await get(page, 'forge-summary').innerText()
+  assert.match(economics, /36s 84c/, 'estimated sale proceeds')
+  assert.match(economics, /5s 53c/, 'Trading Post fees')
+  assert.match(economics, /31s 31c/, 'estimated net proceeds')
+  assert.match(economics, /18s 31c/, 'conditional margin')
+  assert.match(economics, /conditional margin/i)
+  step('expected-yield Material shows desired output, backend batches, base recipe and conditional estimated economics')
+
+  await get(page, 'forge-back').click()
+  await get(page, 'forge-row').filter({ hasText: 'Mystic Clover' }).click()
+  await get(page, 'forge-summary').waitFor()
+  assert.equal(await get(page, 'forge-output').count(), 0)
+  assert.equal(await get(page, 'forge-expected-output').count(), 0)
+  assert.match(await get(page, 'forge-yield').innerText(), /Random/)
+  assert.doesNotMatch(await get(page, 'forge-summary').innerText(), /Estimated net proceeds|margin/i)
+  step('reference-only Clover shows the reference inputs and no guaranteed output, expected output or economics')
+
+  await get(page, 'forge-back').click()
+  await get(page, 'forge-row').filter({ hasText: 'Gossamer Scrap' }).click()
+  await get(page, 'forge-summary').waitFor()
+  await get(page, 'forge-back').click()
+  api.holdNextForgeProject()
+  await get(page, 'forge-row').filter({ hasText: 'Gossamer Scrap' }).click()
+  await waitFor(api.hasHeldForge, 'Expected a held account-A answer')
+  await go(page, 'synchronization')
+  await get(page, 'disconnect').click()
+  await get(page, 'disconnect').waitFor({ state: 'hidden' })
+  await connect(page, KEY_B)
+  api.releaseForge()
+  await go(page, 'forge')
+  await get(page, 'forge-overview').waitFor()
+  await pause(100)
+  assert.equal(await get(page, 'forge-summary').count(), 0)
+  assert.equal(await get(page, 'forge-detail').count(), 0, 'account A selection survived into B')
+  step('a late account-A project answer cannot repaint account B')
+}
+
 /** Compatibility inventory entry reuses the current recovery story rather than removed buttons. */
 export async function runUserJourneys({ recoveryOnly = false } = {}) {
   await mkdir(OUTPUT, { recursive: true })
@@ -436,11 +631,12 @@ export async function runUserJourneys({ recoveryOnly = false } = {}) {
     ['failure-recovery', recoveryJourney], ['account-isolation', isolationJourney], ['desktop-boundary', boundaryJourney],
     ['pending-profit-resize', pendingProfitResize], ['ecto-resize-state', ectoResizeState],
     ['help-dialog-resize', context => modalResize(context, 'help')],
-    ['delete-confirmation-resize', context => modalResize(context, 'delete')]
+    ['delete-confirmation-resize', context => modalResize(context, 'delete')], ['profit-ordinary-only', forgeJourney], ['mystic-forge', mysticForgeJourney]
   ]
   try {
     console.log(`Bundle: ${requireFreshBundle()}`)
-    browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    owned = await launchOwnedBrowser({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    browser = owned.browser
     for (const [name, run, viewport] of cases) {
       try { await journey(name, run, viewport) }
       catch (error) { console.error(`${name}: ${error.stack}`); process.exitCode = 1 }
@@ -452,7 +648,12 @@ export async function runUserJourneys({ recoveryOnly = false } = {}) {
     process.exitCode = 1
     console.error(error.stack)
   } finally {
-    await browser?.close()
+    // Report first-class even when teardown fails; an unconfirmed cleanup is a recorded failure and nonzero exit.
+    try { await closeOwnedBrowser(owned) } catch (error) {
+      results.push({ name: 'browser-cleanup', status: 'failed', error: error.message })
+      process.exitCode = 1
+      console.error(error.message)
+    }
     await writeFile(join(OUTPUT, 'user-journeys.json'), JSON.stringify({ measurement: 'controlled-browser-journeys', results }, null, 2))
   }
 }

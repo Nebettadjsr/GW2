@@ -60,8 +60,37 @@ public record CraftTraceNode(
         Integer opportunityCostCopper,
         Integer effectiveCostCopper,
         List<CraftTraceNode> children,
-        List<CurrencyQuantity> currencies
+        List<CurrencyQuantity> currencies,
+        SourceFacts source
 ) {
+
+    /**
+     * Accepted non-ordinary source facts of one requirement, recorded by the resolver (never re-derived from a
+     * catalog at the transport boundary). Units: {@code grossProduced} is everything the {@code batches}
+     * guaranteed-minimum executions physically produced; {@code reusedSeed} are units a later batch of the same
+     * plan consumed as its own seed (never sold or stock for anyone else); {@code guaranteedNet} is what remains
+     * and is the only quantity that may become inventory; {@code used} is what this requirement consumed of it and
+     * {@code surplus} what it retained. {@code expectedPerBatch}/{@code min}/{@code max} are present only for a
+     * verified variable output, and {@code expectedNet} (mean x batches - reusedSeed) only then.
+     */
+    public record SourceFacts(String kind, java.math.BigDecimal expectedPerBatch, Integer min, Integer max,
+                              int batches, int grossProduced, int reusedSeed, int guaranteedNet,
+                              java.math.BigDecimal expectedNet, int used, int surplus) {
+        public static final String MYSTIC_FORGE = "MYSTIC_FORGE";
+        public static final String VENDOR = "VENDOR";
+    }
+
+    /** Node without source facts. */
+    public CraftTraceNode(int itemId, int requestedQuantity, int inventoryQuantity, int craftedQuantity,
+                          int boughtQuantity, int missingQuantity, Integer recipeId, int craftCount,
+                          int producedQuantity, String characterName, List<AcquisitionMethod> methods,
+                          List<ResolutionState> states, List<BlockedReason> blockedReasons,
+                          Integer cashCostCopper, Integer opportunityCostCopper, Integer effectiveCostCopper,
+                          List<CraftTraceNode> children, List<CurrencyQuantity> currencies) {
+        this(itemId, requestedQuantity, inventoryQuantity, craftedQuantity, boughtQuantity, missingQuantity,
+                recipeId, craftCount, producedQuantity, characterName, methods, states, blockedReasons,
+                cashCostCopper, opportunityCostCopper, effectiveCostCopper, children, currencies, null);
+    }
 
     /**
      * Exact units of one currency (never an item id) this requirement's craft path consumes or would consume, and

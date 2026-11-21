@@ -250,6 +250,71 @@ class CraftingProfitServiceTest {
     }
 
     @Test
+    void lazyTreeEnrichmentPreservesForgeEstimateSeedCurrencyAndUnknownProfitMetadata() throws SQLException {
+        var recipeRepo = new FakeRecipeRepository();
+        recipeRepo.visible = List.of(RECIPE);
+        var charRepo = new FakeCharacterRepository();
+        charRepo.canned = List.of(new CharacterRepository.DiscRow("Novice", "Artificer", 50, true));
+        var tpRepo = new FakeTpPriceRepository();
+        tpRepo.canned = Map.of(100, new PriceQuote(100, 110), 200, new PriceQuote(10, 10));
+        var yield = craft.ExpectedYield.of("18.92", 10, 30);
+        var planner = new RecordingCraftingPlanner() {
+            @Override
+            public Map<Integer, CraftResult> evaluateAllCoordinated(List<Recipe> recipes, Map<Integer, Integer> sellable,
+                    Map<Integer, Integer> accountBound, Map<String, Map<Integer, Integer>> characterBound,
+                    List<CharacterCraftingProfile> roster, Map<Integer, PriceQuote> tp, CraftingSettings settings,
+                    Set<Integer> allowed) {
+                Map<Integer, CraftResult> out = new java.util.HashMap<>(super.evaluateAllCoordinated(recipes, sellable,
+                        accountBound, characterBound, roster, tp, settings, allowed));
+                CraftResult r = out.get(1);
+                r.profitUnknown = true;
+                r.expectedYield = yield;
+                r.estimated = true;
+                r.expectedSellableUnitsTotal = new java.math.BigDecimal("36.84");
+                r.guaranteedSellableUnitsTotal = 19;
+                r.reusedSeedUnits = 1;
+                r.currencyPerCraft = Map.of(23, 5);
+                r.currencyTotal = Map.of(23, 10);
+                r.walletState = "KNOWN";
+                r.unpricedCurrency = true;
+                r.unpricedCurrencyIds = Set.of(23);
+                r.unvaluedOwnedInput = true;
+                return out;
+            }
+        };
+        var service = serviceWith(recipeRepo, new FakeInventoryRepository(), tpRepo, new FakeItemRepository(), charRepo,
+                List.of(RECIPE), planner);
+        service.reload(DiscChoice.all(), settings(true, true));
+
+        CraftResult raw = service.getRawResultByRecipeId(1);
+        assertNull(raw.tree, "the raw coordinated result has no lazy tree yet");
+        CraftResult first = service.getResultByRecipeId(1);
+        CraftResult second = service.getResultByRecipeId(1);
+        assertSame(first, second);
+        assertNotNull(first.tree);
+        for (CraftResult c : List.of(first, second)) {
+            assertTrue(c.profitUnknown);
+            assertSame(yield, c.expectedYield);
+            assertTrue(c.estimated);
+            assertEquals(new java.math.BigDecimal("36.84"), c.expectedSellableUnitsTotal);
+            assertEquals(19, c.guaranteedSellableUnitsTotal);
+            assertEquals(1, c.reusedSeedUnits);
+            assertEquals(Map.of(23, 5), c.currencyPerCraft);
+            assertEquals(Map.of(23, 10), c.currencyTotal);
+            assertEquals("KNOWN", c.walletState);
+            assertTrue(c.unpricedCurrency);
+            assertEquals(Set.of(23), c.unpricedCurrencyIds);
+            assertTrue(c.unvaluedOwnedInput);
+            assertEquals(raw.craftableCount, c.craftableCount);
+            assertEquals(raw.buyCostCopper, c.buyCostCopper);
+            assertEquals(raw.revenueCopper, c.revenueCopper);
+            assertEquals(raw.profitCopper, c.profitCopper);
+            assertEquals(raw.totalProfitCopper, c.totalProfitCopper);
+            assertEquals(raw.materialPurchaseCosts, c.materialPurchaseCosts);
+        }
+    }
+
+    @Test
     void repositoryFailurePropagatesFromReload() {
         var recipeRepo = new FakeRecipeRepository();
         recipeRepo.failure = new SQLException("simulated repository failure");

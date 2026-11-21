@@ -38,7 +38,8 @@ public final class EquipmentDetailsParser {
      */
     public static ObjectNode item(JsonNode it) {
         if (it == null || !it.isObject() || !isInt(it.get("id")) || it.get("id").asInt() <= 0) return null;
-        if (badInt(it, "level") || badInt(it, "vendor_value") || badText(it, "description")) return null;
+        if (badInt(it, "level") || badInt(it, "vendor_value") || badText(it, "description")
+                || badText(it, "rarity")) return null;
         if (!it.hasNonNull("type") || !it.get("type").isTextual() || it.get("type").asText().isBlank()) return null;
         String type = it.get("type").asText();
         ObjectNode out = F.objectNode();
@@ -46,6 +47,12 @@ public final class EquipmentDetailsParser {
         out.put("itemId", it.get("id").asInt());
         out.put("itemType", type);
         text(out, "description", it.get("description"));
+        text(out, "rarity", it.get("rarity"));
+        if (it.has("flags")) {
+            if (!it.get("flags").isArray()) return null;
+            for (JsonNode flag : it.get("flags")) if (!flag.isTextual()) return null;
+            out.set("flags", it.get("flags").deepCopy());
+        }
         if (isInt(it.get("level"))) out.put("level", it.get("level").asInt());
         if (isInt(it.get("vendor_value"))) out.put("vendorValue", it.get("vendor_value").asInt());
         JsonNode d = it.get("details");
@@ -57,7 +64,7 @@ public final class EquipmentDetailsParser {
         ArrayNode bonuses = F.arrayNode();
         ObjectNode attrs = F.objectNode();
         if (d != null && d.isObject()) {
-            if (badText(d, "type") || badText(d, "weight_class") || badInt(d, "defense")
+            if (badText(d, "type") || badText(d, "weight_class") || badText(d, "damage_type") || badInt(d, "defense")
                     || badInt(d, "min_power") || badInt(d, "max_power")) return null;
             if (d.has("attribute_adjustment") && !d.get("attribute_adjustment").isNull()
                     && !d.get("attribute_adjustment").isNumber()) return null;
@@ -65,6 +72,15 @@ public final class EquipmentDetailsParser {
             if ("Armor".equals(type) && (!d.hasNonNull("weight_class") || !isInt(d.get("defense")))) return null;
             if (d.hasNonNull("type")) out.put("subtype", d.get("type").asText());
             if (d.hasNonNull("weight_class")) out.put("weightClass", d.get("weight_class").asText());
+            text(out, "damageType", d.get("damage_type"));
+            ArrayNode choices = out.putArray("statChoices");
+            if (d.hasNonNull("stat_choices")) {
+                if (!d.get("stat_choices").isArray()) return null;
+                for (JsonNode choice : d.get("stat_choices")) {
+                    if (!isInt(choice) || choice.asInt() <= 0) return null;
+                    choices.add(choice.asInt());
+                }
+            }
             if (isInt(d.get("defense"))) out.put("defense", d.get("defense").asInt());
             if (isInt(d.get("min_power"))) out.put("minPower", d.get("min_power").asInt());
             if (isInt(d.get("max_power"))) out.put("maxPower", d.get("max_power").asInt());
@@ -114,6 +130,12 @@ public final class EquipmentDetailsParser {
                 && stored.path("runeBonuses").isArray();
     }
 
+    /** Header summaries also need binding flags and stat selection, which older tooltip rows did not retain. */
+    public static boolean completeSummary(JsonNode stored) {
+        return complete(stored) && stored.path("rarity").isTextual() && stored.path("flags").isArray()
+                && stored.path("statChoices").isArray();
+    }
+
     /** @return {name, attributes:[{attribute,multiplier,value}]} or null when malformed */
     public static ObjectNode stat(JsonNode s) {
         if (s == null || !s.isObject() || !isInt(s.get("id")) || s.get("id").asInt() <= 0) return null;
@@ -121,6 +143,8 @@ public final class EquipmentDetailsParser {
         if (list == null || !list.isArray() || list.isEmpty()) return null;
         ObjectNode out = F.objectNode();
         out.put("statId", s.get("id").asInt());
+        if (badText(s, "name")) return null;
+        if (s.hasNonNull("name")) out.put("name", plain(s.get("name").asText()));
         ArrayNode arr = out.putArray("attributes");
         for (JsonNode a : list) {
             if (!a.isObject() || !a.hasNonNull("attribute") || !a.get("attribute").isTextual()

@@ -73,6 +73,10 @@ public class TradingPostRefreshCoordinator {
         boolean globalDemanded;
         /** Accounts whose required item sets were demanded; empty means the global selection. */
         final java.util.Set<model.AccountScope> scopes = new java.util.LinkedHashSet<>();
+        /** The subset of {@link #scopes} whose calculation enabled Mystic Forge (their demand is a superset). */
+        final java.util.Set<model.AccountScope> forgeScopes = new java.util.LinkedHashSet<>();
+        /** Explicit positive item ids demanded by selected Forge projects/catalogue; coalesced into one pass. */
+        final java.util.Set<Integer> explicitIds = new java.util.TreeSet<>();
         boolean draining;
         String activeTaskId;
         int completedPasses;
@@ -104,6 +108,42 @@ public class TradingPostRefreshCoordinator {
     /** Profit coverage for one authorized account's required item set (STORY-API-011). */
     public Admission requireProfitCoverage(model.AccountScope scope) {
         return require(Variant.PROFIT, scope);
+    }
+
+    /** As {@link #requireProfitCoverage(model.AccountScope)}; {@code allowForge} adds the Forge catalog's items. */
+    public synchronized Admission requireProfitCoverage(model.AccountScope scope, boolean allowForge) {
+        if (allowForge && scope != null) states.get(Variant.PROFIT).forgeScopes.add(scope);
+        return require(Variant.PROFIT, scope);
+    }
+
+    /**
+     * Demands quotes for exactly {@code itemIds} (positive ids only) on the shared PROFIT run: the same single-flight
+     * task, coalescing and ten-minute batching as every other demand. An empty set admits nothing.
+     */
+    public synchronized Admission requireItems(java.util.Collection<Integer> itemIds, model.AccountScope scope) {
+        java.util.Set<Integer> positive = new java.util.TreeSet<>();
+        for (Integer id : itemIds) if (id != null && id > 0) positive.add(id);
+        if (positive.isEmpty()) return new Admission(null, REUSE_ADMITTED);
+        states.get(Variant.PROFIT).explicitIds.addAll(positive);
+        return require(Variant.PROFIT, null, true);
+    }
+
+    private Admission require(Variant variant, model.AccountScope scope, boolean explicitOnly) {
+        State state = states.get(variant);
+        state.demanded = true;
+        if (state.draining) return new Admission(state.activeTaskId, REUSE_COALESCED_INTO_ACTIVE_RUN);
+        state.draining = true;
+        try {
+            state.activeTaskId = tasks.submit(variant.operation(), () -> drain(variant, state));
+            return new Admission(state.activeTaskId, REUSE_ADMITTED);
+        } catch (BackgroundTasks.OperationAlreadyRunning foreign) {
+            state.draining = false;
+            state.activeTaskId = foreign.existingTaskId();
+            return new Admission(foreign.existingTaskId(), REUSE_WAITING_FOR_UNRELATED_TASK);
+        } catch (RuntimeException admissionFailure) {
+            state.draining = false;
+            throw admissionFailure;
+        }
     }
 
     /**
@@ -156,16 +196,22 @@ public class TradingPostRefreshCoordinator {
 
     /** The same synchronous refresh limited to {@code scope}'s required ids (null = global selection). */
     public void refreshAndAwait(Variant variant, model.AccountScope scope) throws Exception {
+        refreshAndAwait(variant, scope, false);
+    }
+
+    /** As {@link #refreshAndAwait(Variant, model.AccountScope)}, with the Forge catalog's items when enabled. */
+    public void refreshAndAwait(Variant variant, model.AccountScope scope, boolean forgeNow) throws Exception {
         State state = states.get(variant);
         synchronized (this) {
             if (state.draining) {
                 state.demanded = true;
                 if (scope != null) state.scopes.add(scope);
                 else state.globalDemanded = true;
+                if (scope != null && forgeNow) state.forgeScopes.add(scope);
             }
         }
         try {
-            refreshFor(variant, scope);
+            refreshFor(variant, scope, forgeNow);
         } catch (Exception failure) {
             synchronized (this) {
                 state.lastFailure = new CalculationFreshness.RefreshFailure(
@@ -183,8 +229,16 @@ public class TradingPostRefreshCoordinator {
     }
 
     private void refreshFor(Variant variant, model.AccountScope scope) throws Exception {
+        refreshFor(variant, scope, false);
+    }
+
+    private void refreshFor(Variant variant, model.AccountScope scope, boolean forge) throws Exception {
         switch (variant) {
-            case PROFIT -> { if (scope == null) refresh.refreshForProfit(); else refresh.refreshForProfit(scope); }
+            case PROFIT -> {
+                if (scope == null) refresh.refreshForProfit();
+                else if (forge) refresh.refreshForProfit(scope, true);
+                else refresh.refreshForProfit(scope);
+            }
             case DISCOVERY -> { if (scope == null) refresh.refreshForDiscovery(); else refresh.refreshForDiscovery(scope); }
         }
     }
@@ -193,19 +247,26 @@ public class TradingPostRefreshCoordinator {
         try {
             while (true) {
                 java.util.List<model.AccountScope> pass;
+                java.util.Set<model.AccountScope> forgePass;
                 boolean global;
+                java.util.Set<Integer> explicit;
                 synchronized (this) {
                     if (!state.demanded) return;
                     state.demanded = false;
-                    global = state.globalDemanded || state.scopes.isEmpty();
+                    explicit = new java.util.TreeSet<>(state.explicitIds);
+                    state.explicitIds.clear();
+                    global = state.globalDemanded || (state.scopes.isEmpty() && explicit.isEmpty());
                     state.globalDemanded = false;
                     pass = new java.util.ArrayList<>(state.scopes);
                     state.scopes.clear();
+                    forgePass = new java.util.HashSet<>(state.forgeScopes);
+                    state.forgeScopes.clear();
                 }
 
                 try {
                     if (global) refreshFor(variant, null);
-                    for (model.AccountScope scope : pass) refreshFor(variant, scope);
+                    if (!explicit.isEmpty()) refresh.refreshForIds(explicit);
+                    for (model.AccountScope scope : pass) refreshFor(variant, scope, forgePass.contains(scope));
                     synchronized (this) {
                         state.completedPasses++;
                         state.lastFailure = null;

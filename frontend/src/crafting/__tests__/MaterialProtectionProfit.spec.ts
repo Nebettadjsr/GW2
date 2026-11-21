@@ -203,8 +203,7 @@ describe('Crafting Profit material protection', () => {
       'Use own materials',
       expect.stringContaining('Respect excluded items/ mats'),
       'Allow buying',
-      'Allow daily craft',
-      'Allow Mystic Forge recipes'
+      'Allow daily craft'
     ])
     const toggle = w.find('[data-test="protection-toggle"]')
     expect((toggle.element as HTMLInputElement).checked).toBe(false)

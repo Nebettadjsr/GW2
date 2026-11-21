@@ -45,7 +45,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends nginx
 
       - name: Test workflow helpers
-        run: python -m unittest discover -s .github/scripts
+        run: |
+          python -m unittest discover -s .github/scripts
+          python -m unittest discover -s backend/tools/mystic-forge -p 'test_*.py'
+          python backend/tools/mystic-forge/generate_catalog.py --check
 
   backend:
     name: Backend tests (Maven)
@@ -107,6 +110,15 @@ jobs:
         # an explicit excludes element, exactly as locally.
         working-directory: backend
         run: ./mvnw -B -ntp test jacoco:report
+
+      - name: Live public GW2 API compatibility gate
+        # Explicit live step, separate from the deterministic offline suite above: the production
+        # ApiCompatibilityChecker contacts the fixed public ArenaNet endpoints (no account key or database)
+        # and ApiCompatibilityLiveIT requires a completed OK result with all 7 probes. The checker bounds
+        # itself to 2 minutes; the step timeout adds build headroom. A failure names the probe.
+        timeout-minutes: 6
+        working-directory: backend
+        run: ./mvnw -B -ntp test -Dtest=ApiCompatibilityLiveIT -Djacoco.skip=true
 
       - name: Summarize failing tests
         if: failure()

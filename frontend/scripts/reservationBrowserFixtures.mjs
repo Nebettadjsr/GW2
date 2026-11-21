@@ -33,7 +33,7 @@ export const materials = { categoryCount: 1, freshness: FRESH, categories: [{
   ]
 }] }
 
-function freshness(id) {
+export function freshness(id) {
   return { requestId: id, calculationId: id, evaluatedAt: '2026-11-15T20:00:00Z', provisional: false, resultAvailable: true,
     accountSources: ['CHARACTERS', 'INVENTORY', 'MATERIALS', 'RECIPES'].map(source => ({ source, fetchedAt: '2099-01-01T00:00:00Z', state: 'FRESH' })),
     tradingPost: { requiredItems: 1, freshItems: 1, staleItems: 0, missingItems: 0,
@@ -57,7 +57,7 @@ function rowFor(settings, stock) {
     missingToBuy: [], missingToBuyOne: [], iconUrl: null }
 }
 
-function scopeOf(scope = { kind: 'ALL' }) {
+export function scopeOf(scope = { kind: 'ALL' }) {
   return { kind: scope.kind, discipline: scope.discipline ?? null, characterName: scope.characterName ?? null, rating: scope.rating ?? 0 }
 }
 
@@ -66,7 +66,7 @@ export function tableResponse(request, id, stock = 300) {
   return { status: 'CALCULATED', scope: scopeOf(request.scope), settings, rowCount: 1, rows: [rowFor(settings, stock)], freshness: freshness(id) }
 }
 
-function node(overrides) {
+export function node(overrides) {
   return { itemId: 1101, itemName: 'Iron Ingot', requestedQuantity: 1, inventoryQuantity: 0, craftedQuantity: 0,
     boughtQuantity: 0, missingQuantity: 0, recipeId: null, craftCount: 0, producedQuantity: 0, characterName: null,
     methods: [], states: [], blockedReasons: [], cashCostCopper: 0, opportunityCostCopper: 0, effectiveCostCopper: 0,

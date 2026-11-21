@@ -13,6 +13,8 @@ public class CraftingSettings {
     public final boolean listingSell;   // false=instant sell, true=listing sell
     public final boolean listingBuy;
     public final boolean allowDailyCrafts;
+    /** Owner opt-in (default off): Mystic Forge recipes, roots and nested routes, join the calculation. */
+    public final boolean allowMysticForge;
 
     /** Material Protection (DOMAIN_SPEC.md): item IDs whose pre-existing owned copies are unavailable. */
     public final boolean materialProtectionEnabled;
@@ -75,6 +77,20 @@ public class CraftingSettings {
                             Map<Integer, Integer> protectedBankQuantities,
                             Map<Integer, Integer> protectedMaterialQuantities,
                             List<BankAllocation> protectedBankAllocations) {
+        this(useOwnMats, allowBuy, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                protectedBankQuantities, protectedMaterialQuantities, protectedBankAllocations, false);
+    }
+
+    public CraftingSettings(boolean useOwnMats, boolean allowBuy, int maxBuyCopper,
+                            boolean listingSell, boolean listingBuy, boolean allowDailyCrafts,
+                            boolean materialProtectionEnabled, Collection<Integer> protectedItemIds,
+                            Collection<Integer> protectedBankItemIds, Collection<Integer> protectedMaterialItemIds,
+                            Map<Integer, Integer> protectedBankQuantities,
+                            Map<Integer, Integer> protectedMaterialQuantities,
+                            List<BankAllocation> protectedBankAllocations,
+                            boolean allowMysticForge) {
+        this.allowMysticForge = allowMysticForge;
         this.protectedBankAllocations = protectedBankAllocations == null ? List.of()
                 : List.copyOf(protectedBankAllocations);
         this.protectedBankQuantities = canonicalQuantities(protectedBankQuantities, protectedBankItemIds, protectedItemIds);
@@ -122,7 +138,19 @@ public class CraftingSettings {
     public CraftingSettings withBuyingDisabled() {
         return new CraftingSettings(useOwnMats, false, 0, listingSell, listingBuy, allowDailyCrafts,
                 materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
-                protectedBankQuantities, protectedMaterialQuantities, protectedBankAllocations);
+                protectedBankQuantities, protectedMaterialQuantities, protectedBankAllocations, allowMysticForge);
+    }
+
+    /** Crafting Profit is ordinary crafting only: a stale Forge opt-in never survives this boundary. */
+    public static CraftingSettings ordinaryOnly(CraftingSettings settings) {
+        return settings == null || !settings.allowMysticForge ? settings : settings.withMysticForge(false);
+    }
+
+    /** Same settings with the Mystic Forge opt-in set; everything else is preserved. */
+    public CraftingSettings withMysticForge(boolean allow) {
+        return new CraftingSettings(useOwnMats, allowBuying, maxBuyCopper, listingSell, listingBuy, allowDailyCrafts,
+                materialProtectionEnabled, protectedItemIds, protectedBankItemIds, protectedMaterialItemIds,
+                protectedBankQuantities, protectedMaterialQuantities, protectedBankAllocations, allow);
     }
 
 }

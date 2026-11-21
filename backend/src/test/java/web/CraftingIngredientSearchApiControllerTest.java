@@ -11,6 +11,7 @@ import repo.RecipeRepository;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,6 +59,20 @@ class CraftingIngredientSearchApiControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(content().json("{\"recipeIds\":[]}", true));
         }
+    }
+
+    @Test
+    void forgeOnlyInputsCannotReachOrdinaryParentsThroughRemovedForgeEdges() throws Exception {
+        // 20796 (a Stone) is named only by item metadata and consumed solely by a Forge edge: search is ordinary-only.
+        CraftingGraph graph = new CraftingGraph(List.of(recipe(2, 200, 100), recipe(9, 300, 200)),
+                Map.of(100, "Cabbage", 200, "Intermediate", 300, "Finished", 20796, "Philosopher's Stone"));
+        MockMvc mvc = mvc(graph);
+        mvc.perform(get("/api/crafting/ingredient-search").param("query", "philosopher"))
+                .andExpect(status().isOk()).andExpect(content().json("{\"recipeIds\":[]}", true));
+        mvc.perform(get("/api/crafting/ingredient-search").param("query", "20796"))
+                .andExpect(content().json("{\"recipeIds\":[]}", true));
+        mvc.perform(get("/api/crafting/ingredient-search").param("query", "cabbage"))
+                .andExpect(content().json("{\"recipeIds\":[2,9]}", true));
     }
 
     private static MockMvc mvc(CraftingGraph graph) {

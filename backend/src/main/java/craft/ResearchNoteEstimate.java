@@ -96,11 +96,20 @@ public record ResearchNoteEstimate(List<Variant> variants, Integer basisRecipeId
      * never per Note. Throws {@link ArithmeticException} when out of the int range.
      */
     public int costCopper(long notes) {
+        return Math.toIntExact(costCopperExact(notes));
+    }
+
+    /**
+     * Same checked ratio/ceil as {@link #costCopper(long)} but carried as a long; throws {@link ArithmeticException}
+     * only beyond the exact JSON integer range (2^53-1) used by the Forge.
+     */
+    public long costCopperExact(long notes) {
         if (notes <= 0) return 0;
         Variant basis = basis();
         if (basis == null) throw new IllegalStateException("no usable Research Note estimate");
         long numerator = Math.multiplyExact(notes, basis.batchCostCopper());
         long copper = Math.addExact(numerator, basis.notesPerBatch() - 1L) / basis.notesPerBatch();
-        return Math.toIntExact(copper);
+        if (copper > 9_007_199_254_740_991L) throw new ArithmeticException("beyond the exact JSON integer range");
+        return copper;
     }
 }

@@ -176,6 +176,18 @@ describe('CraftingProfitScreen', () => {
       .toBe(false)
   })
 
+  it('offersNoMysticForgeToggleAndNeverSendsTheRetiredFlag', async () => {
+    const api = new FakeCraftingApi()
+    const wrapper = await openScreen(api)
+
+    expect(wrapper.find('[data-test="setting-allowMysticForge"]').exists()).toBe(false)
+    await wrapper.find('[data-test="setting-useOwnMats"]').setValue(false)
+    await flushPromises()
+    for (const request of api.profitRequests) {
+      expect(request.settings?.allowMysticForge).toBeUndefined()
+    }
+  })
+
   it('keepsScopeSettingsSearchAndSortAcrossAManualReload', async () => {
     const api = new FakeCraftingApi()
     const wrapper = await openScreen(api)

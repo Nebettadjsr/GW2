@@ -87,9 +87,12 @@ class ApiCompatibilityCheckerTest {
         // The default schema omits Jade, which is expected and informational: production pins the schema.
         assertEquals("DEFAULT_SCHEMA_OMITS_RECIPE", probe(r, "jade-default").code());
         assertEquals(Status.OK, probe(r, "jade-default").status());
-        // The directory's item_ingredients wording differs from the typed payload: informational.
-        assertEquals("DIRECTORY_PAYLOAD_DISCREPANCY", probe(r, "jade-pinned").code());
-        assertEquals(Status.ATTENTION, r.overall());
+        // The directory's item_ingredients wording differs from the typed payload: supported, so compatible.
+        assertEquals("DIRECTORY_DESCRIPTION_SUPPORTED", probe(r, "jade-pinned").code());
+        assertEquals(Status.OK, probe(r, "jade-pinned").status());
+        assertTrue(probe(r, "jade-pinned").detail().contains("item_ingredients"));
+        assertTrue(probe(r, "jade-pinned").detail().contains("typed ingredients list"));
+        assertEquals(Status.OK, r.overall());
         assertEquals(ApiCompatibilityChecker.RECIPE_PROFILE, r.recipeProfile());
         assertTrue(r.recipeProfile().contains("explicit, production"));
         assertEquals(ApiCompatibilityChecker.RECIPE_PROFILE, probe(r, "recipe").profile());

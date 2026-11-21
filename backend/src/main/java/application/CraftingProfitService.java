@@ -6,6 +6,7 @@ import craft.CraftingGraph;
 import craft.CraftingPlanner;
 import craft.CraftingSettings;
 import craft.Ingredient;
+import parser.MysticForgeCatalogLoader;
 import craft.Node;
 import craft.PlannerContext;
 import craft.PriceQuote;
@@ -108,8 +109,8 @@ public class CraftingProfitService {
     }
 
     public ProfitData reload(DiscChoice choice, CraftingSettings settings) throws SQLException {
-
-        Candidates candidates = loadCandidates(choice);
+        settings = CraftingSettings.ordinaryOnly(settings);
+        Candidates candidates = loadCandidates(choice, settings);
         CalculationInputs inputs = loadCalculationInputs(choice, settings, candidates.allRecipes());
 
         Map<Integer, CraftResult> resultsByRecipeId = planner.withVendorValues(ItemRepository.vendorValues(inputs.items())).withWallet(inputs.wallet()).evaluateAllCoordinated(
@@ -142,8 +143,8 @@ public class CraftingProfitService {
      */
     public CraftingResolutionDetail resolveDetail(int recipeId, DiscChoice choice, CraftingSettings settings)
             throws SQLException {
-
-        Candidates candidates = loadCandidates(choice);
+        settings = CraftingSettings.ordinaryOnly(settings);
+        Candidates candidates = loadCandidates(choice, settings);
 
         Recipe selected = candidates.selected(recipeId);
         if (selected == null) {
@@ -189,6 +190,172 @@ public class CraftingProfitService {
         }
     }
 
+    /** One selected Forge project; requestedTarget is desired output, while batchTarget marks a random root plan. */
+    public record ForgeProjectData(craft.ForgeProjectPlanner.Project project, boolean referenceOnly, boolean batchTarget,
+                                   long requestedTarget, Map<Integer, ItemRepository.ItemInfo> items,
+                                   Map<Integer, PriceQuote> tp, boolean walletKnown,
+                                   Map<Integer, List<String>> ownedLocations,
+                                   craft.ForgeProjectPlanner.RecipePart recipeTree,
+                                   craft.ForgeMaterialProgress.Progress materialProgress,
+                                   List<Ingredient> baseIngredients) {
+        public ForgeProjectData(craft.ForgeProjectPlanner.Project project, boolean referenceOnly, boolean batchTarget,
+                                long requestedTarget, Map<Integer, ItemRepository.ItemInfo> items,
+                                Map<Integer, PriceQuote> tp, boolean walletKnown) {
+            this(project, referenceOnly, batchTarget, requestedTarget, items, tp, walletKnown, Map.of(), null, null, List.of());
+        }
+    }
+
+    /**
+     * Exact planning of ONE Mystic Forge target (no profit simulation, no budget, no per-root loop). Shared stock is the
+     * account Materials/Bank pool plus account-bound and Bank-resident soulbound stock (Forge Bank exception); carried
+     * character-bound stock is not pooled across owners. Returns null when {@code recipeId} is not a known Forge recipe.
+     */
+    /**
+     * The explicit quote ids this project's public path needs (null when the recipe is unknown): structure only, so
+     * no calculation or price is needed to discover them.
+     */
+    public Set<Integer> forgeProjectItemIds(int recipeId) throws SQLException {
+        craft.ForgeReferenceRecipes.Reference ref = craft.ForgeReferenceRecipes.byId(recipeId);
+        Recipe root = ref != null ? ref.asPlanningTarget()
+                : MysticForgeCatalogLoader.bundled().recipes().stream().filter(r -> r.recipeId == recipeId).findFirst().orElse(null);
+        if (root == null) return null;
+        return new craft.ForgeProjectPlanner(forgeProducers()).pathItemIds(root);
+    }
+
+    /**
+     * Every quote id this project's calculation reads: its public path plus, when own-stock valuation is on, the
+     * ordinary valuation closure beneath the owned path items (all alternative producers). One dependency definition
+     * shared with {@link #planForgeProject}'s valuer, read from the same session snapshot.
+     */
+    public Set<Integer> forgeProjectPriceIds(int recipeId, craft.ForgeSettings settings) throws SQLException {
+        Set<Integer> path = forgeProjectItemIds(recipeId);
+        if (path == null || !settings.valueOwn()) return path;
+        InventoryRepository.CoordinatedInventory inv =
+                invRepo.loadOwnedInventoryForCharacters(session.connection(), session.scope(), Set.of(), true);
+        Set<Integer> all = new java.util.TreeSet<>(path);
+        all.addAll(ownedValuationClosure(forgeProducers(), path, inv));
+        return all;
+    }
+
+    private List<Recipe> forgeProducers() throws SQLException {
+        List<Recipe> producers = new ArrayList<>();
+        try {
+            producers.addAll(graphCache.loadForSnapshot(session.connection()).getRecipes());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load crafting graph cache", e);
+        }
+        producers.addAll(MysticForgeCatalogLoader.bundled().recipes());
+        producers.addAll(craft.VendorAcquisitions.forgeProjectRecipes());
+        return producers;
+    }
+
+    public ForgeProjectData planForgeProject(int recipeId, long target) throws SQLException {
+        return planForgeProject(recipeId, target, craft.ForgeSettings.DEFAULT);
+    }
+
+    public ForgeProjectData planForgeProject(int recipeId, long target, craft.ForgeSettings settings) throws SQLException {
+        craft.ForgeReferenceRecipes.Reference ref = craft.ForgeReferenceRecipes.byId(recipeId);
+        Recipe root = ref != null ? ref.asPlanningTarget()
+                : MysticForgeCatalogLoader.bundled().recipes().stream().filter(r -> r.recipeId == recipeId).findFirst().orElse(null);
+        if (root == null) return null;
+        Connection con = session.connection();
+        List<Recipe> producers = forgeProducers();
+        // Clover references are never producers: they are deliberately not in this list.
+        craft.ForgeProjectPlanner planner = new craft.ForgeProjectPlanner(producers);
+        // Quotes for exactly this project's public path (the same ids its source identity/admission cover).
+        Set<Integer> pathIds = planner.pathItemIds(root);
+        Map<Integer, PriceQuote> tp = tpRepo.loadCurrentTradeableQuotes(con, pathIds);
+
+        // Binding pools stay separate (sellable / account-bound / per-owner carried and Bank namespaces): the planner
+        // applies the shared PlanState rules, so a Forge step may use any owner's Bank stock and an ordinary step only
+        // its assigned eligible character's own stock. Nothing is collapsed into one shared map here.
+        InventoryRepository.CoordinatedInventory inv = invRepo.loadOwnedInventoryForCharacters(con, session.scope(), Set.of(), true);
+        craft.ForgeProjectPlanner.Inventory inventory = new craft.ForgeProjectPlanner.Inventory(
+                inv.sellable(), inv.accountBound(), inv.characterBound());
+        craft.OwnedValuer valuer = null;
+        if (settings.valueOwn()) valuer = forgeOwnedValuer(con, producers, pathIds, inv);
+        craft.ForgeProjectPlanner.Context context = new craft.ForgeProjectPlanner.Context(
+                buildCoordinatedRoster(null), recipeRepo.loadKnownRecipeIds(con, session.scope()), valuer);
+
+        Map<Integer, Long> wallet = null;
+        if (session.walletAuthorized()) {
+            Map<Integer, Integer> w = walletRepo.load(con, session.scope(), session.walletEvaluatedAt(), session.walletMaxAge()).orElse(null);
+            if (w != null) { wallet = new HashMap<>(); for (var e : w.entrySet()) wallet.put(e.getKey(), (long) e.getValue()); }
+        }
+
+        boolean batchTarget = ref != null || root.hasExpectedYield();
+        long planQuantity = ref != null ? ref.estimatedBatchesForOutput(target)
+                : root.hasExpectedYield() ? root.expectedYield.estimatedBatchesForOutput(target, root.selfSeedUnits()) : target;
+        craft.ForgeProjectPlanner.Project project = planner.plan(root, planQuantity, batchTarget, inventory, context, wallet, tp, settings);
+        craft.ForgeProjectPlanner.RecipePart recipeTree = batchTarget ? null
+                : planner.recipeTree(root, target, inventory, context, wallet, settings.useOwn(), settings.reduce(), settings.daily());
+        craft.ForgeMaterialProgress.Progress materialProgress = batchTarget || !settings.useOwn() ? null
+                : planner.materialProgress(root, target, inventory, context, wallet, project);
+        Set<Integer> shown = new HashSet<>();
+        if (recipeTree != null) collectRecipeItems(recipeTree, shown);
+        shown.add(root.outputItemId);
+        for (Ingredient i : root.ingredients) shown.add(i.itemId);
+        project.items().forEach(l -> shown.add(l.itemId()));
+        project.steps().forEach(st -> shown.add(st.outputItemId()));
+        if (project.notes() != null) {
+            for (var v : project.notes().estimate().variants()) {
+                shown.add(v.outputItemId());
+                v.ingredients().forEach(l -> shown.add(l.itemId()));
+            }
+        }
+        Map<Integer, ItemRepository.ItemInfo> items = itemRepo.loadItems(con, shown);
+        Set<Integer> ownedIds = project.items().stream().filter(l -> l.fromOwned() > 0)
+                .map(craft.ForgeProjectPlanner.ItemLine::itemId).collect(Collectors.toSet());
+        Map<Integer, List<String>> locations = invRepo.loadItemLocations(con, session.scope(), ownedIds);
+        return new ForgeProjectData(project, ref != null, batchTarget, target, items, tp, wallet != null, locations,
+                recipeTree, materialProgress, root.ingredients);
+    }
+
+    private static void collectRecipeItems(craft.ForgeProjectPlanner.RecipePart part, Set<Integer> ids) {
+        ids.add(part.itemId());
+        part.children().forEach(child -> collectRecipeItems(child, ids));
+    }
+
+    /**
+     * Owned-stock valuation for one Forge project through the ordinary section 11/11.2 rules (instant-sell side, instant-buy
+     * crafting inputs, vendor sell fallback), independent of the project's acquisition price mode. Reads the same
+     * session snapshot: owned path items plus the ordinary crafting subgraph beneath them.
+     */
+    private craft.OwnedValuer forgeOwnedValuer(Connection con, List<Recipe> producers, Set<Integer> pathIds,
+                                               InventoryRepository.CoordinatedInventory inv) throws SQLException {
+        Map<Integer, List<Recipe>> byOutput = valuationProducers(producers);
+        Set<Integer> closure = ownedValuationClosure(producers, pathIds, inv);
+        Map<Integer, PriceQuote> quotes = tpRepo.loadCurrentTradeableQuotes(con, closure);
+        Map<Integer, Integer> vendor = ItemRepository.vendorValues(itemRepo.loadItems(con, closure));
+        CraftingSettings ordinary = new CraftingSettings(true, true, 0, false, false, false); // instant sell / instant buy
+        PlannerContext pc = new PlannerContext(byOutput, quotes, ordinary, null).withVendorValues(vendor);
+        return new craft.CraftingResolver().ownedValuer(pc);
+    }
+
+    private static Map<Integer, List<Recipe>> valuationProducers(List<Recipe> producers) {
+        Map<Integer, List<Recipe>> byOutput = new HashMap<>();
+        for (Recipe r : producers) byOutput.computeIfAbsent(r.outputItemId, k -> new java.util.ArrayList<>()).add(r);
+        return byOutput;
+    }
+
+    /** Owned path items plus the ingredient closure beneath them across every alternative producer. */
+    private static Set<Integer> ownedValuationClosure(List<Recipe> producers, Set<Integer> pathIds,
+                                                      InventoryRepository.CoordinatedInventory inv) {
+        Map<Integer, List<Recipe>> byOutput = valuationProducers(producers);
+        Set<Integer> owned = new HashSet<>(inv.sellable().keySet());
+        owned.addAll(inv.accountBound().keySet());
+        inv.characterBound().values().forEach(m -> owned.addAll(m.keySet()));
+        owned.retainAll(pathIds);
+        Set<Integer> closure = new HashSet<>(owned);
+        java.util.ArrayDeque<Integer> work = new java.util.ArrayDeque<>(owned);
+        while (!work.isEmpty()) {
+            for (Recipe r : byOutput.getOrDefault(work.poll(), List.of())) {
+                for (Ingredient i : r.ingredients) if (closure.add(i.itemId)) work.add(i.itemId);
+            }
+        }
+        return closure;
+    }
+
     /**
      * The roster, inventory pools, quotes and item metadata captured for one operation. Both the
      * table calculation and one row's fresh detail use one captured set of inputs.
@@ -202,7 +369,7 @@ public class CraftingProfitService {
                                      Map<Integer, Integer> wallet) {
     }
 
-    private Candidates loadCandidates(DiscChoice choice) throws SQLException {
+    private Candidates loadCandidates(DiscChoice choice, CraftingSettings settings) throws SQLException {
         Connection con = session.connection();
         AccountScope scope = session.scope();
         List<Recipe> visibleRecipes;
@@ -225,7 +392,28 @@ public class CraftingProfitService {
             throw new RuntimeException("Failed to load crafting graph cache", e);
         }
 
-        return new Candidates(visibleRecipes, graph.getRecipes(), allowedRecipeIds);
+        List<Recipe> allRecipes = graph.getRecipes();
+        if (settings != null && settings.allowMysticForge) {
+            // Forge recipes are a separate, setting-gated source: negative ids never collide with ordinary
+            // ids or account unlocks, and the toggle-off path above is untouched.
+            List<Recipe> forge = MysticForgeCatalogLoader.bundled().recipes();
+            if (!forge.isEmpty()) {
+                visibleRecipes = concat(visibleRecipes, forge);
+                // Vendor purchases of Forge inputs resolve nested needs only: not visible roots, never unlocks.
+                allRecipes = concat(concat(allRecipes, forge), craft.VendorAcquisitions.recipes());
+                Set<Integer> withForge = new HashSet<>(allowedRecipeIds);
+                forge.forEach(r -> withForge.add(r.recipeId));
+                allowedRecipeIds = withForge;
+            }
+        }
+        return new Candidates(visibleRecipes, allRecipes, allowedRecipeIds);
+    }
+
+    private static List<Recipe> concat(List<Recipe> a, List<Recipe> b) {
+        List<Recipe> out = new java.util.ArrayList<>(a.size() + b.size());
+        out.addAll(a);
+        out.addAll(b);
+        return out;
     }
 
     private CalculationInputs loadCalculationInputs(DiscChoice choice,
@@ -248,7 +436,8 @@ public class CraftingProfitService {
         Map<Integer, Integer> sellableInv = Map.of();
         Map<Integer, Integer> accountBoundInv = Map.of();
         Map<String, Map<Integer, Integer>> characterBoundInv = Map.of();
-        if (settings.useOwnMats && !roster.isEmpty()) {
+        // Enabled Forge needs no crafting character: shared Bank/Materials stock stays available with an empty roster.
+        if (settings.useOwnMats && (!roster.isEmpty() || settings.allowMysticForge)) {
             Set<String> names = roster.stream().map(CharacterCraftingProfile::name).collect(Collectors.toSet());
             InventoryRepository.CoordinatedInventory inv = loadOwnedInventory(con, names, settings);
             sellableInv = inv.sellable();
@@ -273,9 +462,15 @@ public class CraftingProfitService {
         if (settings.materialProtectionEnabled
                 && (!settings.protectedBankItemIds.isEmpty() || !settings.protectedMaterialItemIds.isEmpty()
                     || settings.hasFiniteReservations())) {
+            // Forge keeps every account character's carried stock under its actual owner; off keeps the legacy overloads.
+            if (settings.allowMysticForge) {
+                return invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
+                        settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations, true);
+            }
             return invRepo.loadOwnedInventoryForCharacters(con, scope, names, settings.protectedBankItemIds, settings.protectedMaterialItemIds,
                     settings.protectedBankQuantities, settings.protectedMaterialQuantities, settings.protectedBankAllocations);
         }
+        if (settings.allowMysticForge) return invRepo.loadOwnedInventoryForCharacters(con, scope, names, true);
         return invRepo.loadOwnedInventoryForCharacters(con, scope, names);
     }
 
@@ -369,6 +564,12 @@ public class CraftingProfitService {
         enriched.estimatedNotesCostTotalCopper = cr.estimatedNotesCostTotalCopper;
         enriched.noteEstimate = cr.noteEstimate;
         enriched.economicsFromHypotheticalCraft = cr.economicsFromHypotheticalCraft;
+        enriched.profitUnknown = cr.profitUnknown;
+        enriched.expectedYield = cr.expectedYield;
+        enriched.estimated = cr.estimated;
+        enriched.expectedSellableUnitsTotal = cr.expectedSellableUnitsTotal;
+        enriched.guaranteedSellableUnitsTotal = cr.guaranteedSellableUnitsTotal;
+        enriched.reusedSeedUnits = cr.reusedSeedUnits;
 
         Map<Integer, CraftResult> copy = new HashMap<>(lastResultsByRecipeId);
         copy.put(recipeId, enriched);

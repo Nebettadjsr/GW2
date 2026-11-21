@@ -7,6 +7,7 @@ import craft.Recipe;
 import craft.MaterialPurchaseCost;
 import repo.ItemRepository;
 import web.dto.CraftingRowDto;
+import web.dto.ExpectedYieldDto;
 import web.dto.CurrencyCostsDto;
 import web.dto.MissingItemDto;
 import web.dto.TradingPostQuoteDto;
@@ -73,9 +74,13 @@ final class CraftingRowMapper {
                     false, null, null, null, null, null, null, null, null, null,
                     toQuote(tp.get(recipe.outputItemId)), List.of(), List.of(),
                     ingredientNames(recipe, items),
-                    iconUrl(recipe.outputItemId, items), false, null);
+                    iconUrl(recipe.outputItemId, items), false, null, forgeHint(recipe, null));
         }
 
+        // WORK_LIMIT with no accepted craft: the plan's costs were never established, so they are unknown (null),
+        // not zero. The output quote and revenue stay; any fully accepted prefix keeps its exact figures.
+        boolean unknownEconomics = result.blockedReason == craft.BlockedReason.WORK_LIMIT && result.craftableCount == 0;
+        boolean profitUnknown = result.profitUnknown;
         return new CraftingRowDto(
                 recipe.recipeId,
                 recipe.outputItemId,
@@ -85,13 +90,13 @@ final class CraftingRowMapper {
                 recipe.minRating,
                 true,
                 result.craftableCount,
-                result.buyCostCopper,
-                result.matsSellValueCopper,
-                result.totalMatsSellValueCopper,
+                unknownEconomics ? null : result.buyCostCopper,
+                unknownEconomics ? null : result.matsSellValueCopper,
+                unknownEconomics ? null : result.totalMatsSellValueCopper,
                 result.revenueCopper,
-                result.profitCopper,
-                result.totalSellValueCopper,
-                result.totalProfitCopper,
+                unknownEconomics || profitUnknown ? null : result.profitCopper,
+                unknownEconomics ? null : result.totalSellValueCopper,
+                unknownEconomics || profitUnknown ? null : result.totalProfitCopper,
                 result.blockedReason == null ? null : result.blockedReason.name(),
                 toQuote(tp.get(recipe.outputItemId)),
                 toMissing(result.missingToBuy, result.materialPurchaseCosts, items, tp),
@@ -99,7 +104,21 @@ final class CraftingRowMapper {
                 ingredientNames(recipe, items),
                 iconUrl(recipe.outputItemId, items),
                 result.unvaluedOwnedInput,
-                toCurrencyCosts(result, items, detail));
+                toCurrencyCosts(result, items, detail),
+                forgeHint(recipe, result));
+    }
+
+    private static ExpectedYieldDto forgeHint(Recipe recipe, CraftResult result) {
+        boolean estimated = result != null && result.estimated;
+        if (!recipe.isMysticForge() && !estimated) return null;
+        craft.ExpectedYield y = recipe.expectedYield;
+        return new ExpectedYieldDto(recipe.isMysticForge() ? "MYSTIC_FORGE" : null, estimated,
+                y == null ? null : y.mean().toPlainString(),
+                y == null ? null : y.min(), y == null ? null : y.max(),
+                result == null || result.expectedSellableUnitsTotal == null ? null
+                        : result.expectedSellableUnitsTotal.toPlainString(),
+                result == null || y == null ? null : result.guaranteedSellableUnitsTotal,
+                result == null ? 0 : result.reusedSeedUnits);
     }
 
     /** Labels for currencies this application recognises; any other id keeps its exact number. */
@@ -136,23 +155,28 @@ final class CraftingRowMapper {
                                                                boolean detail) {
         craft.ResearchNoteEstimate estimate = result.noteEstimate;
         if (estimate == null || (result.estimatedNotesPerCraft == 0 && result.estimatedNotesTotal == 0)) return null;
-        List<CurrencyCostsDto.VariantDto> variants = new ArrayList<>();
-        if (detail) {
-            for (craft.ResearchNoteEstimate.Variant v : estimate.variants()) {
-                List<CurrencyCostsDto.LineDto> lines = new ArrayList<>();
-                for (craft.ResearchNoteEstimate.Line line : v.ingredients()) {
-                    lines.add(new CurrencyCostsDto.LineDto(line.itemId(), itemName(line.itemId(), items), line.count(),
-                            line.unitPriceCopper(), line.totalCopper(), iconUrl(line.itemId(), items)));
-                }
-                variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
-                        v.notesPerBatch(), v.batchCostCopper(), per100(v),
-                        estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
-                        List.copyOf(lines)));
-            }
-        }
+        List<CurrencyCostsDto.VariantDto> variants = detail ? variantDtos(estimate, items) : List.of();
         return new CurrencyCostsDto.NoteEstimateDto(result.estimatedNotesPerCraft, result.estimatedNotesTotal,
                 result.estimatedNotesCostPerCraftCopper, result.estimatedNotesCostTotalCopper,
                 estimate.basisRecipeId(), List.copyOf(variants));
+    }
+
+    /** Both Note recipe variants (pictures, quantities, totals) for the shared estimate popup. */
+    public static List<CurrencyCostsDto.VariantDto> variantDtos(craft.ResearchNoteEstimate estimate,
+                                                                Map<Integer, ItemRepository.ItemInfo> items) {
+        List<CurrencyCostsDto.VariantDto> variants = new ArrayList<>();
+        for (craft.ResearchNoteEstimate.Variant v : estimate.variants()) {
+            List<CurrencyCostsDto.LineDto> lines = new ArrayList<>();
+            for (craft.ResearchNoteEstimate.Line line : v.ingredients()) {
+                lines.add(new CurrencyCostsDto.LineDto(line.itemId(), itemName(line.itemId(), items), line.count(),
+                        line.unitPriceCopper(), line.totalCopper(), iconUrl(line.itemId(), items)));
+            }
+            variants.add(new CurrencyCostsDto.VariantDto(v.recipeId(), itemName(v.outputItemId(), items),
+                    v.notesPerBatch(), v.batchCostCopper(), per100(v),
+                    estimate.basisRecipeId() != null && estimate.basisRecipeId() == v.recipeId(),
+                    List.copyOf(lines)));
+        }
+        return variants;
     }
 
     /** Backend-owned display amount: ceil(batchCost * 100 / notesPerBatch), exact; null when unpriced or unrepresentable. */

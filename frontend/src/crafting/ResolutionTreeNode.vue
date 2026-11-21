@@ -35,9 +35,15 @@ const props = defineProps<{
 const label = computed(() => nodeLabel(props.node))
 const resolutionSettings = inject(RESOLUTION_SETTINGS_KEY, null)
 const keepNote = computed(() => keepTargetNote(resolutionSettings?.value, props.node.itemId))
+/** Vendor-bought or reused batch units are not crafts; only an actual crafted execution says Crafted. */
+const craftedLabel = computed(() => {
+  const n = props.node
+  if (n.forgeStep?.source === 'VENDOR') return n.craftCount > 0 ? 'From vendor batch' : 'From earlier batch'
+  return n.craftCount === 0 && n.producedQuantity === 0 ? 'From earlier batch' : 'Crafted'
+})
 const sourcing = computed(() => [
   { label: 'From stock', quantity: props.node.inventoryQuantity },
-  { label: 'Crafted', quantity: props.node.craftedQuantity },
+  { label: craftedLabel.value, quantity: props.node.craftedQuantity },
   { label: 'Bought', quantity: props.node.boughtQuantity }
 ].filter((source) => source.quantity > 0))
 const playerStatus = computed(() => nodePlayerStatus(props.node))
@@ -46,6 +52,27 @@ const wikiHref = computed(() => wikiUrl(props.node.itemName))
 const unitText = computed(() => {
   const text = formatCopper(props.node.effectiveUnitCostCopper)
   return props.node.effectiveUnitCostApproximate && props.node.effectiveUnitCostCopper !== null ? `≈ ${text}` : text
+})
+
+const forge = computed(() => props.node.forgeStep ?? null)
+const isVendor = computed(() => forge.value?.source === 'VENDOR')
+
+/** One compact line of backend-supplied source facts; null for an ordinary node. */
+const forgeLine = computed(() => {
+  const f = forge.value
+  if (f === null) return null
+  const batches = f.batches === 1 ? '1 batch' : `${f.batches} batches`
+  if (f.source === 'VENDOR') {
+    return `Vendor · ${batches} bought · ${f.guaranteedProducedTotal} units (${f.usedQuantity} used${f.surplusQuantity > 0 ? `, ${f.surplusQuantity} extra batch units` : ''})`
+  }
+  const parts = ['Mystic Forge', batches]
+  if (f.expectedOutputPerCraft !== null) {
+    parts.push(`expected ${f.expectedOutputPerCraft} per batch (range ${f.minOutput}–${f.maxOutput})`)
+    parts.push(`≈ ${f.expectedProducedTotal} expected, ${f.guaranteedProducedTotal} guaranteed net`)
+    if (f.reusedSeed > 0) parts.push(`${f.reusedSeed} reused as seed`)
+  }
+  if (f.surplusQuantity > 0) parts.push(`${f.surplusQuantity} extra batch units`)
+  return parts.join(' · ')
 })
 
 const currencies = computed(() => props.node.currencies ?? [])
@@ -121,8 +148,13 @@ const childSummary = computed(() => {
       for. A node the backend assigned no character to says nothing here rather than carrying a "Not
       assigned" row of its own — the absence is not a fact about the requirement.
     -->
-    <p v-if="node.characterName !== null" class="node__crafter" data-test="node-crafter">
+    <p v-if="forgeLine !== null" class="node__forge meta" data-test="node-forge" title="Extra batch units are produced beyond this requirement; later requirements may reuse them.">{{ forgeLine }}</p>
+
+    <p v-if="node.characterName !== null && forge === null" class="node__crafter" data-test="node-crafter">
       Crafted by {{ node.characterName }}
+    </p>
+    <p v-else-if="node.characterName !== null && !isVendor" class="node__crafter" data-test="node-crafter">
+      Using {{ node.characterName }}'s carried items
     </p>
 
     <!--

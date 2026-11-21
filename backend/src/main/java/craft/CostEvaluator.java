@@ -31,18 +31,26 @@ public class CostEvaluator {
             CraftingSettings settings
                               ) {
 
-        PriceQuote q = tp.get(recipe.outputItemId);
-
-        if (q == null) {
-            return 0;
-        }
-
-        Integer unit = settings.listingSell ? q.sellUnit : q.buyUnit;
+        Integer unit = outputUnit(recipe, tp, settings);
 
         if (unit == null) {
             return 0;
         }
 
+        if (recipe.hasExpectedYield()) {
+            // Expected economics: exact decimal mean, floored once at the copper boundary (no truncated mean).
+            return Math.toIntExact(ExpectedYield.floorCopper(recipe.expectedYield.mean(), unit));
+        }
+
         return Math.multiplyExact(unit, recipe.outputCount);
+    }
+
+    /** Applicable output unit quote, or null when there is no usable quote (never a fabricated value). */
+    static Integer outputUnit(Recipe recipe, Map<Integer, PriceQuote> tp, CraftingSettings settings) {
+        PriceQuote q = tp.get(recipe.outputItemId);
+        if (q == null) {
+            return null;
+        }
+        return settings.listingSell ? q.sellUnit : q.buyUnit;
     }
 }

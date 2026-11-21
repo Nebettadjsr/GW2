@@ -625,6 +625,8 @@ export function useCraftingProfit(
     const context = protectionContext()
     if (settings.value !== null) {
       request.settings = { ...settings.value }
+      // Profit is ordinary crafting only: never send the retired Forge flag, even from stale echoes.
+      delete request.settings.allowMysticForge
       if (context !== null) {
         request.settings.materialProtectionEnabled = context.enabled
         request.settings.protectedItemIds = []
@@ -643,8 +645,8 @@ export function useCraftingProfit(
         delete request.settings.protectedBankAllocations
       }
     } else if (context !== null && context.enabled) {
-      // Backend defaults for everything else; only the committed protection is supplied.
-      request.settings = { materialProtectionEnabled: true, protectedItemIds: [],
+      // Backend defaults for everything else; only the committed protection and Forge flag are supplied.
+      request.settings = { materialProtectionEnabled: context.enabled, protectedItemIds: [],
         protectedBankItemIds: context.bankIds, protectedMaterialItemIds: context.materialIds,
         protectedBankQuantities: { ...context.bankQuantities }, protectedMaterialQuantities: { ...context.materialQuantities },
         protectedBankAllocations: context.bankAllocations.map(row => ({ ...row })) }

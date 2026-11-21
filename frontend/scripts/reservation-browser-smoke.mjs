@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chromium } from 'playwright-core'
+import { launchOwnedBrowser, closeOwnedBrowser } from './ownedBrowser.mjs'
 import { requireFreshBundle } from './bundleFreshness.mjs'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 import { startStubOrigin } from './stubOrigin.mjs'
@@ -21,10 +21,11 @@ import { ITEM, TABLE, DETAIL, bankSnapshot, materials, tableResponse, detailResp
 const TIMEOUT = Number(process.env.GW2_SMOKE_TIMEOUT_MS ?? 15000)
 const OUTPUT = resolve(process.env.GW2_SMOKE_OUTPUT ?? 'quality-reports/desktop-journeys')
 let browser
+let owned
 process.on('message', async message => {
   if (message?.type !== 'gw2-journey-timeout') return
   process.exitCode = 1
-  await browser?.close().catch(() => {}) // The cancelled active check closes its origin in finally.
+  await closeOwnedBrowser(owned).catch(() => {}) // The cancelled active check closes its origin in finally.
 })
 process.channel?.unref()
 const PREFIX = 'gw2.materialProtection.v1.00000000-0000-4000-8000-000000000194'
@@ -421,16 +422,20 @@ async function main() {
   const stub = await startStubOrigin({ port: Number(process.env.GW2_RESERVATION_SMOKE_PORT ?? 5184),
     distDir: fileURLToPath(new URL('../dist/', import.meta.url)), answerApi })
   try {
-    browser = await chromium.launch({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    owned = await launchOwnedBrowser({ executablePath: resolveBrowserPath(), headless: process.env.GW2_SMOKE_HEADLESS !== 'false' })
+    browser = owned.browser
     await runViewport(browser, stub, { width: 1440, height: 900 })
     assert.ok(stub.servedCount() > 0, 'The owned loopback server served no frontend')
     assert.deepEqual(failures, [], 'Browser/controlled fixture errors')
     record('normal synthetic proof, exact methods/routes/context and no raw-key/sync/off-origin traffic', session.verify())
+    // Teardown before the pass report: a hung/unconfirmed browser close fails the check instead of hanging.
+    await closeOwnedBrowser(owned)
+    owned = undefined
     console.log(`\nReservation browser check PASSED (${steps.length} steps).`)
     await writeFile(join(OUTPUT, 'reservations.json'), JSON.stringify({ results: [{ name: 'reserve-stock-and-use-profit',
       status: 'passed', viewport: { width: 1440, height: 900 }, steps }] }, null, 2))
   } finally {
-    try { await browser?.close() } finally { await stub.close() }
+    try { await closeOwnedBrowser(owned) } finally { await stub.close() }
   }
 }
 main().catch(async error => {

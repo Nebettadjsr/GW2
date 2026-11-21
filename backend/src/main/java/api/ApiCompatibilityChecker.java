@@ -334,8 +334,9 @@ public class ApiCompatibilityChecker {
         }
         boolean describesSplit = desc != null && desc.contains("item_ingredients");
         if (advertised && describesSplit && !n.has("item_ingredients")) {
-            run.add(id, label, ep, PINNED_PROFILE, Status.ATTENTION, "DIRECTORY_PAYLOAD_DISCREPANCY",
-                    "The directory describes item_ingredients/currency_ingredients, but the payload uses a typed ingredients list. The payload is readable; the description is imprecise.");
+            run.add(id, label, ep, PINNED_PROFILE, Status.OK, "DIRECTORY_DESCRIPTION_SUPPORTED",
+                    "Expected per the directory description: split item_ingredients/currency_ingredients lists. Actual: one typed ingredients list (Item/Currency, including Research Notes currency 61). "
+                            + "Production supports the typed list, and every identity, ingredient and quantity check passed, so this description-only difference is compatible.");
         } else if (!advertised) {
             run.add(id, label, ep, PINNED_PROFILE, Status.ATTENTION, "DIRECTORY_PAYLOAD_DISCREPANCY",
                     "The schema version still answers but is no longer advertised by the directory.");

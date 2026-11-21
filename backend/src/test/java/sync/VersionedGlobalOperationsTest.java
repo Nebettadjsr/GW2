@@ -29,6 +29,8 @@ class VersionedGlobalOperationsTest {
 
     @BeforeEach
     void migrateAndSeed() throws Exception {
+        // Controlled public Forge reference ids (disjoint from every private fixture id); the real bundled set is pinned below.
+        IconSync.forgeReferenceIds = () -> Set.of(90, 91);
         con = DriverManager.getConnection(EnvConfig.require("DATABASE_URL"),
                 EnvConfig.require("DATABASE_USER"), EnvConfig.require("DATABASE_PASSWORD"));
         try (Statement statement = con.createStatement()) {
@@ -63,6 +65,7 @@ class VersionedGlobalOperationsTest {
 
     @AfterEach
     void dropSchema() throws Exception {
+        IconSync.forgeReferenceIds = parser.MysticForgeCatalogLoader::referencedItemIds;
         if (con == null) return;
         try (Statement statement = con.createStatement()) {
             statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
@@ -81,14 +84,26 @@ class VersionedGlobalOperationsTest {
             statement.execute("DELETE FROM account_recipes");
             statement.execute("DELETE FROM account_registry");
         }
-        assertEquals(List.of(10, 11, 30, 31, 40, 41), IconSync.globalReferencedOrUnknownItemIds(con));
+        assertEquals(List.of(10, 11, 30, 31, 40, 41, 90, 91), IconSync.globalReferencedOrUnknownItemIds(con));
     }
 
     @Test
     void iconMetadataGlobalSelectionExcludesEveryAccountOwnedFamily() throws Exception {
         List<Integer> selected = IconSync.globalReferencedOrUnknownItemIds(con);
-        assertEquals(List.of(10, 11, 30, 31, 40, 41), selected);
+        assertEquals(List.of(10, 11, 30, 31, 40, 41, 90, 91), selected);
         for (int accountOwned : new int[] {20, 21, 22, 23, 24, 25}) assertFalse(selected.contains(accountOwned));
+    }
+
+    @Test
+    void bundledForgeReferencesJoinGlobalSelectionButPrivateReferencesNeverDo() throws Exception {
+        Set<Integer> publicForge = parser.MysticForgeCatalogLoader.referencedItemIds();
+        IconSync.forgeReferenceIds = () -> publicForge;
+        Set<Integer> selected = Set.copyOf(IconSync.globalReferencedOrUnknownItemIds(con));
+        assertTrue(selected.containsAll(publicForge));
+        // A private id is selected only if it coincides with a public Forge id, never because an account owns it.
+        for (int accountOwned : new int[] {20, 21, 22, 23, 24, 25}) {
+            assertEquals(publicForge.contains(accountOwned), selected.contains(accountOwned));
+        }
     }
 
     @Test
