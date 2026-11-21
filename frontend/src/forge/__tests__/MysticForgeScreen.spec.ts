@@ -929,19 +929,32 @@ describe('vendor shopping and bounded catalogue completion', () => {
     w.unmount()
   })
 
-  it('resumes a completing catalogue whose timer was cancelled by opening a detail once the user goes Back', async () => {
+  it('keeps the bounded completion rereads running inside an OPEN detail of a fully populated row while the catalogue is completing', async () => {
     const counter = { calls: 0 }
     const w = mount(MysticForgeScreen, { props: { api: completingApi(counter, 3) }, attachTo: document.body })
     await flushPromises()
     expect(counter.calls).toBe(1)
     await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
     await flushPromises()
-    await vi.advanceTimersByTimeAsync(20_000)
-    expect(counter.calls).toBe(1) // the detail cancelled the reread timer
-    await w.get('[data-test="forge-back"]').trigger('click')
+    const plans = projectCalls.length
     await vi.advanceTimersByTimeAsync(11_000)
     await flushPromises()
-    expect(counter.calls).toBe(3) // resumed, completed, stopped
+    expect(counter.calls).toBe(3) // resumed within the open detail (no Back), completed, then stopped
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(counter.calls).toBe(3)
+    expect(w.find('[data-test="forge-back"]').exists()).toBe(true) // still the same open detail
+    expect(projectCalls).toHaveLength(plans) // no redundant project request
+    w.unmount()
+  })
+
+  it('does not poll inside an open detail when the catalogue is not completing', async () => {
+    const counter = { calls: 0 }
+    const w = mount(MysticForgeScreen, { props: { api: completingApi(counter, 1) }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(counter.calls).toBe(1)
     w.unmount()
   })
 })

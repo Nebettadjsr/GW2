@@ -362,12 +362,9 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     sourceRefreshing.value = false
     sourceError.value = null
     stalled.value = false
-    // A row whose type is not cached yet (category OTHER) must not stay generic: keep the same bounded public
-    // metadata reread running while its detail is open so weapon/armor controls appear in place.
-    // A row of ANY category whose name or icon metadata is still missing keeps the same bounded completion too, so its
-    // heading, icon and Wiki link replace the item-ID placeholder once the public metadata arrives.
-    const opened = selectedRow.value
-    if (opened?.category === 'OTHER' || (opened !== undefined && opened !== null && (!opened.name || !opened.iconUrl))) resumeCatalogue()
+    // Opening a detail only cancels the pending timer: the same bounded completion resumes whenever the catalogue is
+    // still completing, independent of selected-row gaps (another row or recipe path may still lack metadata).
+    resumeCatalogue()
     void loadProject()
   }
 
