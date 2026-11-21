@@ -201,7 +201,7 @@ public final class ForgeProjectPlanner {
                                                            Map<Integer, Long> wallet, Project project) {
         Context context = ctx == null ? Context.NONE : ctx;
         return new ForgeMaterialProgress(producerByItem).calculate(target, quantity, inventory, context, wallet,
-                project.settings().reduce(), selectedNoteProducer(project, inventory, context));
+                project.settings().reduce(), selectedNoteProducer(project, inventory, context), project.settings().daily());
     }
 
     /** The planned Note producer; when the plan made none (unknown wallet) the same tiered choice over the same estimate. */

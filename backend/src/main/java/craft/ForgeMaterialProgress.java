@@ -17,14 +17,14 @@ public final class ForgeMaterialProgress {
 
     Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory,
                        ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet) {
-        return calculate(target, quantity, inventory, ctx, wallet, ForgeSettings.ReduceMode.YES, null);
+        return calculate(target, quantity, inventory, ctx, wallet, ForgeSettings.ReduceMode.YES, null, ForgeSettings.DailyMode.CRAFT);
     }
 
     /** @param reduce the project's owned-root policy; @param noteProducer the project's selected Note producer (null: default) */
     Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory,
                        ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet,
-                       ForgeSettings.ReduceMode reduce, Recipe noteProducer) {
-        Run run = new Run(inventory, ctx == null ? ForgeProjectPlanner.Context.NONE : ctx, wallet, reduce, noteProducer);
+                       ForgeSettings.ReduceMode reduce, Recipe noteProducer, ForgeSettings.DailyMode daily) {
+        Run run = new Run(inventory, ctx == null ? ForgeProjectPlanner.Context.NONE : ctx, wallet, reduce, noteProducer, daily);
         try {
             Coverage coverage = run.item(target.outputItemId, quantity, target, 0, Set.of(), null);
             double percent = coverage.ready() ? 100 : Math.min(99.9, Math.floor(coverage.fraction() * 1000) / 10);
@@ -42,11 +42,13 @@ public final class ForgeMaterialProgress {
         private final boolean walletKnown;
         private final ForgeSettings.ReduceMode reduce;
         private final Recipe noteProducer;
+        private final ForgeSettings.DailyMode daily;
         private int visited;
 
         Run(ForgeProjectPlanner.Inventory inventory, ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet,
-            ForgeSettings.ReduceMode reduce, Recipe noteProducer) {
+            ForgeSettings.ReduceMode reduce, Recipe noteProducer, ForgeSettings.DailyMode daily) {
             this.reduce = reduce;
+            this.daily = daily;
             this.noteProducer = noteProducer;
             this.state = new PlanState(inventory.sellable(), inventory.accountBound(), inventory.characterBound());
             this.ctx = ctx;
@@ -76,6 +78,9 @@ public final class ForgeMaterialProgress {
             boolean clover = itemId == ForgeProjectPlanner.MYSTIC_CLOVER;
             Recipe recipe = clover ? ForgeReferenceRecipes.all().getFirst().asPlanningTarget()
                     : selected != null ? selected : producers.get(itemId);
+            // Daily Buy (same predicate as the planner): the shortfall is purchased, so producer inputs do not count.
+            if (!clover && depth > 0 && recipe != null && daily == ForgeSettings.DailyMode.BUY
+                    && DailyCrafts.isDailyOutput(itemId)) return new Coverage(ownedFraction, false, false, false);
             if (recipe == null || recipe.hasExpectedYield()) return new Coverage(ownedFraction, false, false, false);
             if (path.contains(recipe.recipeId)) return new Coverage(ownedFraction, false, false, true);
             long crafts = clover ? Math.ceilDiv(ForgeProjectPlanner.mul(missing, 100L), ForgeProjectPlanner.CLOVER_PERCENT)
