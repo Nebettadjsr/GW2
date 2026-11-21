@@ -24,7 +24,7 @@ class ForgeProjectBindingSeedTest {
     private final Recipe weapon = forge(1, WEAPON, 1, List.of(new Ingredient(PLATE, 2)));
     // ordinary step: needs Weaponsmith 400 and ORE x5 per 2 plates
     private final Recipe plate = new Recipe(10, PLATE, 2, 400, "Weaponsmith", List.of(new Ingredient(ORE, 5)));
-    private final ForgeProjectPlanner planner = new ForgeProjectPlanner(List.of(weapon, plate));
+    private final ForgeProjectPlanner planner = LegacyForge.planner(List.of(weapon, plate));
     private final List<CharacterCraftingProfile> roster = List.of(
             new CharacterCraftingProfile("Smith", Map.of("Weaponsmith", 500)),
             new CharacterCraftingProfile("Novice", Map.of("Weaponsmith", 100)),
@@ -50,7 +50,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void forgeStepMayUseAnyOwnersBankButNotOtherCharactersCarried() {
         Recipe direct = forge(2, WEAPON, 1, List.of(new Ingredient(ORE, 10)));
-        var pl = new ForgeProjectPlanner(List.of(direct));
+        var pl = LegacyForge.planner(List.of(direct));
         var inv = new ForgeProjectPlanner.Inventory(Map.of(), Map.of(), Map.of(
                 PlanState.bankOwnerKey("A"), Map.of(ORE, 3), PlanState.bankOwnerKey("B"), Map.of(ORE, 2),
                 "A", Map.of(ORE, 4), "B", Map.of(ORE, 4)));
@@ -103,7 +103,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void gossamerOneBatchComparesFullInputsAtAskAndSellsAtBid() {
         Recipe g = gossamer();
-        var p = new ForgeProjectPlanner(gossamerProducers(g)).plan(g, 1, true,
+        var p = LegacyForge.planner(gossamerProducers(g)).plan(g, 1, true,
                 ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(23, 0L), gossamerPrices());
         var e = p.economics();
         assertEquals(100, e.outputUnitSellCopper(), "instant sell uses the BID, not the ask");
@@ -120,7 +120,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void ownedStonesDoNotChangeFullInputComparisonAndStayConditional() {
         Recipe g = gossamer();
-        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        var pl = LegacyForge.planner(gossamerProducers(g));
         var none = pl.plan(g, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(23, 5L), gossamerPrices());
         var owned = pl.plan(g, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 99L, 19748, 250L, 24277, 5L)),
                 ForgeProjectPlanner.Context.NONE, Map.of(23, 5L), gossamerPrices());
@@ -133,7 +133,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void expectedSeededRootPartitionUsesNetGuaranteedOutputWhileStepsKeepGross() {
         Recipe g = gossamer();
-        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        var pl = LegacyForge.planner(gossamerProducers(g));
         for (long[] c : new long[][] {{2, 19}, {50, 10 * 50 - 49}}) {
             var p = pl.plan(g, c[0], true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 1000L)),
                     ForgeProjectPlanner.Context.NONE, Map.of(23, 1000L), gossamerPrices());
@@ -150,7 +150,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void batchTargetRootNeverInventsRoundUpSurplusButFixedOutputRootKeepsIt() {
         Recipe g = gossamer();
-        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        var pl = LegacyForge.planner(gossamerProducers(g));
         // gross produced = batches*10; net partition = 10*batches - (batches-1); no leftover is invented for any batch count
         for (long[] c : new long[][] {{1, 10, 10}, {2, 20, 19}, {50, 500, 451}}) {
             var t = pl.plan(g, c[0], true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 1000L)),
@@ -162,12 +162,12 @@ class ForgeProjectBindingSeedTest {
         }
         // normal fixed-output rounding: output 10, target 15 -> 2 batches, 20 produced, 5 surplus
         Recipe fixed = forge(5, WEAPON, 10, List.of(new Ingredient(ORE, 1)));
-        var t = new ForgeProjectPlanner(List.of(fixed)).planOutput(fixed, 15, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var t = LegacyForge.planner(List.of(fixed)).planOutput(fixed, 15, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of()).tree();
         assertEquals(20, t.produced());
         assertEquals(5, t.newSurplus());
         // a fixed-output batch target also has no invented surplus
-        var b = new ForgeProjectPlanner(List.of(fixed)).plan(fixed, 2, true, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var b = LegacyForge.planner(List.of(fixed)).plan(fixed, 2, true, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of()).tree();
         assertEquals(20, b.produced());
         assertEquals(0, b.newSurplus());
@@ -176,7 +176,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void gossamerTwoBatchesOneExternalSeedGuaranteedReuseAndOracleEconomics() {
         Recipe g = gossamer();
-        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        var pl = LegacyForge.planner(gossamerProducers(g));
         var p = pl.plan(g, 2, true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 10L)),
                 ForgeProjectPlanner.Context.NONE, Map.of(23, 100L), gossamerPrices());
         var s = p.seed();
@@ -201,8 +201,8 @@ class ForgeProjectBindingSeedTest {
     void cashVendorWineIsCountedExactlyOnceAndUnpricedMaterialBlocksMargin() {
         Recipe r = Recipe.forgeWithExpectedYield(-79, 5000, ExpectedYield.of("2.5", 2, 3),
                 List.of(new Ingredient(19663, 1), new Ingredient(6000, 1)));
-        var pl = new ForgeProjectPlanner(gossamerProducers(gossamer()));
-        var priced = new ForgeProjectPlanner(List.of(r, Recipe.vendor(-1_000_000_002, 19663, 1, List.of(), 2504)));
+        var pl = LegacyForge.planner(gossamerProducers(gossamer()));
+        var priced = LegacyForge.planner(List.of(r, Recipe.vendor(-1_000_000_002, 19663, 1, List.of(), 2504)));
         var p = priced.plan(r, 1, true, ForgeProjectPlanner.Inventory.shared(Map.of(19663, 1L)),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(5000, new PriceQuote(1000, 1100), 6000, new PriceQuote(5, 6)));
         assertEquals(2504 + 6, p.economics().goldInputCopper(), "owned Wine is not free; cash counted once");
@@ -217,7 +217,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void fixedOutputConversionHasExactCountEconomics() {
         Recipe r = new Recipe(-5, 7000, 3, 0, "", List.of(new Ingredient(7001, 2)), List.of(), RecipeSource.MYSTIC_FORGE);
-        var p = new ForgeProjectPlanner(List.of(r)).planOutput(r, 6, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var p = LegacyForge.planner(List.of(r)).planOutput(r, 6, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(7000, new PriceQuote(200, 250), 7001, new PriceQuote(10, 300)));
         var e = p.economics();
         assertTrue(e.fixedOutput());
@@ -233,7 +233,7 @@ class ForgeProjectBindingSeedTest {
                 RecipeSource.MYSTIC_FORGE);
         Recipe producer = new Recipe(10, 7001, 1, 0, "Weaponsmith", List.of(new Ingredient(7003, 3)));
         Recipe unrelated = new Recipe(11, 8000, 1, 0, "Weaponsmith", List.of(new Ingredient(8001, 1)));
-        var ids = new ForgeProjectPlanner(List.of(root, producer, unrelated)).pathItemIds(root);
+        var ids = LegacyForge.planner(List.of(root, producer, unrelated)).pathItemIds(root);
         assertEquals(java.util.Set.of(7000, 7001, 7002, 7003), ids, "no unrelated root's ids are demanded");
     }
 
@@ -241,7 +241,7 @@ class ForgeProjectBindingSeedTest {
     void viciousClawFiftyBatchesReusesOnlyGuaranteedMinimum() {
         Recipe c = Recipe.forgeWithExpectedYield(-78, 24350, ExpectedYield.of("6.91", 5, 12),
                 List.of(new Ingredient(24350, 1), new Ingredient(24341, 50)));
-        var p = new ForgeProjectPlanner(List.of(c)).plan(c, 50, Map.of(), Map.of(), Map.of());
+        var p = LegacyForge.planner(List.of(c)).plan(c, 50, Map.of(), Map.of(), Map.of());
         assertEquals(1, p.seed().externalSeedUnits());
         assertEquals(49, p.seed().reusedSeedUnits());
         assertEquals(250, p.seed().grossGuaranteedOutput());
@@ -254,7 +254,7 @@ class ForgeProjectBindingSeedTest {
     void seedLargerThanGuaranteedMinimumNeedsTopUpEachBatch() {
         Recipe r = Recipe.forgeWithExpectedYield(-79, 500, ExpectedYield.of("3", 2, 4),
                 List.of(new Ingredient(500, 3), new Ingredient(501, 1)));
-        var p = new ForgeProjectPlanner(List.of(r)).plan(r, 4, Map.of(), Map.of(), Map.of());
+        var p = LegacyForge.planner(List.of(r)).plan(r, 4, Map.of(), Map.of(), Map.of());
         assertEquals(3 + 3 * 1, p.seed().externalSeedUnits(), "each later batch can reuse only min=2 of its 3 seed units");
         assertEquals(6, p.seed().reusedSeedUnits());
     }
@@ -264,7 +264,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void knownWalletMissingCurrencyIsZeroButNullWalletIsUnknown() {
         Recipe r = new Recipe(-5, WEAPON, 1, 0, "", List.of(), List.of(new CurrencyRequirement(23, 5)), RecipeSource.MYSTIC_FORGE);
-        var pl = new ForgeProjectPlanner(List.of(r));
+        var pl = LegacyForge.planner(List.of(r));
         var known = pl.plan(r, 1, Map.of(), Map.of(61, 9L), Map.of()).currencies().getFirst();
         assertEquals(0L, known.owned());
         assertEquals(5L, known.missing());
@@ -317,7 +317,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void runestonePurchaseIsTenThousandCopperPerUnitWithMasteryHint() {
         Recipe r = forge(3, WEAPON, 1, List.of(new Ingredient(VendorAcquisitions.MYSTIC_RUNESTONE, 100)));
-        var pl = new ForgeProjectPlanner(List.of(r, VendorAcquisitions.recipes().stream()
+        var pl = LegacyForge.planner(List.of(r, VendorAcquisitions.recipes().stream()
                 .filter(x -> x.outputItemId == VendorAcquisitions.MYSTIC_RUNESTONE).findFirst().orElseThrow()));
         var p = pl.planOutput(r, 1, ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE,
                 Map.of(), Map.of(VendorAcquisitions.MYSTIC_RUNESTONE, new PriceQuote(1, 330)));
@@ -329,7 +329,7 @@ class ForgeProjectBindingSeedTest {
     @Test
     void expectedRootGuaranteedOutputIsNetOfReusedSeed() {
         Recipe g = gossamer();
-        var pl = new ForgeProjectPlanner(gossamerProducers(g));
+        var pl = LegacyForge.planner(gossamerProducers(g));
         for (long[] c : new long[][] {{1, 10}, {2, 19}, {50, 451}}) {
             var p = pl.plan(g, c[0], true, ForgeProjectPlanner.Inventory.shared(Map.of(20796, 1000L)),
                     ForgeProjectPlanner.Context.NONE, Map.of(23, 1000L), gossamerPrices());
@@ -338,7 +338,7 @@ class ForgeProjectBindingSeedTest {
         }
         // non-self-seeded fixed batch target keeps ordinary gross semantics
         Recipe fixed = forge(5, WEAPON, 10, List.of(new Ingredient(ORE, 1)));
-        assertEquals(20, new ForgeProjectPlanner(List.of(fixed)).plan(fixed, 2, true,
+        assertEquals(20, LegacyForge.planner(List.of(fixed)).plan(fixed, 2, true,
                 ForgeProjectPlanner.Inventory.shared(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(), Map.of()).guaranteedOutput());
     }
 }

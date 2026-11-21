@@ -33,7 +33,7 @@ class ForgeProjectQuantityTest {
         Recipe a = forge(2, A, 1, List.of(new Ingredient(STONE, 5)), List.of());
         Recipe b = forge(3, B, 1, List.of(new Ingredient(STONE, 3)), List.of());
         Recipe vendor = Recipe.vendor(-1_000_020796, STONE, 10, List.of(new CurrencyRequirement(SHARD, 1)), 0);
-        var p = new ForgeProjectPlanner(List.of(t, a, b, vendor)).planOutput(t, 1, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var p = LegacyForge.planner(List.of(t, a, b, vendor)).planOutput(t, 1, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
         assertEquals(1, p.vendorPurchases().size());
         var v = p.vendorPurchases().get(0);
@@ -51,7 +51,7 @@ class ForgeProjectQuantityTest {
     void cashVendorPurchaseCarriesItsCopperAndOrdinaryLeavesAreUnaffected() {
         Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(19663, 2), new Ingredient(A, 1)), List.of());
         Recipe wine = Recipe.vendor(-1_000_019663, 19663, 1, List.of(), 2504);
-        var p = new ForgeProjectPlanner(List.of(t, wine)).planOutput(t, 1, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var p = LegacyForge.planner(List.of(t, wine)).planOutput(t, 1, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(A, ask(100)));
         assertEquals(2, p.vendorPurchases().get(0).purchases());
         assertEquals(5008, p.vendorPurchases().get(0).copper());
@@ -62,7 +62,7 @@ class ForgeProjectQuantityTest {
     @Test
     void goldTotalAboveTheExactJsonRangeIsIncompleteNotAFakeNumber() {
         Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(A, 1)), List.of());
-        var p = new ForgeProjectPlanner(List.of(t)).planOutput(t, 999_999_999L, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var p = LegacyForge.planner(List.of(t)).planOutput(t, 999_999_999L, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(A, ask(10_000_001)));
         assertFalse(p.complete());
         assertNotNull(p.incompleteReason());
@@ -76,7 +76,7 @@ class ForgeProjectQuantityTest {
     void nestedMultiplicationBetweenTwoToFiftyThreeAndLongMaxIsRejected() {
         Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(A, 1000)), List.of());
         Recipe a = new Recipe(10, A, 1, 0, "", List.of(new Ingredient(B, 10_000)));
-        var p = new ForgeProjectPlanner(List.of(t, a)).planOutput(t, 999_999_999L, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var p = LegacyForge.planner(List.of(t, a)).planOutput(t, 999_999_999L, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
         assertFalse(p.complete());
         assertEquals("quantity exceeds the supported range", p.incompleteReason());
@@ -89,7 +89,7 @@ class ForgeProjectQuantityTest {
     void cumulativeSumPastTheRangeStopsButKeepsTheSafeSubtotal() {
         // two ingredients each 6e15 (< 2^53) whose sum exceeds it
         Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(A, 6_000_000), new Ingredient(B, 6_000_000)), List.of());
-        var p = new ForgeProjectPlanner(List.of(t)).planOutput(t, 1_000_000_000L, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var p = LegacyForge.planner(List.of(t)).planOutput(t, 1_000_000_000L, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of(A, ask(1), B, ask(1)));
         assertTrue(p.items().stream().allMatch(i -> i.needed() <= MAX_SAFE));
         assertTrue(p.knownCopper() <= MAX_SAFE);
@@ -102,7 +102,7 @@ class ForgeProjectQuantityTest {
         Recipe batch = Recipe.vendor(-1_000_000_001, STONE, 10, List.of(new CurrencyRequirement(SHARD, 1)), 0);
         Recipe later = forge(3, A, 1, List.of(new Ingredient(STONE, 4)), List.of());
         Recipe t = forge(1, GOAL, 1, List.of(new Ingredient(STONE, 5), new Ingredient(A, 1)), List.of());
-        var p = new ForgeProjectPlanner(List.of(t, later, batch)).plan(t, 1, Map.of(), Map.of(SHARD, 5L), Map.of());
+        var p = LegacyForge.planner(List.of(t, later, batch)).plan(t, 1, Map.of(), Map.of(SHARD, 5L), Map.of());
         var stone = p.tree().children().get(0);
         assertEquals(5, stone.needed());
         assertEquals(5, stone.toCraft());
@@ -131,7 +131,7 @@ class ForgeProjectQuantityTest {
 
     @Test
     void ownedContainersOnlyAreOpenedNotCrafted() {
-        var n = notes(new ForgeProjectPlanner(List.of(notesGoal, prrA, prrB)), Map.of(PRR, 3L), Map.of((int) NOTE, 0L), ctx);
+        var n = notes(LegacyForge.planner(List.of(notesGoal, prrA, prrB)), Map.of(PRR, 3L), Map.of((int) NOTE, 0L), ctx);
         assertEquals(300, n.shortfall());
         assertEquals(2, n.containersNeeded());
         assertEquals(2, n.ownedContainers());
@@ -145,7 +145,7 @@ class ForgeProjectQuantityTest {
 
     @Test
     void mixedOwnedAndCraftedAreReportedSeparately() {
-        var n = notes(new ForgeProjectPlanner(List.of(notesGoal, prrA, prrB)), Map.of(PRR, 1L), Map.of((int) NOTE, 0L), ctx);
+        var n = notes(LegacyForge.planner(List.of(notesGoal, prrA, prrB)), Map.of(PRR, 1L), Map.of((int) NOTE, 0L), ctx);
         assertEquals(1, n.ownedContainers());
         assertEquals(150, n.ownedNotes());
         assertEquals(1, n.containersCrafted());
@@ -156,7 +156,7 @@ class ForgeProjectQuantityTest {
 
     @Test
     void absentProducerClaimsNeitherOutputNorSurplus() {
-        var n = notes(new ForgeProjectPlanner(List.of(notesGoal)), Map.of(PRR, 1L), Map.of((int) NOTE, 0L), ctx);
+        var n = notes(LegacyForge.planner(List.of(notesGoal)), Map.of(PRR, 1L), Map.of((int) NOTE, 0L), ctx);
         assertEquals(1, n.ownedContainers());
         assertEquals(0, n.containersCrafted());
         assertEquals(0, n.producedNotes());
@@ -167,7 +167,7 @@ class ForgeProjectQuantityTest {
 
     @Test
     void absentProducerAndNoOwnedContainerStillClaimsNoSurplus() {
-        var n = notes(new ForgeProjectPlanner(List.of(notesGoal)), Map.of(), Map.of((int) NOTE, 10L), ctx);
+        var n = notes(LegacyForge.planner(List.of(notesGoal)), Map.of(), Map.of((int) NOTE, 10L), ctx);
         assertEquals(290, n.shortfall());
         assertEquals(2, n.acquireContainers());
         assertEquals(290, n.uncoveredNotes());
@@ -177,14 +177,14 @@ class ForgeProjectQuantityTest {
     @Test
     void lockedPlannedProducerIsFlaggedAsLockedPlannedWork() {
         var locked = new ForgeProjectPlanner.Context(List.of(new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), Set.of());
-        var n = notes(new ForgeProjectPlanner(List.of(notesGoal, prrA, prrB)), Map.of(), Map.of((int) NOTE, 0L), locked);
+        var n = notes(LegacyForge.planner(List.of(notesGoal, prrA, prrB)), Map.of(), Map.of((int) NOTE, 0L), locked);
         assertEquals(2, n.containersCrafted());
         assertTrue(n.producerLocked());
     }
 
     @Test
     void unknownWalletKeepsOwnedContainersOutOfTheClaims() {
-        var n = notes(new ForgeProjectPlanner(List.of(notesGoal, prrA, prrB)), Map.of(PRR, 3L), null, ctx);
+        var n = notes(LegacyForge.planner(List.of(notesGoal, prrA, prrB)), Map.of(PRR, 3L), null, ctx);
         assertFalse(n.walletKnown());
         assertNull(n.shortfall());
         assertEquals(0, n.ownedContainers());

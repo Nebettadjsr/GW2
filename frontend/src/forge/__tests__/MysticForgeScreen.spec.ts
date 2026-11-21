@@ -43,7 +43,8 @@ function project(target: number, o: Partial<ForgeProject> = {}): ForgeProject {
     economics: { outputUnitSellCopper: 100, expectedGrossProceedsCopper: 3684, feeCopper: 553, expectedNetProceedsCopper: 3131, knownShoppingCopper: 1300,
       goldInputCopper: 1300, currencyInputs: [], unpricedInputs: [], marginOnShoppingCopper: null, marginCopper: -1831, conditional: true, fixedOutput: false },
     notes: null, freshness: null,
-    settings: { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' },
+    settings: { priceMode: 'INSTANT_BUY', useOwn: false, valueOwn: false, daily: 'CRAFT', promotions: false, reduce: 'NO' },
+    recipeTree: null, ownedItems: [], materialProgress: null, baseIngredients: [], craftingSteps: [],
     ownValue: null, clover: null, rootOwned: 0, comparison: null, ...o
   }
 }
@@ -93,17 +94,17 @@ describe('equipment detail layout', () => {
     await flushPromises()
     expect(w.get('[data-test="forge-settings"]').text()).not.toContain('preview')
     await w.get('[data-test="forge-setting-price"]').setValue('BUY_ORDER')
-    await w.get('[data-test="forge-setting-use-own"]').setValue('NO')
+    await w.get('[data-test="forge-setting-use-own"]').setValue('YES')
     await w.get('[data-test="forge-setting-reduce"]').setValue('TRADABLE')
     expect(projectCalls).toHaveLength(1) // nothing posts before the debounce
     await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1)
     expect(projectCalls).toHaveLength(2)
-    expect(projectCalls.at(-1)).toEqual({ recipeId: -1, target: 1, settings: { priceMode: 'BUY_ORDER', useOwn: false, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'TRADABLE' } })
+    expect(projectCalls.at(-1)).toEqual({ recipeId: -1, target: 1, settings: { priceMode: 'BUY_ORDER', useOwn: true, valueOwn: false, daily: 'CRAFT', promotions: false, reduce: 'TRADABLE' } })
     await w.get('[data-test="forge-setting-daily"]').setValue('BUY')
-    await w.get('[data-test="forge-setting-promotions"]').setValue('NO')
-    await w.get('[data-test="forge-setting-value-own"]').setValue('NO')
+    await w.get('[data-test="forge-setting-promotions"]').setValue('YES')
+    await w.get('[data-test="forge-setting-value-own"]').setValue('YES')
     await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1)
-    expect(projectCalls.at(-1)!.settings).toEqual({ priceMode: 'BUY_ORDER', useOwn: false, valueOwn: false, daily: 'BUY', promotions: false, reduce: 'TRADABLE' })
+    expect(projectCalls.at(-1)!.settings).toEqual({ priceMode: 'BUY_ORDER', useOwn: true, valueOwn: true, daily: 'BUY', promotions: true, reduce: 'TRADABLE' })
     const help = w.get('button[aria-controls="forge-reduction-help"]')
     await help.trigger('click')
     await help.trigger('keydown', { key: 'Escape' })
@@ -188,9 +189,9 @@ describe('Mystic Forge overview', () => {
     const w = await mounted()
     expect(catalogueCalls).toBe(1)
     expect(w.findAll('[data-test="forge-row"]')).toHaveLength(5)
-    await w.get('[data-test="forge-tab-ARMOR"]').trigger('click')
+    await w.get('[data-test="forge-filter-category"]').setValue('ARMOR')
     expect(w.findAll('[data-test="forge-row"]')).toHaveLength(1)
-    await w.get('[data-test="forge-tab-ALL"]').trigger('click')
+    await w.get('[data-test="forge-filter-category"]').setValue('ALL')
     await w.get('[data-test="forge-search"]').setValue('bow')
     expect(w.findAll('[data-test="forge-row"]').map((r) => r.text())).toEqual([
       expect.stringContaining('Shadow Shortbow'), expect.stringContaining('Sunrise Longbow')])
@@ -202,7 +203,7 @@ describe('Mystic Forge overview', () => {
     const w = await mounted()
     const rows = w.findAll('[data-test="forge-row"]')
     const longbow = rows.find((r) => r.text().includes('Sunrise Longbow'))!
-    expect(longbow.get('[data-test="forge-row-prices"]').text()).toBe('Instant sell 1g 23s 45c · Listing sell 2g 34s 56c')
+    expect(longbow.get('[data-test="forge-row-prices"]').text()).toBe('Instant buy23456Instant sell12345') // shared coin amounts: buy = ask 2g34s56c, sell = bid 1g23s45c
     const coat = rows.find((r) => r.text().includes('Gift Coat'))!
     expect(coat.get('[data-test="forge-row-prices"]').text()).toContain('Not traded / price unavailable')
     const clover = rows.find((r) => r.text().includes('Mystic Clover'))!
@@ -216,7 +217,7 @@ describe('selected project', () => {
     const w = await mounted()
     await w.findAll('[data-test="forge-row"]').find((r) => r.text().includes('Sunrise Longbow'))!.trigger('click')
     await flushPromises()
-    expect(projectCalls).toEqual([{ recipeId: -1, target: 1, settings: { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' } }])
+    expect(projectCalls).toEqual([{ recipeId: -1, target: 1, settings: { priceMode: 'INSTANT_BUY', useOwn: false, valueOwn: false, daily: 'CRAFT', promotions: false, reduce: 'NO' } }])
     expect(w.get('[data-test="forge-known-gold"]').text()).toContain('77g 77s 0c')
     expect(w.get('[data-test="forge-known-gold"]').text()).toContain('partial')
     expect(w.get('[data-test="forge-unpriced"]').text()).toContain('Gift of Fortune')
@@ -238,7 +239,7 @@ describe('selected project', () => {
     await input.setValue('25')
     vi.advanceTimersByTime(TARGET_DEBOUNCE_MS + 1)
     await flushPromises()
-    expect(projectCalls).toEqual([{ recipeId: -3, target: 25, settings: { priceMode: 'INSTANT_BUY', useOwn: true, valueOwn: true, daily: 'CRAFT', promotions: true, reduce: 'YES' } }])
+    expect(projectCalls).toEqual([{ recipeId: -3, target: 25, settings: { priceMode: 'INSTANT_BUY', useOwn: false, valueOwn: false, daily: 'CRAFT', promotions: false, reduce: 'NO' } }])
   })
   it('discards a late answer for an earlier target and for a closed selection', async () => {
     const w = await mounted(true)
@@ -410,7 +411,7 @@ describe('first use source refresh and cold catalogue', () => {
     await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 10)
     await flushPromises()
     expect(w.get('[data-test="forge-yield"]').text()).toContain('10–40')
-    expect(w.get('[data-test="forge-yield"]').text()).toContain('expected 18.92')
+    expect(w.get('[data-test="forge-yield"]').text()).toContain('18.92 expected')
     await w.get('[data-test="forge-back"]').trigger('click')
     await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
     await flushPromises()

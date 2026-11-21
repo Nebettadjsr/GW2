@@ -30,7 +30,7 @@ class ForgeSettingsPlannerTest {
                                                    Map<Integer, PriceQuote> prices, ForgeSettings s) {
         List<Recipe> all = new ArrayList<>(producers);
         all.add(root);
-        return new ForgeProjectPlanner(all).plan(root, 1, false, inv, ForgeProjectPlanner.Context.NONE, null, prices, s);
+        return LegacyForge.planner(all).plan(root, 1, false, inv, ForgeProjectPlanner.Context.NONE, null, prices, s);
     }
 
     private static ForgeProjectPlanner.Inventory sellable(Map<Integer, Integer> m) {
@@ -42,7 +42,7 @@ class ForgeSettingsPlannerTest {
     @Test
     void instantBuyUsesAskBuyOrderUsesBidAndMissingQuoteIsUnknown() {
         var prices = Map.of(ORE, new PriceQuote(3, 5));
-        var ask = run(root, List.of(), sellable(Map.of()), prices, ForgeSettings.DEFAULT);
+        var ask = run(root, List.of(), sellable(Map.of()), prices, LegacyForge.SETTINGS);
         var bid = run(root, List.of(), sellable(Map.of()), prices,
                 with(ForgeSettings.PriceMode.BUY_ORDER, true, true, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
         assertEquals(50, ask.knownCopper());
@@ -58,7 +58,7 @@ class ForgeSettingsPlannerTest {
     void useOwnChangesPhysicalConsumptionValueOwnOnlyChangesTheValuation() {
         var prices = Map.of(ORE, new PriceQuote(3, 5));
         var inv = sellable(Map.of(ORE, 4, UNPRICED, 1));
-        var useYes = run(root, List.of(), inv, prices, ForgeSettings.DEFAULT);
+        var useYes = run(root, List.of(), inv, prices, LegacyForge.SETTINGS);
         assertEquals(4, line(useYes, ORE).fromOwned());
         assertEquals(12, useYes.ownValue().knownCopper(), "4 owned sellable Ore at the instant-sell bid 3, not the ask 5");
         assertEquals(List.of(UNPRICED), useYes.ownValue().unpricedItemIds(), "unpriced owned stays unknown, never free");
@@ -79,7 +79,7 @@ class ForgeSettingsPlannerTest {
         Recipe top = forge(2, WEAPON, List.of(new Ingredient(DAILY, 2)));
         Recipe dailyRecipe = new Recipe(50, DAILY, 1, 400, "Weaponsmith", List.of(new Ingredient(ORE, 3)));
         var prices = Map.of(DAILY, new PriceQuote(7, 9));
-        var craft = run(top, List.of(dailyRecipe), sellable(Map.of(DAILY, 1)), prices, ForgeSettings.DEFAULT);
+        var craft = run(top, List.of(dailyRecipe), sellable(Map.of(DAILY, 1)), prices, LegacyForge.SETTINGS);
         assertEquals(1, craft.steps().stream().filter(s -> s.recipeId() == 50).findFirst().orElseThrow().crafts());
         assertEquals(0, line(craft, DAILY).missing());
         var buy = run(top, List.of(dailyRecipe), sellable(Map.of(DAILY, 1)), prices,
@@ -97,16 +97,18 @@ class ForgeSettingsPlannerTest {
         int gift1 = 7001, gift2 = 7002;
         Recipe fortune = forge(11, gift1, List.of(new Ingredient(ORE, 3)));
         Recipe mastery = forge(12, gift2, List.of(new Ingredient(gift1, 1), new Ingredient(ORE, 4)));
-        Recipe top = forge(4, WEAPON, List.of(new Ingredient(PLATE, 1), new Ingredient(gift2, 1)));
+        Recipe top = forge(4, WEAPON, List.of(new Ingredient(PLATE, 10), new Ingredient(gift2, 1)));
         var producers = List.of(promo, fortune, mastery);
-        var on = run(top, producers, sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        // An optional promotion needs positive priced economics that beat buying the 10 missing Plates directly.
+        var prices = Map.of(PLATE, new PriceQuote(100, 100), ORE, new PriceQuote(1, 2));
+        var on = run(top, producers, sellable(Map.of()), prices, LegacyForge.SETTINGS);
         // Allow: the verified promotion supplies the Plate with its guaranteed minimum (2, seed 1 external).
         assertTrue(on.steps().stream().anyMatch(s -> s.recipeId() == promo.recipeId));
         assertEquals(0, line(on, PLATE).missing() - 1, "only the self-seed is acquired externally");
         assertTrue(on.steps().stream().anyMatch(s -> s.recipeId() == mastery.recipeId));
-        var off = run(top, producers, sellable(Map.of()), Map.of(),
+        var off = run(top, producers, sellable(Map.of()), prices,
                 with(ForgeSettings.PriceMode.INSTANT_BUY, true, true, ForgeSettings.DailyMode.CRAFT, false, ForgeSettings.ReduceMode.YES));
-        assertEquals(1, line(off, PLATE).missing(), "the optional promotion is left to acquire");
+        assertEquals(10, line(off, PLATE).missing(), "the optional promotion is left to acquire");
         assertTrue(off.steps().stream().noneMatch(s -> s.recipeId() == promo.recipeId));
         assertTrue(off.steps().stream().anyMatch(s -> s.recipeId() == fortune.recipeId), "required fixed gift stays");
         assertTrue(off.steps().stream().anyMatch(s -> s.recipeId() == mastery.recipeId), "required fixed gift stays");
@@ -119,13 +121,13 @@ class ForgeSettingsPlannerTest {
     void separateOneCloverDemandsChargeAggregateAttemptsAndNeverGuaranteeOutput() {
         Recipe top = forge(9, WEAPON, List.of(new Ingredient(CLOVER, 1), new Ingredient(CLOVER, 1)));
         List<Recipe> producers = new ArrayList<>(VendorAcquisitions.forgeProjectRecipes());
-        var p = run(top, producers, sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        var p = run(top, producers, sellable(Map.of()), Map.of(), LegacyForge.SETTINGS);
         assertEquals(7, p.clover().attempts(), "ceil(2/0.31), not 4+4");
         assertEquals(7, line(p, COIN).needed(), "inputs charged once for the aggregate");
         var nodes = p.tree().children().stream().filter(n -> n.itemId() == CLOVER).toList();
         assertEquals(List.of(4L, 3L), nodes.stream().map(ForgeProjectPlanner.Node::crafts).toList());
         assertEquals(-1, p.guaranteedOutput(), "an estimated Clover dependency never guarantees output");
-        var plain = run(forge(10, WEAPON, List.of(new Ingredient(ORE, 1))), List.of(), sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        var plain = run(forge(10, WEAPON, List.of(new Ingredient(ORE, 1))), List.of(), sellable(Map.of()), Map.of(), LegacyForge.SETTINGS);
         assertEquals(1, plain.guaranteedOutput());
     }
 
@@ -133,7 +135,7 @@ class ForgeSettingsPlannerTest {
     void rootReductionRespectsSellableAndBoundPools() {
         var inv = new ForgeProjectPlanner.Inventory(Map.of(WEAPON, 1), Map.of(WEAPON, 2), Map.of());
         Recipe top = forge(5, WEAPON, List.of(new Ingredient(ORE, 1)));
-        var planner = new ForgeProjectPlanner(List.of(top));
+        var planner = LegacyForge.planner(List.of(top));
         long[] expectedOwned = {0, 3, 1, 2};
         var modes = ForgeSettings.ReduceMode.values();
         for (int i = 0; i < modes.length; i++) {
@@ -148,7 +150,7 @@ class ForgeSettingsPlannerTest {
     void cloverEstimateRoundsAggregateAttemptsUpOnceAndChargesSharedInputsOnce() {
         Recipe top = forge(6, WEAPON, List.of(new Ingredient(CLOVER, 18), new Ingredient(OBSIDIAN, 5)));
         List<Recipe> producers = new ArrayList<>(VendorAcquisitions.forgeProjectRecipes());
-        var p = run(top, producers, sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        var p = run(top, producers, sellable(Map.of()), Map.of(), LegacyForge.SETTINGS);
         assertEquals(59, p.clover().attempts());
         assertEquals(18, p.clover().missing());
         assertEquals(0, line(p, CLOVER).missing(), "expected Clovers are an estimate, never a shopping/owned fact");
@@ -174,7 +176,7 @@ class ForgeSettingsPlannerTest {
     void ownedCloverInputsReduceShoppingAndOwnedCloversReduceAttempts() {
         Recipe top = forge(7, WEAPON, List.of(new Ingredient(CLOVER, 18)));
         List<Recipe> producers = new ArrayList<>(VendorAcquisitions.forgeProjectRecipes());
-        var p = run(top, producers, sellable(Map.of(CLOVER, 8, COIN, 9)), Map.of(), ForgeSettings.DEFAULT);
+        var p = run(top, producers, sellable(Map.of(CLOVER, 8, COIN, 9)), Map.of(), LegacyForge.SETTINGS);
         assertEquals(10, p.clover().missing());
         assertEquals(33, p.clover().attempts(), "ceil(10 / 0.31)");
         assertEquals(9, line(p, COIN).fromOwned());
@@ -184,7 +186,7 @@ class ForgeSettingsPlannerTest {
     @Test
     void bloodstoneIsAVendorCurrencyRequirementNotABareLeaf() {
         Recipe top = forge(8, WEAPON, List.of(new Ingredient(VendorAcquisitions.BLOODSTONE_SHARD, 2)));
-        var p = run(top, new ArrayList<>(VendorAcquisitions.forgeProjectRecipes()), sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        var p = run(top, new ArrayList<>(VendorAcquisitions.forgeProjectRecipes()), sellable(Map.of()), Map.of(), LegacyForge.SETTINGS);
         assertEquals(400, p.currencies().stream().filter(c -> c.currencyId() == 23).findFirst().orElseThrow().needed());
         assertEquals(0, line(p, VendorAcquisitions.BLOODSTONE_SHARD).missing());
         assertNotNull(VendorAcquisitions.merchantStep(VendorAcquisitions.BLOODSTONE_SHARD));
@@ -201,7 +203,8 @@ class ForgeSettingsPlannerTest {
         Recipe gossamer = Recipe.forgeWithExpectedYield(-50, scrap, ExpectedYield.of("18.92", 10, 40),
                 List.of(new Ingredient(inputA, 250), new Ingredient(scrap, 1)));
         Recipe top = forge(60, WEAPON, List.of(new Ingredient(scrap, 20)));
-        var on = run(top, List.of(gossamer), sellable(Map.of()), Map.of(), ForgeSettings.DEFAULT);
+        var scrapPrices = Map.of(scrap, new PriceQuote(100, 100), inputA, new PriceQuote(1, 2));
+        var on = run(top, List.of(gossamer), sellable(Map.of()), scrapPrices, LegacyForge.SETTINGS);
         var step = on.steps().stream().filter(s -> s.recipeId() == gossamer.recipeId).findFirst().orElseThrow();
         assertEquals(3, step.crafts(), "min10/seed1 needs 3 batches (net 28), not 2 (net 19)");
         assertEquals(750, line(on, inputA).needed());
@@ -227,7 +230,7 @@ class ForgeSettingsPlannerTest {
                 List.of(new CurrencyRequirement(note, 30)), RecipeSource.MYSTIC_FORGE);
         Recipe prr = new Recipe(15120, CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID, 1, 0, "Artificer",
                 List.of(new Ingredient(ORE + 1, 4)));
-        var planner = new ForgeProjectPlanner(List.of(consumer, prr));
+        var planner = LegacyForge.planner(List.of(consumer, prr));
         var covered = planner.plan(consumer, 1, true, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
         assertEquals(30, covered.notes().shortfall(), "before-production deficit stays available");
         assertEquals(0, covered.notes().uncoveredNotes());
@@ -239,7 +242,7 @@ class ForgeSettingsPlannerTest {
         assertEquals(prr.recipeId, covered.tree().children().get(0).recipeId(), "tree order is executable");
         assertEquals(4, line(covered, ORE + 1).needed(), "container inputs counted once");
         // Genuinely uncovered: no producer available, so the whole deficit remains to acquire.
-        var none = new ForgeProjectPlanner(List.of(consumer)).plan(consumer, 1, true, sellable(Map.of()),
+        var none = LegacyForge.planner(List.of(consumer)).plan(consumer, 1, true, sellable(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), Map.of());
         assertEquals(30, none.currencies().get(0).missing());
         // Unknown wallet: nothing claimed.
@@ -257,7 +260,7 @@ class ForgeSettingsPlannerTest {
                                                Map<Integer, PriceQuote> prices, ForgeProjectPlanner.Context ctx, ForgeSettings s) {
         List<Recipe> all = new ArrayList<>(prod);
         all.add(r);
-        return new ForgeProjectPlanner(all).plan(r, 1, false, inv, ctx, null, prices, s);
+        return LegacyForge.planner(all).plan(r, 1, false, inv, ctx, null, prices, s);
     }
 
     @Test
@@ -267,7 +270,7 @@ class ForgeSettingsPlannerTest {
         Map<Integer, PriceQuote> prices = Map.of(BOUND, new PriceQuote(40, 90), PART, new PriceQuote(5, 7));
         // 1 sellable (bid 40) + 2 bound (crafting 2 parts x ask 7 = 14 each); the bound ones are NOT valued at the 40 quote.
         var p = ownRun(r, List.of(producer), pools(Map.of(BOUND, 1), Map.of(BOUND, 2)), prices,
-                ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+                ForgeProjectPlanner.Context.NONE, LegacyForge.SETTINGS);
         assertEquals(40 + 2 * 14, p.ownValue().knownCopper());
         assertTrue(p.ownValue().unpricedItemIds().isEmpty());
         assertEquals(3, line(p, BOUND).fromOwned());
@@ -283,7 +286,7 @@ class ForgeSettingsPlannerTest {
     void ownValueIsIndependentOfTheAcquisitionPriceMode() {
         Recipe r = forge(11, WEAPON, List.of(new Ingredient(ORE, 2)));
         Map<Integer, PriceQuote> prices = Map.of(ORE, new PriceQuote(30, 50));
-        var ask = ownRun(r, List.of(), sellable(Map.of(ORE, 2)), prices, ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+        var ask = ownRun(r, List.of(), sellable(Map.of(ORE, 2)), prices, ForgeProjectPlanner.Context.NONE, LegacyForge.SETTINGS);
         var bid = ownRun(r, List.of(), sellable(Map.of(ORE, 2)), prices, ForgeProjectPlanner.Context.NONE,
                 with(ForgeSettings.PriceMode.BUY_ORDER, true, true, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
         assertEquals(60, ask.ownValue().knownCopper());
@@ -299,7 +302,7 @@ class ForgeSettingsPlannerTest {
         PlannerContext pc = new PlannerContext(Map.of(BOUND, List.of(cycA), PART, List.of(cycB)), Map.of(),
                 new CraftingSettings(true, true, 0, false, false, false), null).withVendorValues(Map.of(VPART, 33));
         var ctx = new ForgeProjectPlanner.Context(List.of(), null, new CraftingResolver().ownedValuer(pc));
-        var p = ownRun(r, List.of(), pools(Map.of(VPART, 1, UNPRICED, 1), Map.of(VPART, 1, BOUND, 1)), Map.of(), ctx, ForgeSettings.DEFAULT);
+        var p = ownRun(r, List.of(), pools(Map.of(VPART, 1, UNPRICED, 1), Map.of(VPART, 1, BOUND, 1)), Map.of(), ctx, LegacyForge.SETTINGS);
         assertEquals(66, p.ownValue().knownCopper(), "sellable + bound vendor-fallback copies, 33 each");
         assertEquals(List.of(BOUND, UNPRICED), p.ownValue().unpricedItemIds(), "cycle and no-value stay explicit, never free");
     }
@@ -310,7 +313,7 @@ class ForgeSettingsPlannerTest {
         // 3 parts at 10c -> 2 outputs: 15c each; 3 bound copies = 45, aggregate (3 parts... exact), vs per-unit rounding.
         Recipe producer = new Recipe(73, BOUND, 2, 0, "", List.of(new Ingredient(PART, 1)), List.of(), RecipeSource.ORDINARY);
         Map<Integer, PriceQuote> prices = Map.of(PART, new PriceQuote(1, 5));
-        var p = ownRun(r, List.of(producer), pools(Map.of(), Map.of(BOUND, 3)), prices, ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+        var p = ownRun(r, List.of(producer), pools(Map.of(), Map.of(BOUND, 3)), prices, ForgeProjectPlanner.Context.NONE, LegacyForge.SETTINGS);
         assertEquals(8, p.ownValue().knownCopper(), "ceil(3 x 5/2) = 8 once, not 3 x ceil(2.5) = 9");
     }
 
@@ -318,7 +321,7 @@ class ForgeSettingsPlannerTest {
     void ownValueAggregateBeyondIntButWithinTheExactRangeIsKept() {
         Recipe r = forge(14, WEAPON, List.of(new Ingredient(ORE, 2_000_000_000)));
         var p = ownRun(r, List.of(), sellable(Map.of(ORE, 2_000_000_000)), Map.of(ORE, new PriceQuote(2_000_000, 3_000_000)),
-                ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+                ForgeProjectPlanner.Context.NONE, LegacyForge.SETTINGS);
         assertTrue(p.complete());
         assertEquals(4_000_000_000_000_000L, p.ownValue().knownCopper());
     }
@@ -328,7 +331,7 @@ class ForgeSettingsPlannerTest {
         Recipe r = forge(15, WEAPON, List.of(new Ingredient(ORE, 2_000_000_000)));
         var p = ownRun(r, List.of(), sellable(Map.of(ORE, 2_000_000_000)),
                 Map.of(ORE, new PriceQuote(2_000_000_000, null), WEAPON, new PriceQuote(5, 6)),
-                ForgeProjectPlanner.Context.NONE, ForgeSettings.DEFAULT);
+                ForgeProjectPlanner.Context.NONE, LegacyForge.SETTINGS);
         assertFalse(p.complete());
         assertEquals("own-material value exceeds the supported range", p.incompleteReason());
         assertEquals(-1, p.guaranteedOutput());
@@ -344,14 +347,17 @@ class ForgeSettingsPlannerTest {
         Recipe notes = new Recipe(15131, 104934, 1, 0, "Artificer", List.of(new Ingredient(19722, 30)));
         Recipe target = new Recipe(-20, 9000001, 1, 0, "", List.of(new Ingredient(19722, 1)),
                 List.of(new CurrencyRequirement(61, 30)), RecipeSource.MYSTIC_FORGE);
-        var planner = new ForgeProjectPlanner(List.of(promotion, notes));
+        var planner = LegacyForge.planner(List.of(promotion, notes));
         var ctx = new ForgeProjectPlanner.Context(List.of(new CharacterCraftingProfile("Fixture", Map.of("Artificer", 500))), java.util.Set.of(15131));
-        var plan = planner.planOutput(target, 1, ForgeProjectPlanner.Inventory.shared(Map.of()), ctx, Map.of(61, 0L), Map.of());
+        var plan = planner.planOutput(target, 1, ForgeProjectPlanner.Inventory.shared(Map.of()), ctx, Map.of(61, 0L),
+                Map.of(19722, new PriceQuote(100, 100), 500, new PriceQuote(1, 2), 501, new PriceQuote(1, 2), 20796, new PriceQuote(1, 2)));
         assertTrue(plan.complete());
         assertEquals(List.of(19722, 104934, 9000001), plan.steps().stream().map(ForgeProjectPlanner.CraftStep::outputItemId).toList());
         assertEquals(1, plan.steps().stream().filter(s -> s.outputItemId() == 19722).count(), "promotion produced once");
-        assertEquals(List.of(19722, 104934), plan.tree().children().stream().map(ForgeProjectPlanner.Node::itemId).toList(),
-                "the traversal also shows the producer before the Note consumer");
+        // Executable order is carried by steps() above and the backend crafting instructions; since the accepted
+        // acquisition rework the tree is only a partition of nodes, so assert its membership, not sibling order.
+        assertEquals(java.util.Set.of(19722, 104934), plan.tree().children().stream()
+                .map(ForgeProjectPlanner.Node::itemId).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test
@@ -362,7 +368,7 @@ class ForgeSettingsPlannerTest {
         Recipe b = new Recipe(15131, CurrencyProduction.PEER_REVIEWED_RESEARCH_ITEM_ID, 1, 0, "Artificer", List.of(new Ingredient(ORE + 2, 4)));
         // A is cheaper by ask, B cheaper by bid.
         Map<Integer, PriceQuote> prices = Map.of(ORE + 1, new PriceQuote(50, 10), ORE + 2, new PriceQuote(5, 20));
-        var planner = new ForgeProjectPlanner(List.of(consumer, a, b));
+        var planner = LegacyForge.planner(List.of(consumer, a, b));
         var ask = planner.plan(consumer, 1, false, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(note, 0L), prices,
                 with(ForgeSettings.PriceMode.INSTANT_BUY, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.YES));
         var bid = planner.plan(consumer, 1, false, sellable(Map.of()), ForgeProjectPlanner.Context.NONE, Map.of(note, 0L), prices,
@@ -379,7 +385,7 @@ class ForgeSettingsPlannerTest {
                 List.of(new Ingredient(19745, 1)));
         Map<Integer, PriceQuote> prices = Map.of(19745, new PriceQuote(40, 90));
         var inv = new ForgeProjectPlanner.Inventory(Map.of(19745, 1), Map.of(19745, 2), Map.of());
-        var plan = new ForgeProjectPlanner(List.of(promotion)).plan(promotion, 5, false, inv, ForgeProjectPlanner.Context.NONE, Map.of(), prices,
+        var plan = LegacyForge.planner(List.of(promotion)).plan(promotion, 5, false, inv, ForgeProjectPlanner.Context.NONE, Map.of(), prices,
                 with(ForgeSettings.PriceMode.INSTANT_BUY, true, true, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.UNTRADABLE));
         assertEquals(2, plan.rootOwned(), "fixed root reduction uses only the bound copies");
         assertEquals(40L, plan.ownValue().knownCopper(), "the sellable seed copy is a consumed input valued at the bid, once");

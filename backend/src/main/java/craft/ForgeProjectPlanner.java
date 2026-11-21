@@ -138,10 +138,17 @@ public final class ForgeProjectPlanner {
 
     private final Map<Integer, Recipe> producerByItem = new java.util.HashMap<>();
     private final Map<Integer, Recipe> noteRecipes = new TreeMap<>();
+    private final ForgeSettings defaultSettings;
     private static final int NOTES = CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID;
 
     /** @param producers every recipe that may supply an intermediate (ordinary graph recipes, Forge, vendor) */
     public ForgeProjectPlanner(List<Recipe> producers) {
+        this(producers, ForgeSettings.DEFAULT);
+    }
+
+    /** @param defaultSettings used by the overloads that take no explicit settings (explicit settings always win) */
+    public ForgeProjectPlanner(List<Recipe> producers, ForgeSettings defaultSettings) {
+        this.defaultSettings = java.util.Objects.requireNonNull(defaultSettings);
         List<Recipe> sorted = new ArrayList<>(producers);
         sorted.sort(Comparator.<Recipe>comparingInt(r -> rank(r.source)).thenComparingInt(r -> r.recipeId));
         for (Recipe r : sorted) {
@@ -326,7 +333,7 @@ public final class ForgeProjectPlanner {
      */
     public Project plan(Recipe target, long quantity, boolean batchTarget, Inventory inv, Context ctx,
                         Map<Integer, Long> wallet, Map<Integer, PriceQuote> prices) {
-        return plan(target, quantity, batchTarget, inv, ctx, wallet, prices, ForgeSettings.DEFAULT);
+        return plan(target, quantity, batchTarget, inv, ctx, wallet, prices, defaultSettings);
     }
 
     public Project plan(Recipe target, long quantity, boolean batchTarget, Inventory inv, Context ctx,

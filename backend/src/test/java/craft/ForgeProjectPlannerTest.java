@@ -22,7 +22,7 @@ class ForgeProjectPlannerTest {
     private final Recipe target = forge(1, WEAPON, 1, List.of(new Ingredient(PLATE, 3), new Ingredient(MYSTERY, 2)),
             List.of(new CurrencyRequirement(23, 5)));
     private final Recipe plate = ordinary(10, PLATE, 2, List.of(new Ingredient(ORE, 5)));
-    private final ForgeProjectPlanner planner = new ForgeProjectPlanner(List.of(target, plate,
+    private final ForgeProjectPlanner planner = LegacyForge.planner(List.of(target, plate,
             Recipe.vendor(-1_000_000_001, SHARD_ITEM, 5, List.of(new CurrencyRequirement(23, 3)), 0)));
 
     private static ForgeProjectPlanner.ItemLine line(ForgeProjectPlanner.Project p, int id) {
@@ -75,7 +75,7 @@ class ForgeProjectPlannerTest {
     @Test
     void randomOutputRecipeIsNeverAGuaranteedProducer() {
         Recipe random = Recipe.forgeWithExpectedYield(-5, MYSTERY, ExpectedYield.of("3.5", 1, 6), List.of(new Ingredient(ORE, 1)));
-        var p = new ForgeProjectPlanner(List.of(target, plate, random)).plan(target, 1, Map.of(), Map.of(), Map.of());
+        var p = LegacyForge.planner(List.of(target, plate, random)).plan(target, 1, Map.of(), Map.of(), Map.of());
         assertEquals(2, line(p, MYSTERY).missing());
         assertTrue(p.steps().stream().noneMatch(s -> s.recipeId() == -5));
     }
@@ -86,7 +86,7 @@ class ForgeProjectPlannerTest {
         Recipe big = forge(2125901, bp, 600, List.of(new Ingredient(bp, 1), new Ingredient(key, 3)), List.of());
         Recipe small = forge(2125902, bp, 200, List.of(new Ingredient(bp, 3), new Ingredient(key, 1)), List.of());
         Recipe top = forge(7, WEAPON, 1, List.of(new Ingredient(bp, 1)), List.of());
-        var p = new ForgeProjectPlanner(List.of(top, big, small)).plan(top, 1, Map.of(), Map.of(), Map.of());
+        var p = LegacyForge.planner(List.of(top, big, small)).plan(top, 1, Map.of(), Map.of(), Map.of());
         // the blueprint seed needed by the producing craft is external, not financed by that craft's own output
         assertTrue(line(p, bp).missing() > 0, "seed blueprint must still be acquired");
     }
@@ -95,7 +95,7 @@ class ForgeProjectPlannerTest {
     void cyclesTerminateAsLeaves() {
         Recipe a = ordinary(20, PLATE, 1, List.of(new Ingredient(ORE, 1)));
         Recipe b = ordinary(21, ORE, 1, List.of(new Ingredient(PLATE, 1)));
-        var p = new ForgeProjectPlanner(List.of(a, b)).plan(target, 1, Map.of(), Map.of(), Map.of());
+        var p = LegacyForge.planner(List.of(a, b)).plan(target, 1, Map.of(), Map.of(), Map.of());
         assertTrue(p.complete());
         assertTrue(line(p, PLATE).needed() >= 3);
     }
@@ -119,7 +119,7 @@ class ForgeProjectPlannerTest {
     void unsafeProceedsWithSafeInputsStopTheRunInsteadOfACompleteNullEstimate() {
         Recipe r = forge(5, WEAPON, 1, List.of(new Ingredient(ORE, 1)), List.of());
         Map<Integer, PriceQuote> prices = Map.of(ORE, new PriceQuote(1, 2), WEAPON, new PriceQuote(10_000_001, 20_000_000));
-        var p = new ForgeProjectPlanner(List.of(r)).planOutput(r, 1_000_000_000L, ForgeProjectPlanner.Inventory.shared(Map.of()),
+        var p = LegacyForge.planner(List.of(r)).planOutput(r, 1_000_000_000L, ForgeProjectPlanner.Inventory.shared(Map.of()),
                 ForgeProjectPlanner.Context.NONE, Map.of(), prices);
         assertFalse(p.complete());
         assertNotNull(p.incompleteReason());
@@ -137,7 +137,7 @@ class ForgeProjectPlannerTest {
     @Test
     void vendorBatchRoundsUpAndSpendsCurrencyOnceForTheWholeBatch() {
         Recipe t = forge(2, WEAPON, 1, List.of(new Ingredient(SHARD_ITEM, 7)), List.of());
-        var p = new ForgeProjectPlanner(List.of(Recipe.vendor(-1_000_000_001, SHARD_ITEM, 5,
+        var p = LegacyForge.planner(List.of(Recipe.vendor(-1_000_000_001, SHARD_ITEM, 5,
                 List.of(new CurrencyRequirement(23, 3)), 0))).plan(t, 1, Map.of(), Map.of(), Map.of());
         assertEquals(2, p.steps().get(0).crafts());
         assertEquals(6, p.currencies().get(0).needed());
@@ -180,7 +180,7 @@ class ForgeProjectPlannerTest {
     void surplusFromOneBranchServesALaterBranchOnceAndIsReportedAsSurplusNotOwned() {
         // Two sibling demands for plates: 3 plates (2 crafts -> 4 produced) then 1 more -> served from the 1 surplus.
         Recipe twice = forge(2, WEAPON + 1, 1, List.of(new Ingredient(PLATE, 3), new Ingredient(PLATE, 1)), List.of());
-        var pl = new ForgeProjectPlanner(List.of(twice, plate));
+        var pl = LegacyForge.planner(List.of(twice, plate));
         var p = pl.plan(twice, 1, Map.of(), Map.of(), Map.of());
         assertEquals(2, p.steps().stream().filter(s -> s.recipeId() == 10).findFirst().orElseThrow().crafts());
         var second = p.tree().children().get(1);
@@ -210,7 +210,7 @@ class ForgeProjectPlannerTest {
         // A Forge recipe needing 77 Clovers: even if the planner is (wrongly) offered a reference-derived recipe it only
         // becomes a producer when passed explicitly; the production producer list never includes references.
         Recipe needsClover = forge(3, WEAPON + 2, 1, List.of(new Ingredient(19675, 77)), List.of());
-        var pl = new ForgeProjectPlanner(List.of(needsClover, plate));
+        var pl = LegacyForge.planner(List.of(needsClover, plate));
         var p = pl.plan(needsClover, 1, Map.of(), Map.of(), Map.of());
         // Owner-superseded (#378): nested Clover is an explicit ESTIMATE (ceil(77/0.31)=249 attempts), never owned/guaranteed.
         assertEquals(0, line(p, 19675).missing());

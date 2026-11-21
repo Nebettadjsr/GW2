@@ -22,7 +22,7 @@ class ForgeProjectNotesTest {
     private final Recipe branch2 = forge(9, OUT2, List.of(), 80);
     private final Recipe prrA = new Recipe(15120, PRR, 1, 0, "Artificer", List.of(new Ingredient(SHARED, 4)));
     private final Recipe prrB = new Recipe(15131, PRR, 1, 0, "Artificer", List.of(new Ingredient(B, 3)));
-    private final ForgeProjectPlanner planner = new ForgeProjectPlanner(List.of(root, branch1, branch2, prrA, prrB));
+    private final ForgeProjectPlanner planner = LegacyForge.planner(List.of(root, branch1, branch2, prrA, prrB));
     private final ForgeProjectPlanner.Context ctx = new ForgeProjectPlanner.Context(
             List.of(new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), java.util.Set.of(15120, 15131));
 

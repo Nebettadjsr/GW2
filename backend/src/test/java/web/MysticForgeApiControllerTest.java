@@ -428,7 +428,7 @@ class MysticForgeApiControllerTest {
 
                 assertNull(dto.guaranteedOutput(), label);
                 assertEquals("REFERENCE_RANDOM", dto.outcome(), label);
-                assertEquals("BATCHES", dto.targetKind(), label);
+                assertEquals("OUTPUT_QUANTITY", dto.targetKind(), label);
                 assertNull(dto.economics(), label);
                 assertNull(dto.seed(), label);
                 var rootNode = dto.tree();
@@ -454,7 +454,7 @@ class MysticForgeApiControllerTest {
         var data = new CraftingProfitService.ForgeProjectData(project, false, true, 2, new HashMap<>(), Map.of(), true);
         var dto = MysticForgeApiController.toProject(data, null);
         assertEquals("EXPECTED", dto.outcome());
-        assertEquals("BATCHES", dto.targetKind());
+        assertEquals("OUTPUT_QUANTITY", dto.targetKind());
         assertEquals(2L, dto.batches());
         assertTrue(project.complete(), project.incompleteReason());
         assertEquals(19L, dto.guaranteedOutput());

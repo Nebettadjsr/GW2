@@ -94,9 +94,9 @@ class CraftingProfitServiceForgeProjectPostgresTest {
 
     @Test
     void eachAccountPlansExactlyOneTargetFromItsOwnPoolsOnly() throws Exception {
-        var a = service(con, AccountScope.of(UUID.fromString(ACC_A))).planForgeProject(SCEPTER_RECIPE, 1);
-        var b = service(con, AccountScope.of(UUID.fromString(ACC_B))).planForgeProject(SCEPTER_RECIPE, 1);
-        var c = service(con, AccountScope.of(UUID.fromString(ACC_C))).planForgeProject(SCEPTER_RECIPE, 1);
+        var a = service(con, AccountScope.of(UUID.fromString(ACC_A))).planForgeProject(SCEPTER_RECIPE, 1, craft.LegacyForge.SETTINGS);
+        var b = service(con, AccountScope.of(UUID.fromString(ACC_B))).planForgeProject(SCEPTER_RECIPE, 1, craft.LegacyForge.SETTINGS);
+        var c = service(con, AccountScope.of(UUID.fromString(ACC_C))).planForgeProject(SCEPTER_RECIPE, 1, craft.LegacyForge.SETTINGS);
 
         assertEquals(1, a.project().batches());
         assertEquals(1, owned(a, 20852), "A's own carried stock feeds the Forge step via its single carried owner");
@@ -122,7 +122,7 @@ class CraftingProfitServiceForgeProjectPostgresTest {
     void retainedQuoteOfRetiredItemIsNotACurrentAskButTradeableQuoteIs() throws Exception {
         sql("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price, fetched_at) VALUES (19976, 50, 60, now()), (12976, 70, 80, now())");
         sql("INSERT INTO tp_tradeable_items (item_id) VALUES (12976)"); // 19976 was retired from the tradeable catalogue
-        var c = service(con, AccountScope.of(UUID.fromString(ACC_C))).planForgeProject(SCEPTER_RECIPE, 1);
+        var c = service(con, AccountScope.of(UUID.fromString(ACC_C))).planForgeProject(SCEPTER_RECIPE, 1, craft.LegacyForge.SETTINGS);
         var retired = c.project().items().stream().filter(i -> i.itemId() == 19976).findFirst().orElseThrow();
         var current = c.project().items().stream().filter(i -> i.itemId() == 12976).findFirst().orElseThrow();
         assertNull(retired.knownUnitCopper(), "a retained quote of a retired item must not price the leaf");
@@ -144,25 +144,25 @@ class CraftingProfitServiceForgeProjectPostgresTest {
         assertTrue(structural.contains(7001), "the structural producer's ingredient is already a path item");
         assertFalse(structural.contains(7002));
 
-        var withValue = b.forgeProjectPriceIds(SCEPTER_RECIPE, craft.ForgeSettings.DEFAULT);
+        var withValue = b.forgeProjectPriceIds(SCEPTER_RECIPE, craft.LegacyForge.SETTINGS);
         assertTrue(withValue.containsAll(structural));
         assertTrue(withValue.contains(7001) && withValue.contains(7002), "every alternative producer's ingredient is covered");
         var extra = new java.util.TreeSet<>(withValue);
         extra.removeAll(structural);
         assertEquals(Set.of(7002), extra, "no global or unrelated ids are added");
 
-        var noValue = new craft.ForgeSettings(craft.ForgeSettings.DEFAULT.priceMode(), true, false,
-                craft.ForgeSettings.DEFAULT.daily(), craft.ForgeSettings.DEFAULT.promotions(), craft.ForgeSettings.DEFAULT.reduce());
+        var noValue = new craft.ForgeSettings(craft.LegacyForge.SETTINGS.priceMode(), true, false,
+                craft.LegacyForge.SETTINGS.daily(), craft.LegacyForge.SETTINGS.promotions(), craft.LegacyForge.SETTINGS.reduce());
         assertEquals(structural, b.forgeProjectPriceIds(SCEPTER_RECIPE, noValue), "valueOwn=false adds no valuation work");
-        assertEquals(c.forgeProjectItemIds(SCEPTER_RECIPE), c.forgeProjectPriceIds(SCEPTER_RECIPE, craft.ForgeSettings.DEFAULT),
+        assertEquals(c.forgeProjectItemIds(SCEPTER_RECIPE), c.forgeProjectPriceIds(SCEPTER_RECIPE, craft.LegacyForge.SETTINGS),
                 "an account owning nothing has no owned valuation closure");
 
         // The valuation reads the quote of the valuation-only ingredient once it is retained: observed authoritative value.
-        var before = b.planForgeProject(SCEPTER_RECIPE, 1).project().ownValue();
+        var before = b.planForgeProject(SCEPTER_RECIPE, 1, craft.LegacyForge.SETTINGS).project().ownValue();
         assertTrue(before.unpricedItemIds().contains(19976), "no quote anywhere: owned 19976 stays unvalued");
         sql("INSERT INTO tp_prices (item_id, buy_unit_price, sell_unit_price, fetched_at) VALUES (7002, 5, 7, now())");
         sql("INSERT INTO tp_tradeable_items (item_id) VALUES (7002)");
-        var after = b.planForgeProject(SCEPTER_RECIPE, 1).project().ownValue();
+        var after = b.planForgeProject(SCEPTER_RECIPE, 1, craft.LegacyForge.SETTINGS).project().ownValue();
         assertFalse(after.unpricedItemIds().contains(19976), "the valuation-only quote now prices the owned item");
         assertTrue(after.knownCopper() > before.knownCopper());
     }

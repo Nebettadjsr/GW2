@@ -12,6 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class ForgeStepOrderTest {
     private static final int LOGS = 19722, PRR = 104934, NOTE = 61;
 
+    /** The accepted rule admits an OPTIONAL promotion only with positive priced economics that beat buying the missing logs. */
+    private static final Map<Integer, PriceQuote> PROMOTION_PRICES = Map.of(LOGS, new PriceQuote(100, 100),
+            500, new PriceQuote(1, 2), 501, new PriceQuote(1, 2), 20796, new PriceQuote(1, 2));
+
     private final Recipe promotion = Recipe.forgeWithExpectedYield(-32, LOGS, ExpectedYield.of("86.34", 40, 200),
             List.of(new Ingredient(500, 250), new Ingredient(LOGS, 1), new Ingredient(501, 5), new Ingredient(20796, 1)));
     private final Recipe notes = new Recipe(15131, PRR, 1, 0, "Artificer", List.of(new Ingredient(LOGS, 30)));
@@ -21,8 +25,8 @@ class ForgeStepOrderTest {
     private List<Integer> order(Recipe root, Recipe... extra) {
         var all = new java.util.ArrayList<>(List.of(promotion, notes));
         all.addAll(List.of(extra));
-        var p = new ForgeProjectPlanner(all).planOutput(root, 1, ForgeProjectPlanner.Inventory.shared(Map.of()), ctx,
-                Map.of(NOTE, 0L), Map.of());
+        var p = LegacyForge.planner(all).planOutput(root, 1, ForgeProjectPlanner.Inventory.shared(Map.of()), ctx,
+                Map.of(NOTE, 0L), PROMOTION_PRICES);
         assertTrue(p.complete(), p.incompleteReason());
         return p.steps().stream().map(ForgeProjectPlanner.CraftStep::outputItemId).toList();
     }
