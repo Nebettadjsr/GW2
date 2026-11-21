@@ -64,8 +64,8 @@ const facts = computed(() => {
   if (item?.binding) result.push({ label: 'Binding', value: item.binding })
   return result
 })
-const buyPrice = computed(() => data.value ? data.value.instantBuyCopper : props.row.sellUnitCopper)
-const sellPrice = computed(() => data.value ? data.value.instantSellCopper : props.row.buyUnitCopper)
+const buyPrice = computed(() => data.value?.instantBuyCopper ?? props.row.sellUnitCopper)
+const sellPrice = computed(() => data.value?.instantSellCopper ?? props.row.buyUnitCopper)
 </script>
 
 <template>

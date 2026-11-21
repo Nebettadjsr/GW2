@@ -149,7 +149,8 @@ async function back(): Promise<void> {
         {{ f.sourceError.value ?? 'Account data is still not available; automatic checking has stopped.' }}
         <button type="button" data-test="forge-retry" @click="f.retry()">Retry</button>
       </p>
-      <p v-if="f.projectError.value" role="alert" data-test="forge-error">{{ f.projectError.value }}</p>
+      <p v-if="f.projectError.value" role="alert" data-test="forge-error">{{ f.projectError.value }}
+        <button v-if="!project && !f.sourceError.value && !f.stalled.value" type="button" data-test="forge-error-retry" @click="f.retry()">Retry</button></p>
 
       <template v-if="project">
         <p v-if="project.freshness?.provisional" class="forge-note" data-test="forge-provisional">Based on the last synchronized data; a refresh is pending or inputs may be stale.</p>

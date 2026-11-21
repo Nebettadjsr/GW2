@@ -1139,4 +1139,45 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     expect(w.get('[data-test="forge-known-gold"]').text()).not.toContain('unpriced')
     w.unmount()
   })
+
+  it('a summary without quotes never masks the catalogue row quotes in the open detail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ item: null, instantBuyCopper: null, instantSellCopper: null, completing: false }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    try {
+      const w = mount(MysticForgeScreen, { props: { api: fakeApi() }, attachTo: document.body })
+      await flushPromises()
+      await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+      await flushPromises()
+      const prices = w.get('[data-test="forge-item-summary"] .item-prices')
+      expect(prices.text()).not.toContain('Price unavailable') // row quotes 23456c / 12345c remain visible
+      w.unmount()
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('a failed automatic project reread with no result keeps a visible Retry that recovers', async () => {
+    let call = 0
+    const pendingResult = (target: number): ForgeProject => ({ ...project(target), tree: null, output: null, freshness: { resultAvailable: false, outstandingWork: ['x'] } as never })
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(recipeId, target, settings) {
+        call++
+        projectCalls.push({ recipeId, target, settings })
+        if (call === 1) return pendingResult(target)
+        if (call === 2) throw new Error('reread failed')
+        return project(target, { recipeId, settings: settings! })
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(5100)
+    await flushPromises()
+    expect(w.get('[data-test="forge-error"]').text()).toContain('reread failed')
+    await w.get('[data-test="forge-error-retry"]').trigger('click')
+    await flushPromises()
+    expect(call).toBe(3)
+    expect(w.find('[data-test="forge-error"]').exists()).toBe(false)
+    w.unmount()
+  })
 })
