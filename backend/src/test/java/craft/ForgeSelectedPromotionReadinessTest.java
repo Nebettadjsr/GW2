@@ -150,6 +150,67 @@ class ForgeSelectedPromotionReadinessTest {
         assertEquals(50.0, percent, "X's promoted path is fully supplied; Y's purchase leaf has no Plate");
     }
 
+    // --- scheduled Research Note production inside a nested consumer (issue 378) ---
+    private static final int LOGS = 19722, LOWER = 500, NDUST = 501, STONES = 20796, PRR_ITEM = 104934, CONSUMER = 4001, NROOT = 4000;
+    private final Recipe logsPromo = Recipe.forgeWithExpectedYield(-32, LOGS, ExpectedYield.of("86.34", 40, 200),
+            List.of(new Ingredient(LOWER, 250), new Ingredient(LOGS, 1), new Ingredient(NDUST, 5), new Ingredient(STONES, 1)));
+    private final Recipe prr = new Recipe(15131, PRR_ITEM, 1, 0, "Artificer", List.of(new Ingredient(LOGS, 30)));
+    private final Recipe consumer = new Recipe(98765, CONSUMER, 1, 0, "Artificer", List.of(),
+            List.of(new CurrencyRequirement(61, 30)), RecipeSource.ORDINARY);
+    private final Recipe noteRoot = new Recipe(-21, NROOT, 1, 0, "",
+            List.of(new Ingredient(CONSUMER, 1), new Ingredient(LOGS, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+    private final ForgeProjectPlanner.Context ann = new ForgeProjectPlanner.Context(
+            List.of(new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), java.util.Set.of(15131, 98765));
+    private final Map<Integer, PriceQuote> notePrices = Map.of(LOGS, new PriceQuote(100, 100), LOWER, new PriceQuote(1, 2),
+            NDUST, new PriceQuote(1, 2), STONES, new PriceQuote(1, 2));
+
+    private Result noteRun(Recipe forgeRoot, Recipe[] consumers, Map<Integer, Integer> owned) {
+        var settings = new ForgeSettings(ForgeSettings.PriceMode.INSTANT_BUY, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.NO);
+        var all = new java.util.ArrayList<>(List.of(logsPromo, prr, consumer, forgeRoot));
+        all.addAll(List.of(consumers));
+        var planner = new ForgeProjectPlanner(all, settings);
+        var inv = new ForgeProjectPlanner.Inventory(owned, Map.of(), Map.of());
+        var project = planner.plan(forgeRoot, 1, false, inv, ann, Map.of(61, 0L), notePrices, settings);
+        return new Result(project, planner.materialProgress(forgeRoot, 1, inv, ann, Map.of(61, 0L), project).percent());
+    }
+
+    private Result noteRun(Map<Integer, Integer> owned) { return noteRun(noteRoot, new Recipe[0], owned); }
+
+    @Test
+    void nestedNoteProductionWithEverythingOwnedIsFullyReady() {
+        var r = noteRun(Map.of(LOGS, 2, LOWER, 250, NDUST, 5, STONES, 1));
+        assertTrue(r.project().complete());
+        assertTrue(r.project().items().stream().allMatch(i -> i.missing() == 0), "no shopping: " + r.project().items());
+        assertEquals(100.0, r.percent());
+    }
+
+    @Test
+    void nestedNoteProductionWithOneMissingDustIsPartialUnderEqualShares() {
+        var r = noteRun(Map.of(LOGS, 2, LOWER, 250, NDUST, 4, STONES, 1));
+        assertEquals(97.5, r.percent(), "promotion (1+1+0.8+1)/4 = .95; root (.95+1)/2");
+    }
+
+    @Test
+    void rootKeepsItsLogAndTheNotePromotionAcquiresItsExternalSeed() {
+        var r = noteRun(Map.of(LOGS, 1, LOWER, 250, NDUST, 5, STONES, 1));
+        assertEquals(1, missing(r.project(), LOGS), "the promotion seed is the only purchase");
+        assertEquals(87.5, r.percent(), "Note path .75 (seed missing), root Log 1");
+    }
+
+    @Test
+    void twoNestedNoteConsumersShareOneScheduledProduction() {
+        Recipe second = new Recipe(98766, 4002, 1, 0, "Artificer", List.of(), List.of(new CurrencyRequirement(61, 30)), RecipeSource.ORDINARY);
+        Recipe twoRoot = new Recipe(-22, 4003, 1, 0, "",
+                List.of(new Ingredient(CONSUMER, 1), new Ingredient(4002, 1), new Ingredient(LOGS, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        var r = noteRun(twoRoot, new Recipe[]{second}, Map.of(LOGS, 2, LOWER, 250, NDUST, 5, STONES, 1));
+        assertEquals(1, r.project().steps().stream().filter(s -> s.recipeId() == 15131).findFirst().orElseThrow().crafts(),
+                "60 Notes need one 150-Note container");
+        assertTrue(r.project().items().stream().allMatch(i -> i.missing() == 0), "no double seed/material debit");
+        assertEquals(100.0, r.percent());
+        var partial = noteRun(twoRoot, new Recipe[]{second}, Map.of(LOGS, 2, LOWER, 250, NDUST, 4, STONES, 1));
+        assertEquals(96.6, partial.percent(), "(0.95 + 0.95 + 1) / 3 = 96.67 floored, one shared production");
+    }
+
     private static void collect(ForgeProjectPlanner.Node node, int itemId, List<ForgeProjectPlanner.Node> out) {
         if (node.itemId() == itemId) out.add(node);
         if (node.itemId() != itemId && node.children() != null) node.children().forEach(c -> collect(c, itemId, out));

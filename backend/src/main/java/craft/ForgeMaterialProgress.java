@@ -34,9 +34,19 @@ public final class ForgeMaterialProgress {
     Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory,
                        ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet,
                        ForgeSettings.ReduceMode reduce, Recipe noteProducer, ForgeSettings.DailyMode daily) {
-        Run run = new Run(inventory, ctx == null ? ForgeProjectPlanner.Context.NONE : ctx, wallet, reduce, noteProducer, daily);
+        ForgeProjectPlanner.Context context = ctx == null ? ForgeProjectPlanner.Context.NONE : ctx;
+        Run run = new Run(inventory, context, wallet, reduce, noteProducer, daily);
         try {
             Coverage coverage = run.item(target.outputItemId, quantity, target, 0, Set.of(), null);
+            // The plan aggregates Research Notes once and schedules their production AFTER every other stock debit. Pass 1
+            // therefore defers Note production through the whole traversal, then produces the aggregate once; pass 2 replays
+            // the identical traversal so each Note consumer shares that single result.
+            Coverage notes = run.produceDeferredNotes(target.outputItemId);
+            if (notes != null) {
+                run = new Run(inventory, context, wallet, reduce, noteProducer, daily);
+                run.noteResult = notes;
+                coverage = run.item(target.outputItemId, quantity, target, 0, Set.of(), null);
+            }
             double percent = coverage.ready() ? 100 : Math.min(99.9, Math.floor(coverage.fraction() * 1000) / 10);
             return new Progress(percent, coverage.estimated(), coverage.partial());
         } catch (ArithmeticException unsupported) {
@@ -55,6 +65,8 @@ public final class ForgeMaterialProgress {
         private final ForgeSettings.DailyMode daily;
         private int visited;
         private int promotionDepth;
+        private long deferredNoteShortfall;
+        private Coverage noteResult; // replay pass: the aggregate scheduled Note production
         private final java.util.ArrayList<Integer> itemPath = new java.util.ArrayList<>();
         private final Map<java.util.List<Integer>, Integer> occurrence = new HashMap<>();
 
@@ -210,10 +222,33 @@ public final class ForgeMaterialProgress {
             }
         }
 
+        /** Produces the aggregated, still-uncovered Notes once (after all other debits); null when none was deferred. */
+        private Coverage produceDeferredNotes(int rootItemId) {
+            if (deferredNoteShortfall <= 0) return null;
+            var source = CurrencyProduction.forCurrency(CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID).orElseThrow();
+            itemPath.add(rootItemId);
+            try {
+                long containers = Math.ceilDiv(deferredNoteShortfall, (long) source.yield());
+                return item(source.itemId(), containers, noteProducer, 1, Set.of(), null);
+            } finally {
+                itemPath.removeLast();
+            }
+        }
+
         private Coverage currency(int currencyId, long needed, int depth, Set<Integer> path, String assignee) {
             long owned = takeCurrency(currencies, currencyId, needed);
             long missing = needed - owned;
             if (missing <= 0) return new Coverage(1, true, false, false);
+            if (walletKnown && currencyId == CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID
+                    && CurrencyProduction.forCurrency(currencyId).isPresent()) {
+                double have = (double) owned / needed;
+                if (noteResult == null) { // pass 1: demand only, production is scheduled once afterwards
+                    deferredNoteShortfall = ForgeProjectPlanner.add(deferredNoteShortfall, missing);
+                    return new Coverage(have, false, false, false);
+                }
+                return new Coverage(have + (1 - have) * noteResult.fraction(), noteResult.ready(), noteResult.estimated(),
+                        !noteResult.ready() && noteResult.partial());
+            }
             var production = CurrencyProduction.forCurrency(currencyId);
             if (production.isEmpty()) return new Coverage((double) owned / needed, false, false, !walletKnown);
             var source = production.get();
