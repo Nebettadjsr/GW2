@@ -61,4 +61,33 @@ class ForgeDeferredNoteSurplusReadinessTest {
         // Only ONE EXTRA is owned and ONE batch is planned: the helper's 50 draw the surplus and need no second one.
         assertEquals(100.0, run(withExtra, Map.of(RAW, 30, EXTRA, 1)).percent());
     }
+
+    private Result runHelper150(Recipe consumer, Map<Integer, Integer> owned) {
+        Recipe bigHelper = new Recipe(98766, HELPER, 1, 0, "", List.of(new Ingredient(CONSUMER, 150)), List.of(), RecipeSource.ORDINARY);
+        var planner = new ForgeProjectPlanner(List.of(prr, consumer, bigHelper, root), SETTINGS);
+        var inv = new ForgeProjectPlanner.Inventory(owned, Map.of(), Map.of());
+        var project = planner.plan(root, 1, false, inv, ANN, Map.of(61, 0L), PRICES, SETTINGS);
+        return new Result(project, planner.materialProgress(root, 1, inv, ANN, Map.of(61, 0L), project).percent());
+    }
+
+    @Test
+    void partiallyReadySurplusPlusFurtherBatchIsWeightedByPhysicalUnits() {
+        // Helper needs 150: the root's 1 + helper's 150 = two consumer batches (Notes 300, Raw 60), Raw30 owned.
+        // Every batch shares the same 50% Notes coverage, so the helper (99 surplus units at 50% + 51 new units at 50%) is 50%.
+        var r = runHelper150(consumer(List.of()), Map.of(RAW, 30));
+        assertEquals(2, r.project().steps().stream().filter(s -> s.recipeId() == 98765).findFirst().orElseThrow().crafts());
+        assertEquals(300, r.project().notes().needed());
+        assertEquals(50.0, r.percent(), "not 58.2: the unready part of the scheduled surplus is not credited twice");
+        assertEquals(100.0, runHelper150(consumer(List.of()), Map.of(RAW, 60)).percent());
+    }
+
+    @Test
+    void mixedReadinessSurplusPlusNewBatchStaysBelowReady() {
+        // Raw 45 of 60 -> Notes 75% covered; EXTRA is NOT owned so the consumer batches' EXTRA share is 0: each batch
+        // is (0 + 0.75)/2 = 37.5%, and every unit (surplus or new) carries that coverage.
+        var withExtra = consumer(List.of(new Ingredient(EXTRA, 1)));
+        var r = runHelper150(withExtra, Map.of(RAW, 45));
+        assertEquals(37.5, r.percent());
+        assertTrue(r.percent() < 100.0);
+    }
 }

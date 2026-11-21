@@ -8,19 +8,21 @@ import java.util.Set;
 /** Equal ingredient shares at each level; reads owned resources without spending or modifying account data. */
 public final class ForgeMaterialProgress {
     public record Progress(double percent, boolean estimated, boolean partial) { }
+    /** The plan's per-occurrence operation fact: acquired through the promotion, and whether it diverted an OWNED seed. */
+    record Choice(boolean promoted, boolean ownedSeed) { }
     private record Coverage(double fraction, boolean ready, boolean estimated, boolean partial) { }
     private static final int COINS = 1;
 
     private final Map<Integer, Recipe> producers;
     /**
      * The resolved project's choice for each tree occurrence, keyed by the item path from the root (ancestor items then
-     * the item itself) and listed in tree order: true = acquired through the selected optional promotion.
+     * the item itself) and listed in tree order: promoted = acquired through the selected optional promotion.
      */
-    private final Map<java.util.List<Integer>, java.util.List<Boolean>> selectedPromotions;
+    private final Map<java.util.List<Integer>, java.util.List<Choice>> selectedPromotions;
 
     ForgeMaterialProgress(Map<Integer, Recipe> producers) { this(producers, Map.of()); }
 
-    ForgeMaterialProgress(Map<Integer, Recipe> producers, Map<java.util.List<Integer>, java.util.List<Boolean>> selectedPromotions) {
+    ForgeMaterialProgress(Map<Integer, Recipe> producers, Map<java.util.List<Integer>, java.util.List<Choice>> selectedPromotions) {
         this.producers = producers;
         this.selectedPromotions = selectedPromotions;
     }
@@ -113,10 +115,11 @@ public final class ForgeMaterialProgress {
             if (needed <= 0) return new Coverage(1, true, false, false);
             itemPath.add(itemId);
             try {
-                if (depth > 0 && selected == null && promotionDepth == 0 && selectedOccurrence()) {
+                Choice choice = depth > 0 && selected == null && promotionDepth == 0 ? selectedOccurrence() : null;
+                if (choice != null) {
                     Recipe promotion = producers.get(itemId);
                     if (promotion != null && CraftingResolver.isPromotion(promotion) && !path.contains(promotion.recipeId)) {
-                        Coverage promoted = promoted(promotion, needed, depth, path, assignee);
+                        Coverage promoted = promoted(promotion, needed, depth, path, assignee, choice.ownedSeed());
                         if (promoted != null) return promoted;
                     }
                 }
@@ -126,13 +129,13 @@ public final class ForgeMaterialProgress {
             }
         }
 
-        /** Whether the project selected the promotion for THIS occurrence (path identity + visit order), never per item. */
-        private boolean selectedOccurrence() {
+        /** The project's promotion choice for THIS occurrence (path identity + visit order), null when not promoted. */
+        private Choice selectedOccurrence() {
             java.util.List<Integer> key = java.util.List.copyOf(itemPath);
-            java.util.List<Boolean> choices = selectedPromotions.get(key);
-            if (choices == null) return false;
+            java.util.List<Choice> choices = selectedPromotions.get(key);
+            if (choices == null) return null;
             int index = occurrence.merge(key, 1, Integer::sum) - 1;
-            return index < choices.size() && choices.get(index);
+            return index < choices.size() && choices.get(index).promoted() ? choices.get(index) : null;
         }
 
         private Coverage plainItem(int itemId, long needed, Recipe selected, int depth, Set<Integer> path, String assignee) {
@@ -142,6 +145,7 @@ public final class ForgeMaterialProgress {
             if (missing == 0) return credit >= owned - 1e-9 ? new Coverage(1, true, false, false)
                     : new Coverage(credit / needed, false, false, false); // met by a batch surplus that is not fully ready
             double ownedFraction = credit / needed;
+            boolean surplusReady = credit >= owned - 1e-9;
             if (++visited > ForgeProjectPlanner.MAX_NODES || depth >= ForgeProjectPlanner.MAX_DEPTH) {
                 return new Coverage(ownedFraction, false, false, true);
             }
@@ -184,7 +188,8 @@ public final class ForgeMaterialProgress {
                 long surplus = ForgeProjectPlanner.mul(crafts, (long) recipe.outputCount) - missing;
                 if (surplus > 0) addSurplus(itemId, surplus, ready ? 1 : sum / shares);
             }
-            return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, estimated, partial);
+            // Weight by physical units: owned/surplus units at their credit, only the newly crafted missing units by the batch.
+            return new Coverage(ownedFraction + (double) missing / needed * sum / shares, ready && surplusReady, estimated, partial);
         }
 
         /**
@@ -192,7 +197,7 @@ public final class ForgeMaterialProgress {
          * An owned seed is diverted into the promotion (never also credited as finished output). Null = plain owned
          * stock already covers the need (or a bound was hit), so the generic path applies.
          */
-        private Coverage promoted(Recipe recipe, long needed, int depth, Set<Integer> path, String assignee) {
+        private Coverage promoted(Recipe recipe, long needed, int depth, Set<Integer> path, String assignee, boolean ownedSeed) {
             int itemId = recipe.outputItemId;
             long savedSurplus = surplus.getOrDefault(itemId, 0L);
             double savedCredit = surplusCredit.getOrDefault(itemId, 0.0);
@@ -204,7 +209,8 @@ public final class ForgeMaterialProgress {
             if (covered || ++visited > ForgeProjectPlanner.MAX_NODES || depth >= ForgeProjectPlanner.MAX_DEPTH) return null;
             String forge = ForgeProjectPlanner.assignForge(state, recipe);
             int seed = recipe.selfSeedUnits();
-            int diverted = state.consumeInventoryWithBinding(itemId, seed, forge).total() >= seed ? seed : 0;
+            // The plan's own seed strategy decides: owned seed diverted first, or owned units goal-first and the seed acquired.
+            int diverted = ownedSeed && state.consumeInventoryWithBinding(itemId, seed, forge).total() >= seed ? seed : 0;
             if (diverted == 0) state.rollbackTo(mark);
             long owned = take(itemId, needed, assignee, false);
             double ownedFraction = lastCredit / needed;
@@ -240,7 +246,7 @@ public final class ForgeMaterialProgress {
                     long extra = ForgeProjectPlanner.promotionNet(recipe, batches) - missing;
                     if (extra > 0) addSurplus(itemId, extra, 1);
                 }
-                return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, false, partial);
+                return new Coverage(ownedFraction + (double) missing / needed * sum / shares, ready && ownedFraction * needed >= owned - 1e-9, false, partial);
             } finally {
                 promotionDepth--;
             }

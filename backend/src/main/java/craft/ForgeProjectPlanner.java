@@ -205,21 +205,23 @@ public final class ForgeProjectPlanner {
     }
 
     /** Per tree occurrence (item path from the root, tree order): whether the plan acquires it through the optional promotion. */
-    private Map<List<Integer>, List<Boolean>> selectedPromotions(Node tree) {
-        Map<List<Integer>, List<Boolean>> choices = new java.util.HashMap<>();
+    private Map<List<Integer>, List<ForgeMaterialProgress.Choice>> selectedPromotions(Node tree) {
+        Map<List<Integer>, List<ForgeMaterialProgress.Choice>> choices = new java.util.HashMap<>();
         if (tree != null && tree.children() != null) {
             for (Node child : tree.children()) collectPromotions(child, List.of(tree.itemId()), choices);
         }
         return choices;
     }
 
-    private void collectPromotions(Node node, List<Integer> parents, Map<List<Integer>, List<Boolean>> choices) {
+    private void collectPromotions(Node node, List<Integer> parents, Map<List<Integer>, List<ForgeMaterialProgress.Choice>> choices) {
         List<Integer> path = new java.util.ArrayList<>(parents);
         path.add(node.itemId());
         Recipe producer = producerByItem.get(node.itemId());
         boolean promoted = producer != null && CraftingResolver.isPromotion(producer) && node.recipeId() != null
                 && node.recipeId() == producer.recipeId;
-        choices.computeIfAbsent(List.copyOf(path), k -> new java.util.ArrayList<>()).add(promoted);
+        boolean ownedSeed = promoted && node.children() != null && node.children().stream()
+                .anyMatch(k -> k.itemId() == node.itemId() && k.fromOwned() > 0);
+        choices.computeIfAbsent(List.copyOf(path), k -> new java.util.ArrayList<>()).add(new ForgeMaterialProgress.Choice(promoted, ownedSeed));
         if (!promoted && node.children() != null) for (Node child : node.children()) collectPromotions(child, path, choices);
     }
 
