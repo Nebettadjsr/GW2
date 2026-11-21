@@ -330,13 +330,13 @@ public class MysticForgeApiController {
             Long cash, margin;
             try {
                 cash = known ? ForgeProjectPlanner.sub(net, p.knownCopper()) : null;
-                // Only fixed-output equipment uses the full-path deduction; batch roots keep the planner's buy-all margin.
-                margin = !e.fixedOutput() ? e.marginCopper()
-                        : known && deduction != null ? ForgeProjectPlanner.sub(net, deduction) : null;
+                // Owner-approved: the displayed margin of every root (fixed or expected yield) uses the selected consumed path.
+                margin = known && deduction != null ? ForgeProjectPlanner.sub(net, deduction) : null;
             } catch (ArithmeticException overflow) { cash = null; margin = null; }
             boolean conditionalEcon = fullPathConditional(p, ownValue) || !complete;
             econ = new EconomicsDto(e.outputUnitSellCopper(), e.expectedGrossProceedsCopper(), e.feeCopper(),
-                    e.expectedNetProceedsCopper(), e.knownShoppingCopper(), e.goldInputCopper(), inputs, unpricedInputs,
+                    e.expectedNetProceedsCopper(), e.knownShoppingCopper(),
+                    deduction != null ? deduction : p.knownCopper(), inputs, unpricedInputs,
                     cash, margin, conditionalEcon, e.fixedOutput());
         }
         NotesDto notes = null;

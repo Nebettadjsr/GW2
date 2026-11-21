@@ -378,6 +378,34 @@ class MysticForgeApiControllerTest {
         }
     }
 
+    /**
+     * Owner-approved displayed margin of an expected-yield (Material) root follows the SELECTED consumed path. Oracle:
+     * seed Plate 600 x1 + Ore 5001 x2 -> mean 3 (min 2), 1 batch: no reuse before a second batch, expected 3 units, bid 100 -> gross 300,
+     * fee 45, net 255. Buy-all inputs: seed ask 120 + 2 Ore ask 10 = 140 (internal comparator, margin 115).
+     */
+    @Test
+    void expectedYieldMarginUsesTheSelectedConsumedPathNotTheBuyAllComparator() {
+        Recipe promo = Recipe.forgeWithExpectedYield(-90, 600, craft.ExpectedYield.of("3", 2, 4),
+                List.of(new Ingredient(600, 1), new Ingredient(5001, 2)));
+        Map<Integer, PriceQuote> tp = Map.of(600, new PriceQuote(100, 120), 5001, new PriceQuote(6, 10));
+        record Case(boolean useOwn, boolean valueOwn, long cost, long margin) { }
+        for (Case c : List.of(new Case(false, false, 140, 115), new Case(true, true, 116, 139), new Case(true, false, 10, 245))) {
+            var settings = new craft.ForgeSettings(craft.ForgeSettings.PriceMode.INSTANT_BUY, c.useOwn(), c.valueOwn(),
+                    craft.ForgeSettings.DailyMode.CRAFT, false, craft.ForgeSettings.ReduceMode.NO);
+            var project = new craft.ForgeProjectPlanner(List.of(promo)).plan(promo, 1, true,
+                    new craft.ForgeProjectPlanner.Inventory(Map.of(600, 1, 5001, 1), Map.of(), Map.of()),
+                    craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp, settings);
+            var dto = MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                    project, false, true, 1, new HashMap<>(), tp, true), null);
+            String label = "useOwn=" + c.useOwn() + " valueOwn=" + c.valueOwn();
+            var e = dto.economics();
+            assertEquals(255L, e.expectedNetProceedsCopper(), label);
+            assertEquals(c.cost(), e.goldInputCopper(), label + ": displayed deduction is the selected-path cost");
+            assertEquals(c.margin(), e.marginCopper(), label);
+            assertEquals(e.expectedNetProceedsCopper() - e.goldInputCopper(), e.marginCopper(), label + ": figures reconcile");
+        }
+    }
+
     @Test
     void lateEconomicsOverflowPublishesNoGuaranteedOutput() {
         Recipe t = new Recipe(-1, 900, 1, 0, "", List.of(new Ingredient(5001, 1)), List.of(), RecipeSource.MYSTIC_FORGE);

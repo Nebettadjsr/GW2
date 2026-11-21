@@ -58,6 +58,9 @@ public final class ForgeMaterialProgress {
         private final PlanState state;
         private final ForgeProjectPlanner.Context ctx;
         private final Map<Integer, Long> surplus = new HashMap<>(); // conserved craft surplus, not owned stock
+        /** Readiness credit (0..units) of each item's surplus: a batch's surplus is only as ready as the batch that makes it. */
+        private final Map<Integer, Double> surplusCredit = new HashMap<>();
+        private double lastCredit; // readiness credit (in units) of the most recent take()
         private final Map<Integer, Long> currencies;
         private final boolean walletKnown;
         private final ForgeSettings.ReduceMode reduce;
@@ -86,9 +89,24 @@ public final class ForgeMaterialProgress {
             int ask = (int) Math.min(Integer.MAX_VALUE, needed);
             long used = root ? ForgeProjectPlanner.consumeRootOutput(state, reduce, itemId, needed)
                     : state.consumeInventoryWithBinding(itemId, ask, assignee).total();
-            long spare = Math.min(surplus.getOrDefault(itemId, 0L), needed - used);
-            if (spare > 0) { surplus.merge(itemId, -spare, Long::sum); used += spare; }
+            double credit = used;
+            long have = surplus.getOrDefault(itemId, 0L);
+            long spare = Math.min(have, needed - used);
+            if (spare > 0) {
+                double share = surplusCredit.getOrDefault(itemId, (double) have) * spare / have;
+                surplus.merge(itemId, -spare, Long::sum);
+                surplusCredit.merge(itemId, -share, Double::sum);
+                credit += share;
+                used += spare;
+            }
+            lastCredit = credit;
             return used;
+        }
+
+        /** Adds planned batch surplus whose readiness equals the producing batch's coverage fraction (1 = fully ready). */
+        private void addSurplus(int itemId, long units, double fraction) {
+            surplus.merge(itemId, units, ForgeProjectPlanner::add);
+            surplusCredit.merge(itemId, units * fraction, Double::sum);
         }
 
         private Coverage item(int itemId, long needed, Recipe selected, int depth, Set<Integer> path, String assignee) {
@@ -119,9 +137,11 @@ public final class ForgeMaterialProgress {
 
         private Coverage plainItem(int itemId, long needed, Recipe selected, int depth, Set<Integer> path, String assignee) {
             long owned = take(itemId, needed, assignee, depth == 0);
+            double credit = lastCredit;
             long missing = needed - owned;
-            if (missing == 0) return new Coverage(1, true, false, false);
-            double ownedFraction = (double) owned / needed;
+            if (missing == 0) return credit >= owned - 1e-9 ? new Coverage(1, true, false, false)
+                    : new Coverage(credit / needed, false, false, false); // met by a batch surplus that is not fully ready
+            double ownedFraction = credit / needed;
             if (++visited > ForgeProjectPlanner.MAX_NODES || depth >= ForgeProjectPlanner.MAX_DEPTH) {
                 return new Coverage(ownedFraction, false, false, true);
             }
@@ -158,9 +178,11 @@ public final class ForgeMaterialProgress {
                 ready &= gold.ready(); partial |= gold.partial();
             }
             if (shares == 0) return new Coverage(ownedFraction, false, false, true);
-            if (ready && !clover) {
+            if (!clover) {
+                // The scheduled batch makes its surplus whether or not every input is owned yet; later demand shares it
+                // at the batch's coverage instead of simulating another batch (and another Note demand).
                 long surplus = ForgeProjectPlanner.mul(crafts, (long) recipe.outputCount) - missing;
-                if (surplus > 0) this.surplus.merge(itemId, surplus, ForgeProjectPlanner::add);
+                if (surplus > 0) addSurplus(itemId, surplus, ready ? 1 : sum / shares);
             }
             return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, estimated, partial);
         }
@@ -173,18 +195,20 @@ public final class ForgeMaterialProgress {
         private Coverage promoted(Recipe recipe, long needed, int depth, Set<Integer> path, String assignee) {
             int itemId = recipe.outputItemId;
             long savedSurplus = surplus.getOrDefault(itemId, 0L);
+            double savedCredit = surplusCredit.getOrDefault(itemId, 0.0);
             int mark = state.mark();
             boolean covered = take(itemId, needed, assignee, false) >= needed;
             state.rollbackTo(mark);
             surplus.put(itemId, savedSurplus);
+            surplusCredit.put(itemId, savedCredit);
             if (covered || ++visited > ForgeProjectPlanner.MAX_NODES || depth >= ForgeProjectPlanner.MAX_DEPTH) return null;
             String forge = ForgeProjectPlanner.assignForge(state, recipe);
             int seed = recipe.selfSeedUnits();
             int diverted = state.consumeInventoryWithBinding(itemId, seed, forge).total() >= seed ? seed : 0;
             if (diverted == 0) state.rollbackTo(mark);
             long owned = take(itemId, needed, assignee, false);
+            double ownedFraction = lastCredit / needed;
             long missing = needed - owned;
-            double ownedFraction = (double) owned / needed;
             long batches = ForgeProjectPlanner.promotionBatches(recipe, missing);
             Set<Integer> next = new HashSet<>(path);
             next.add(recipe.recipeId);
@@ -214,7 +238,7 @@ public final class ForgeMaterialProgress {
                 if (shares == 0) return new Coverage(ownedFraction, false, false, true);
                 if (ready) {
                     long extra = ForgeProjectPlanner.promotionNet(recipe, batches) - missing;
-                    if (extra > 0) surplus.merge(itemId, extra, ForgeProjectPlanner::add);
+                    if (extra > 0) addSurplus(itemId, extra, 1);
                 }
                 return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, false, partial);
             } finally {
