@@ -15,7 +15,9 @@ const images = [
   { source: 'example4TrophyShipment.jpg', name: 'trophy-materials', widths: [640, 960, 1536] },
   { source: 'example4TrothpySellProfitInstantSell.jpg', name: 'trophy-sale', widths: [469] },
   { source: 'intermCraftingMaterials.jpg', name: 'intermediate-crafting-materials', widths: [320, 480, 1005] },
-  { source: 'craftingBags.jpg', name: 'crafting-bags', widths: [320, 885] }
+  { source: 'craftingBags.jpg', name: 'crafting-bags', widths: [320, 885] },
+  { source: 'gatheringMagicExample.jpg', name: 'gathering-magic', widths: [392] },
+  { source: 'DragonfallMap.jpg', name: 'dragonfall-map', widths: [320, 567] }
 ]
 
 await mkdir(outputDirectory, { recursive: true })
