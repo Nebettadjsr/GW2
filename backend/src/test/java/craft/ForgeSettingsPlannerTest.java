@@ -341,6 +341,19 @@ class ForgeSettingsPlannerTest {
     }
 
     @Test
+    void unsafePerItemOwnValueWithinLongIsNeverRetainedButSafeSiblingStaysExact() {
+        Recipe r = forge(16, WEAPON, List.of(new Ingredient(ORE, 2_000_000_001), new Ingredient(PLATE, 3)));
+        var p = ownRun(r, List.of(), sellable(Map.of(ORE, 2_000_000_001, PLATE, 3)),
+                Map.of(ORE, new PriceQuote(2_000_000_001, null), PLATE, new PriceQuote(5, null)),
+                ForgeProjectPlanner.Context.NONE, LegacyForge.SETTINGS);
+        assertFalse(p.complete());
+        assertEquals("own-material value exceeds the supported range", p.incompleteReason());
+        assertFalse(p.ownValue().itemCopper().containsKey(ORE), "4_000_000_004_000_000_001 is outside the exact JSON range");
+        assertEquals(15L, p.ownValue().itemCopper().get(PLATE));
+        assertTrue(p.ownValue().itemCopper().values().stream().allMatch(v -> Math.abs(v) <= ForgeProjectPlanner.MAX_SAFE));
+    }
+
+    @Test
     void noteProductionRunsAfterTheStepThatSuppliesItsSurplusAndBeforeTheConsumer() {
         Recipe promotion = Recipe.forgeWithExpectedYield(-32, 19722, ExpectedYield.of("86.34", 40, 200),
                 List.of(new Ingredient(500, 250), new Ingredient(19722, 1), new Ingredient(501, 5), new Ingredient(20796, 1)));

@@ -592,4 +592,25 @@ class MysticForgeApiControllerTest {
         assertNull(dto.economics().marginCopper());
         assertNull(dto.comparison().savingsCopper());
     }
+    @Test
+    void unsafePerItemOwnedValueIsNullOnTheWireWhileSafeSiblingStaysExact() {
+        Recipe t = new Recipe(-62, 900, 1, 0, "", List.of(new Ingredient(5002, 2_000_000_001), new Ingredient(5003, 3)),
+                List.of(), RecipeSource.MYSTIC_FORGE);
+        Map<Integer, PriceQuote> tp = Map.of(5002, new PriceQuote(2_000_000_001, null), 5003, new PriceQuote(5, null),
+                900, new PriceQuote(10, 20));
+        var project = new craft.ForgeProjectPlanner(List.of(t)).plan(t, 1, false,
+                new craft.ForgeProjectPlanner.Inventory(Map.of(5002, 2_000_000_001, 5003, 3), Map.of(), Map.of()),
+                craft.ForgeProjectPlanner.Context.NONE, Map.of(), tp, VALUE_OWN);
+        var dto = MysticForgeApiController.toProject(new CraftingProfitService.ForgeProjectData(
+                project, false, false, 1, new HashMap<>(), tp, true), null);
+        assertFalse(dto.complete());
+        assertNull(dto.guaranteedOutput());
+        assertNull(dto.economics().marginCopper());
+        var unsafe = dto.ownedItems().stream().filter(o -> o.item().itemId() == 5002).findFirst().orElseThrow();
+        var safe = dto.ownedItems().stream().filter(o -> o.item().itemId() == 5003).findFirst().orElseThrow();
+        assertEquals(2_000_000_001L, unsafe.count(), "safe unit fact stays");
+        assertNull(unsafe.valueCopper(), "unavailable, not 0 and not a rounded 4e18");
+        assertEquals(15L, safe.valueCopper());
+        assertTrue(dto.ownedItems().stream().allMatch(o -> o.valueCopper() == null || o.valueCopper() <= 9_007_199_254_740_991L));
+    }
 }

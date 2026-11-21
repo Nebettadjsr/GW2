@@ -574,6 +574,10 @@ public final class ForgeProjectPlanner {
                 for (int id : ids) {
                     // Root already-owned reduction never enters these pools (consumeRoot); an external self-seed does and is valued.
                     OwnedValuer.Value v = valuer.value(id, run.ownSellable.getOrDefault(id, 0L), run.ownBound.getOrDefault(id, 0L));
+                    if (!v.unvalued() && Math.abs(v.copper()) > MAX_SAFE) { // never retain an unsafe per-item value; siblings stay exact
+                        run.stop("own-material value exceeds the supported range");
+                        continue;
+                    }
                     if (v.unvalued()) unknown.add(id);
                     else itemCopper.put(id, v.copper());
                     known = add(known, v.copper());
