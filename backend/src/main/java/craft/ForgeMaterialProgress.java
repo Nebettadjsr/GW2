@@ -12,12 +12,15 @@ public final class ForgeMaterialProgress {
     private static final int COINS = 1;
 
     private final Map<Integer, Recipe> producers;
-    /** Output items the resolved project actually acquires through a selected optional promotion. */
-    private final Set<Integer> selectedPromotions;
+    /**
+     * The resolved project's choice for each tree occurrence, keyed by the item path from the root (ancestor items then
+     * the item itself) and listed in tree order: true = acquired through the selected optional promotion.
+     */
+    private final Map<java.util.List<Integer>, java.util.List<Boolean>> selectedPromotions;
 
-    ForgeMaterialProgress(Map<Integer, Recipe> producers) { this(producers, Set.of()); }
+    ForgeMaterialProgress(Map<Integer, Recipe> producers) { this(producers, Map.of()); }
 
-    ForgeMaterialProgress(Map<Integer, Recipe> producers, Set<Integer> selectedPromotions) {
+    ForgeMaterialProgress(Map<Integer, Recipe> producers, Map<java.util.List<Integer>, java.util.List<Boolean>> selectedPromotions) {
         this.producers = producers;
         this.selectedPromotions = selectedPromotions;
     }
@@ -52,6 +55,8 @@ public final class ForgeMaterialProgress {
         private final ForgeSettings.DailyMode daily;
         private int visited;
         private int promotionDepth;
+        private final java.util.ArrayList<Integer> itemPath = new java.util.ArrayList<>();
+        private final Map<java.util.List<Integer>, Integer> occurrence = new HashMap<>();
 
         Run(ForgeProjectPlanner.Inventory inventory, ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet,
             ForgeSettings.ReduceMode reduce, Recipe noteProducer, ForgeSettings.DailyMode daily) {
@@ -76,13 +81,31 @@ public final class ForgeMaterialProgress {
 
         private Coverage item(int itemId, long needed, Recipe selected, int depth, Set<Integer> path, String assignee) {
             if (needed <= 0) return new Coverage(1, true, false, false);
-            if (depth > 0 && selected == null && promotionDepth == 0 && selectedPromotions.contains(itemId)) {
-                Recipe promotion = producers.get(itemId);
-                if (promotion != null && CraftingResolver.isPromotion(promotion) && !path.contains(promotion.recipeId)) {
-                    Coverage promoted = promoted(promotion, needed, depth, path, assignee);
-                    if (promoted != null) return promoted;
+            itemPath.add(itemId);
+            try {
+                if (depth > 0 && selected == null && promotionDepth == 0 && selectedOccurrence()) {
+                    Recipe promotion = producers.get(itemId);
+                    if (promotion != null && CraftingResolver.isPromotion(promotion) && !path.contains(promotion.recipeId)) {
+                        Coverage promoted = promoted(promotion, needed, depth, path, assignee);
+                        if (promoted != null) return promoted;
+                    }
                 }
+                return plainItem(itemId, needed, selected, depth, path, assignee);
+            } finally {
+                itemPath.removeLast();
             }
+        }
+
+        /** Whether the project selected the promotion for THIS occurrence (path identity + visit order), never per item. */
+        private boolean selectedOccurrence() {
+            java.util.List<Integer> key = java.util.List.copyOf(itemPath);
+            java.util.List<Boolean> choices = selectedPromotions.get(key);
+            if (choices == null) return false;
+            int index = occurrence.merge(key, 1, Integer::sum) - 1;
+            return index < choices.size() && choices.get(index);
+        }
+
+        private Coverage plainItem(int itemId, long needed, Recipe selected, int depth, Set<Integer> path, String assignee) {
             long owned = take(itemId, needed, assignee, depth == 0);
             long missing = needed - owned;
             if (missing == 0) return new Coverage(1, true, false, false);

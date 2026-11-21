@@ -204,18 +204,23 @@ public final class ForgeProjectPlanner {
                 project.settings().reduce(), selectedNoteProducer(project, inventory, context), project.settings().daily());
     }
 
-    /** Items the plan acquires through an optional promotion (the root itself never counts). */
-    private Set<Integer> selectedPromotions(Node tree) {
-        Set<Integer> items = new java.util.HashSet<>();
-        if (tree != null && tree.children() != null) for (Node child : tree.children()) collectPromotions(child, items);
-        return items;
+    /** Per tree occurrence (item path from the root, tree order): whether the plan acquires it through the optional promotion. */
+    private Map<List<Integer>, List<Boolean>> selectedPromotions(Node tree) {
+        Map<List<Integer>, List<Boolean>> choices = new java.util.HashMap<>();
+        if (tree != null && tree.children() != null) {
+            for (Node child : tree.children()) collectPromotions(child, List.of(tree.itemId()), choices);
+        }
+        return choices;
     }
 
-    private void collectPromotions(Node node, Set<Integer> items) {
+    private void collectPromotions(Node node, List<Integer> parents, Map<List<Integer>, List<Boolean>> choices) {
+        List<Integer> path = new java.util.ArrayList<>(parents);
+        path.add(node.itemId());
         Recipe producer = producerByItem.get(node.itemId());
-        if (producer != null && CraftingResolver.isPromotion(producer) && node.recipeId() != null
-                && node.recipeId() == producer.recipeId) items.add(node.itemId());
-        if (node.children() != null) for (Node child : node.children()) collectPromotions(child, items);
+        boolean promoted = producer != null && CraftingResolver.isPromotion(producer) && node.recipeId() != null
+                && node.recipeId() == producer.recipeId;
+        choices.computeIfAbsent(List.copyOf(path), k -> new java.util.ArrayList<>()).add(promoted);
+        if (!promoted && node.children() != null) for (Node child : node.children()) collectPromotions(child, path, choices);
     }
 
     /** The planned Note producer; when the plan made none (unknown wallet) the same tiered choice over the same estimate. */

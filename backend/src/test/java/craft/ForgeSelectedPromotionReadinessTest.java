@@ -116,4 +116,42 @@ class ForgeSelectedPromotionReadinessTest {
         var enough = run(both, promotions(true), Map.of(PLATE, 1, ORE, 36), PRICES, List.of());
         assertEquals(100.0, enough.percent());
     }
+
+    @Test
+    void promotionChoiceIsPerOccurrenceNotPerOutputItem() {
+        final int plate = 2, ore = 3, x = 10, y = 11;
+        Recipe promotion = Recipe.forgeWithExpectedYield(-2, plate, ExpectedYield.of("4", 2, 6),
+                List.of(new Ingredient(ore, 2), new Ingredient(plate, 1)));
+        Recipe needsTen = new Recipe(10, x, 1, 0, "Artificer", List.of(new Ingredient(plate, 10)));
+        Recipe needsOne = new Recipe(11, y, 1, 0, "Artificer", List.of(new Ingredient(plate, 1)));
+        Recipe forgeRoot = new Recipe(-1, 1, 1, 0, "", List.of(new Ingredient(x, 1), new Ingredient(y, 1)), List.of(), RecipeSource.MYSTIC_FORGE);
+        var ctx = new ForgeProjectPlanner.Context(List.of(new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), java.util.Set.of(10, 11));
+        var settings = new ForgeSettings(ForgeSettings.PriceMode.INSTANT_BUY, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.NO);
+        var planner = new ForgeProjectPlanner(List.of(promotion, needsTen, needsOne, forgeRoot), settings);
+        var inv = new ForgeProjectPlanner.Inventory(Map.of(plate, 2, ore, 18), Map.of(), Map.of());
+        var prices = Map.of(plate, new PriceQuote(100, 100), ore, new PriceQuote(1, 2));
+        var project = planner.plan(forgeRoot, 1, false, inv, ctx, Map.of(), prices, settings);
+
+        var plateNodes = new java.util.ArrayList<ForgeProjectPlanner.Node>();
+        collect(project.tree(), plate, plateNodes);
+        assertEquals(2, plateNodes.size());
+        var forX = plateNodes.get(0);
+        var forY = plateNodes.get(1);
+        assertEquals(10, forX.needed());
+        assertEquals(1, forX.fromOwned());
+        assertEquals(-2, forX.recipeId());
+        assertEquals(8, forX.crafts());
+        assertEquals(1, forY.needed());
+        assertEquals(0, forY.fromOwned());
+        assertEquals(1, forY.toAcquire());
+        assertNull(forY.recipeId());
+
+        double percent = planner.materialProgress(forgeRoot, 1, inv, ctx, Map.of(), project).percent();
+        assertEquals(50.0, percent, "X's promoted path is fully supplied; Y's purchase leaf has no Plate");
+    }
+
+    private static void collect(ForgeProjectPlanner.Node node, int itemId, List<ForgeProjectPlanner.Node> out) {
+        if (node.itemId() == itemId) out.add(node);
+        if (node.itemId() != itemId && node.children() != null) node.children().forEach(c -> collect(c, itemId, out));
+    }
 }
