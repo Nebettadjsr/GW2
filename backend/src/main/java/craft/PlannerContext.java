@@ -156,6 +156,24 @@ public class PlannerContext {
      * {@code recipe.minRating} (DOMAIN_SPEC.md sections 7-8). Never call when
      * {@link #coordinatedRoster} is {@code null}.
      */
+    /**
+     * Whether {@code recipe} may be executed at all: an ordinary recipe must be in the allowed set;
+     * a Mystic Forge recipe is governed only by the explicit setting (no unlock exists for it).
+     */
+    public boolean isRecipeAllowed(Recipe recipe) {
+        if (recipe.isVendor()) return settings.allowMysticForge && settings.allowBuying;
+        return recipe.isMysticForge() ? settings.allowMysticForge : allowedRecipeIds.contains(recipe.recipeId);
+    }
+
+    /**
+     * Allowed and performable: Forge steps need no crafter, so they never consult the roster and no
+     * crafting character is invented for them.
+     */
+    public boolean isPerformable(Recipe recipe) {
+        return isRecipeAllowed(recipe)
+                && (!isCoordinated() || recipe.isMysticForge() || recipe.isVendor() || !eligibleCharactersFor(recipe).isEmpty());
+    }
+
     public List<String> eligibleCharactersFor(Recipe recipe) {
         return eligibleCharactersByRecipeId.computeIfAbsent(recipe.recipeId, id -> computeEligible(recipe));
     }

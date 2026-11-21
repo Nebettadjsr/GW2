@@ -68,6 +68,10 @@ describe('changes', () => {
     ])
   })
 
+  it('has no Mystic Forge checkbox (Forge left Crafting Profit)', () => {
+    expect(form().find('[data-test="setting-allowMysticForge"]').exists()).toBe(false)
+  })
+
   it('emits listing and instant choices for sell and buy prices', async () => {
     const wrapper = form()
     await wrapper.find('[data-test="setting-listingSell"]').setValue('listing')

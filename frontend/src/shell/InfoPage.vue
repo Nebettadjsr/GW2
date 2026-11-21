@@ -68,6 +68,9 @@ const heading = computed(() => ({
           <a href="https://github.com/Nebettadjsr/GW2/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT licence</a>:
           you may use, copy, change and share it, including commercially, while keeping the required
           copyright and licence notice. Third-party code and game assets retain their own terms.
+          The bundled Mystic Forge recipe data comes from the
+          <a href="https://wiki.guildwars2.com/wiki/Guild_Wars_2_Wiki:Copyrights" target="_blank" rel="noopener noreferrer">Guild Wars 2 Wiki</a>
+          and stays under its contributors' GFDL 1.3 terms, not the MIT licence; game assets remain ArenaNet's.
         </p>
         <p>
           Found a bug or have an improvement in mind? Open a

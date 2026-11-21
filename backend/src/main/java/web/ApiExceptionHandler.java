@@ -29,7 +29,8 @@ import java.util.logging.Logger;
  */
 @RestControllerAdvice(assignableTypes = {
         CraftingProfitApiController.class,
-        CraftingDiscoveryApiController.class})
+        CraftingDiscoveryApiController.class,
+        MysticForgeApiController.class})
 public class ApiExceptionHandler {
 
     private static final Logger LOG = Logger.getLogger(ApiExceptionHandler.class.getName());

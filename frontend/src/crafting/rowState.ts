@@ -67,6 +67,10 @@ const BLOCKED_REASONS: Record<string, { label: string; because: string }> = {
     label: 'Too many materials',
     because: 'the plan would need more than 2,500 units of a single material'
   },
+  WORK_LIMIT: {
+    label: 'Incomplete',
+    because: 'the calculation reached its work limit before every alternative was checked'
+  },
   VALUE_RANGE: {
     label: 'Value out of range',
     because: 'a quantity or price in the plan is too large to calculate reliably'
@@ -192,6 +196,7 @@ export function rowDiagnostic(row: CraftingRow): RowDiagnostic | null {
 
   if (code === 'CYCLE_DETECTED') return { label: 'Recipe loop', tone: 'caution' }
   if (code === 'PRICE_UNAVAILABLE') return { label: 'Price missing', tone: 'caution' }
+  if (code === 'WORK_LIMIT') return { label: 'Incomplete', tone: 'caution' }
 
   return { label: 'Unrecognized state', tone: 'unknown' }
 }

@@ -11,6 +11,14 @@ public class RecipeSimulationResult {
     private final int outputItemId;
 
     private int craftCount;
+    /** Guaranteed-minimum output units credited as reusable self-seed stock and not yet consumed. */
+    private int seedCreditOutstanding;
+    private boolean usesExpectedYield;
+    /** True when any ACCEPTED craft (not a rejected attempt) used a variable-output Forge route. */
+    public boolean usesExpectedYield() { return usesExpectedYield; }
+    void markUsesExpectedYield() { this.usesExpectedYield = true; }
+    /** Credited units a later batch consumed as its seed: removed from sellable output exactly once. */
+    private int reusedSeedUnits;
 
     private ResolvedNeed firstCraft;
     private ResolvedNeed lastCraft;
@@ -35,6 +43,8 @@ public class RecipeSimulationResult {
     private ResolvedNeed blockedAttempt;
 
     private final Map<Integer, Integer> totalMissingToBuy = new HashMap<>();
+    /** Vendor-bought units ([0]) and exact vendor cash ([1]) per item across all accepted crafts. */
+    private final Map<Integer, int[]> totalVendorPurchases = new HashMap<>();
 
     public RecipeSimulationResult(int recipeId, int outputItemId) {
         this.recipeId = recipeId;
@@ -48,6 +58,11 @@ public class RecipeSimulationResult {
     public int getOutputItemId() {
         return outputItemId;
     }
+
+    int seedCreditOutstanding() { return seedCreditOutstanding; }
+    void setSeedCreditOutstanding(int units) { this.seedCreditOutstanding = units; }
+    public int getReusedSeedUnits() { return reusedSeedUnits; }
+    void addReusedSeedUnits(int units) { this.reusedSeedUnits = Math.addExact(reusedSeedUnits, units); }
 
     public int getCraftCount() {
         return craftCount;
@@ -128,6 +143,10 @@ public class RecipeSimulationResult {
 
     public void addOpportunityCost(int value) {
         opportunityCostTotal += value;
+    }
+
+    public Map<Integer, int[]> getTotalVendorPurchases() {
+        return totalVendorPurchases;
     }
 
     public Map<Integer, Integer> getTotalMissingToBuy() {

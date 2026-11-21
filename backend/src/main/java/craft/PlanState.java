@@ -31,6 +31,13 @@ public class PlanState {
     public final Map<Integer, Integer> inventory;
     private final Map<Integer, Integer> initialSellableInventory;
     private final Map<Integer, Integer> initialBoundTotals;
+    /**
+     * Immutable INITIAL owner facts, shared by every copy (never another account's data): sorted Bank keys and
+     * item -> carried (non-Bank) owners holding it initially. Consumption/rollback only ever lowers or restores
+     * quantities, so these stay a safe superset; callers must still check CURRENT journalled quantities.
+     */
+    private final java.util.List<String> initialBankKeys;
+    private final Map<Integer, java.util.List<String>> initialCarriedOwners;
 
     /**
      * Owned quantity that is account-bound or soulbound-and-usable-by-the-selected-character
@@ -51,6 +58,31 @@ public class PlanState {
      */
     public final Map<String, Map<Integer, Integer>> characterBoundInventory;
 
+    /** Prefix of {@link #characterBoundInventory} keys holding character-bound stock that sits in the Bank. */
+    static final String BANK_PREFIX = "\u0000bank:";
+    /** Prefix of an assignee string marking a Mystic Forge step (optionally followed by the performing character). */
+    static final String FORGE_PREFIX = "\u0000forge:";
+
+    /** Key under which a character's Bank-resident soulbound stock lives (owner may be null/unknown/off-roster). */
+    public static String bankOwnerKey(String owner) {
+        return BANK_PREFIX + (owner == null ? "" : owner);
+    }
+
+    /** Assignee for a Forge step: Bank-bound stock of every owner is usable, carried stock only of {@code character}. */
+    public static String forgeAssignee(String character) {
+        return FORGE_PREFIX + (character == null ? "" : character);
+    }
+
+    /** The real character behind an assignee (null for none/shared), stripping the Forge marker. */
+    public static String characterOf(String assignee) {
+        if (assignee == null) return null;
+        if (assignee.startsWith(FORGE_PREFIX)) {
+            String name = assignee.substring(FORGE_PREFIX.length());
+            return name.isEmpty() ? null : name;
+        }
+        return assignee;
+    }
+
     public final Set<Integer> visiting;
     public final Map<Integer, Integer> dailyLeft;
     // Already paid for by earlier steps of this simulation, never valued as owned stock.
@@ -58,6 +90,49 @@ public class PlanState {
 
     /** DOMAIN_SPEC.md: most units of one material item ID one candidate recipe plan may require. */
     public static final int MAX_MATERIAL_UNITS = 2_500;
+
+    /**
+     * Deterministic bound on speculative craft-step attempts ({@code tryCraftAssigned} calls) one root may make,
+     * across every rollback, nested ordinary/Forge candidate, owner trial and seed-preserving alternative.
+     * It counts attempts, never time, so the outcome is reproducible. Exhaustion is a limited outcome
+     * ({@link BlockedReason#WORK_LIMIT}), never an exact result.
+     */
+    public static final int MAX_WORK_UNITS = 50_000;
+
+    /**
+     * One root's work authority. Shared by reference with every copy of the state (simulation, wallet-ignored and
+     * hypothetical retries), so spending in any copy charges the same root; never journalled, so rollback cannot
+     * refund it. {@link #resetWork(int)} installs a fresh authority, which is only done for a NEW root.
+     */
+    private static final class WorkCounter {
+        int used = 0;
+        int limit = MAX_WORK_UNITS;
+        boolean refused = false;
+    }
+
+    private WorkCounter work = new WorkCounter();
+
+    /** Charges one attempt; false (and permanently exhausted) once the budget is spent. */
+    boolean chargeWork() {
+        if (work.refused) return false;
+        if (work.used >= work.limit) {
+            work.refused = true;
+            return false;
+        }
+        work.used++;
+        return true;
+    }
+
+    /** True once an attempt was refused: some alternatives were never evaluated, so the plan is limited. */
+    boolean isWorkExhausted() { return work.refused; }
+
+    int workUsed() { return work.used; }
+
+    /** Starts a fresh authority for the next root evaluated on a reused worker state (copies made earlier keep the old one). */
+    void resetWork(int limit) {
+        work = new WorkCounter();
+        work.limit = limit;
+    }
 
     // Required units per material item ID in this plan, owned and purchased alike. Journalled.
     private final Map<Integer, Integer> demand = new HashMap<>();
@@ -141,6 +216,17 @@ public class PlanState {
         }
         this.visiting = new HashSet<>();
         this.dailyLeft = new HashMap<>();
+        java.util.List<String> bank = new java.util.ArrayList<>();
+        Map<Integer, java.util.List<String>> carried = new HashMap<>();
+        for (var e : this.characterBoundInventory.entrySet()) {
+            if (e.getKey().startsWith(BANK_PREFIX)) { bank.add(e.getKey()); continue; }
+            for (var item : e.getValue().entrySet()) {
+                if (item.getValue() > 0) carried.computeIfAbsent(item.getKey(), k -> new java.util.ArrayList<>()).add(e.getKey());
+            }
+        }
+        java.util.Collections.sort(bank);
+        this.initialBankKeys = java.util.List.copyOf(bank);
+        this.initialCarriedOwners = carried;
     }
 
     /**
@@ -151,6 +237,8 @@ public class PlanState {
         this.inventory = new HashMap<>(other.inventory);
         this.initialSellableInventory = other.initialSellableInventory;
         this.initialBoundTotals = other.initialBoundTotals;
+        this.initialBankKeys = other.initialBankKeys;
+        this.initialCarriedOwners = other.initialCarriedOwners;
         this.boundInventory = new HashMap<>(other.boundInventory);
         this.characterBoundInventory = new HashMap<>();
         for (var e : other.characterBoundInventory.entrySet()) {
@@ -163,6 +251,7 @@ public class PlanState {
         this.demand.putAll(other.demand);
         this.currencySpent.putAll(other.currencySpent);
         this.currencyProduced.putAll(other.currencyProduced);
+        this.work = other.work;
     }
 
     /**
@@ -325,6 +414,10 @@ public class PlanState {
         if (quantity > 0) setValue(SURPLUS, itemId, null, Math.addExact(surplus.getOrDefault(itemId, 0), quantity));
     }
 
+    public int surplusOf(int itemId) {
+        return surplus.getOrDefault(itemId, 0);
+    }
+
     public int consumeSurplus(int itemId, int wanted) {
         int have = surplus.getOrDefault(itemId, 0);
         int used = Math.min(have, wanted);
@@ -452,22 +545,81 @@ public class PlanState {
      * single-character/legacy path and by any consumption not attributable to one character).
      */
     public InventoryConsumption consumeInventoryWithBinding(int itemId, int qtyWanted, String assignedCharacter) {
+        boolean forge = assignedCharacter != null && assignedCharacter.startsWith(FORGE_PREFIX);
+        String character = characterOf(assignedCharacter);
         int usedCharacterBound = 0;
-        if (assignedCharacter != null) {
-            Map<Integer, Integer> ownerStock = characterBoundInventory.get(assignedCharacter);
-            if (ownerStock != null) {
-                int have = ownerStock.getOrDefault(itemId, 0);
-                usedCharacterBound = Math.min(have, qtyWanted);
-                if (usedCharacterBound > 0) {
-                    int left = have - usedCharacterBound;
-                    setValue(CHARACTER_BOUND, itemId, assignedCharacter, left > 0 ? left : ABSENT);
-                }
+        if (character != null) {
+            usedCharacterBound += consumeCharacterStock(character, itemId, qtyWanted);
+        }
+        if (forge) {
+            // Bank-resident soulbound stock of every owner, deterministic order; carried stock of others is never touched.
+            for (String key : bankKeys()) {
+                if (usedCharacterBound >= qtyWanted) break;
+                usedCharacterBound += consumeCharacterStock(key, itemId, qtyWanted - usedCharacterBound);
             }
+        } else if (character != null && usedCharacterBound < qtyWanted) {
+            usedCharacterBound += consumeCharacterStock(bankOwnerKey(character), itemId, qtyWanted - usedCharacterBound);
         }
 
         int usedAccountBound = consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - usedCharacterBound);
         int usedSellable = consumeInventory(itemId, qtyWanted - usedCharacterBound - usedAccountBound);
         return new InventoryConsumption(usedCharacterBound + usedAccountBound, usedSellable);
+    }
+
+    /**
+     * Consumes already-owned stock of a goal item regardless of which character would perform the step: carried and
+     * Bank stock of every owner (deterministic key order), then account-bound, then sellable. Used for the fixed
+     * Forge root output, whose ownership is independent of who holds the inputs.
+     */
+    public InventoryConsumption consumeOwnedOutput(int itemId, int qtyWanted) {
+        int used = 0;
+        for (String key : new java.util.TreeSet<>(characterBoundInventory.keySet())) {
+            if (used >= qtyWanted) break;
+            used += consumeCharacterStock(key, itemId, qtyWanted - used);
+        }
+        int usedAccountBound = consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - used);
+        int usedSellable = consumeInventory(itemId, qtyWanted - used - usedAccountBound);
+        return new InventoryConsumption(used + usedAccountBound, usedSellable);
+    }
+
+    /** Tradable-only root reduction: sellable stock alone. */
+    public int consumeSellableOutput(int itemId, int qtyWanted) {
+        return consumeInventory(itemId, qtyWanted);
+    }
+
+    /** Untradable-only root reduction: character/Bank-bound then account-bound stock, never sellable stock. */
+    public int consumeBoundOutput(int itemId, int qtyWanted) {
+        int used = 0;
+        for (String key : new java.util.TreeSet<>(characterBoundInventory.keySet())) {
+            if (used >= qtyWanted) break;
+            used += consumeCharacterStock(key, itemId, qtyWanted - used);
+        }
+        return used + consumeFrom(ACCOUNT_BOUND, boundInventory, null, itemId, qtyWanted - used);
+    }
+
+    private int consumeCharacterStock(String key, int itemId, int wanted) {
+        Map<Integer, Integer> stock = characterBoundInventory.get(key);
+        if (stock == null) return 0;
+        int have = stock.getOrDefault(itemId, 0);
+        int used = Math.min(have, wanted);
+        if (used > 0) setValue(CHARACTER_BOUND, itemId, key, have > used ? have - used : ABSENT);
+        return used;
+    }
+
+    /** Initial sorted Bank keys (superset of current ones; absent keys simply have no stock). */
+    private java.util.List<String> bankKeys() {
+        return initialBankKeys;
+    }
+
+    /** Carried owners that held {@code itemId} initially (a superset: check current stock before use). */
+    java.util.List<String> initialCarriedOwnersOf(int itemId) {
+        return initialCarriedOwners.getOrDefault(itemId, java.util.List.of());
+    }
+
+    /** Current carried quantity of {@code itemId} for owner key {@code owner}. */
+    int carriedQuantity(String owner, int itemId) {
+        Map<Integer, Integer> stock = characterBoundInventory.get(owner);
+        return stock == null ? 0 : stock.getOrDefault(itemId, 0);
     }
 
     public record InventoryConsumption(int usedBound, int usedSellable) {

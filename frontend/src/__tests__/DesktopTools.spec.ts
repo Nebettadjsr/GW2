@@ -10,10 +10,10 @@ import { accountLuck, itemMetadata, itemPrices } from '@/ecto/__tests__/currentE
 beforeAll(async () => { await import('../App.vue') }, 30_000)
 const KEY = 'synthetic-desktop-unit-key'
 const ACCOUNT = '00000000-0000-4000-8000-000000000243'
-const tools = ['crafting', 'discovery', 'ecto', 'synchronization', 'bank', 'materials', 'characters']
+const tools = ['crafting', 'discovery', 'forge', 'ecto', 'synchronization', 'bank', 'materials', 'characters']
 const WARNING = 'This page is not optimized for mobile use. You can scroll horizontally to use the whole page.'
 const toolContent: Record<string, string> = {
-  crafting: '[data-test="calculation-controls"]', discovery: '[data-test="discovery-calculation-controls"]',
+  crafting: '[data-test="calculation-controls"]', forge: '[data-test="forge-screen"]', discovery: '[data-test="discovery-calculation-controls"]',
   ecto: '#ecto-count', synchronization: '[data-test="api-key-input"]', bank: '[data-test="bank-slots"]',
   materials: '[data-test="material-category"]', characters: '[data-test="roster-empty"]'
 }
@@ -72,6 +72,7 @@ beforeEach(() => {
     if (path === '/api/session') return json({ accountId: ACCOUNT, accessContext: 'desktop-context',
       expiresAt: '2099-01-01T00:00:00Z', grants: ['account', 'inventories', 'characters', 'unlocks'] })
     if (path === '/api/crafting/selector-options') return json(selectorOptions)
+    if (path === '/api/mystic-forge/recipes') return json({ status: 'OK', source: 'wiki', license: 'CC', recipeCount: 0, referenceCount: 0, recipes: [] })
     if (path === '/api/crafting/profit') return heldProfit ?? json(profitResponse())
     if (path === '/api/crafting/discovery') return json(echoedDiscoveryResponse(JSON.parse(String(init?.body))))
     if (path === '/api/crafting/profit/resolution') return json(resolutionResponse(JSON.parse(String(init?.body))))
@@ -117,14 +118,14 @@ describe('desktop-layout warning through the real App', () => {
   it.each(tools)('restores the retained key and keeps %s available on a direct1023px bookmark', async destination => {
     await resize(1023)
     window.sessionStorage.setItem(STORAGE_KEY, KEY)
-    const app = await open(`/#/${destination}`)
+    const app = await open(`/#/${destination === 'forge' ? 'mystic-forge' : destination}`)
     notice(app)
     expect(app.get(toolContent[destination]!).isVisible()).toBe(true)
     expect(requests[0]).toBe('/api/session')
     expect(requests.filter(path => path === '/api/session')).toHaveLength(1)
     expect(connection.phase).toBe('connected')
     expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe(KEY)
-    expect(window.location.hash).toBe(`#/${destination}`)
+    expect(window.location.hash).toBe(`#/${destination === 'forge' ? 'mystic-forge' : destination}`)
   })
 
   it.each(['/welcome', '/#/legal', '/#/privacy', '/#/storage'])('keeps public%s readable and request-quiet at360px', async path => {

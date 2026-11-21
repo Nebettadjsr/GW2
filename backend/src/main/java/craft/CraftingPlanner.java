@@ -27,6 +27,14 @@ public class CraftingPlanner {
         this(Map.of(), reuseSimulationState);
     }
 
+    /** Per-root speculative work budget; tests lower it to exercise exhaustion with small graphs. */
+    private int workLimit = PlanState.MAX_WORK_UNITS;
+
+    CraftingPlanner withWorkLimit(int limit) {
+        this.workLimit = limit;
+        return this;
+    }
+
     private CraftingPlanner(Map<Integer, Integer> vendorValues, boolean reuseSimulationState) {
         this(vendorValues, reuseSimulationState, null);
     }
@@ -243,6 +251,7 @@ public class CraftingPlanner {
             RecipeSimulator recipeSimulator
     ) {
         RecipeSimulationResult sim;
+        baseState.resetWork(workLimit);
 
         // A disabled inventory or buying source does not disable recursive crafting. In
         // particular, direct-price profitability estimates cannot safely prove a recipe
@@ -272,10 +281,12 @@ public class CraftingPlanner {
             firstCraft.accumulateBoughtItems(missingToBuyOne);
         }
 
+        Map<Integer, int[]> vendorOne = new HashMap<>();
+        if (firstCraft != null) firstCraft.accumulateVendorPurchases(vendorOne);
         Map<Integer, MaterialPurchaseCost> purchaseCosts = purchaseCosts(
-                sim.getTotalMissingToBuy(), ctx.tp, ctx.settings);
+                sim.getTotalMissingToBuy(), sim.getTotalVendorPurchases(), ctx.tp, ctx.settings);
         int totalBuyCost = sim.getBuyCostTotal();
-        Map<Integer, MaterialPurchaseCost> purchaseCostsOne = purchaseCosts(missingToBuyOne, ctx.tp, ctx.settings);
+        Map<Integer, MaterialPurchaseCost> purchaseCostsOne = purchaseCosts(missingToBuyOne, vendorOne, ctx.tp, ctx.settings);
         int buyCostOne = firstCraft == null ? 0 : firstCraft.getBuyCostCopper();
 
         int revenueOne = cost.getRevenuePerCraft();
@@ -292,6 +303,7 @@ public class CraftingPlanner {
         // unavailable or non-positive output quote already reports (DOMAIN_SPEC.md §21), and the
         // downstream availability predicates still see exactly the figure they saw before.
         int feeOne = revenueOne > 0 ? (int) TradingPostFeePolicy.feeOn(revenueOne) : 0;
+        boolean expected = recipe.hasExpectedYield();
         // Approved exception (DOMAIN_SPEC.md 2.1.0): Notes paid from the existing wallet are valued at the
         // estimated replacement rate, aggregated and rounded up once. Produced Notes are already charged in buyCostOne.
         ResearchNoteEstimate noteEstimate = ctx.researchNoteEstimate();
@@ -308,11 +320,26 @@ public class CraftingPlanner {
         // recipe's output quantity and deducts no selling fee - for §28's craftable count. Built
         // from the two figures above rather than from a second resolver or price read.
         int realCrafts = hypothetical ? 0 : sim.getCraftCount();
-        int totalSellValue = Math.multiplyExact(revenueOne, realCrafts);
+        int reusedSeed = expected ? sim.getReusedSeedUnits() : 0;
+        java.math.BigDecimal expectedUnits = null;
+        int totalSellValue;
+        long totalFee;
+        if (expected) {
+            // One exact decimal total (crafts x mean less reused seed units), floored once to copper; the fee is
+            // charged once on that total. Fractional expectation is never converted into guaranteed stock.
+            expectedUnits = recipe.expectedYield.mean().multiply(java.math.BigDecimal.valueOf(realCrafts))
+                    .subtract(java.math.BigDecimal.valueOf(reusedSeed));
+            Integer unit = CostEvaluator.outputUnit(recipe, ctx.tp, ctx.settings);
+            totalSellValue = unit == null ? 0 : Math.toIntExact(ExpectedYield.floorCopper(expectedUnits, unit));
+            totalFee = totalSellValue > 0 ? TradingPostFeePolicy.feeOn(totalSellValue) : 0;
+        } else {
+            totalSellValue = Math.multiplyExact(revenueOne, realCrafts);
+            totalFee = (long) feeOne * realCrafts;
+        }
         // Inventory consumed can vary between executions, so total profit uses costs from the
         // accepted full plan instead of scaling the first craft's opportunity cost.
         int totalProfit = Math.toIntExact((long) totalSellValue
-                - (long) feeOne * realCrafts
+                - totalFee
                 - (hypothetical ? 0 : sim.getBuyCostTotal()) - (hypothetical ? 0 : sim.getOpportunityCostTotal())
                 - noteCostTotal);
 
@@ -335,7 +362,18 @@ public class CraftingPlanner {
                 purchaseCostsOne
         );
         result.unvaluedOwnedInput = sim.hasUnvaluedOwnedInput();
+        if (expected) {
+            result.expectedYield = recipe.expectedYield;
+            result.expectedSellableUnitsTotal = expectedUnits;
+            result.reusedSeedUnits = reusedSeed;
+            result.guaranteedSellableUnitsTotal = Math.max(0,
+                    Math.subtractExact(Math.multiplyExact(recipe.expectedYield.min(), realCrafts), reusedSeed));
+        }
+        result.estimated = expected || (!hypothetical && sim.usesExpectedYield())
+                || (hypothetical && firstCraft != null && firstCraft.usesExpectedYield());
         result.economicsFromHypotheticalCraft = hypothetical;
+        // Enabled Forge routes with no complete craft anywhere: the missing seed/input cost is unknown, never zero.
+        result.profitUnknown = ctx.settings.allowMysticForge && firstCraft == null && forgeAffects(recipe, ctx);
         Map<Integer, Integer> perCraft = sim.getCurrencyFirstCraft();
         if (perCraft.isEmpty() && !recipe.currencies.isEmpty()) {
             Map<Integer, Integer> direct = new java.util.TreeMap<>();
@@ -365,19 +403,53 @@ public class CraftingPlanner {
         return result;
     }
 
+    /** True when {@code root} or any recipe reachable through its ingredients is a Mystic Forge recipe. */
+    private static boolean forgeAffects(Recipe root, PlannerContext ctx) {
+        if (root.isMysticForge()) return true;
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        java.util.ArrayDeque<Integer> todo = new java.util.ArrayDeque<>();
+        for (Ingredient ing : root.ingredients) todo.add(ing.itemId);
+        while (!todo.isEmpty()) {
+            int item = todo.poll();
+            if (!seen.add(item)) continue;
+            for (Recipe r : ctx.recipesByOutput.getOrDefault(item, List.of())) {
+                if (r.isMysticForge()) return true;
+                for (Ingredient ing : r.ingredients) todo.add(ing.itemId);
+            }
+        }
+        return false;
+    }
+
     private static boolean isWalletBlock(BlockedReason reason) {
         return reason == BlockedReason.WALLET_UNAVAILABLE || reason == BlockedReason.INSUFFICIENT_CURRENCY;
     }
 
-    private Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,
+    static Map<Integer, MaterialPurchaseCost> purchaseCosts(Map<Integer, Integer> missing,
+                                                              Map<Integer, int[]> vendor,
                                                               Map<Integer, PriceQuote> tp,
                                                               CraftingSettings settings) {
         Map<Integer, MaterialPurchaseCost> costs = new HashMap<>();
         for (Map.Entry<Integer, Integer> entry : missing.entrySet()) {
+            int[] vendorBought = vendor.get(entry.getKey());
+            if (vendorBought != null && vendorBought[0] >= entry.getValue()) {
+                // Entirely vendor-bought: the exact vendor cash (null when paid only in wallet currency), never an
+                // unrelated Trading Post quote. The unit is the display average of the exact total.
+                Integer total = vendorBought[1] > 0 ? vendorBought[1] : null;
+                Integer unit = total == null ? null : (int) Math.ceil((double) total / entry.getValue());
+                costs.put(entry.getKey(), new MaterialPurchaseCost(unit, total));
+                continue;
+            }
             PriceQuote quote = tp.get(entry.getKey());
             Integer unit = quote == null ? null : settings.listingBuy ? quote.buyUnit : quote.sellUnit;
-            Integer total = unit == null ? null : Math.multiplyExact(unit, entry.getValue());
-            costs.put(entry.getKey(), new MaterialPurchaseCost(unit, total));
+            int vendorUnits = vendorBought == null ? 0 : vendorBought[0];
+            int vendorCash = vendorBought == null ? 0 : vendorBought[1];
+            // Mixed sourcing: exact vendor cash plus ONLY the remaining TP-bought units at the TP quote. Units paid
+            // purely in wallet currency add no cash here (their currency cost stays reported separately).
+            Integer total = unit == null ? null
+                    : Math.addExact(vendorCash, Math.multiplyExact(unit, entry.getValue() - vendorUnits));
+            Integer shownUnit = vendorUnits > 0 && total != null
+                    ? Integer.valueOf((int) Math.ceil((double) total / entry.getValue())) : unit;
+            costs.put(entry.getKey(), new MaterialPurchaseCost(shownUnit, total));
         }
         return Map.copyOf(costs);
     }

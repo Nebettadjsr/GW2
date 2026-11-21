@@ -7,6 +7,7 @@ import CharactersScreen from './characters/CharactersScreen.vue'
 import MaterialsScreen from './account/MaterialsScreen.vue'
 import CraftingDiscoveryScreen from './crafting/CraftingDiscoveryScreen.vue'
 import CraftingProfitScreen from './crafting/CraftingProfitScreen.vue'
+import MysticForgeScreen from './forge/MysticForgeScreen.vue'
 import EctoSalvageScreen from './ecto/EctoSalvageScreen.vue'
 import { DESTINATIONS, isInfoDestination, type DestinationId } from './shell/destinations'
 import InfoPage from './shell/InfoPage.vue'
@@ -154,6 +155,11 @@ watch(
 
     <KeepAlive>
       <CraftingDiscoveryScreen v-if="route.current.value.id === 'discovery' && craftingReady" />
+    </KeepAlive>
+
+    <!-- Mystic Forge keeps its list state, scroll and open project while the user visits another page. -->
+    <KeepAlive>
+      <MysticForgeScreen v-if="route.current.value.id === 'forge'" />
     </KeepAlive>
 
     <!-- Characters keeps its selection and tab while the user visits another page of this account. -->

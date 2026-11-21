@@ -82,6 +82,25 @@ public class CraftResult {
      * craft (craftableCount stays 0): output quote and material costs remain valid and visible.
      */
     public boolean economicsFromHypotheticalCraft;
+    /**
+     * True when Forge routes are enabled and affect this recipe but no full actual (or explicitly priced hypothetical)
+     * craft exists: the per-craft cost is unknown, so the profit must not be published as output revenue minus zero.
+     * The output quote, revenue and honest count/currency facts stay.
+     */
+    public boolean profitUnknown;
+    /**
+     * Verified variable output of the root recipe (exact mean plus guaranteed min/max), or null for a fixed
+     * output. When set, the revenue/profit figures are expected (estimated) economics, not guaranteed yield.
+     */
+    public ExpectedYield expectedYield;
+    /** True when this root or any nested step is a variable-output Forge route: profit/feasibility is estimated. */
+    public boolean estimated;
+    /** Expected sellable output units of the accepted crafts after the reused self-seed units are removed. */
+    public java.math.BigDecimal expectedSellableUnitsTotal;
+    /** Guaranteed sellable output units of the accepted crafts (minimum yield less reused seed units). */
+    public int guaranteedSellableUnitsTotal;
+    /** Self-seed units supplied by an earlier batch's guaranteed minimum instead of being bought again. */
+    public int reusedSeedUnits;
 
     public CraftResult(int outputItemId, String discipline, int craftableCount,
                        Map<Integer, Integer> missingToBuy,

@@ -1,5 +1,6 @@
 package repo;
 
+import craft.PlanState;
 import craft.Recipe;
 import model.AccountScope;
 import org.flywaydb.core.Flyway;
@@ -204,9 +205,15 @@ class ScopedRepositoryReadsTest {
 
         assertEquals(Map.of(100, 7), inv.sellable());
         assertEquals(Map.of(101, 1, 100, 2), inv.accountBound());
-        assertEquals(Map.of(102, 6, 103, 5), inv.characterBound().get("Alice"));
+        // carried soulbound stays under the owner; Bank-resident soulbound is kept apart under its own key
+        assertEquals(Map.of(103, 5), inv.characterBound().get("Alice"));
+        assertEquals(Map.of(102, 6), inv.characterBound().get(PlanState.bankOwnerKey("Alice")));
         assertEquals(Map.of(103, 7), inv.characterBound().get("Bea"));
-        assertEquals(Set.of("Alice", "Bea"), inv.characterBound().keySet());
+        assertEquals(Set.of("Alice", "Bea", PlanState.bankOwnerKey("Alice")), inv.characterBound().keySet());
+        // never merged: an ordinary step for Alice's carried map cannot see 102 without the Bank key
+        assertFalse(inv.characterBound().get("Alice").containsKey(102));
+        // unrostered carried soulbound (104 "Nobody") is still dropped
+        assertTrue(inv.characterBound().values().stream().noneMatch(m -> m.containsKey(104)));
     }
 
     @Test
@@ -214,7 +221,10 @@ class ScopedRepositoryReadsTest {
         InventoryRepository repo = new InventoryRepository();
 
         InventoryRepository.CoordinatedInventory onlyBea = repo.loadOwnedInventoryForCharacters(con, A, Set.of("Bea"));
-        assertEquals(Set.of("Bea"), onlyBea.characterBound().keySet());
+        // Alice is off-roster: her carried stock is dropped, her Bank-bound stock keeps its provenance key
+        assertEquals(Set.of("Bea", PlanState.bankOwnerKey("Alice")), onlyBea.characterBound().keySet());
+        assertEquals(Map.of(102, 6), onlyBea.characterBound().get(PlanState.bankOwnerKey("Alice")));
+        assertFalse(onlyBea.characterBound().containsKey("Alice"));
 
         InventoryRepository.CoordinatedInventory b = repo.loadOwnedInventoryForCharacters(con, B, Set.of("Shared"));
         assertEquals(Map.of(100, 120), b.sellable());

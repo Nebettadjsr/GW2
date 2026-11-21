@@ -48,6 +48,10 @@ Companion to [README.md](README.md), which explains the full calculation flow. S
   Missing Research Notes are crafted automatically as **Peer Reviewed Research** (each credits exactly 150 Notes); the
   tree shows each currency with its icon, wiki link, "needed" count, "From wallet"/"From earlier batch"/"Crafted"/"Missing" quantities and the captured wallet balance. When every Note is crafted the margin is no longer starred.
   **Research Note estimate** — the approved exception: Notes paid from the existing wallet are valued at the cheaper fully priced Peer Reviewed Research recipe's per-Note replacement cost (captured quotes, selected buy-price mode, whole copper rounded up once over the aggregate); crafted Notes are never valued again. The row shows a small "Estimated" button opening the two-recipe comparison; the margin is starred only while a currency stays unpriced (including Notes with no valid estimate).
+- **Forge source / batch vs output units** — a Forge step is a Mystic Forge recipe or vendor acquisition. A *batch* is one execution; *output units* are what batches produce, so one batch can give many units.
+- **Expected vs guaranteed net / seed reuse** — expected is the exact mean times batches minus reused seed; guaranteed uses the minimum output. A unit consumed as a later batch's seed is neither sold nor stock.
+- **Conservative input plan** — a parent route that uses a variable-output step but is costed on its guaranteed minimum, not the mean.
+- **Incomplete calculation** — a `WORK_LIMIT` result: the accepted prefix is at least N crafts, not a proven maximum, and profit stays unknown when none was accepted.
 - **Coordinated plan** — a Crafting Profit plan spanning multiple characters, where different steps
   may be assigned to different eligible characters (§2.2.1).
 - **Transferable intermediate** — a crafted intermediate item that is not soulbound, and can

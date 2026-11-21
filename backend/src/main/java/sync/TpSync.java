@@ -353,6 +353,35 @@ public final class TpSync {
         syncTpPrices(itemIds);
     }
 
+    /** As above plus the enabled Mystic Forge catalog's positive item ids (never Forge recipe ids). */
+    public static void syncTpPricesForProfit(model.AccountScope scope, Set<Integer> forgeItemIds) throws Exception {
+        Set<Integer> itemIds;
+        try (Connection con = Db.open()) {
+            itemIds = new CraftingProfitItemCollector().collect(con, scope, forgeItemIds);
+        }
+        // Names/icons/flags for EVERY positive Forge reference id (fresh-quote and non-tradeable ones included -
+        // the collector only returns stale/missing tradeable quote ids) through the shared batched metadata
+        // completion: no database connection is held over the network, only incomplete rows are fetched, and a
+        // failed batch stays incomplete so the next refresh retries it. Best effort: it never blocks prices.
+        Set<Integer> positive = new HashSet<>();
+        for (Integer id : forgeItemIds) if (id != null && id > 0) positive.add(id);
+        IconSync.completeMissingMetadata(positive);
+        syncTpPrices(itemIds);
+    }
+
+    /**
+     * Quote refresh for exactly the explicit positive item ids (a selected Forge project's path or the catalogue's
+     * outputs): same shared cache, ten-minute policy and batching; metadata completion runs with no connection held.
+     */
+    public static void syncTpPricesForIds(Set<Integer> requested) throws Exception {
+        Set<Integer> itemIds;
+        try (Connection con = Db.open()) {
+            itemIds = new CraftingProfitItemCollector().collectExplicit(con, requested);
+        }
+        IconSync.completeMissingMetadata(requested);
+        syncTpPrices(itemIds);
+    }
+
     /** The Discovery counterpart of {@link #syncTpPricesForProfit(model.AccountScope)}. */
     public static void syncTpPricesForDiscovery(model.AccountScope scope) throws Exception {
         Set<Integer> itemIds;

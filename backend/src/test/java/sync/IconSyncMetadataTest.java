@@ -70,6 +70,8 @@ class IconSyncMetadataTest {
 
     @BeforeEach
     void createIsolatedSchema() throws Exception {
+        // These cases pin the ordinary selection exactly; the Forge share is covered in ForgeMetadataCompletionTest.
+        IconSync.forgeReferenceIds = java.util.Set::of;
         con = DriverManager.getConnection(
                 EnvConfig.require("DATABASE_URL"),
                 EnvConfig.require("DATABASE_USER"),
@@ -93,6 +95,7 @@ class IconSyncMetadataTest {
 
     @AfterEach
     void dropIsolatedSchema() throws Exception {
+        IconSync.forgeReferenceIds = parser.MysticForgeCatalogLoader::referencedItemIds;
         if (con == null) return;
         try (Statement st = con.createStatement()) {
             st.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
@@ -501,7 +504,7 @@ class IconSyncMetadataTest {
     @Test
     void repairMissingMetadataFillsOnlyAccountIdsWithoutIconSource() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO items (item_id, name, type, rarity, no_mystic_forge, icon_url) VALUES (20, 'Has icon', 'Armor', 'Rare', FALSE, '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, type, rarity, no_mystic_forge, subtype, icon_url) VALUES (20, 'Has icon', 'Armor', 'Rare', FALSE, 'Coat', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name) VALUES (30, 'Null icon')");
         }
         FixtureMetadataSource upstream = new FixtureMetadataSource();
@@ -521,7 +524,7 @@ class IconSyncMetadataTest {
     @Test
     void repairMissingMetadataRepairsIconPresentRowsMissingNameTypeOrRarity() throws Exception {
         try (Statement st = con.createStatement()) {
-            st.execute("INSERT INTO items (item_id, name, type, rarity, no_mystic_forge, icon_url) VALUES (20, 'Whole', 'Armor', 'Rare', TRUE, '" + ECTO_URL + "')");
+            st.execute("INSERT INTO items (item_id, name, type, rarity, no_mystic_forge, subtype, icon_url) VALUES (20, 'Whole', 'Armor', 'Rare', TRUE, 'Coat', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, type, icon_url) VALUES (21, 'No rarity', 'Armor', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, rarity, icon_url) VALUES (22, 'No type', 'Rare', '" + ECTO_URL + "')");
             st.execute("INSERT INTO items (item_id, name, type, rarity, icon_url) VALUES (23, ' ', 'Armor', 'Rare', '" + ECTO_URL + "')");

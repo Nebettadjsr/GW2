@@ -134,6 +134,14 @@ In that case:
 3. change the implementation,
 4. update or remove the obsolete characterization test.
 
+### Mystic Forge catalog tests
+
+The bundled `mystic-forge/catalog.json` is tested from the real generated resource (source-shaped vectors such as
+Gossamer Scrap and Wool Scrap with their lower bound, verified category mean and exact ingredient slots; absence of
+display-only/unverified random rows) and from controlled malformed JSON (strict scalar types, duplicate identity,
+unusable resource). `generate_catalog.py --check` verifies the bundled file matches the captured sources offline;
+no test calls the Wiki. CI also runs the offline generator unit tests and the `--check` regeneration comparison.
+
 ## 5. Domain Spec as Test Source
 
 [`DOMAIN_SPEC.md`](DOMAIN_SPEC.md) is the primary source of acceptance cases; each important stable
@@ -550,6 +558,24 @@ interaction remains available, then explicit Close/Escape permits navigation. Wi
 not close/reopen them, clear the form draft/key or trigger refetch. Never confirm deletion.
 The 18 November owner decision explicitly replaces earlier blocking, no-request-at-narrow and
 forced-modal-close assertions. Preserve the unaffected account/desktop user-story regressions.
+
+The Forge-only browser journey gate drives the built app against scripted backend answers only (never live
+ArenaNet/Wiki/owner data): the Forge destination lists fixed, variable and reference rows from the cached
+catalogue, and the selected-project journeys (12 in total) open one recipe, show the backend's literal
+needed/owned/to-craft/to-acquire partition, expected/net/seed facts, vendor and Research Note facts, and re-plan
+only when the target or an effective calculation setting changes. Crafting Profit has no Forge toggle: no
+`allowMysticForge` is sent or honoured. The browser performs no Forge arithmetic and renders the server-built
+crafting instructions, not a tree-derived how-to. The journey is the controlled desktop Forge check; real-backend
+Forge accuracy remains a separate supervised check. Backend domain coverage includes desired output and server
+instructions in `ForgeDesiredOutputOracleTest` and `ForgeCraftingInstructionsTest`; readiness, promotions and
+Notes in `ForgeMaterialProgressTest`, `ForgePromotionBoundaryTest` and `ForgeProjectNotesTest`; and agreement
+with the project's root reduction and selected Note producer in `ForgeReadinessMatchesProjectTest`.
+Browser preferences and grouped recipe paths are covered by `ForgePreferences.spec.ts`; rendered behaviour,
+including the one-batch base recipe, is covered by `MysticForgeScreen.spec.ts`.
+Research Notes in a project are covered by `ForgeProjectNotesTest`
+(210-Note aggregate, wallet cases, shared stock, locked producer, cheaper variant, incomplete quote basis) and
+`MysticForgeApiControllerTest` (notes DTO, overflowing line total stays an incomplete project). The rules
+themselves live in DOMAIN_SPEC and the crafting GLOSSARY.
 
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to

@@ -19,11 +19,16 @@ public class ResolvedNeed {
 
     /** An owned sellable quantity here (or below) could not be valued at all (DOMAIN_SPEC.md 11.2). */
     private boolean unvaluedOwnedInput;
+    private boolean usesExpectedYield;
     private boolean spendsUnpricedCurrency;
     private final java.util.Set<Integer> unpricedCurrencyIds = new java.util.TreeSet<>();
     /** Research Notes paid from the captured wallet here (or below), valued by {@link #noteEstimate}. */
     private int walletNoteUnits;
     private ResearchNoteEstimate noteEstimate;
+
+    /** Vendor batches bought here (0 when this node was not a vendor acquisition) and the units they produced. */
+    private int vendorBatches;
+    private int vendorProduced;
 
     private final List<CurrencySourcing> currencySourcing = new ArrayList<>();
 
@@ -161,11 +166,51 @@ public class ResolvedNeed {
 
     public void addChild(ResolvedNeed child) {
         this.children.add(child);
+        this.usesExpectedYield |= child.usesExpectedYield;
+    }
+
+    public void markVendorAcquisition(int batches, int produced) {
+        this.vendorBatches = batches;
+        this.vendorProduced = produced;
+    }
+
+    private int yieldBatches;
+    private int yieldProducedGross;
+    private int yieldReusedSeed;
+
+    /**
+     * Guaranteed (minimum-yield) physical accounting of a variable Forge step: {@code batches} sequential crafts
+     * produced {@code gross} units, of which {@code reusedSeed} were consumed again by a later batch of the same step.
+     * Net = gross - reusedSeed. Never includes fractional expected output.
+     */
+    public void markYieldAccounting(int batches, int gross, int reusedSeed) {
+        this.yieldBatches = batches;
+        this.yieldProducedGross = gross;
+        this.yieldReusedSeed = reusedSeed;
+    }
+    public int getYieldBatches() { return yieldBatches; }
+    public int getYieldProducedGross() { return yieldProducedGross; }
+    public int getYieldReusedSeed() { return yieldReusedSeed; }
+    public int getYieldProducedNet() { return yieldProducedGross - yieldReusedSeed; }
+
+    public int getVendorBatches() { return vendorBatches; }
+    public int getVendorProduced() { return vendorProduced; }
+
+    /** Accumulates vendor-bought units ([0]) and their exact cash ([1]) per item over this need and its descendants. */
+    public void accumulateVendorPurchases(Map<Integer, int[]> purchases) {
+        if (vendorBatches > 0) {
+            int[] t = purchases.computeIfAbsent(itemId, k -> new int[2]);
+            t[0] = Math.addExact(t[0], vendorProduced);
+            t[1] = Math.addExact(t[1], buyCostCopper);
+        }
+        for (ResolvedNeed child : children) child.accumulateVendorPurchases(purchases);
     }
 
     /** Accumulates every purchase represented by this resolved need and its descendants. */
     public void accumulateBoughtItems(Map<Integer, Integer> purchases) {
-        if (qtyBought > 0) purchases.merge(itemId, qtyBought, Integer::sum);
+        // A vendor purchase is whole batches: the shopping quantity is every unit bought, not only what was used here.
+        if (vendorBatches > 0) purchases.merge(itemId, vendorProduced, Integer::sum);
+        else if (qtyBought > 0) purchases.merge(itemId, qtyBought, Integer::sum);
         for (ResolvedNeed child : children) {
             child.accumulateBoughtItems(purchases);
         }
@@ -197,6 +242,11 @@ public class ResolvedNeed {
             mode = AcquisitionMode.BLOCKED;
         }
     }
+
+    /** True when this step or a nested one is a variable-output Forge route (estimated, never guaranteed output). */
+    public boolean usesExpectedYield() { return usesExpectedYield; }
+
+    public void markUsesExpectedYield() { this.usesExpectedYield = true; }
 
     public void addCostsFromChild(ResolvedNeed child) {
         this.buyCostCopper = Math.addExact(this.buyCostCopper, child.getBuyCostCopper());

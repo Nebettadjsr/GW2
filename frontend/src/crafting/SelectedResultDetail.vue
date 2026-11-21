@@ -4,7 +4,8 @@ import type {
   CraftingProfitResolutionResponse,
   CraftingRow,
   EffectiveSettings,
-  MissingItem
+  MissingItem,
+  ResolutionNode
 } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import ResearchNoteEstimatePopup from './ResearchNoteEstimatePopup.vue'
@@ -17,7 +18,7 @@ import {
   NO_VALUE
 } from './formatCopper'
 import { keepTargetNote, RESOLUTION_SETTINGS_KEY } from './resolutionPresentation'
-import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
+import { incompleteNote, isForgeRow, materialLabel, recipeLabel, wikiUrl, yieldSummary } from './recipeLabel'
 import { formatStackQuantity } from './formatStackQuantity'
 import type { SelectionHiddenReason } from './useProfitTableView'
 import type { ResolutionPhase } from './useResolutionDetail'
@@ -58,7 +59,18 @@ const totalsLabel = computed(() => {
 const outputItemCount = computed(() => {
   const row = props.row
   if (row === null || row.craftableCount === null) return null
+  // A variable Forge output's sellable net comes from the backend; outputCount x crafts would claim the gross.
+  if (row.expectedYield?.expectedSellableUnitsTotal != null && row.expectedYield.guaranteedSellableUnitsTotal != null) {
+    return row.expectedYield.guaranteedSellableUnitsTotal
+  }
   return row.craftableCount * row.outputCount
+})
+
+/** Backend expected sellable summary for a variable Forge output; null for every ordinary result. */
+const expectedSellableNote = computed(() => {
+  const y = props.row?.expectedYield
+  if (!y || y.expectedSellableUnitsTotal == null) return null
+  return `≈ ${y.expectedSellableUnitsTotal} expected (estimate; ${y.guaranteedSellableUnitsTotal ?? 0} guaranteed)`
 })
 
 const missingForAllCrafts = computed<MissingItem[] | null>(
@@ -105,7 +117,23 @@ const noteEstimate = computed(() => {
 })
 function keepNote(itemId: number): string | null { return keepTargetNote(effectiveSettings.value, itemId) }
 
+/** Item ids the backend's own resolution tree shows as bought from a vendor (currency-paid, no Trading Post quote). */
+const vendorItemIds = computed(() => {
+  const ids = new Set<number>()
+  const walk = (n: ResolutionNode) => {
+    if (n.forgeStep?.source === 'VENDOR') ids.add(n.itemId)
+    n.children.forEach(walk)
+  }
+  const root = props.resolutionDetail?.tree
+  if (root) walk(root)
+  return ids
+})
+
 function materialQuoteText(item: MissingItem): string {
+  if (vendorItemIds.value.has(item.itemId)) {
+    if (item.purchaseUnitPriceCopper === null) return 'Bought from a vendor with currency · no Trading Post price'
+    return `Average price / item: ${formatCopper(item.purchaseUnitPriceCopper)} · Total: ${item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)} (vendor purchases included)`
+  }
   const unit = item.purchaseUnitPriceCopper === null ? 'Unavailable' : formatCopper(item.purchaseUnitPriceCopper)
   const total = item.totalPurchaseCostCopper === null ? 'Unavailable' : formatCopper(item.totalPurchaseCostCopper)
   return `Price / item: ${unit} · Total: ${total}`
@@ -147,7 +175,21 @@ function materialQuoteText(item: MissingItem): string {
         </div>
 
         <p class="meta" data-test="detail-identity">
-          {{ row.disciplines }} · minimum rating {{ row.minRating }}
+          <template v-if="isForgeRow(row)">Mystic Forge</template>
+          <template v-else>{{ row.disciplines }} · minimum rating {{ row.minRating }}</template>
+        </p>
+
+        <p v-if="yieldSummary(row) !== null" class="meta" data-test="detail-yield">
+          <template v-if="row.expectedYield?.expectedOutputPerCraft != null || row.expectedYield?.expectedSellableUnitsTotal != null">
+            ≈ Estimated: {{ yieldSummary(row) }}. Only the guaranteed minimum counts as stock.
+          </template>
+          <template v-else>
+            Conservative minimum-yield input plan. Only the guaranteed minimum counts as stock.
+          </template>
+        </p>
+
+        <p v-if="incompleteNote(row) !== null" class="meta" data-test="detail-incomplete">
+          {{ incompleteNote(row) }}
         </p>
 
         <p v-if="wikiHref !== null" class="meta">
@@ -229,6 +271,7 @@ function materialQuoteText(item: MissingItem): string {
           </dt>
           <dd class="numeric calculation__info">
             {{ formatCount(outputItemCount) }}
+            <span v-if="expectedSellableNote !== null" class="meta expected-note" data-test="expected-sellable">{{ expectedSellableNote }}</span>
           </dd>
 
           <!-- Revenue -->
@@ -636,5 +679,12 @@ function materialQuoteText(item: MissingItem): string {
 
 .material-list .meta {
   grid-column: 1 / -1;
+}
+.expected-note {
+  display: block;
+  min-width: 0;
+  white-space: normal; /* the parent .numeric cell is nowrap; the note wraps on its own line */
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 </style>

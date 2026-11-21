@@ -37,4 +37,15 @@ public class TradingPostPriceRefreshService {
     public synchronized void refreshForProfit(model.AccountScope scope) throws Exception {
         gateway.syncTpPricesForProfit(scope);
     }
+
+    /** Explicit-id quote refresh (selected Forge project / catalogue outputs); same shared exclusion and policy. */
+    public synchronized void refreshForIds(java.util.Set<Integer> itemIds) throws Exception {
+        gateway.syncTpPricesForIds(itemIds);
+    }
+
+    /** As {@link #refreshForProfit(model.AccountScope)}, plus the enabled Mystic Forge catalog's item ids. */
+    public synchronized void refreshForProfit(model.AccountScope scope, boolean allowForge) throws Exception {
+        if (allowForge) gateway.syncTpPricesForProfit(scope, true);
+        else gateway.syncTpPricesForProfit(scope);
+    }
 }

@@ -116,7 +116,7 @@ public class CraftingProfitApiController {
 
         requireSameOriginWhenKeyed(http);
         CraftingProfitResolutionRequest body = CraftingResolutionMapper.requireBody(request);
-        int recipeId = CraftingResolutionMapper.requireRecipeId(body.recipeId());
+        int recipeId = CraftingResolutionMapper.requireProfitRecipeId(body.recipeId());
         CraftingProfitApiMapper.Effective effective = CraftingProfitApiMapper.toEffective(
                 CraftingResolutionMapper.requireCalculation(body.calculation()));
 

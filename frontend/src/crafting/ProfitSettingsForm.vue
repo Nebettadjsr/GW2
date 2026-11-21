@@ -264,14 +264,6 @@ function onMaxBuyCopperChange(event: Event): void {
         <span>Allow daily craft</span>
       </label>
 
-      <label class="check-row check-row--disabled">
-        <input
-          type="checkbox"
-          data-test="setting-allowMysticForge"
-          disabled
-        />
-        <span>Allow Mystic Forge recipes</span>
-      </label>
     </div>
   </div>
 </template>
@@ -321,7 +313,7 @@ function onMaxBuyCopperChange(event: Event): void {
 }
 
 .coin-input:first-of-type input {
-  width: 4rem;
+  width: 6.5rem; /* at least 4 digits plus the browser number spinner */
 }
 
 .price-settings {

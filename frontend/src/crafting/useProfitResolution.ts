@@ -90,6 +90,7 @@ export function calculationKey(
     settings.listingSell,
     settings.listingBuy,
     settings.allowDailyCrafts,
+    settings.allowMysticForge ?? false,
     settings.materialProtectionEnabled ?? null,
     settings.protectedItemIds === undefined ? null : canonicalIds(settings.protectedItemIds),
     settings.protectedBankItemIds === undefined ? null : canonicalIds(settings.protectedBankItemIds),

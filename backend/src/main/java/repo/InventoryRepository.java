@@ -52,6 +52,43 @@ public class InventoryRepository {
         return inv;
     }
 
+    /** Cached places to find the requested items, from the same account snapshot as the plan. */
+    public Map<Integer, List<String>> loadItemLocations(Connection con, model.AccountScope scope,
+                                                       Set<Integer> itemIds) throws SQLException {
+        if (itemIds.isEmpty()) return Map.of();
+        ManagedSchema.requireManagedAccountSchema(con, "owned item locations");
+        String sql = """
+                SELECT item_id, location FROM (
+                    SELECT item_id, 'Storage' AS location, 0 AS location_order
+                    FROM account_materials WHERE account_id = ? AND count > 0
+                    UNION
+                    SELECT item_id, 'Bank' AS location, 1 AS location_order
+                    FROM account_bank WHERE account_id = ? AND count > 0
+                    UNION
+                    SELECT i.item_id, c.name AS location, 2 AS location_order
+                    FROM character_items i
+                    JOIN characters c ON c.account_id = i.account_id AND c.character_id = i.character_id
+                    WHERE i.account_id = ? AND i.count > 0
+                ) places
+                WHERE item_id = ANY (?)
+                ORDER BY location_order, location, item_id
+                """;
+        Map<Integer, List<String>> result = new HashMap<>();
+        java.sql.Array ids = con.createArrayOf("integer", itemIds.toArray(Integer[]::new));
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            for (int index = 1; index <= 3; index++) ps.setObject(index, scope.accountId());
+            ps.setArray(4, ids);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) result.computeIfAbsent(rs.getInt("item_id"), id -> new ArrayList<>())
+                        .add(rs.getString("location"));
+            }
+        } finally {
+            ids.free();
+        }
+        result.replaceAll((id, locations) -> List.copyOf(locations));
+        return Map.copyOf(result);
+    }
+
     /**
      * One account's owned quantity split by binding usability for {@code selectedCharacterName} (DOMAIN_SPEC.md section 11.1 / DQ-007).
      *
@@ -88,19 +125,65 @@ public class InventoryRepository {
                                                                 model.AccountScope scope,
                                                                 Set<String> characterNames)
             throws SQLException {
+        return loadOwnedInventoryForCharacters(con, scope, characterNames, false);
+    }
+
+    /**
+     * @param keepAllCarriedOwners keep carried soulbound stock of EVERY character of this account (not only
+     *        {@code characterNames}) under its actual owner, for Mystic Forge owner steps; ordinary steps still
+     *        only ever use the assigned roster character's entry.
+     */
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con,
+                                                                model.AccountScope scope,
+                                                                Set<String> characterNames,
+                                                                boolean keepAllCarriedOwners)
+            throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> accountBound = new HashMap<>();
         Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
-        forEachScopedRow(con, scope, (itemId, count, binding, boundTo) ->
-                classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames,
-                        sellable, accountBound, characterBound));
+        forEachScopedRow(con, scope, Set.of(), Set.of(), Map.of(), Map.of(), List.of(),
+                coordinatedHandler(characterNames, keepAllCarriedOwners, sellable, accountBound, characterBound));
         return new CoordinatedInventory(sellable, accountBound, characterBound);
     }
 
     /** One owned row as every pool reports it. */
     private interface OwnedRowHandler {
         void accept(int itemId, int count, String binding, String boundTo);
+
+        /** Same row plus the {@link #SCOPED_POOL_QUERIES} index it came from (1 = Bank). */
+        default void acceptPooled(int pool, int itemId, int count, String binding, String boundTo) {
+            accept(itemId, count, binding, boundTo);
+        }
+    }
+
+    private static final int BANK_POOL = 1;
+
+    /**
+     * Coordinated classification that keeps Bank provenance: character-bound Bank stock is NOT
+     * folded into the carried per-character map. It is stored under {@link craft.PlanState#bankOwnerKey}
+     * (whatever the owner, roster member or not), so only a Forge step (any owner) or the owner's own ordinary
+     * step can spend it, and it is debited once from that single entry.
+     */
+    private static OwnedRowHandler coordinatedHandler(Set<String> characterNames, boolean keepAllCarriedOwners,
+                                                      Map<Integer, Integer> sellable,
+                                                      Map<Integer, Integer> accountBound,
+                                                      Map<String, Map<Integer, Integer>> characterBound) {
+        return new OwnedRowHandler() {
+            @Override public void accept(int itemId, int count, String binding, String boundTo) {
+                classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames, keepAllCarriedOwners,
+                        sellable, accountBound, characterBound);
+            }
+
+            @Override public void acceptPooled(int pool, int itemId, int count, String binding, String boundTo) {
+                if (pool == BANK_POOL && "Character".equals(binding)) {
+                    characterBound.computeIfAbsent(craft.PlanState.bankOwnerKey(boundTo), k -> new HashMap<>())
+                            .merge(itemId, count, Integer::sum);
+                    return;
+                }
+                accept(itemId, count, binding, boundTo);
+            }
+        };
     }
 
     private static void forEachScopedRow(Connection con, model.AccountScope scope, OwnedRowHandler handler)
@@ -134,7 +217,7 @@ public class InventoryRepository {
                             int itemId = rs.getInt("item_id");
                             if (excluded.contains(itemId)) continue;
                             int count = rs.getInt("count");
-                            if (count > 0) handler.accept(itemId, count, rs.getString("binding"), rs.getString("bound_to"));
+                            if (count > 0) handler.acceptPooled(pool, itemId, count, rs.getString("binding"), rs.getString("bound_to"));
                         }
                     }
                 }
@@ -166,7 +249,7 @@ public class InventoryRepository {
                         remaining.put(r.itemId(), keep - taken);
                     }
                 }
-                if (count > 0) handler.accept(r.itemId(), count, r.binding(), r.boundTo());
+                if (count > 0) handler.acceptPooled(pool, r.itemId(), count, r.binding(), r.boundTo());
             }
         }
     }
@@ -304,7 +387,8 @@ public class InventoryRepository {
     /**
      * Owned inventory for coordinated multi-character planning (DOMAIN_SPEC.md section 2.2.1): the shared account-wide ordinary/tradable pool, the shared account-wide
      * account-bound pool (usable by any character), and soulbound owned quantity split by owning
-     * character - usable only by that exact character.
+     * character - usable only by that exact character. Bank-resident soulbound stock is kept apart under
+     * {@link craft.PlanState#bankOwnerKey} keys (Forge-usable by any owner, see DOMAIN_SPEC).
      */
     public record CoordinatedInventory(Map<Integer, Integer> sellable,
                                         Map<Integer, Integer> accountBound,
@@ -345,24 +429,34 @@ public class InventoryRepository {
                                                                 Map<Integer, Integer> bankQuantities,
                                                                 Map<Integer, Integer> materialQuantities,
                                                                 List<craft.BankAllocation> bankAllocations) throws SQLException {
+        return loadOwnedInventoryForCharacters(con, scope, characterNames, excludedBankIds, excludedMaterialIds,
+                bankQuantities, materialQuantities, bankAllocations, false);
+    }
+
+    public CoordinatedInventory loadOwnedInventoryForCharacters(Connection con, model.AccountScope scope,
+                                                                Set<String> characterNames,
+                                                                Set<Integer> excludedBankIds,
+                                                                Set<Integer> excludedMaterialIds,
+                                                                Map<Integer, Integer> bankQuantities,
+                                                                Map<Integer, Integer> materialQuantities,
+                                                                List<craft.BankAllocation> bankAllocations,
+                                                                boolean keepAllCarriedOwners) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "owned inventory");
         Map<Integer, Integer> sellable = new HashMap<>();
         Map<Integer, Integer> accountBound = new HashMap<>();
         Map<String, Map<Integer, Integer>> characterBound = new HashMap<>();
         forEachScopedRow(con, scope, excludedBankIds, excludedMaterialIds, bankQuantities, materialQuantities, bankAllocations,
-                (itemId, count, binding, boundTo) ->
-                classifyCoordinatedRow(itemId, count, binding, boundTo, characterNames,
-                        sellable, accountBound, characterBound));
+                coordinatedHandler(characterNames, keepAllCarriedOwners, sellable, accountBound, characterBound));
         return new CoordinatedInventory(sellable, accountBound, characterBound);
     }
 
     private static void classifyCoordinatedRow(int itemId, int count, String binding, String boundTo,
-                                                 Set<String> characterNames,
+                                                 Set<String> characterNames, boolean keepAllCarriedOwners,
                                                  Map<Integer, Integer> sellable,
                                                  Map<Integer, Integer> accountBound,
                                                  Map<String, Map<Integer, Integer>> characterBound) {
         if ("Character".equals(binding)) {
-            if (boundTo != null && characterNames.contains(boundTo)) {
+            if (boundTo != null && (keepAllCarriedOwners || characterNames.contains(boundTo))) {
                 characterBound.computeIfAbsent(boundTo, k -> new HashMap<>())
                         .merge(itemId, count, Integer::sum);
             }

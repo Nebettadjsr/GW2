@@ -47,6 +47,7 @@ public record CraftingProfitRequest(ScopeDto scope, SettingsDto settings) {
                               java.util.List<Integer> protectedMaterialItemIds,
                               java.util.Map<?, ?> protectedBankQuantities,
                               java.util.Map<?, ?> protectedMaterialQuantities,
-                              Object protectedBankAllocations) {
+                              Object protectedBankAllocations,
+                              Boolean allowMysticForge) {
     }
 }

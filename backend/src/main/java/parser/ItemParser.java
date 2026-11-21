@@ -12,10 +12,16 @@ public final class ItemParser {
             String rarity,
             Integer vendorValue,   // null when vendor_value is absent
             String iconUrl,        // null when the item has no icon
-            Boolean noMysticForge  // null when flags are missing or malformed
+            Boolean noMysticForge, // null when flags are missing or malformed
+            String subtype         // details.type of a Weapon/Armor/... (e.g. LongBow, Coat); null when absent
     ) {
         public ItemRow(int itemId, String name, String type, String rarity, Integer vendorValue, String iconUrl) {
-            this(itemId, name, type, rarity, vendorValue, iconUrl, null);
+            this(itemId, name, type, rarity, vendorValue, iconUrl, null, null);
+        }
+
+        public ItemRow(int itemId, String name, String type, String rarity, Integer vendorValue, String iconUrl,
+                       Boolean noMysticForge) {
+            this(itemId, name, type, rarity, vendorValue, iconUrl, noMysticForge, null);
         }
     }
 
@@ -33,7 +39,10 @@ public final class ItemParser {
 
         String iconUrl = it.hasNonNull("icon") ? it.get("icon").asText() : null;
 
-        return new ItemRow(itemId, name, type, rarity, vendorValue, iconUrl, noMysticForge(it.get("flags")));
+        JsonNode details = it.get("details");
+        String subtype = details != null && details.hasNonNull("type") && details.get("type").isTextual()
+                ? details.get("type").asText() : null;
+        return new ItemRow(itemId, name, type, rarity, vendorValue, iconUrl, noMysticForge(it.get("flags")), subtype);
     }
 
     private static Boolean noMysticForge(JsonNode flags) {

@@ -49,6 +49,29 @@ public final class CalculationInputVersions {
          * arguments.
          */
         CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException;
+
+        /**
+         * As {@link #read(Connection, AccountScope)} when the calculation enabled Mystic Forge recipes: the required
+         * set then also holds the catalog's item ids. Ports without Forge awareness fall back to the ordinary set.
+         */
+        /**
+         * Coverage of exactly the explicit positive item ids (a selected Forge project's path), independent of the
+         * ordinary set. Ports without it fall back to the ordinary scoped coverage.
+         */
+        default CalculationFreshness.PriceCoverage readExplicit(Connection con, AccountScope scope,
+                                                                java.util.Set<Integer> itemIds) throws SQLException {
+            return read(con, scope);
+        }
+
+        /** True when any explicit positive id lacks complete item metadata (names/icons/flags); independent of quote coverage. */
+        default boolean metadataIncomplete(Connection con, java.util.Set<Integer> itemIds) throws SQLException {
+            return false;
+        }
+
+        default CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope, boolean allowForge)
+                throws SQLException {
+            return read(con, scope);
+        }
     }
 
     /**
@@ -79,6 +102,48 @@ public final class CalculationInputVersions {
     private final Instant evaluatedAt;
     /** True when the request may read the wallet: the WALLET source then joins identity and freshness. */
     private boolean walletTracked;
+    /** Fingerprint of the Mystic Forge catalog this calculation used, or null when Forge recipes are off. */
+    private String forgeCatalogFingerprint;
+
+    /**
+     * Joins the bundled Forge catalog's content fingerprint to the identity of a calculation that enabled Forge
+     * recipes, so a changed catalog can never read as the same generation. Null (Forge off) leaves the identity
+     * exactly as it was.
+     */
+    /** True when this calculation enabled Mystic Forge recipes (its price demand then includes the catalog). */
+    public boolean forgeEnabled() {
+        return forgeCatalogFingerprint != null;
+    }
+
+    /** Explicit quote ids a selected Forge project depends on (empty for ordinary calculations). */
+    private java.util.Set<Integer> projectPriceIds = java.util.Set.of();
+
+    public java.util.Set<Integer> projectPriceIds() { return projectPriceIds; }
+
+    private boolean projectMetadataIncomplete;
+
+    /** True when a selected project's own path ids have missing/incomplete item metadata (needs admission even with fresh quotes). */
+    public boolean projectMetadataIncomplete() { return projectMetadataIncomplete; }
+
+    public CalculationInputVersions withProjectMetadataIncomplete(boolean incomplete) {
+        this.projectMetadataIncomplete = incomplete;
+        return this;
+    }
+
+    /**
+     * Identity of one selected Forge project source: the Forge/Clover/vendor fact fingerprint, the project's own
+     * item-id set and recipe. Quote changes enter through the coverage version over exactly those ids.
+     */
+    public CalculationInputVersions withProject(String fingerprint, java.util.Set<Integer> priceIds) {
+        this.forgeCatalogFingerprint = fingerprint;
+        this.projectPriceIds = java.util.Set.copyOf(priceIds);
+        return this;
+    }
+
+    public CalculationInputVersions withForgeCatalog(String fingerprint) {
+        this.forgeCatalogFingerprint = fingerprint;
+        return this;
+    }
 
     /**
      * Includes the optional wallet source in this capture's identity and freshness (only when the request is
@@ -177,7 +242,7 @@ public final class CalculationInputVersions {
 
     /** Every required account source is fresh and every required quote is inside the TP policy. */
     public boolean confirmedCurrent() {
-        return sourcesNeedingRefresh().isEmpty() && coverage.covered();
+        return sourcesNeedingRefresh().isEmpty() && coverage.covered() && !projectMetadataIncomplete;
     }
 
     /**
@@ -220,6 +285,7 @@ public final class CalculationInputVersions {
                 .append("tp.oldest=").append(coverage.oldestFetchedAt()).append(';')
                 .append("tp.newest=").append(coverage.newestFetchedAt()).append(';')
                 .append("tp.quotes=").append(coverage.quoteVersion());
+        if (forgeCatalogFingerprint != null) material.append(";forge.catalog=").append(forgeCatalogFingerprint);
         return digest(material.toString());
     }
 
@@ -275,6 +341,26 @@ public final class CalculationInputVersions {
         public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope) throws SQLException {
             if (con == null) return CalculationFreshness.PriceCoverage.none();
             return map(collector.coverage(con, scope));
+        }
+
+        @Override
+        public boolean metadataIncomplete(Connection con, java.util.Set<Integer> itemIds) throws SQLException {
+            return con != null && !sync.IconSync.incompleteIds(con, itemIds).isEmpty();
+        }
+
+        @Override
+        public CalculationFreshness.PriceCoverage readExplicit(Connection con, AccountScope scope,
+                                                               java.util.Set<Integer> itemIds) throws SQLException {
+            if (con == null) return CalculationFreshness.PriceCoverage.none();
+            return map(collector.coverageExplicit(con, itemIds));
+        }
+
+        @Override
+        public CalculationFreshness.PriceCoverage read(Connection con, AccountScope scope, boolean allowForge)
+                throws SQLException {
+            if (con == null) return CalculationFreshness.PriceCoverage.none();
+            if (!allowForge) return read(con, scope);
+            return map(collector.coverage(con, scope, parser.MysticForgeCatalogLoader.bundled().itemIds()));
         }
 
         private static CalculationFreshness.PriceCoverage map(CraftingProfitItemCollector.Coverage coverage) {

@@ -77,7 +77,35 @@ public record ResolutionNodeDto(int itemId,
                                 List<ResolutionNodeDto> children,
                                 String iconUrl,
                                 @JsonInclude(JsonInclude.Include.NON_NULL) String recipeKnowledge,
-                                List<CurrencyQuantityDto> currencies) {
+                                List<CurrencyQuantityDto> currencies,
+                                @JsonInclude(JsonInclude.Include.NON_NULL) ForgeStepDto forgeStep) {
+
+    /** Node whose craft step is not a Mystic Forge route. */
+    public ResolutionNodeDto(int itemId, String itemName, int requestedQuantity, int inventoryQuantity,
+                             int craftedQuantity, int boughtQuantity, int missingQuantity, Integer recipeId,
+                             int craftCount, int producedQuantity, String characterName, List<String> methods,
+                             List<String> states, List<String> blockedReasons, Integer cashCostCopper,
+                             Integer opportunityCostCopper, Integer effectiveCostCopper,
+                             Integer effectiveUnitCostCopper, boolean effectiveUnitCostApproximate,
+                             List<ResolutionNodeDto> children, String iconUrl, String recipeKnowledge,
+                             List<CurrencyQuantityDto> currencies) {
+        this(itemId, itemName, requestedQuantity, inventoryQuantity, craftedQuantity, boughtQuantity,
+                missingQuantity, recipeId, craftCount, producedQuantity, characterName, methods, states,
+                blockedReasons, cashCostCopper, opportunityCostCopper, effectiveCostCopper,
+                effectiveUnitCostCopper, effectiveUnitCostApproximate, children, iconUrl, recipeKnowledge,
+                currencies, null);
+    }
+
+    /**
+     * Backend-computed Mystic Forge metadata for a node whose selected recipe is a Forge recipe. The node's
+     * {@code producedQuantity}/{@code craftedQuantity} stay the GUARANTEED (minimum) planning quantities the
+     * resolver counted; {@code expectedProducedTotal} is mean x counted crafts (exact decimal string, null for a
+     * fixed-output recipe) and is an estimate, never stock. {@code guaranteedProducedTotal} equals the node's
+     * {@code producedQuantity}.
+     */
+    public record ForgeStepDto(String source, String expectedOutputPerCraft, Integer minOutput, Integer maxOutput,
+                               int batches, int grossProduced, int reusedSeed, int guaranteedProducedTotal,
+                               String expectedProducedTotal, int usedQuantity, int surplusQuantity) { }
 
     /** Item-only node (no currency requirement). */
     public ResolutionNodeDto(int itemId, String itemName, int requestedQuantity, int inventoryQuantity,

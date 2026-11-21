@@ -79,6 +79,24 @@ export interface CraftingRow {
   unvaluedOwnedInput?: boolean
   /** Exact unpriced currency spending; absent/null for item-only recipes. */
   currencyCosts?: CurrencyCosts | null
+  /** Mystic Forge source / estimated-economics metadata; absent for ordinary rows. Backend values only. */
+  expectedYield?: ExpectedYield | null
+}
+
+/**
+ * Backend-computed Forge hint. `expectedOutputPerCraft` is an exact decimal mean (string); `minOutput` is the
+ * only guaranteed quantity and min/max are bounds, not a mean. `estimated` also marks a parent whose route merely
+ * uses such a step. Never recompute or scale these on the client.
+ */
+export interface ExpectedYield {
+  source: string | null
+  estimated: boolean
+  expectedOutputPerCraft: string | null
+  minOutput: number | null
+  maxOutput: number | null
+  expectedSellableUnitsTotal: string | null
+  guaranteedSellableUnitsTotal: number | null
+  reusedSeedUnits: number
 }
 
 export interface CurrencyCost {
@@ -147,6 +165,8 @@ export interface EffectiveSettings {
   listingSell: boolean
   listingBuy: boolean
   allowDailyCrafts: boolean
+  /** Mystic Forge recipes opted in (default off); absent from older backends, meaning off. */
+  allowMysticForge?: boolean
   /**
    * Material Protection as the backend canonicalized it (additive: absent from older backends, in
    * which case the browser must not claim protection was enforced).
@@ -343,6 +363,25 @@ export interface ResolutionNode {
    * Currency ids are not item ids. Absent or empty for item-only requirements.
    */
   currencies?: ResolutionCurrency[]
+  /** Present only when the selected recipe is a Mystic Forge recipe; quantities above stay the guaranteed minimum. */
+  forgeStep?: {
+    source: string
+    expectedOutputPerCraft: string | null
+    minOutput: number | null
+    maxOutput: number | null
+    /** Executions actually accepted (vendor: whole batches bought). */
+    batches: number
+    /** Everything the guaranteed-minimum executions physically produced. */
+    grossProduced: number
+    /** Units a later batch consumed as its own seed: neither sold nor stock. */
+    reusedSeed: number
+    /** grossProduced - reusedSeed: the only quantity that can become inventory. */
+    guaranteedProducedTotal: number
+    /** mean x batches - reusedSeed (exact decimal); null unless a verified variable yield. */
+    expectedProducedTotal: string | null
+    usedQuantity: number
+    surplusQuantity: number
+  } | null
 }
 
 export interface ResolutionCurrency {
@@ -856,4 +895,267 @@ export interface CharacterInventoryResponse {
   completedAt?: string
   contents?: InventoryContents
   bags?: InventoryBag[]
+}
+
+/* ---- Mystic Forge (web.dto.MysticForgeDtos); backend values only, no frontend domain arithmetic. ---- */
+export type ForgeOutcome = 'FIXED' | 'EXPECTED' | 'REFERENCE_RANDOM'
+
+export interface ForgeRecipeRow {
+  recipeId: number
+  outputItemId: number
+  name: string | null
+  iconUrl: string | null
+  itemType: string | null
+  itemSubtype: string | null
+  rarity?: string | null
+  weightClass?: string | null
+  pathLabel?: string | null
+  materialTier?: number | null
+  category: 'WEAPONS' | 'ARMOR' | 'MATERIALS' | 'OTHER'
+  outcome: ForgeOutcome
+  outputCount: number
+  expectedMean: string | null
+  expectedMax: number | null
+  /** Instant sell (= highest bid) per output unit. */
+  buyUnitCopper: number | null
+  /** Listing sell (= lowest ask) per output unit. */
+  sellUnitCopper: number | null
+  sourcePage: string | null
+  sourceRevision: number | null
+  wikiUrl: string | null
+  ingredientKinds: number
+}
+
+export interface ForgeCatalogue {
+  status: string
+  source: string
+  license: string
+  recipeCount: number
+  referenceCount: number
+  recipes: ForgeRecipeRow[]
+  /** True while public item metadata is being completed in the background; reread to pick it up. */
+  completing?: boolean
+}
+
+export interface ForgeItem { itemId: number; name: string | null; iconUrl: string | null; wikiUrl: string | null }
+
+/** Direct ingredients for one batch of the selected recipe. */
+export interface ForgeBaseIngredient { item: ForgeItem; quantity: number }
+
+export interface ForgeItemSummary {
+  type: string | null
+  subtype: string | null
+  rarity: string | null
+  level: number | null
+  minPower: number | null
+  maxPower: number | null
+  damageType: string | null
+  defense: number | null
+  weightClass: string | null
+  binding: string | null
+  prefix: string | null
+  complete: boolean
+}
+
+export interface ForgeItemSummaryResponse {
+  item: ForgeItemSummary | null
+  instantBuyCopper: number | null
+  instantSellCopper: number | null
+  completing: boolean
+}
+
+/** Complete reference ingredients for the requested output, independent of the remaining-work plan. */
+export interface ForgeRecipePart {
+  item: ForgeItem
+  quantity: number
+  children: ForgeRecipePart[]
+  currencies: ForgeRecipeCurrency[]
+  copper: number | null
+  attempts: number | null
+  approximate: boolean
+  cutoff: string | null
+  acquired: number
+  progressPercent: number
+  coveredByParent: boolean
+}
+
+export interface ForgeRecipeCurrency {
+  currencyId: number
+  name: string
+  iconUrl: string | null
+  wikiUrl: string | null
+  needed: number
+  acquired: number | null
+  progressPercent: number | null
+  coveredByParent: boolean
+  approximate: boolean
+}
+
+export interface ForgeNode {
+  item: ForgeItem
+  needed: number
+  fromOwned: number
+  fromSurplus: number
+  toCraft: number
+  toAcquire: number
+  recipeId: number | null
+  recipeSource: string | null
+  crafts: number
+  minRating: number
+  disciplines: string | null
+  cutoff: string | null
+  children: ForgeNode[]
+  recipeKnown: boolean | null
+  performable: boolean
+  assignedCharacter: string | null
+  hint: string | null
+  /** Units the step actually makes/buys (crafts x output); differs from demand for batch outputs. */
+  produced: number
+  /** produced beyond this node's own unmet demand, kept for later reuse. */
+  newSurplus: number
+  /** 1-based position in the backend's dependency-ordered step list; null when the node is not a planned step. */
+  step?: number | null
+}
+
+export interface ForgeCraftingStep {
+  item: ForgeItem
+  recipeId: number | null
+  recipeSource: string | null
+  crafts: number
+  produced: number
+  toAcquire: number
+  newSurplus: number
+  disciplines: string | null
+  hint: string | null
+  recipeKnown: boolean | null
+  performable: boolean
+  assignedCharacter: string | null
+  cutoff: string | null
+  root: boolean
+  ingredients: { item: ForgeItem; quantity: number }[]
+}
+
+export interface ForgeCurrency {
+  currencyId: number
+  name: string
+  iconUrl: string | null
+  wikiUrl: string | null
+  needed: number
+  owned: number | null
+  missing: number | null
+}
+
+export interface ForgeSeed {
+  externalSeedUnits: number
+  reusedSeedUnits: number
+  grossGuaranteedOutput: number
+  netGuaranteedOutput: number
+  grossExpectedOutput: string
+  netExpectedOutput: string
+}
+
+export interface ForgeEconomics {
+  outputUnitSellCopper: number | null
+  expectedGrossProceedsCopper: number | null
+  feeCopper: number | null
+  expectedNetProceedsCopper: number | null
+  knownShoppingCopper: number
+  goldInputCopper: number
+  currencyInputs: ForgeCurrency[]
+  unpricedInputs: ForgeItem[]
+  marginOnShoppingCopper: number | null
+  marginCopper: number | null
+  conditional: boolean
+  fixedOutput: boolean
+}
+
+export interface ForgeShoppingLine {
+  item: ForgeItem
+  needed: number
+  fromOwned: number
+  toAcquire: number
+  unitCopper: number | null
+  knownCopper: number | null
+  /** `TRADING_POST` (a leaf to buy) or `VENDOR` (a verified vendor purchase batch; currency-only has no gold). */
+  source: 'TRADING_POST' | 'VENDOR'
+  /** Vendor buys paid for (0 for Trading Post lines). */
+  purchases: number
+  currencyCosts: { currencyId: number; name: string | null; count: number }[]
+  hint: string | null
+}
+
+export interface ForgeProject {
+  recipeId: number
+  output: ForgeItem | null
+  outcome: ForgeOutcome | null
+  targetKind: 'OUTPUT_QUANTITY' | 'BATCHES' | null
+  requestedTarget: number
+  batches: number
+  guaranteedOutput: number | null
+  complete: boolean
+  incompleteReason: string | null
+  walletKnown: boolean
+  knownGoldCopper: number
+  goldCostPartial: boolean
+  unpricedItems: ForgeItem[]
+  tree: ForgeNode | null
+  recipeTree?: ForgeRecipePart | null
+  materialProgress?: { percent: number; estimated: boolean; partial: boolean } | null
+  baseIngredients?: ForgeBaseIngredient[]
+  craftingSteps?: ForgeCraftingStep[]
+  shopping: ForgeShoppingLine[]
+  ownedItems?: { item: ForgeItem; count: number; locations?: string[]; valueCopper?: number | null }[]
+  currencies: ForgeCurrency[]
+  note: string | null
+  seed: ForgeSeed | null
+  economics: ForgeEconomics | null
+  notes: ForgeNotes | null
+  freshness: CalculationFreshness | null
+  settings: ForgeSettings
+  ownValue: { knownCopper: number; unpricedItems: ForgeItem[] } | null
+  clover: { missing: number; attempts: number; percent: number } | null
+  rootOwned: number
+  comparison: ForgeComparison | null
+}
+
+/** The calculation menu; the backend plans with and echoes exactly these values. */
+export interface ForgeSettings {
+  priceMode: 'INSTANT_BUY' | 'BUY_ORDER'
+  useOwn: boolean
+  valueOwn: boolean
+  daily: 'CRAFT' | 'BUY'
+  promotions: boolean
+  reduce: 'NO' | 'YES' | 'TRADABLE' | 'UNTRADABLE'
+}
+
+/** Backend comparison; null amounts are unknown, never zero. */
+export interface ForgeComparison {
+  unitBuyCopper: number | null
+  unitSellCopper: number | null
+  outputBuyTotalCopper: number | null
+  savingsCopper: number | null
+  conditional: boolean
+  excludesOwnValue: boolean
+}
+
+/** Research Notes of the selected how-to; null walletUsed/shortfall = wallet unknown (no production promised). */
+export interface ForgeNotes {
+  needed: number
+  walletKnown: boolean
+  walletUsed: number | null
+  shortfall: number | null
+  containersNeeded: number
+  containersCrafted: number
+  producedNotes: number
+  surplus: number
+  producerRecipeId: number | null
+  estimateCopper: number | null
+  estimateIssue: string | null
+  basisRecipeId: number | null
+  variants: NoteEstimateVariant[]
+  ownedContainers: number
+  ownedNotes: number
+  acquireContainers: number
+  uncoveredNotes: number
+  producerLocked: boolean
 }

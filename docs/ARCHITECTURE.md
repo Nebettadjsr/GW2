@@ -273,6 +273,23 @@ provisional `200` if usable inputs are stale and admit refresh separately. No us
 account publication yields `202` with no fabricated rows. Successful empty sources are usable;
 missing TP values retain explicit domain states instead of becoming free ingredients.
 
+Mystic Forge recipes enter through a static bundled adapter with a negative recipe-ID namespace, never the
+synchronized recipe tables. The backend alone computes exact expected output versus guaranteed/net units
+(including seed reuse), vendor acquisitions, binding, and the initial-owner index; work that was rejected or
+hit the work limit is not refunded and records no execution. The browser only presents these source facts.
+
+Forge is no longer part of Crafting Profit (issue #378). `GET /api/mystic-forge/recipes` is a public cached-metadata catalogue (no planner, no account read). When output items lack complete cached metadata (no name/type, or a Weapon/Armor without a stored subtype) or a tradeable output has a missing/stale quote under the ten-minute policy, the GET admits only those public positive ids on the shared single-flight `TradingPostRefreshCoordinator.requireItems` run (metadata completion + quotes; no account/planner work, no request-thread upstream call, no DB connection held while admitting; non-tradeable rows never demand a quote) and returns `completing: true` so the client rereads a bounded number of times. `POST /api/mystic-forge/project {recipeId,target}` plans one exact target over the verified
+session's account snapshot via `CachedCraftingProfitService.forgeProject` -> `CraftingProfitService.planForgeProject` ->
+`ForgeProjectPlanner`, keeping inventory binding pools, roster and known recipes intact. Item and currency icons are mapped to
+same-origin routes; the browser never contacts ArenaNet/Wiki image hosts. A project's source identity and price demand are its own public path, not the ordinary set or the catalogue:
+`ForgeProjectPlanner.pathItemIds` (structure only: output, direct inputs and fixed-output producers' inputs) feeds
+`CraftingProfitItemCollector.coverageExplicit` (quote version over exactly those ids), is fingerprinted with the
+catalogue, vendor and Clover reference facts, and is demanded through `TradingPostRefreshCoordinator.requireItems` ->
+`TpSync.syncTpPricesForIds` on the shared single-flight/coalesced ten-minute run, with metadata completion and no DB
+connection held over the network. A keyless cached read admits no account work. The old all-catalogue Forge flag is not used.
+The global metadata refresh selection (`IconSync.globalReferencedOrUnknownItemIds`) includes bundled Forge/Clover/vendor ids,
+and Weapon/Armor rows are incomplete until their `subtype` is stored (non-gear never needs one).
+
 The application freshness envelope identifies the captured account/source/quote generations,
 coverage, task locations and retry state. A task finishing does not prove final freshness.
 The browser polls only advertised locations and recalculates with current settings. One

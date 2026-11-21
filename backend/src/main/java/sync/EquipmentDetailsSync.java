@@ -55,8 +55,18 @@ public final class EquipmentDetailsSync {
      */
     public static void repair(Collection<Integer> itemIds, Collection<Integer> statIds, Source source, Clock clock)
             throws InterruptedException {
+        repair(itemIds, statIds, source, clock, false);
+    }
+
+    public static void repairSummaries(Collection<Integer> itemIds, Source source, Clock clock)
+            throws InterruptedException {
+        repair(itemIds, Set.of(), source, clock, true);
+    }
+
+    private static void repair(Collection<Integer> itemIds, Collection<Integer> statIds, Source source, Clock clock,
+                               boolean summary) throws InterruptedException {
         try {
-            for (List<Integer> batch : BatchUtils.chunk(missingDetails(itemIds),
+            for (List<Integer> batch : BatchUtils.chunk(missingDetails(itemIds, summary),
                     SyncConstants.HTTP_IDS_BATCH)) {
                 JsonNode body = source.items(batch);
                 Set<Integer> wanted = new LinkedHashSet<>(batch);
@@ -69,7 +79,7 @@ public final class EquipmentDetailsSync {
             }
             Set<Integer> stats = new LinkedHashSet<>(statIds);
             stats.addAll(referencedStatIds(itemIds));
-            for (List<Integer> batch : BatchUtils.chunk(missing("equipment_item_stats", "stat_id", stats),
+            for (List<Integer> batch : BatchUtils.chunk(missing("equipment_item_stats", "stat_id", stats, summary),
                     SyncConstants.HTTP_IDS_BATCH)) {
                 JsonNode body = source.itemStats(batch);
                 Set<Integer> wanted = new LinkedHashSet<>(batch);
@@ -90,7 +100,7 @@ public final class EquipmentDetailsSync {
     }
 
     /** Ids without a stored row, or whose stored row is incomplete (retried; the old row stays until replaced). */
-    private static List<Integer> missingDetails(Collection<Integer> ids) throws Exception {
+    private static List<Integer> missingDetails(Collection<Integer> ids, boolean summary) throws Exception {
         List<Integer> want = new ArrayList<>(new LinkedHashSet<>(ids));
         if (want.isEmpty()) return List.of();
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -101,7 +111,10 @@ public final class EquipmentDetailsSync {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     try {
-                        if (EquipmentDetailsParser.complete(mapper.readTree(rs.getString(2)))) have.add(rs.getInt(1));
+                        JsonNode stored = mapper.readTree(rs.getString(2));
+                        if (summary ? EquipmentDetailsParser.completeSummary(stored) : EquipmentDetailsParser.complete(stored)) {
+                            have.add(rs.getInt(1));
+                        }
                     } catch (com.fasterxml.jackson.core.JsonProcessingException bad) {
                         // unreadable row counts as missing
                     }
@@ -112,12 +125,13 @@ public final class EquipmentDetailsSync {
         return want;
     }
 
-    private static List<Integer> missing(String table, String column, Collection<Integer> ids) throws Exception {
+    private static List<Integer> missing(String table, String column, Collection<Integer> ids, boolean summary) throws Exception {
         List<Integer> want = new ArrayList<>(new LinkedHashSet<>(ids));
         if (want.isEmpty()) return List.of();
         Set<Integer> have = new LinkedHashSet<>();
         try (Connection con = Db.open(); PreparedStatement ps = con.prepareStatement(
-                "SELECT " + column + " FROM " + table + " WHERE " + column + " = ANY(?)")) {
+                "SELECT " + column + " FROM " + table + " WHERE " + column + " = ANY(?)"
+                        + (summary ? " AND jsonb_typeof(attributes->'name') = 'string'" : ""))) {
             ps.setArray(1, con.createArrayOf("integer", want.toArray()));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) have.add(rs.getInt(1));
