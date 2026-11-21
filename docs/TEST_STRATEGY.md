@@ -563,12 +563,18 @@ The Forge-only browser journey gate drives the built app against scripted backen
 ArenaNet/Wiki/owner data): the Forge destination lists fixed, variable and reference rows from the cached
 catalogue, and the selected-project journeys (12 in total) open one recipe, show the backend's literal
 needed/owned/to-craft/to-acquire partition, expected/net/seed facts, vendor and Research Note facts, and re-plan
-only when the target changes. Crafting Profit has no Forge toggle: no `allowMysticForge` is sent or honoured. The
-browser performs no Forge arithmetic. The journey is the controlled desktop Forge check; real-backend Forge accuracy
-remains a separate supervised check. Research Notes in a project are covered by `ForgeProjectNotesTest` (210-Note
-aggregate: wallet 60 -> 1 batch, wallet 10 -> 2 batches/100 surplus, shared stock consumed once, unknown wallet,
-locked producer, cheaper variant, incomplete quote basis, path price relevance), `MysticForgeApiControllerTest`
-(notes DTO, overflowing line total stays an incomplete project) and the compact popup case in `MysticForgeScreen.spec.ts`.
+only when the target or an effective calculation setting changes. Crafting Profit has no Forge toggle: no
+`allowMysticForge` is sent or honoured. The browser performs no Forge arithmetic and renders the server-built
+crafting instructions, not a tree-derived how-to. The journey is the controlled desktop Forge check; real-backend
+Forge accuracy remains a separate supervised check. Domain coverage sits in the pure backend layers:
+preferences and grouping in `ForgePreferences.spec.ts` and `ForgeProjectNotesTest`; desired output, base recipe and
+server instructions in `ForgeDesiredOutputOracleTest` and `ForgeCraftingInstructionsTest`; readiness, promotion
+and Note regressions in `ForgeMaterialProgressTest`, `ForgePromotionBoundaryTest` and `ForgeProjectNotesTest`
+(including the root-reduction policy and the selected Note producer shared by readiness and the plan); rendered
+behaviour in `MysticForgeScreen.spec.ts`. Research Notes in a project are covered by `ForgeProjectNotesTest`
+(210-Note aggregate, wallet cases, shared stock, locked producer, cheaper variant, incomplete quote basis) and
+`MysticForgeApiControllerTest` (notes DTO, overflowing line total stays an incomplete project). The rules
+themselves live in DOMAIN_SPEC and the crafting GLOSSARY.
 
 The runner bounds each of its two sequential child processes to 180 seconds, with a further
 10-second owned-resource teardown allowance and no retries. CI bounds the browser run step to

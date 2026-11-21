@@ -17,7 +17,14 @@ public final class ForgeMaterialProgress {
 
     Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory,
                        ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet) {
-        Run run = new Run(inventory, ctx == null ? ForgeProjectPlanner.Context.NONE : ctx, wallet);
+        return calculate(target, quantity, inventory, ctx, wallet, ForgeSettings.ReduceMode.YES, null);
+    }
+
+    /** @param reduce the project's owned-root policy; @param noteProducer the project's selected Note producer (null: default) */
+    Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory,
+                       ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet,
+                       ForgeSettings.ReduceMode reduce, Recipe noteProducer) {
+        Run run = new Run(inventory, ctx == null ? ForgeProjectPlanner.Context.NONE : ctx, wallet, reduce, noteProducer);
         try {
             Coverage coverage = run.item(target.outputItemId, quantity, target, 0, Set.of(), null);
             double percent = coverage.ready() ? 100 : Math.min(99.9, Math.floor(coverage.fraction() * 1000) / 10);
@@ -33,9 +40,14 @@ public final class ForgeMaterialProgress {
         private final Map<Integer, Long> surplus = new HashMap<>(); // conserved craft surplus, not owned stock
         private final Map<Integer, Long> currencies;
         private final boolean walletKnown;
+        private final ForgeSettings.ReduceMode reduce;
+        private final Recipe noteProducer;
         private int visited;
 
-        Run(ForgeProjectPlanner.Inventory inventory, ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet) {
+        Run(ForgeProjectPlanner.Inventory inventory, ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet,
+            ForgeSettings.ReduceMode reduce, Recipe noteProducer) {
+            this.reduce = reduce;
+            this.noteProducer = noteProducer;
             this.state = new PlanState(inventory.sellable(), inventory.accountBound(), inventory.characterBound());
             this.ctx = ctx;
             walletKnown = wallet != null;
@@ -45,7 +57,7 @@ public final class ForgeMaterialProgress {
         /** Owned stock through the planner's binding pools for the step's assignee; then conserved surplus. */
         private long take(int itemId, long needed, String assignee, boolean root) {
             int ask = (int) Math.min(Integer.MAX_VALUE, needed);
-            long used = root ? state.consumeOwnedOutput(itemId, ask).total()
+            long used = root ? ForgeProjectPlanner.consumeRootOutput(state, reduce, itemId, needed)
                     : state.consumeInventoryWithBinding(itemId, ask, assignee).total();
             long spare = Math.min(surplus.getOrDefault(itemId, 0L), needed - used);
             if (spare > 0) { surplus.merge(itemId, -spare, Long::sum); used += spare; }
@@ -114,7 +126,8 @@ public final class ForgeMaterialProgress {
             if (missing == 0) return new Coverage(1, true, false, false);
             double fraction = (double) owned / needed;
             long containers = Math.ceilDiv(missing, (long) source.yield());
-            Coverage crafted = item(source.itemId(), containers, null, depth, path, assignee);
+            Recipe producer = currencyId == CurrencyProduction.RESEARCH_NOTE_CURRENCY_ID ? noteProducer : null;
+            Coverage crafted = item(source.itemId(), containers, producer, depth, path, assignee);
             if (crafted.ready()) {
                 long surplus = ForgeProjectPlanner.mul(containers, (long) source.yield()) - missing;
                 if (surplus > 0) currencies.merge(currencyId, surplus, ForgeProjectPlanner::add);

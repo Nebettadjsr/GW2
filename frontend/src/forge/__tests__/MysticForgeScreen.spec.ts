@@ -538,7 +538,7 @@ describe('vendor shopping and bounded catalogue completion', () => {
 
   function completingApi(counter: { calls: number }, doneAfter: number): MysticForgeApi {
     return {
-      async loadCatalogue() { counter.calls++; return { ...catalogue, completing: counter.calls < doneAfter } },
+      async loadCatalogue() { counter.calls++; return { ...catalogue, completing: counter.calls < doneAfter, recipes: catalogue.recipes.map(r => ({ ...r, iconUrl: `/api/items/${r.outputItemId}/icon` })) } }, // complete row metadata: only the type/other-row rule is under test
       async loadProject(_id, target) { return project(target) }
     }
   }
@@ -754,6 +754,77 @@ describe('vendor shopping and bounded catalogue completion', () => {
       await flushPromises()
       expect(calls).toBe(bounded + 1)
       expect(w.get('[data-test="forge-item-summary"] img').attributes('src')).toContain('/api/items/19745/icon')
+      w.unmount()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(calls).toBe(bounded + 1)
+    })
+  })
+
+  describe.each([
+    { kind: 'icon-only', recipeId: -1, itemId: 101, cold: { iconUrl: null as string | null }, warm: { iconUrl: '/api/items/101/icon' } },
+    { kind: 'name-only', recipeId: -1, itemId: 101, cold: { name: null as string | null }, warm: { name: 'Sunrise Longbow' } },
+    { kind: 'icon-only armor', recipeId: -3, itemId: 103, cold: { iconUrl: null as string | null }, warm: { iconUrl: '/api/items/103/icon' } }
+  ])('equipment row with missing metadata ($kind)', ({ recipeId, itemId, cold, warm }) => {
+    const mk = (patch: Partial<ForgeRecipeRow>) => (r: ForgeRecipeRow) => r.recipeId === recipeId ? { ...r, ...patch } : r
+    const open = async (w: ReturnType<typeof mount>) => {
+      await flushPromises()
+      await w.findAll('[data-test="forge-row"]').find(r => r.text().includes(recipeId === -1 ? 'Sunrise Longbow' : 'Gift Coat') || r.text().includes(`Item ${itemId}`))!.trigger('click')
+      await flushPromises()
+    }
+    const head = (w: ReturnType<typeof mount>) => w.get('[data-test="forge-item-summary"]')
+
+    it('keeps bounded completion running, shows the metadata once and makes no extra plan call', async () => {
+      let calls = 0
+      const api: MysticForgeApi = {
+        async loadCatalogue() {
+          calls++
+          return { ...catalogue, completing: calls <= 1, recipes: catalogue.recipes.map(mk(calls > 1 ? warm : cold)) }
+        },
+        loadProject(id, target, settings) {
+          projectCalls.push({ recipeId: id, target, settings })
+          return Promise.resolve(project(target, { recipeId: id, settings: settings! }))
+        }
+      }
+      const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+      await open(w)
+      if ('name' in cold) expect(head(w).get('h2').text()).toBe(`Item ${itemId}`)
+      else expect(head(w).find('img').exists()).toBe(false)
+      await vi.advanceTimersByTimeAsync(5100)
+      await flushPromises()
+      expect(calls).toBe(2)
+      if ('name' in warm) expect(head(w).get('h2').text()).toBe('Sunrise Longbow')
+      else expect(head(w).get('img').attributes('src')).toContain(`/api/items/${itemId}/icon`)
+      expect(projectCalls).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(calls).toBe(2)
+      w.unmount()
+    })
+
+    it('exhausts to a visible Retry in the open detail, recovers, and leaves no timer after unmount', async () => {
+      let calls = 0
+      let recover = false
+      const api: MysticForgeApi = {
+        async loadCatalogue() {
+          calls++
+          return { ...catalogue, completing: !recover, recipes: catalogue.recipes.map(mk(recover ? warm : cold)) }
+        },
+        loadProject(id, target, settings) {
+          projectCalls.push({ recipeId: id, target, settings })
+          return Promise.resolve(project(target, { recipeId: id, settings: settings! }))
+        }
+      }
+      const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+      await open(w)
+      for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(5100)
+      const bounded = calls
+      expect(bounded).toBeLessThanOrEqual(7)
+      expect(w.find('[data-test="forge-detail-catalogue-retry"]').exists()).toBe(true)
+      recover = true
+      await w.get('[data-test="forge-detail-catalogue-retry-button"]').trigger('click')
+      await flushPromises()
+      expect(calls).toBe(bounded + 1)
+      expect(w.find('[data-test="forge-detail-catalogue-retry"]').exists()).toBe(false)
+      expect(projectCalls).toHaveLength(1)
       w.unmount()
       await vi.advanceTimersByTimeAsync(30_000)
       expect(calls).toBe(bounded + 1)

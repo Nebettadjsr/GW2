@@ -193,6 +193,38 @@ public final class ForgeProjectPlanner {
         return new ForgeMaterialProgress(producerByItem).calculate(target, quantity, inventory, ctx, wallet);
     }
 
+    /**
+     * Readiness of the resolved project: the same root-reduction policy and the same selected Research Note producer
+     * the plan itself used, so the aggregate describes the project the steps and shopping list describe.
+     */
+    public ForgeMaterialProgress.Progress materialProgress(Recipe target, long quantity, Inventory inventory, Context ctx,
+                                                           Map<Integer, Long> wallet, Project project) {
+        Context context = ctx == null ? Context.NONE : ctx;
+        return new ForgeMaterialProgress(producerByItem).calculate(target, quantity, inventory, context, wallet,
+                project.settings().reduce(), selectedNoteProducer(project, inventory, context));
+    }
+
+    /** The planned Note producer; when the plan made none (unknown wallet) the same tiered choice over the same estimate. */
+    private Recipe selectedNoteProducer(Project project, Inventory inventory, Context ctx) {
+        Notes notes = project.notes();
+        if (notes == null) return null;
+        if (notes.producerRecipeId() != null) return noteRecipes.get(notes.producerRecipeId());
+        PlanState state = new PlanState(inventory.sellable(), inventory.accountBound(), inventory.characterBound());
+        return chooseNoteProducer(ctx, r -> assignOrdinary(state, ctx, r), notes.estimate());
+    }
+
+    /** Owned goal output consumed once under the project's reduction policy (shared by plan, readiness and table). */
+    static long consumeRootOutput(PlanState state, ForgeSettings.ReduceMode reduce, int itemId, long qty) {
+        int ask = (int) Math.min(Integer.MAX_VALUE, qty);
+        if (ask <= 0) return 0;
+        return switch (reduce) {
+            case NO -> 0;
+            case YES -> state.consumeOwnedOutput(itemId, ask).total();
+            case TRADABLE -> state.consumeSellableOutput(itemId, ask);
+            case UNTRADABLE -> state.consumeBoundOutput(itemId, ask);
+        };
+    }
+
     /** Deterministic eligible roster character holding the most relevant stock; null when none can perform it. */
     static String assignOrdinary(PlanState state, Context ctx, Recipe r) {
         Set<String> disc = new HashSet<>();
@@ -250,12 +282,18 @@ public final class ForgeProjectPlanner {
     /** Per-item acquisition uses the same binding pools and step assignees as {@link #materialProgress}. */
     public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Context ctx,
                                  Map<Integer, Long> wallet, boolean includeProgress) {
+        return recipeTree(target, quantity, inventory, ctx, wallet, includeProgress, ForgeSettings.ReduceMode.YES);
+    }
+
+    /** As above, consuming owned root copies only as the project's reduction policy does. */
+    public RecipePart recipeTree(Recipe target, long quantity, Inventory inventory, Context ctx,
+                                 Map<Integer, Long> wallet, boolean includeProgress, ForgeSettings.ReduceMode reduce) {
         Context context = ctx == null ? Context.NONE : ctx;
         PlanState available = new PlanState(inventory.sellable(), inventory.accountBound(), inventory.characterBound());
         Map<Integer, Long> availableWallet = includeProgress && wallet != null ? new java.util.HashMap<>(wallet) : null;
         try {
             return recipePart(target.outputItemId, quantity, target, 0, Set.of(), false, new int[]{0}, 0,
-                    available, availableWallet, includeProgress, context, null);
+                    available, availableWallet, includeProgress, context, null, reduce);
         } catch (ArithmeticException overflow) {
             return new RecipePart(target.outputItemId, quantity, List.of(), List.of(), null, null, false,
                     "Quantity exceeds the supported range", 0, 0, false);
@@ -265,12 +303,12 @@ public final class ForgeProjectPlanner {
     private RecipePart recipePart(int itemId, long quantity, Recipe selected, int depth, Set<Integer> path,
                                   boolean approximate, int[] visited, long covered, PlanState available,
                                   Map<Integer, Long> availableWallet, boolean includeProgress, Context ctx,
-                                  String assignee) {
+                                  String assignee, ForgeSettings.ReduceMode reduce) {
         long acquired = 0;
         int progress = 0;
         if (includeProgress) {
             int ask = (int) Math.min(Integer.MAX_VALUE, Math.max(0, quantity - covered));
-            long owned = ask == 0 ? 0 : depth == 0 ? available.consumeOwnedOutput(itemId, ask).total()
+            long owned = ask == 0 ? 0 : depth == 0 ? consumeRootOutput(available, reduce, itemId, ask)
                     : available.consumeInventoryWithBinding(itemId, ask, assignee).total();
             acquired = add(covered, owned);
             // Both operands are at most MAX_SAFE; multiplying by 100 fits a Java long before integer division.
@@ -311,7 +349,7 @@ public final class ForgeProjectPlanner {
                     children.add(recipePart(ingredient.itemId, mul(ingredient.count, crafts), null, depth + 1,
                             next, approximate || clover, visited,
                             includeProgress ? mul(ingredient.count, crafts - remainingCrafts) : 0,
-                            available, availableWallet, includeProgress, ctx, stepAssignee));
+                            available, availableWallet, includeProgress, ctx, stepAssignee, reduce));
                 }
             }
         }
@@ -642,7 +680,7 @@ public final class ForgeProjectPlanner {
             // Valuation range stop: keep the safe Note facts, plan no production, retain the whole deficit.
             return new Notes(needed, true, used, shortfall, 0, 0, 0, 0, null, estimate, cost, issue, 0, 0, 0, shortfall, false);
         }
-        Recipe producer = containers > 0 ? chooseNoteProducer(run, estimate) : null;
+        Recipe producer = containers > 0 ? chooseNoteProducer(run.ctx, run::assign, estimate) : null;
         long crafted = 0;
         long ownedContainers = 0, acquireContainers = 0;
         boolean locked = false;
@@ -673,15 +711,15 @@ public final class ForgeProjectPlanner {
      * Explicit tiers: eligible and fully priced first, then fully priced, then the lowest recipe id (shown
      * locked/unpriced). Within a priced tier the cheaper batch wins; ties keep the lower recipe id.
      */
-    private Recipe chooseNoteProducer(Run run, ResearchNoteEstimate estimate) {
+    private Recipe chooseNoteProducer(Context ctx, java.util.function.Function<Recipe, String> assign, ResearchNoteEstimate estimate) {
         Recipe best = null;
         int bestTier = Integer.MAX_VALUE;
         long bestCost = Long.MAX_VALUE;
         for (Recipe r : noteRecipes.values()) {
             ResearchNoteEstimate.Variant v = estimate.variants().stream().filter(x -> x.recipeId() == r.recipeId).findFirst().orElse(null);
             boolean priced = v != null && v.priced();
-            boolean eligible = run.assign(r) != null && !Boolean.FALSE.equals(
-                    run.ctx.knownRecipeIds() == null ? null : run.ctx.knownRecipeIds().contains(r.recipeId));
+            boolean eligible = assign.apply(r) != null && !Boolean.FALSE.equals(
+                    ctx.knownRecipeIds() == null ? null : ctx.knownRecipeIds().contains(r.recipeId));
             int tier = priced ? (eligible ? 0 : 1) : 2;
             long cost = priced ? v.batchCostCopper() : 0;
             boolean better = best == null || tier < bestTier
@@ -850,14 +888,7 @@ public final class ForgeProjectPlanner {
 
         /** Owned goal output counts once from actual output ownership, independent of the input assignee. */
         long consumeRoot(int itemId, long qty) {
-            int ask = (int) Math.min(Integer.MAX_VALUE, qty);
-            if (ask <= 0) return 0;
-            return switch (settings.reduce()) {
-                case NO -> 0;
-                case YES -> state.consumeOwnedOutput(itemId, ask).total();
-                case TRADABLE -> state.consumeSellableOutput(itemId, ask);
-                case UNTRADABLE -> state.consumeBoundOutput(itemId, ask);
-            };
+            return consumeRootOutput(state, settings.reduce(), itemId, qty);
         }
 
         /** Deterministic eligible character holding the most relevant stock; null when none can perform it. */
