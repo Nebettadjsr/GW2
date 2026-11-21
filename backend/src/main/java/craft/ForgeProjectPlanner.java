@@ -200,8 +200,22 @@ public final class ForgeProjectPlanner {
     public ForgeMaterialProgress.Progress materialProgress(Recipe target, long quantity, Inventory inventory, Context ctx,
                                                            Map<Integer, Long> wallet, Project project) {
         Context context = ctx == null ? Context.NONE : ctx;
-        return new ForgeMaterialProgress(producerByItem).calculate(target, quantity, inventory, context, wallet,
+        return new ForgeMaterialProgress(producerByItem, selectedPromotions(project.tree())).calculate(target, quantity, inventory, context, wallet,
                 project.settings().reduce(), selectedNoteProducer(project, inventory, context), project.settings().daily());
+    }
+
+    /** Items the plan acquires through an optional promotion (the root itself never counts). */
+    private Set<Integer> selectedPromotions(Node tree) {
+        Set<Integer> items = new java.util.HashSet<>();
+        if (tree != null && tree.children() != null) for (Node child : tree.children()) collectPromotions(child, items);
+        return items;
+    }
+
+    private void collectPromotions(Node node, Set<Integer> items) {
+        Recipe producer = producerByItem.get(node.itemId());
+        if (producer != null && CraftingResolver.isPromotion(producer) && node.recipeId() != null
+                && node.recipeId() == producer.recipeId) items.add(node.itemId());
+        if (node.children() != null) for (Node child : node.children()) collectPromotions(child, items);
     }
 
     /** The planned Note producer; when the plan made none (unknown wallet) the same tiered choice over the same estimate. */

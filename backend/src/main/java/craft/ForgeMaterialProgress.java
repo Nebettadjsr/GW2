@@ -12,8 +12,15 @@ public final class ForgeMaterialProgress {
     private static final int COINS = 1;
 
     private final Map<Integer, Recipe> producers;
+    /** Output items the resolved project actually acquires through a selected optional promotion. */
+    private final Set<Integer> selectedPromotions;
 
-    ForgeMaterialProgress(Map<Integer, Recipe> producers) { this.producers = producers; }
+    ForgeMaterialProgress(Map<Integer, Recipe> producers) { this(producers, Set.of()); }
+
+    ForgeMaterialProgress(Map<Integer, Recipe> producers, Set<Integer> selectedPromotions) {
+        this.producers = producers;
+        this.selectedPromotions = selectedPromotions;
+    }
 
     Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory,
                        ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet) {
@@ -44,6 +51,7 @@ public final class ForgeMaterialProgress {
         private final Recipe noteProducer;
         private final ForgeSettings.DailyMode daily;
         private int visited;
+        private int promotionDepth;
 
         Run(ForgeProjectPlanner.Inventory inventory, ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet,
             ForgeSettings.ReduceMode reduce, Recipe noteProducer, ForgeSettings.DailyMode daily) {
@@ -68,6 +76,13 @@ public final class ForgeMaterialProgress {
 
         private Coverage item(int itemId, long needed, Recipe selected, int depth, Set<Integer> path, String assignee) {
             if (needed <= 0) return new Coverage(1, true, false, false);
+            if (depth > 0 && selected == null && promotionDepth == 0 && selectedPromotions.contains(itemId)) {
+                Recipe promotion = producers.get(itemId);
+                if (promotion != null && CraftingResolver.isPromotion(promotion) && !path.contains(promotion.recipeId)) {
+                    Coverage promoted = promoted(promotion, needed, depth, path, assignee);
+                    if (promoted != null) return promoted;
+                }
+            }
             long owned = take(itemId, needed, assignee, depth == 0);
             long missing = needed - owned;
             if (missing == 0) return new Coverage(1, true, false, false);
@@ -113,6 +128,63 @@ public final class ForgeMaterialProgress {
                 if (surplus > 0) this.surplus.merge(itemId, surplus, ForgeProjectPlanner::add);
             }
             return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, estimated, partial);
+        }
+
+        /**
+         * The project's selected promotion: guaranteed minimum batches only, one external seed then minimum-only reuse.
+         * An owned seed is diverted into the promotion (never also credited as finished output). Null = plain owned
+         * stock already covers the need (or a bound was hit), so the generic path applies.
+         */
+        private Coverage promoted(Recipe recipe, long needed, int depth, Set<Integer> path, String assignee) {
+            int itemId = recipe.outputItemId;
+            long savedSurplus = surplus.getOrDefault(itemId, 0L);
+            int mark = state.mark();
+            boolean covered = take(itemId, needed, assignee, false) >= needed;
+            state.rollbackTo(mark);
+            surplus.put(itemId, savedSurplus);
+            if (covered || ++visited > ForgeProjectPlanner.MAX_NODES || depth >= ForgeProjectPlanner.MAX_DEPTH) return null;
+            String forge = ForgeProjectPlanner.assignForge(state, recipe);
+            int seed = recipe.selfSeedUnits();
+            int diverted = state.consumeInventoryWithBinding(itemId, seed, forge).total() >= seed ? seed : 0;
+            if (diverted == 0) state.rollbackTo(mark);
+            long owned = take(itemId, needed, assignee, false);
+            long missing = needed - owned;
+            double ownedFraction = (double) owned / needed;
+            long batches = ForgeProjectPlanner.promotionBatches(recipe, missing);
+            Set<Integer> next = new HashSet<>(path);
+            next.add(recipe.recipeId);
+            promotionDepth++;
+            try {
+                double sum = 0;
+                int shares = 0;
+                boolean ready = true, partial = false;
+                for (Ingredient ingredient : recipe.ingredients) {
+                    Coverage child;
+                    if (ingredient.itemId == itemId) {
+                        long external = ForgeProjectPlanner.seedExternalUnits(recipe, batches);
+                        long rest = external - diverted;
+                        Coverage more = rest > 0 ? item(itemId, rest, null, depth + 1, next, forge) : new Coverage(1, true, false, false);
+                        child = new Coverage((diverted + more.fraction() * rest) / external, more.ready(), false, more.partial());
+                    } else {
+                        child = item(ingredient.itemId, ForgeProjectPlanner.mul(ingredient.count, batches), null, depth + 1, next, forge);
+                    }
+                    sum += child.fraction(); shares++;
+                    ready &= child.ready(); partial |= child.partial();
+                }
+                for (CurrencyRequirement currency : recipe.currencies) {
+                    Coverage child = currency(currency.currencyId(), ForgeProjectPlanner.mul(currency.count(), batches), depth + 1, next, forge);
+                    sum += child.fraction(); shares++;
+                    ready &= child.ready(); partial |= child.partial();
+                }
+                if (shares == 0) return new Coverage(ownedFraction, false, false, true);
+                if (ready) {
+                    long extra = ForgeProjectPlanner.promotionNet(recipe, batches) - missing;
+                    if (extra > 0) surplus.merge(itemId, extra, ForgeProjectPlanner::add);
+                }
+                return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, false, partial);
+            } finally {
+                promotionDepth--;
+            }
         }
 
         private Coverage currency(int currencyId, long needed, int depth, Set<Integer> path, String assignee) {
