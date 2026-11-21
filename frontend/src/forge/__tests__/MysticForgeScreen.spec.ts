@@ -4,6 +4,7 @@ import type { MysticForgeApi } from '@/api/mysticForgeApi'
 import type { ForgeCatalogue, ForgeCraftingStep, ForgeNode, ForgeRecipePart, ForgeProject, ForgeRecipeRow } from '@/api/types'
 import { destinationForHash, DESTINATIONS } from '@/shell/destinations'
 import MysticForgeScreen from '../MysticForgeScreen.vue'
+import { formatCopper } from '@/crafting/formatCopper'
 import { parseTarget, searchText, TARGET_DEBOUNCE_MS } from '../useMysticForge'
 
 // Literal, independent fixture values (not derived from production code).
@@ -1177,6 +1178,97 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     await w.get('[data-test="forge-error-retry"]').trigger('click')
     await flushPromises()
     expect(call).toBe(3)
+    expect(w.find('[data-test="forge-error"]').exists()).toBe(false)
+    w.unmount()
+  })
+  describe('summary quotes versus refreshed catalogue rows', () => {
+    const labels = (w: ReturnType<typeof mount>) =>
+      w.findAll('[data-test="forge-item-summary"] .item-prices [aria-label]').map(e => e.attributes('aria-label'))
+    const quoteRow = (buy: number, sell: number) => row({ recipeId: -1, outputItemId: 101, name: 'Sunrise Longbow', itemSubtype: 'LongBow', sellUnitCopper: buy, buyUnitCopper: sell })
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    const summary = (buy: number | null, sell: number | null) => ({ item: null, instantBuyCopper: buy, instantSellCopper: sell, completing: false })
+    function quoteApi(): MysticForgeApi {
+      let reads = 0
+      return {
+        async loadCatalogue() {
+          reads++
+          return reads === 1 ? { ...catalogue, completing: true, recipes: [quoteRow(300, 150), ...catalogue.recipes.slice(1)] }
+            : { ...catalogue, completing: false, recipes: [quoteRow(500, 250), ...catalogue.recipes.slice(1)] }
+        },
+        loadProject: (_r, target) => Promise.resolve(project(target))
+      }
+    }
+    async function openDetail(api: MysticForgeApi) {
+      const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+      await flushPromises()
+      await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
+      await flushPromises()
+      return w
+    }
+
+    it('a later catalogue row refresh replaces an earlier non-null summary quote', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => json(summary(400, 200))))
+      try {
+        const w = await openDetail(quoteApi())
+        expect(labels(w)).toEqual([formatCopper(400), formatCopper(200)])
+        await vi.advanceTimersByTimeAsync(5100)
+        await flushPromises()
+        expect(labels(w)).toEqual([formatCopper(500), formatCopper(250)])
+        w.unmount()
+      } finally { vi.unstubAllGlobals() }
+    })
+
+    it('a summary request started before a row refresh cannot overwrite the newer row quotes', async () => {
+      let resolveSummary!: (r: Response) => void
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { resolveSummary = resolve })))
+      try {
+        const w = await openDetail(quoteApi())
+        expect(labels(w)).toEqual([formatCopper(300), formatCopper(150)])
+        await vi.advanceTimersByTimeAsync(5100)
+        await flushPromises()
+        expect(labels(w)).toEqual([formatCopper(500), formatCopper(250)])
+        resolveSummary(json(summary(400, 200)))
+        await flushPromises()
+        expect(labels(w)).toEqual([formatCopper(500), formatCopper(250)])
+        w.unmount()
+      } finally { vi.unstubAllGlobals() }
+    })
+
+    it('a null summary quote falls back to the row quote and unknown stays unavailable', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => json(summary(null, null))))
+      try {
+        const w = await openDetail(quoteApi())
+        expect(labels(w)).toEqual([formatCopper(300), formatCopper(150)])
+        w.unmount()
+      } finally { vi.unstubAllGlobals() }
+    })
+  })
+
+  it('a failed automatic reread keeps the earlier result, shows Retry, and Retry replans the same selection', async () => {
+    let call = 0
+    const api: MysticForgeApi = {
+      async loadCatalogue() { return catalogue },
+      async loadProject(recipeId, target, settings) {
+        call++
+        projectCalls.push({ recipeId, target, settings })
+        if (call === 1) return { ...project(target), freshness: { resultAvailable: true, outstandingWork: ['x'] } as never }
+        if (call === 2) throw new Error('reread failed')
+        return project(target, { recipeId, settings: settings! })
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(5100)
+    await flushPromises()
+    expect(w.get('[data-test="forge-error"]').text()).toContain('reread failed')
+    expect(w.text()).toContain('Sunrise Longbow')
+    expect(w.find('[data-test="forge-item-summary"]').exists() || w.find('[data-test="forge-error-retry"]').exists()).toBe(true)
+    await w.get('[data-test="forge-error-retry"]').trigger('click')
+    await flushPromises()
+    expect(call).toBe(3)
+    expect(projectCalls[2]).toEqual({ recipeId: projectCalls[0]!.recipeId, target: projectCalls[0]!.target, settings: projectCalls[0]!.settings })
     expect(w.find('[data-test="forge-error"]').exists()).toBe(false)
     w.unmount()
   })

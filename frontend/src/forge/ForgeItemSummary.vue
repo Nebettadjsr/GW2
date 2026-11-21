@@ -10,6 +10,9 @@ const props = defineProps<{ row: ForgeRecipeRow; compact?: boolean }>()
 const data = ref<ForgeItemSummaryResponse | null>(null)
 const message = ref('')
 const retryAvailable = ref(false)
+/** Summary quotes are only trusted until a newer catalogue row quote is observed; no timestamps exist, so observation order decides. */
+const summaryQuotes = ref<{ buy: number | null; sell: number | null } | null>(null)
+let rowQuoteVersion = 0
 let generation = 0
 let active = true
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -25,9 +28,12 @@ function start(): void {
 }
 async function load(itemId: number, ticket: number, attempt: number): Promise<void> {
   try {
+    const requestedVersion = rowQuoteVersion
     const result = await getJson<ForgeItemSummaryResponse>(`/mystic-forge/items/${itemId}/summary`)
     if (!active || ticket !== generation) return
     data.value = result
+    // A row refresh observed while this request was in flight is newer than its quotes: keep the row prices.
+    summaryQuotes.value = requestedVersion === rowQuoteVersion ? { buy: result.instantBuyCopper, sell: result.instantSellCopper } : null
     if (!result.completing) { message.value = ''; return }
     if (attempt + 1 >= MAX_READS) {
       message.value = 'Some item details are unavailable.'
@@ -41,7 +47,8 @@ async function load(itemId: number, ticket: number, attempt: number): Promise<vo
     retryAvailable.value = true
   }
 }
-watch(() => props.row.outputItemId, () => { data.value = null; if (active) start() }, { immediate: true })
+watch(() => props.row.outputItemId, () => { data.value = null; summaryQuotes.value = null; if (active) start() }, { immediate: true })
+watch(() => [props.row.sellUnitCopper, props.row.buyUnitCopper], () => { rowQuoteVersion++; summaryQuotes.value = null })
 onDeactivated(() => { active = false; stop() })
 onActivated(() => { if (!active) { active = true; start() } })
 onBeforeUnmount(stop)
@@ -64,8 +71,8 @@ const facts = computed(() => {
   if (item?.binding) result.push({ label: 'Binding', value: item.binding })
   return result
 })
-const buyPrice = computed(() => data.value?.instantBuyCopper ?? props.row.sellUnitCopper)
-const sellPrice = computed(() => data.value?.instantSellCopper ?? props.row.buyUnitCopper)
+const buyPrice = computed(() => summaryQuotes.value?.buy ?? props.row.sellUnitCopper)
+const sellPrice = computed(() => summaryQuotes.value?.sell ?? props.row.buyUnitCopper)
 </script>
 
 <template>
