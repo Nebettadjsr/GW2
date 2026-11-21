@@ -15,10 +15,11 @@ public final class ForgeMaterialProgress {
 
     ForgeMaterialProgress(Map<Integer, Recipe> producers) { this.producers = producers; }
 
-    Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory, Map<Integer, Long> wallet) {
-        Run run = new Run(inventory, wallet);
+    Progress calculate(Recipe target, long quantity, ForgeProjectPlanner.Inventory inventory,
+                       ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet) {
+        Run run = new Run(inventory, ctx == null ? ForgeProjectPlanner.Context.NONE : ctx, wallet);
         try {
-            Coverage coverage = run.item(target.outputItemId, quantity, target, 0, Set.of());
+            Coverage coverage = run.item(target.outputItemId, quantity, target, 0, Set.of(), null);
             double percent = coverage.ready() ? 100 : Math.min(99.9, Math.floor(coverage.fraction() * 1000) / 10);
             return new Progress(percent, coverage.estimated(), coverage.partial());
         } catch (ArithmeticException unsupported) {
@@ -27,26 +28,33 @@ public final class ForgeMaterialProgress {
     }
 
     private final class Run {
-        private final Map<Integer, Long> items = new HashMap<>();
+        private final PlanState state;
+        private final ForgeProjectPlanner.Context ctx;
+        private final Map<Integer, Long> surplus = new HashMap<>(); // conserved craft surplus, not owned stock
         private final Map<Integer, Long> currencies;
         private final boolean walletKnown;
         private int visited;
 
-        Run(ForgeProjectPlanner.Inventory inventory, Map<Integer, Long> wallet) {
-            inventory.sellable().forEach(this::addItems);
-            inventory.accountBound().forEach(this::addItems);
-            inventory.characterBound().values().forEach(stock -> stock.forEach(this::addItems));
+        Run(ForgeProjectPlanner.Inventory inventory, ForgeProjectPlanner.Context ctx, Map<Integer, Long> wallet) {
+            this.state = new PlanState(inventory.sellable(), inventory.accountBound(), inventory.characterBound());
+            this.ctx = ctx;
             walletKnown = wallet != null;
             currencies = walletKnown ? new HashMap<>(wallet) : new HashMap<>();
         }
 
-        private void addItems(int itemId, int count) {
-            if (count > 0) items.merge(itemId, (long) count, ForgeProjectPlanner::add);
+        /** Owned stock through the planner's binding pools for the step's assignee; then conserved surplus. */
+        private long take(int itemId, long needed, String assignee, boolean root) {
+            int ask = (int) Math.min(Integer.MAX_VALUE, needed);
+            long used = root ? state.consumeOwnedOutput(itemId, ask).total()
+                    : state.consumeInventoryWithBinding(itemId, ask, assignee).total();
+            long spare = Math.min(surplus.getOrDefault(itemId, 0L), needed - used);
+            if (spare > 0) { surplus.merge(itemId, -spare, Long::sum); used += spare; }
+            return used;
         }
 
-        private Coverage item(int itemId, long needed, Recipe selected, int depth, Set<Integer> path) {
+        private Coverage item(int itemId, long needed, Recipe selected, int depth, Set<Integer> path, String assignee) {
             if (needed <= 0) return new Coverage(1, true, false, false);
-            long owned = take(items, itemId, needed);
+            long owned = take(itemId, needed, assignee, depth == 0);
             long missing = needed - owned;
             if (missing == 0) return new Coverage(1, true, false, false);
             double ownedFraction = (double) owned / needed;
@@ -60,42 +68,44 @@ public final class ForgeMaterialProgress {
             if (path.contains(recipe.recipeId)) return new Coverage(ownedFraction, false, false, true);
             long crafts = clover ? Math.ceilDiv(ForgeProjectPlanner.mul(missing, 100L), ForgeProjectPlanner.CLOVER_PERCENT)
                     : Math.ceilDiv(missing, (long) recipe.outputCount);
+            String stepAssignee = recipe.isMysticForge() ? ForgeProjectPlanner.assignForge(state, recipe)
+                    : recipe.source == RecipeSource.ORDINARY ? ForgeProjectPlanner.assignOrdinary(state, ctx, recipe) : null;
             Set<Integer> next = new HashSet<>(path);
             next.add(recipe.recipeId);
             double sum = 0;
             int shares = 0;
             boolean ready = true, estimated = clover, partial = false;
             for (Ingredient ingredient : recipe.ingredients) {
-                Coverage child = item(ingredient.itemId, ForgeProjectPlanner.mul(ingredient.count, crafts), null, depth + 1, next);
+                Coverage child = item(ingredient.itemId, ForgeProjectPlanner.mul(ingredient.count, crafts), null, depth + 1, next, stepAssignee);
                 sum += child.fraction(); shares++;
                 ready &= child.ready(); estimated |= child.estimated(); partial |= child.partial();
             }
             for (CurrencyRequirement currency : recipe.currencies) {
-                Coverage child = currency(currency.currencyId(), ForgeProjectPlanner.mul(currency.count(), crafts), depth + 1, next);
+                Coverage child = currency(currency.currencyId(), ForgeProjectPlanner.mul(currency.count(), crafts), depth + 1, next, stepAssignee);
                 sum += child.fraction(); shares++;
                 ready &= child.ready(); estimated |= child.estimated(); partial |= child.partial();
             }
             if (recipe.vendorCopper > 0) {
-                Coverage gold = currency(COINS, ForgeProjectPlanner.mul(recipe.vendorCopper, crafts), depth + 1, next);
+                Coverage gold = currency(COINS, ForgeProjectPlanner.mul(recipe.vendorCopper, crafts), depth + 1, next, stepAssignee);
                 sum += gold.fraction(); shares++;
                 ready &= gold.ready(); partial |= gold.partial();
             }
             if (shares == 0) return new Coverage(ownedFraction, false, false, true);
             if (ready && !clover) {
                 long surplus = ForgeProjectPlanner.mul(crafts, (long) recipe.outputCount) - missing;
-                if (surplus > 0) items.merge(itemId, surplus, ForgeProjectPlanner::add);
+                if (surplus > 0) this.surplus.merge(itemId, surplus, ForgeProjectPlanner::add);
             }
             return new Coverage(ownedFraction + (1 - ownedFraction) * sum / shares, ready, estimated, partial);
         }
 
-        private Coverage currency(int currencyId, long needed, int depth, Set<Integer> path) {
-            long owned = take(currencies, currencyId, needed);
+        private Coverage currency(int currencyId, long needed, int depth, Set<Integer> path, String assignee) {
+            long owned = takeCurrency(currencies, currencyId, needed);
             long missing = needed - owned;
             if (missing <= 0) return new Coverage(1, true, false, false);
             var production = CurrencyProduction.forCurrency(currencyId);
             if (production.isEmpty()) return new Coverage((double) owned / needed, false, false, !walletKnown);
             var source = production.get();
-            long ownedContainers = take(items, source.itemId(), Math.ceilDiv(missing, (long) source.yield()));
+            long ownedContainers = take(source.itemId(), Math.ceilDiv(missing, (long) source.yield()), assignee, false);
             long credits = ForgeProjectPlanner.mul(ownedContainers, (long) source.yield());
             long used = Math.min(missing, credits);
             owned += used;
@@ -104,7 +114,7 @@ public final class ForgeMaterialProgress {
             if (missing == 0) return new Coverage(1, true, false, false);
             double fraction = (double) owned / needed;
             long containers = Math.ceilDiv(missing, (long) source.yield());
-            Coverage crafted = item(source.itemId(), containers, null, depth, path);
+            Coverage crafted = item(source.itemId(), containers, null, depth, path, assignee);
             if (crafted.ready()) {
                 long surplus = ForgeProjectPlanner.mul(containers, (long) source.yield()) - missing;
                 if (surplus > 0) currencies.merge(currencyId, surplus, ForgeProjectPlanner::add);
@@ -114,7 +124,7 @@ public final class ForgeMaterialProgress {
         }
     }
 
-    private static long take(Map<Integer, Long> stock, int id, long needed) {
+    private static long takeCurrency(Map<Integer, Long> stock, int id, long needed) {
         long used = Math.min(needed, Math.max(0, stock.getOrDefault(id, 0L)));
         if (used > 0) stock.put(id, stock.get(id) - used);
         return used;

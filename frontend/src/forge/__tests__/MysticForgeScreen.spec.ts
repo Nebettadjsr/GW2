@@ -631,6 +631,70 @@ describe('vendor shopping and bounded catalogue completion', () => {
     w.unmount()
   })
 
+  describe('cold Material header metadata', () => {
+    const coldMaterial = (r: ForgeRecipeRow) => r.recipeId === -4 ? { ...r, name: null } : r
+    const coldRow = (w: ReturnType<typeof mount>) => w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Item 19745'))!
+
+    it('re-arms bounded public completion for an unresolved Material heading and renders the name once it arrives, without extra project reads', async () => {
+      let calls = 0
+      const api: MysticForgeApi = {
+        async loadCatalogue() {
+          calls++
+          const warm = calls > 1
+          return { ...catalogue, completing: !warm, recipes: warm ? catalogue.recipes : catalogue.recipes.map(coldMaterial) }
+        },
+        loadProject(recipeId, target, settings) {
+          projectCalls.push({ recipeId, target, settings })
+          return Promise.resolve(project(target, { recipeId, settings: settings!, batches: 7 }))
+        }
+      }
+      const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+      await flushPromises()
+      await coldRow(w).trigger('click')
+      await flushPromises()
+      expect(w.get('[data-test="forge-item-summary"] h2').text()).toBe('Item 19745') // placeholder while metadata is missing
+      await vi.advanceTimersByTimeAsync(5100)
+      await flushPromises()
+      expect(calls).toBe(2)
+      expect(w.get('[data-test="forge-item-summary"] h2').text()).toBe('Gossamer Scrap')
+      expect(projectCalls).toHaveLength(1) // metadata arrival never re-reads the project
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(calls).toBe(2) // complete: no further polling
+      w.unmount()
+    })
+
+    it('stops at the bound with a visible Retry in the open detail, and Retry recovers the heading', async () => {
+      let calls = 0
+      let recover = false
+      const api: MysticForgeApi = {
+        async loadCatalogue() {
+          calls++
+          return { ...catalogue, completing: !recover, recipes: recover ? catalogue.recipes : catalogue.recipes.map(coldMaterial) }
+        },
+        loadProject(recipeId, target, settings) {
+          projectCalls.push({ recipeId, target, settings })
+          return Promise.resolve(project(target, { recipeId, settings: settings! }))
+        }
+      }
+      const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+      await flushPromises()
+      await coldRow(w).trigger('click')
+      await flushPromises()
+      for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(5100)
+      const bounded = calls
+      expect(bounded).toBeLessThanOrEqual(7) // bounded, never endless
+      expect(w.get('[data-test="forge-item-summary"] h2').text()).toBe('Item 19745')
+      expect(w.find('[data-test="forge-detail-catalogue-retry"]').exists()).toBe(true)
+      recover = true
+      await w.get('[data-test="forge-detail-catalogue-retry-button"]').trigger('click')
+      await flushPromises()
+      expect(calls).toBe(bounded + 1)
+      expect(w.get('[data-test="forge-item-summary"] h2').text()).toBe('Gossamer Scrap')
+      expect(projectCalls).toHaveLength(1)
+      w.unmount()
+    })
+  })
+
   it('metadata completing while a plan for the OLD settings is in flight converges once to the neutralized settings', async () => {
     let calls = 0
     let hold: ((p: ForgeProject) => void) | null = null

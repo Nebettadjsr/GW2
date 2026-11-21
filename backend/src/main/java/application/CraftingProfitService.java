@@ -290,7 +290,7 @@ public class CraftingProfitService {
         craft.ForgeProjectPlanner.RecipePart recipeTree = batchTarget ? null
                 : planner.recipeTree(root, target, inventory, wallet, settings.useOwn());
         craft.ForgeMaterialProgress.Progress materialProgress = batchTarget || !settings.useOwn() ? null
-                : planner.materialProgress(root, target, inventory, wallet);
+                : planner.materialProgress(root, target, inventory, context, wallet);
         Set<Integer> shown = new HashSet<>();
         if (recipeTree != null) collectRecipeItems(recipeTree, shown);
         shown.add(root.outputItemId);

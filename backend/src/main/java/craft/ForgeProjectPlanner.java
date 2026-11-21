@@ -178,7 +178,49 @@ public final class ForgeProjectPlanner {
 
     /** Material readiness follows the complete recipe path, independently of the three-column display limit. */
     public ForgeMaterialProgress.Progress materialProgress(Recipe target, long quantity, Inventory inventory, Map<Integer, Long> wallet) {
-        return new ForgeMaterialProgress(producerByItem).calculate(target, quantity, inventory, wallet);
+        return materialProgress(target, quantity, inventory, Context.NONE, wallet);
+    }
+
+    /** Binding-aware readiness: same carried/Bank/account pools and step assignees as the planner. */
+    public ForgeMaterialProgress.Progress materialProgress(Recipe target, long quantity, Inventory inventory, Context ctx,
+                                                           Map<Integer, Long> wallet) {
+        return new ForgeMaterialProgress(producerByItem).calculate(target, quantity, inventory, ctx, wallet);
+    }
+
+    /** Deterministic eligible roster character holding the most relevant stock; null when none can perform it. */
+    static String assignOrdinary(PlanState state, Context ctx, Recipe r) {
+        Set<String> disc = new HashSet<>();
+        if (r.disciplinesText != null) for (String d : r.disciplinesText.split(",")) if (!d.isBlank()) disc.add(d.trim());
+        String best = null;
+        long bestScore = -1;
+        for (CharacterCraftingProfile p : ctx.roster()) {
+            boolean ok = false;
+            for (String d : disc) {
+                Integer rating = p.ratingByDiscipline().get(d);
+                if (rating != null && rating >= r.minRating) { ok = true; break; }
+            }
+            if (!ok) continue;
+            long score = 0;
+            for (Ingredient i : r.ingredients) {
+                score += state.carriedQuantity(p.name(), i.itemId)
+                        + state.carriedQuantity(PlanState.bankOwnerKey(p.name()), i.itemId);
+            }
+            if (score > bestScore || (score == bestScore && p.name().compareTo(best) < 0)) { best = p.name(); bestScore = score; }
+        }
+        return best;
+    }
+
+    /** Forge step: Bank stock of every owner plus carried stock of the ONE character holding most ingredients. */
+    static String assignForge(PlanState state, Recipe r) {
+        String best = null;
+        long bestScore = 0;
+        for (String key : new java.util.TreeSet<>(state.characterBoundInventory.keySet())) {
+            if (key.startsWith(PlanState.BANK_PREFIX)) continue;
+            long score = 0;
+            for (Ingredient i : r.ingredients) score += state.carriedQuantity(key, i.itemId);
+            if (score > bestScore) { best = key; bestScore = score; }
+        }
+        return PlanState.forgeAssignee(best);
     }
 
     /** The reference table has three ingredient columns, so expansion stops at its component-material column. */
@@ -805,43 +847,13 @@ public final class ForgeProjectPlanner {
         }
 
         /** Deterministic eligible character holding the most relevant stock; null when none can perform it. */
-        String assign(Recipe r) {
-            Set<String> disc = new HashSet<>();
-            if (r.disciplinesText != null) for (String d : r.disciplinesText.split(",")) if (!d.isBlank()) disc.add(d.trim());
-            String best = null;
-            long bestScore = -1;
-            for (CharacterCraftingProfile p : ctx.roster()) {
-                boolean ok = false;
-                for (String d : disc) {
-                    Integer rating = p.ratingByDiscipline().get(d);
-                    if (rating != null && rating >= r.minRating) { ok = true; break; }
-                }
-                if (!ok) continue;
-                long score = 0;
-                for (Ingredient i : r.ingredients) {
-                    score += state.carriedQuantity(p.name(), i.itemId)
-                            + state.carriedQuantity(PlanState.bankOwnerKey(p.name()), i.itemId);
-                }
-                if (score > bestScore || (score == bestScore && p.name().compareTo(best) < 0)) { best = p.name(); bestScore = score; }
-            }
-            return best;
-        }
+        String assign(Recipe r) { return assignOrdinary(state, ctx, r); }
 
         /**
          * A Forge step may use Bank stock of every owner plus the carried stock of ONE character: the one holding the
          * most relevant ingredients (deterministic, ties by name). Carried stock of different owners is never pooled.
          */
-        String forgeAssignee(Recipe r) {
-            String best = null;
-            long bestScore = 0;
-            for (String key : new java.util.TreeSet<>(state.characterBoundInventory.keySet())) {
-                if (key.startsWith(PlanState.BANK_PREFIX)) continue;
-                long score = 0;
-                for (Ingredient i : r.ingredients) score += state.carriedQuantity(key, i.itemId);
-                if (score > bestScore) { best = key; bestScore = score; }
-            }
-            return PlanState.forgeAssignee(best);
-        }
+        String forgeAssignee(Recipe r) { return assignForge(state, r); }
 
         List<Node> craft(Recipe r, long crafts, int depth, Set<Integer> path) {
             return craft(r, crafts, depth, path, r.isMysticForge() ? forgeAssignee(r) : null);
