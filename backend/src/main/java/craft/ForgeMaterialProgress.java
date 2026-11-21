@@ -242,10 +242,9 @@ public final class ForgeMaterialProgress {
                     ready &= child.ready(); partial |= child.partial();
                 }
                 if (shares == 0) return new Coverage(ownedFraction, false, false, true);
-                if (ready) {
-                    long extra = ForgeProjectPlanner.promotionNet(recipe, batches) - missing;
-                    if (extra > 0) addSurplus(itemId, extra, 1);
-                }
+                // The scheduled guaranteed batch makes its surplus at the batch's own coverage, ready or not.
+                long extra = ForgeProjectPlanner.promotionNet(recipe, batches) - missing;
+                if (extra > 0) addSurplus(itemId, extra, ready ? 1 : sum / shares);
                 return new Coverage(ownedFraction + (double) missing / needed * sum / shares, ready && ownedFraction * needed >= owned - 1e-9, false, partial);
             } finally {
                 promotionDepth--;

@@ -211,6 +211,31 @@ class ForgeSelectedPromotionReadinessTest {
         assertEquals(96.6, partial.percent(), "(0.95 + 0.95 + 1) / 3 = 96.67 floored, one shared production");
     }
 
+    @Test
+    void partiallyReadyPromotionSurplusIsConservedAtTheBatchCoverage() {
+        final int out = 2, ore = 3, helperItem = 4;
+        Recipe promotion = Recipe.forgeWithExpectedYield(-2, out, ExpectedYield.of("10", 5, 15),
+                List.of(new Ingredient(ore, 2), new Ingredient(out, 1)));
+        Recipe helper = new Recipe(44, helperItem, 1, 0, "Artificer", List.of(new Ingredient(out, 1)));
+        Recipe forgeRoot = new Recipe(-1, 1, 1, 0, "", List.of(new Ingredient(out, 2), new Ingredient(helperItem, 1)),
+                List.of(), RecipeSource.MYSTIC_FORGE);
+        var ctx = new ForgeProjectPlanner.Context(List.of(new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), java.util.Set.of(44));
+        var settings = new ForgeSettings(ForgeSettings.PriceMode.INSTANT_BUY, true, false, ForgeSettings.DailyMode.CRAFT, true, ForgeSettings.ReduceMode.NO);
+        var planner = new ForgeProjectPlanner(List.of(promotion, helper, forgeRoot), settings);
+        var inv = new ForgeProjectPlanner.Inventory(Map.of(ore, 2), Map.of(), Map.of());
+        var prices = Map.of(out, new PriceQuote(100, 100), ore, new PriceQuote(1, 1));
+        var project = planner.plan(forgeRoot, 1, false, inv, ctx, Map.of(), prices, settings);
+
+        assertTrue(project.complete());
+        var seed = project.items().stream().filter(i -> i.itemId() == out).findFirst().orElseThrow();
+        assertEquals(1, seed.missing(), "one external seed is bought");
+        assertEquals(List.of(out, helperItem, 1), project.steps().stream().map(ForgeProjectPlanner.CraftStep::outputItemId).toList());
+        assertTrue(project.steps().stream().allMatch(s -> s.crafts() == 1));
+        // Seed 0% + Ore 100% => batch 50%; the batch's surplus (initial 2 + later 1) is conserved at that 50%,
+        // so both root branches are 50% and overall readiness is 50.0 (not 25.0 from a discarded surplus).
+        assertEquals(50.0, planner.materialProgress(forgeRoot, 1, inv, ctx, Map.of(), project).percent());
+    }
+
     private static void collect(ForgeProjectPlanner.Node node, int itemId, List<ForgeProjectPlanner.Node> out) {
         if (node.itemId() == itemId) out.add(node);
         if (node.itemId() != itemId && node.children() != null) node.children().forEach(c -> collect(c, itemId, out));
