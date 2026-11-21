@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MysticForgeApi } from '@/api/mysticForgeApi'
-import type { ForgeCatalogue, ForgeNode, ForgeProject, ForgeRecipeRow } from '@/api/types'
+import type { ForgeCatalogue, ForgeCraftingStep, ForgeNode, ForgeRecipePart, ForgeProject, ForgeRecipeRow } from '@/api/types'
 import { destinationForHash, DESTINATIONS } from '@/shell/destinations'
 import MysticForgeScreen from '../MysticForgeScreen.vue'
 import { parseTarget, searchText, TARGET_DEBOUNCE_MS } from '../useMysticForge'
@@ -49,6 +49,14 @@ function project(target: number, o: Partial<ForgeProject> = {}): ForgeProject {
   }
 }
 
+const part = (itemId: number, name: string, quantity: number, o: Partial<ForgeRecipePart> = {}): ForgeRecipePart => ({
+  item: item(itemId, name), quantity, children: [], currencies: [], copper: null, attempts: null, approximate: false, cutoff: null,
+  acquired: 0, progressPercent: 0, coveredByParent: false, ...o
+})
+const step = (itemId: number, name: string, o: Partial<ForgeCraftingStep> = {}): ForgeCraftingStep => ({
+  item: item(itemId, name), recipeId: null, recipeSource: null, crafts: 0, produced: 0, toAcquire: 0, newSurplus: 0, disciplines: null,
+  hint: null, recipeKnown: null, performable: true, assignedCharacter: null, cutoff: null, root: false, ingredients: [], ...o
+})
 let projectCalls: { recipeId: number; target: number; settings?: unknown }[]
 let catalogueCalls: number
 let pendingProject: ((p: ForgeProject) => void)[]
@@ -127,37 +135,38 @@ describe('equipment detail layout', () => {
   })
 
   it('puts owned use and missing quantities in separate boxes, and lists steps in dependency order', async () => {
-    const path = node({ item: item(101, 'Sunrise Longbow'), recipeId: -1, needed: 1, toCraft: 1, toAcquire: 0, crafts: 1, produced: 1, children: [
-      node({ item: item(5, 'Locked Plank'), recipeId: 55, recipeSource: 'CRAFT', recipeKnown: false, performable: false,
-        needed: 3, toCraft: 3, toAcquire: 0, crafts: 3, produced: 3, children: [
-          node({ item: item(6, 'Ancient Wood Log'), needed: 9, fromOwned: 4, toAcquire: 5 })] })] })
-    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) { return project(target, { tree: path }) } }
+    // The UI renders the backend's instruction list and owned list; it derives neither from the tree.
+    const steps = [
+      step(5, 'Locked Plank', { recipeId: 55, recipeSource: 'CRAFT', recipeKnown: false, performable: false, crafts: 3, produced: 3,
+        ingredients: [{ item: item(6, 'Ancient Wood Log'), quantity: 9 }] }),
+      step(101, 'Sunrise Longbow', { recipeId: -1, crafts: 1, produced: 1, root: true })]
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) {
+      return project(target, { craftingSteps: steps, ownedItems: [{ item: item(6, 'Ancient Wood Log'), count: 4, locations: ['Bank 4'], valueCopper: 400 }] }) } }
     const w = mount(MysticForgeScreen, { props: { api } })
     await flushPromises()
     await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
     await flushPromises()
-    expect(w.get('[data-test="forge-owned"]').text()).toContain('Including reserved materials')
+    expect(w.get('[data-test="forge-owned"]').text()).toContain('Own materials are not used.')
     expect(w.get('[data-test="forge-owned-line"]').get('strong').text()).toBe('4')
+    expect(w.get('[data-test="forge-owned-value"]').text()).toBe('0c') // Value own = No: backend value is not shown
     expect(w.get('[data-test="forge-shopping-line"]').get('strong').text()).toBe('5')
-    const steps = w.findAll('[data-test="forge-crafting-step"]')
-    expect(steps).toHaveLength(2) // the Trading Post leaf only repeats Shopping, so it is no step
+    const rendered = w.findAll('[data-test="forge-crafting-step"]')
+    expect(rendered).toHaveLength(2)
     expect(w.get('[data-test="forge-crafting-steps"]').text()).not.toContain('Acquire')
-    expect(steps[0]!.text()).toContain('Craft3Locked Plank')
-    expect(steps[0]!.text()).toContain('Recipe not unlocked')
-    expect(steps[1]!.text()).toContain('Craft1Sunrise Longbow')
+    expect(rendered[0]!.text()).toContain('Craft3Locked Plank')
+    expect(rendered[0]!.text()).toContain('Recipe not unlocked')
+    expect(rendered[1]!.text()).toContain('Craft1Sunrise Longbow')
     expect(w.get('[data-test="forge-shopping-currency"]').text()).toContain('wallet unknown')
     w.unmount()
   })
 
   it('shows the estimated Clover attempt and a useful Obsidian merchant step, never a generic acquire step', async () => {
-    const stone = node({ item: item(20796, 'Philosopher\'s Stone'), needed: 6, toAcquire: 6 })
-    const clover = node({ item: item(19675, 'Mystic Clover'), needed: 2, toAcquire: 2, children: [stone],
-      hint: 'Estimated: Mystic Forge one-Clover attempt, about 31% chance per attempt - 7 attempts to cover 2 missing Clovers; not guaranteed' })
-    const obsidian = node({ item: item(19925, 'Obsidian Shard'), needed: 3, toAcquire: 3, recipeId: -1_000_019_925, recipeSource: 'VENDOR', crafts: 3, produced: 3,
-      hint: 'Tactician Deathstrider, Temple of Balthazar: 2,100 Karma each.' })
     const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) {
-      return project(target, { tree: node({ item: item(101, 'Sunrise Longbow'), recipeId: -1, crafts: 1, produced: 1, toAcquire: 0, children: [clover, obsidian] }),
-        clover: { missing: 2, attempts: 7, percent: 31 } })
+      return project(target, { clover: { missing: 2, attempts: 7, percent: 31 }, craftingSteps: [
+        step(19675, 'Mystic Clover', { toAcquire: 2, crafts: 7, hint: null }),
+        step(19925, 'Obsidian Shard', { recipeId: -1_000_019_925, recipeSource: 'VENDOR', crafts: 3, produced: 3, toAcquire: 3,
+          hint: 'Tactician Deathstrider, Temple of Balthazar: 2,100 Karma each.' }),
+        step(101, 'Sunrise Longbow', { recipeId: -1, crafts: 1, produced: 1, root: true })] })
     } }
     const w = mount(MysticForgeScreen, { props: { api } })
     await flushPromises()
@@ -165,21 +174,31 @@ describe('equipment detail layout', () => {
     await flushPromises()
     const steps = w.findAll('[data-test="forge-crafting-step"]')
     expect(steps[0]!.text()).toContain('estimated')
-    expect(steps[0]!.text()).toContain('not guaranteed')
-    expect(steps[1]!.text()).toContain('Tactician Deathstrider')
-    expect(steps[1]!.text()).toContain('2,100 Karma each')
+    expect(steps[0]!.text()).toContain('≈7 attempts')
+    expect(steps[1]!.text()).toContain('Buy')
+    expect(steps[1]!.text()).toContain('Obsidian Shard')
     expect(w.get('[data-test="forge-crafting-steps"]').text()).not.toContain('Acquire')
     expect(w.get('[data-test="forge-clover-estimate"]').text()).toContain('7 Mystic Forge attempts')
     w.unmount()
   })
 
-  it('keeps material promotions on their existing detail layout', async () => {
-    const w = await mounted()
+  it('shows a Material with its base recipe, expected yield and batches, and without equipment-only settings or steps', async () => {
+    // The backend decides the estimated batch count for the desired output (literal oracle: 250 -> 43 batches).
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, loadProject(recipeId, target, settings) {
+      projectCalls.push({ recipeId, target, settings })
+      return Promise.resolve(project(target, { batches: 43, targetKind: 'OUTPUT_QUANTITY' }))
+    } }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
     await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Gossamer Scrap'))!.trigger('click')
     await flushPromises()
-    expect(w.find('[data-test="forge-equipment-layout"]').exists()).toBe(false)
-    expect(w.find('[data-test="forge-economics"]').exists()).toBe(true)
+    expect(projectCalls.at(-1)!.target).toBe(250) // Materials default to a desired output of 250
+    expect(w.find('[data-test="forge-base-recipe"]').exists()).toBe(true)
+    for (const id of ['daily', 'promotions', 'reduce']) expect(w.find(`[data-test="forge-setting-${id}"]`).exists()).toBe(false)
+    for (const id of ['price', 'use-own', 'value-own']) expect(w.find(`[data-test="forge-setting-${id}"]`).exists()).toBe(true)
+    expect(w.find('[data-test="forge-crafting-steps"]').exists()).toBe(false)
     expect(w.get('[data-test="forge-yield"]').text()).toContain('10–40')
+    expect(w.get('[data-test="forge-estimated-batches"]').text()).toBe('≈43')
     w.unmount()
   })
 })
@@ -203,27 +222,37 @@ describe('Mystic Forge overview', () => {
     const w = await mounted()
     const rows = w.findAll('[data-test="forge-row"]')
     const longbow = rows.find((r) => r.text().includes('Sunrise Longbow'))!
-    expect(longbow.get('[data-test="forge-row-prices"]').text()).toBe('Instant buy23456Instant sell12345') // shared coin amounts: buy = ask 2g34s56c, sell = bid 1g23s45c
+    // Shared coin amounts expose their value through accessible semantics: buy = ask 2g34s56c, sell = bid 1g23s45c.
+    expect(longbow.findAll('[data-test="forge-row-prices"] [role="img"]').map(c => c.attributes('aria-label'))).toEqual(['2g 34s 56c', '1g 23s 45c'])
+    expect(longbow.get('[data-test="forge-row-prices"]').text()).toContain('Instant buy')
     const coat = rows.find((r) => r.text().includes('Gift Coat'))!
-    expect(coat.get('[data-test="forge-row-prices"]').text()).toContain('Not traded / price unavailable')
+    expect(coat.find('[data-test="forge-row-prices"]').exists()).toBe(false) // no repeated unavailable boilerplate
+    expect(coat.text()).not.toContain('price unavailable')
     const clover = rows.find((r) => r.text().includes('Mystic Clover'))!
-    expect(clover.get('[data-test="forge-row-prices"]').text()).toBe('No guaranteed output')
-    expect(clover.text()).toContain('reference only')
+    expect(clover.find('[data-test="forge-row-prices"]').exists()).toBe(false)
   })
 })
 
 describe('selected project', () => {
   it('opens exactly one recipe with default target 1 and shows full path, currencies and partial cost', async () => {
-    const w = await mounted()
+    const recipeTree = part(101, 'Sunrise Longbow', 1, { children: [part(0, 'Group', 1, { children: [
+      part(5, 'Locked Plank', 3, { children: [part(6, 'Ancient Wood Log', 9, { acquired: 4 })] })] })] })
+    const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, loadProject(recipeId, target, settings) {
+      projectCalls.push({ recipeId, target, settings })
+      return Promise.resolve(project(target, { settings: settings!, recipeTree }))
+    } }
+    const w = mount(MysticForgeScreen, { props: { api } })
+    await flushPromises()
     await w.findAll('[data-test="forge-row"]').find((r) => r.text().includes('Sunrise Longbow'))!.trigger('click')
     await flushPromises()
     expect(projectCalls).toEqual([{ recipeId: -1, target: 1, settings: { priceMode: 'INSTANT_BUY', useOwn: false, valueOwn: false, daily: 'CRAFT', promotions: false, reduce: 'NO' } }])
     expect(w.get('[data-test="forge-known-gold"]').text()).toContain('77g 77s 0c')
     expect(w.get('[data-test="forge-known-gold"]').text()).toContain('partial')
     expect(w.get('[data-test="forge-unpriced"]').text()).toContain('Gift of Fortune')
-    expect(w.get('[data-test="forge-currency"]').text()).toContain('Spirit Shards — need 50, wallet unknown')
+    expect(w.get('[data-test="forge-currency"]').get('strong').text()).toBe('50')
+    expect(w.get('[data-test="forge-currency"]').text()).toContain('Spirit Shards')
+    expect(w.get('[data-test="forge-currency"]').text()).toContain('Wallet balance unknown')
     expect(w.get('[data-test="forge-tree"]').text()).toContain('Locked Plank')
-    expect(w.get('[data-test="forge-tree"]').text()).toContain('Recipe not unlocked')
     expect(w.get('[data-test="forge-tree"]').text()).toContain('Ancient Wood Log')
     expect(w.get('[data-test="forge-margin"]').text()).toBe('-18s 31c')
     expect(w.get('[data-test="forge-margin"]').classes()).toContain('money--loss')
@@ -497,8 +526,8 @@ describe('vendor shopping and bounded catalogue completion', () => {
     expect(lines).toHaveLength(2)
     expect(lines[0]!.get('a').text()).toBe('Mystic Crystal')
     expect(lines[0]!.get('strong').text()).toBe('10')
-    expect(lines[0]!.get('[data-test="forge-shopping-vendor"]').text()).toBe('Merchant · 1 purchase')
-    expect(lines[0]!.text()).toContain('1 Spirit Shard')
+    expect(lines[0]!.get('[data-test="forge-shopping-vendor"]').text()).toContain('Miyani')
+    expect(lines[0]!.text()).toContain('1Spirit Shard')
     expect(lines[0]!.text()).not.toContain('price unavailable')
     expect(lines[1]!.get('a').text()).toBe('Ancient Wood Log')
     expect(lines[1]!.get('strong').text()).toBe('5')
@@ -550,7 +579,8 @@ describe('vendor shopping and bounded catalogue completion', () => {
     await flushPromises()
     await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Sunrise Longbow'))!.trigger('click')
     await flushPromises()
-    expect(w.find('[data-test="forge-settings"]').exists()).toBe(false)
+    // Shared preferences are always editable; metadata completion only changes the summary, never the selection or plan.
+    expect(w.find('[data-test="forge-settings"]').exists()).toBe(true)
     expect(projectCalls).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(5100)
     await flushPromises()
@@ -562,6 +592,42 @@ describe('vendor shopping and bounded catalogue completion', () => {
     expect(w.text()).toContain('Sunrise Longbow')
     await vi.advanceTimersByTimeAsync(30_000)
     expect(calls).toBe(2) // metadata complete: no further polling
+    w.unmount()
+  })
+
+  it('late metadata that makes an open cold row a Material replans once with the neutralized settings and keeps the detail result', async () => {
+    let calls = 0
+    const cold = (r: ForgeRecipeRow) => r.recipeId === -4 ? { ...r, itemType: null, itemSubtype: null, category: 'OTHER' as const } : r
+    const api: MysticForgeApi = {
+      async loadCatalogue() {
+        calls++
+        const warm = calls > 1
+        return { ...catalogue, completing: !warm, recipes: warm ? catalogue.recipes : catalogue.recipes.map(cold) }
+      },
+      loadProject(recipeId, target, settings) {
+        projectCalls.push({ recipeId, target, settings })
+        return Promise.resolve(project(target, { recipeId, settings: settings!, batches: 7 }))
+      }
+    }
+    const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
+    await flushPromises()
+    await w.findAll('[data-test="forge-row"]').find(r => r.text().includes('Gossamer Scrap'))!.trigger('click')
+    await flushPromises()
+    await w.get('[data-test="forge-setting-promotions"]').setValue('YES') // raw shared preference while the type is still unknown
+    await w.get('[data-test="forge-setting-daily"]').setValue('BUY')
+    await vi.advanceTimersByTimeAsync(TARGET_DEBOUNCE_MS + 1)
+    expect(projectCalls).toHaveLength(2)
+    expect(projectCalls.at(-1)!.settings).toMatchObject({ promotions: true, daily: 'BUY' })
+    await vi.advanceTimersByTimeAsync(5100) // authoritative metadata: the row is now a Material
+    await flushPromises()
+    expect(calls).toBe(2)
+    expect(projectCalls).toHaveLength(3) // exactly one bounded replan
+    expect(projectCalls.at(-1)).toEqual({ recipeId: -4, target: 1, settings: { priceMode: 'INSTANT_BUY', useOwn: false, valueOwn: false, daily: 'CRAFT', promotions: false, reduce: 'NO' } })
+    expect(w.find('[data-test="forge-estimated-batches"]').exists()).toBe(true) // Material detail with its result, not an empty page
+    expect(w.get('[data-test="forge-estimated-batches"]').text()).toBe('≈7')
+    expect(w.find('[data-test="forge-setting-promotions"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(projectCalls).toHaveLength(3) // no endless planning
     w.unmount()
   })
 
@@ -609,7 +675,8 @@ describe('vendor shopping and bounded catalogue completion', () => {
     await flushPromises()
     for (let i = 0; i < 10; i++) await vi.advanceTimersByTimeAsync(5100)
     expect(counter.calls).toBe(6) // the bound of 6 schedules is shared with the re-arm on opening: no endless polling
-    expect(w.find('[data-test="forge-settings"]').exists()).toBe(false)
+    expect(w.find('[data-test="forge-settings"]').exists()).toBe(true)
+    expect(w.find('[data-test="forge-detail-catalogue-retry"]').exists()).toBe(true) // visible Retry inside the open detail
     expect(w.find('[data-test="forge-catalogue-stalled"]').exists()).toBe(true)
     await w.get('[data-test="forge-detail-catalogue-retry-button"]').trigger('click')
     await flushPromises()
@@ -688,11 +755,11 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     const w = await mounted()
     await w.findAll('[data-test="forge-row"]').find((r) => r.text().includes('Gossamer'))!.trigger('click')
     await flushPromises()
-    const text = w.get('[data-test="forge-economics"]').text()
-    expect(w.get('[data-test="forge-unit-quote"]').text()).toBe('1s 0c')
-    expect(text).toContain('Estimated total proceeds (1 batch)')
-    expect(w.get('[data-test="forge-total-proceeds"]').text()).toBe('36s 84c')
-    expect(w.get('[data-test="forge-margin"]').text()).toBe('-18s 31c')
+    const text = w.get('[data-test="forge-summary"]').text()
+    expect(text).toContain('Estimated sale proceeds')
+    expect(text).toContain('36s 84c') // whole-plan expected gross from the backend, not a per-item quote
+    expect(text).toContain('Trading Post fees')
+    expect(w.get('[data-test="forge-margin"]').text()).toBe('-18s 31c') // backend margin, no frontend arithmetic
     w.unmount()
   })
   it('shows backend Research Note facts, the estimated value popup, and no invented numbers for an unknown wallet', async () => {
@@ -721,35 +788,35 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     expect(w2.find('[data-test="forge-notes-production"]').exists()).toBe(false)
     w2.unmount()
   })
-  it('vendor steps are labelled Vendor / To buy, never Mystic Forge / To craft', async () => {
+  it('vendor steps are labelled Buy with the merchant, never Craft or Mystic Forge', async () => {
     const api: MysticForgeApi = {
       async loadCatalogue() { return catalogue },
       async loadProject(_id, target) {
-        return project(target, { tree: node({ item: item(104, 'Root'), needed: 1, toCraft: 1, toAcquire: 0, recipeId: -1, children: [
-          node({ item: item(20796, 'Mystic Crystal'), needed: 5, toCraft: 5, toAcquire: 0, recipeId: -1_000_000_001, recipeSource: 'VENDOR' })] }) })
+        return project(target, { craftingSteps: [
+          step(20796, 'Mystic Crystal', { recipeId: -1_000_000_001, recipeSource: 'VENDOR', crafts: 5, produced: 5, toAcquire: 5 }),
+          step(101, 'Root', { recipeId: -1, crafts: 1, produced: 1, root: true })] })
       }
     }
     const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
     await flushPromises()
     await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
     await flushPromises()
-    const nodes = w.findAll('[data-test="forge-node"]')
-    const vendor = nodes[1]!.text()
-    expect(vendor).toContain('Vendor')
-    expect(vendor).toContain('To buy 5')
+    const steps = w.findAll('[data-test="forge-crafting-step"]')
+    const vendor = steps[0]!.text()
+    expect(vendor).toContain('Buy5')
+    expect(vendor).toContain('Miyani')
     expect(vendor).not.toContain('Mystic Forge')
-    expect(vendor).not.toContain('To craft')
-    expect(nodes[0]!.text()).toContain('Mystic Forge')
+    expect(vendor).not.toContain('Craft')
+    expect(steps[1]!.text()).toContain('Craft1Root')
     w.unmount()
   })
-  it.each([1, 10])('reference-only Clover (%i-output variant) shows inputs for batches and no root claim', async (batches) => {
+  it.each([1, 10])('reference-only Clover (%i-output variant) shows one-batch inputs, requested batches and no root claim', async (inputs) => {
     const api: MysticForgeApi = {
       async loadCatalogue() { return catalogue },
       async loadProject(_id, target) {
         return project(target, { outcome: 'REFERENCE_RANDOM', targetKind: 'BATCHES', guaranteedOutput: null, economics: null, batches: target,
-          note: 'Random outcome: reference inputs only; no output, profit or completion is claimed.',
-          tree: node({ item: item(19675, 'Mystic Clover'), needed: 0, toCraft: 0, toAcquire: 0, recipeId: -1_100_000_001, children: [
-            node({ item: item(19925, 'Obsidian Shard'), needed: batches * target, toAcquire: batches * target })] }) })
+          note: 'Random outcome: reference inputs only; no output, profit or completion is claimed.', tree: null, craftingSteps: [],
+          baseIngredients: [{ item: item(19925, 'Obsidian Shard'), quantity: inputs }] })
       }
     }
     const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
@@ -760,12 +827,12 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     vi.advanceTimersByTime(TARGET_DEBOUNCE_MS + 1)
     await flushPromises()
     expect(w.find('[data-test="forge-output"]').exists()).toBe(false)
-    expect(w.find('[data-test="forge-economics"]').exists()).toBe(false)
-    expect(w.get('[data-test="forge-batches"]').text()).toContain('3 requested batches')
-    const nodes = w.findAll('[data-test="forge-node"]')
-    expect(nodes[0]!.get('.forge-node__head').find('[data-test="forge-node-needed"]').exists()).toBe(false)
-    expect(nodes[0]!.text()).not.toContain('To craft')
-    expect(nodes[1]!.get('[data-test="forge-node-needed"]').text()).toBe(`× ${batches * 3}`)
+    expect(w.find('[data-test="forge-margin"]').exists()).toBe(false)
+    expect(w.find('[data-test="forge-tree"]').exists()).toBe(false)
+    expect(w.get('[data-test="forge-estimated-batches"]').text()).toBe('≈3')
+    const base = w.get('[data-test="forge-base-ingredient"]').text() // one batch, independent of the requested 3
+    expect(base).toContain(String(inputs))
+    expect(base).toContain('Obsidian Shard')
     w.unmount()
   })
 
@@ -785,20 +852,20 @@ describe('lifecycle races, labels and reference-only Clover', () => {
     w.unmount()
   })
 
-  it('shows the actual produced quantity and kept surplus of a batch purchase beside the demand', async () => {
+  it('shows the actual produced quantity and kept surplus of a crafted batch in the backend instruction', async () => {
     const api: MysticForgeApi = { async loadCatalogue() { return catalogue }, async loadProject(_id, target) {
-      return project(target, { tree: node({ item: item(101, 'Root'), needed: 1, toCraft: 1, toAcquire: 0, recipeId: -1, children: [
-        node({ item: item(20796, "Philosopher's Stone"), needed: 5, toCraft: 5, toAcquire: 0, recipeId: -1_000_000_001, recipeSource: 'VENDOR',
-          produced: 10, newSurplus: 5 })] }) })
+      return project(target, { craftingSteps: [
+        step(20796, "Philosopher's Stone", { recipeId: 4321, recipeSource: 'CRAFT', crafts: 2, produced: 10, newSurplus: 5, assignedCharacter: 'Tester' }),
+        step(101, 'Root', { recipeId: -1, crafts: 1, produced: 1, root: true })] })
     } }
     const w = mount(MysticForgeScreen, { props: { api }, attachTo: document.body })
     await flushPromises()
     await w.findAll('[data-test="forge-row"]')[0]!.trigger('click')
     await flushPromises()
-    const facts = w.findAll('[data-test="forge-node"]')[1]!.get('[data-test="forge-node-facts"]').text()
-    expect(facts).toContain('To buy 5')
-    expect(facts).toContain('Purchase yields 10')
-    expect(facts).toContain('5 surplus kept for later use')
+    const text = w.findAll('[data-test="forge-crafting-step"]')[0]!.text()
+    expect(text).toContain('Craft10')
+    expect(text).toContain('5 extra batch units available for later steps')
+    expect(text).toContain('Tester')
     w.unmount()
   })
 

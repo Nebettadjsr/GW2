@@ -167,4 +167,24 @@ class ForgeProjectNotesTest {
         assertEquals(0, n.surplus());
         assertEquals(2L, n.uncoveredNotes());
     }
+
+    @Test
+    void noteSchedulingChildIsOrderedWorkButNeverAnIngredientOfTheRootInstruction() {
+        // wallet 10 -> two Peer Reviewed Research crafts are scheduled before the Note-spending branches.
+        var p = run(Map.of(), Map.of((int) NOTE, 10L), Map.of(SHARED, ask(10), B, ask(100)));
+        var instructions = ForgeCraftingInstructions.of(p);
+        var prr = instructions.stream().filter(i -> i.operation().itemId() == PRR).toList();
+        assertEquals(1, prr.size(), "the Note production stays one ordered instruction");
+        assertEquals(2, prr.get(0).crafts());
+        assertEquals(java.util.Map.of(SHARED, 8L), prr.get(0).ingredients().stream()
+                .collect(java.util.stream.Collectors.toMap(ForgeCraftingInstructions.Input::itemId, ForgeCraftingInstructions.Input::quantity)));
+        var rootInstruction = instructions.get(instructions.size() - 1);
+        assertTrue(rootInstruction.root());
+        assertTrue(rootInstruction.ingredients().stream().noneMatch(in -> in.itemId() == PRR),
+                "Peer Reviewed Research is scheduled before the root, it is not a root recipe ingredient");
+        assertTrue(rootInstruction.ingredients().stream().anyMatch(in -> in.itemId() == SHARED), "real root inputs stay");
+        int prrAt = -1, rootAt = instructions.size() - 1;
+        for (int i = 0; i < instructions.size(); i++) if (instructions.get(i).operation().itemId() == PRR) prrAt = i;
+        assertTrue(prrAt >= 0 && prrAt < rootAt, "the Note work still runs before the Note-spending root");
+    }
 }

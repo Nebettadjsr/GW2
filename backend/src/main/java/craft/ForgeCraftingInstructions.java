@@ -40,7 +40,7 @@ public final class ForgeCraftingInstructions {
             return occurrences.stream().map(occurrence -> {
                 var node = occurrence.node();
                 return new Instruction(node, occurrence.root(), node.crafts(), node.produced(), node.toAcquire(), node.newSurplus(),
-                        node.children().stream().map(input -> new Input(input.itemId(), input.needed())).toList());
+                        inputsOf(node, occurrence.root()).stream().map(input -> new Input(input.itemId(), input.needed())).toList());
             }).toList();
         }
     }
@@ -55,6 +55,18 @@ public final class ForgeCraftingInstructions {
         boolean estimated = node.recipeId() == null && node.toAcquire() > 0 && node.hint() != null
                 && !node.children().isEmpty();
         if (crafting || estimated) occurrences.add(new Occurrence(node, root, rank));
+    }
+
+    /**
+     * The real recipe inputs of an operation. The planner attaches the Research Note production subtree to the root only to
+     * order that work before the Note-spending craft; the root spends Notes (a currency), so the Note container is never one of
+     * its ingredients and must not be listed as one. The Note work stays its own ordered instruction.
+     */
+    private static List<ForgeProjectPlanner.Node> inputsOf(ForgeProjectPlanner.Node node, boolean root) {
+        if (!root) return node.children();
+        return node.children().stream()
+                .filter(child -> child.recipeId() == null || !ResearchNoteEstimate.VARIANT_RECIPE_IDS.contains(child.recipeId()))
+                .toList();
     }
 
     private static int phase(ForgeProjectPlanner.Node node) {
@@ -79,7 +91,7 @@ public final class ForgeCraftingInstructions {
             produced = ForgeProjectPlanner.add(produced, node.produced());
             toAcquire = ForgeProjectPlanner.add(toAcquire, node.toAcquire());
             newSurplus = ForgeProjectPlanner.add(newSurplus, node.newSurplus());
-            for (var input : node.children()) inputs.merge(input.itemId(), input.needed(), ForgeProjectPlanner::add);
+            for (var input : inputsOf(node, occurrence.root())) inputs.merge(input.itemId(), input.needed(), ForgeProjectPlanner::add);
         }
 
         private Instruction instruction() {

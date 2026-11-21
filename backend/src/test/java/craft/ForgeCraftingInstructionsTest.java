@@ -57,19 +57,23 @@ class ForgeCraftingInstructionsTest {
 
     @Test
     void differentAssignedCharactersOrStatusesStayOneInstructionEach() {
-        // Same recipe, same output, but performed by different characters must not be merged into a false total.
-        var ctx = new ForgeProjectPlanner.Context(List.of(
-                new CharacterCraftingProfile("Ann", Map.of("Artificer", 500))), java.util.Set.of());
-        var project = LegacyForge.planner(List.of(red, x, y, root)).planOutput(root, 1,
-                ForgeProjectPlanner.Inventory.shared(Map.of()), ctx, Map.of(), Map.of());
+        // Two Red occurrences that are performed by different characters, plus one unperformable, must not be merged.
+        var node = (java.util.function.Function<String, ForgeProjectPlanner.Node>) character -> new ForgeProjectPlanner.Node(
+                RED, 2, 0, 0, 2, 0, red.recipeId, RecipeSource.MYSTIC_FORGE, 2, 0, "", null, List.of(), true, true, character, null, 2, 0);
+        var ann = node.apply("Ann");
+        var bob = node.apply("Bob");
+        var rootNode = new ForgeProjectPlanner.Node(ROOT, 1, 0, 0, 1, 0, root.recipeId, RecipeSource.MYSTIC_FORGE, 1, 0, "", null,
+                List.of(ann, bob, ann), true, true, null, null, 1, 0);
+        var project = new ForgeProjectPlanner.Project(root.recipeId, ROOT, 1, 1,
+                List.of(), List.of(), List.of(), rootNode, 0, List.of(), true, null, null, null, null, List.of(),
+                ForgeSettings.DEFAULT, null, null, 0);
         var instructions = ForgeCraftingInstructions.of(project);
-        for (var instruction : instructions) {
-            long sameKey = instructions.stream().filter(o -> o.operation().itemId() == instruction.operation().itemId()
-                    && java.util.Objects.equals(o.operation().assignedCharacter(), instruction.operation().assignedCharacter())
-                    && o.operation().performable() == instruction.operation().performable()
-                    && java.util.Objects.equals(o.operation().recipeKnown(), instruction.operation().recipeKnown())).count();
-            assertEquals(1, sameKey, "identical recipe/character/status merges; anything else stays separate");
-        }
+        var reds = instructions.stream().filter(i -> i.operation().itemId() == RED).toList();
+        assertEquals(2, reds.size(), "Ann's two occurrences merge, Bob's stays separate");
+        var annInstruction = reds.stream().filter(i -> "Ann".equals(i.operation().assignedCharacter())).findFirst().orElseThrow();
+        var bobInstruction = reds.stream().filter(i -> "Bob".equals(i.operation().assignedCharacter())).findFirst().orElseThrow();
+        assertEquals(4, annInstruction.crafts());
+        assertEquals(2, bobInstruction.crafts());
     }
 
     private static Map<Integer, Long> inputs(ForgeCraftingInstructions.Instruction i) {

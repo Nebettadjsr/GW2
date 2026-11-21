@@ -450,6 +450,15 @@ export function useMysticForge(api: MysticForgeApi, sleep: (ms: number) => Promi
     preferencesUnavailable.value = saved.unavailable
   }
 
+  // Late metadata can change which settings are effective for the open recipe (an uncached row becoming a Material neutralizes
+  // daily/promotions/reduce). The plan held for the old effective settings no longer paints, so replan once for the change,
+  // keeping the selection, target and shared preferences. A user edit already has its debounced plan pending and is skipped.
+  watch(() => JSON.stringify(effectiveSettings.value), () => {
+    if (selectedRecipeId.value === null || debounce !== null || projectLoading.value || !active || disposed) return
+    if (currentProject.value !== null || project.value === null) return
+    void loadProject()
+  })
+
   watch(() => connection.accountId, () => {
     restorePreferences()
     if (active && selectedRecipeId.value !== null) setTarget(targetText.value)
