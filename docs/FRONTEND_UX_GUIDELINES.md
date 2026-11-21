@@ -153,10 +153,20 @@ Refresh only sources needed by the page: Bank only Bank, Materials only material
 
 ### 2.5 Public Home and beginner guide
 
-Home is the first main-navigation destination and the default landing at `/welcome`. Its four
-tabs are **Welcome**, **What you can do**, **Getting started** and **GW2 beginner tips**.
-Keep the introductory promise, intended audiences, tool links and short account-to-crafting
-steps easy to scan. Tab navigation supports Arrow keys, Home/End and visible focus, with
+Home is the first main-navigation destination and the default landing at `/welcome`. Its three
+tabs are **About this tool**, **What you can do** and **GW2 beginner tips**. About this tool
+tells the owner's origin story in short paragraphs inside a restrained dark letter panel,
+using a readable, locally hosted Handlee face and a personal signature. Use the shared
+charcoal surfaces, a thin frame and gold accents; keep the letter narrower than the tab
+region and avoid bright parchment or ornamental inset borders. It replaces the
+former promotional welcome cards and prominent connect button. There is no separate
+Getting started page; System Status remains the destination for connecting a GW2 API key.
+Keep the introductory story and tool links easy to scan.
+Above all three tabs, a page-width gold-crafting artwork header carries **Nebet’s GW2
+Crafting Tool** in a locally hosted Cinzel display face. Crop the decorative artwork to
+a shallow banner and darken it behind the readable title and introduction; keep the
+tab content at its existing reading width and adapt the header to narrow screens.
+Tab navigation supports Arrow keys, Home/End and visible focus, with
 proper tab/panel associations. Home and the footer information pages never require or
 restore an account connection merely to read them.
 

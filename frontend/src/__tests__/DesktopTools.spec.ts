@@ -135,7 +135,7 @@ describe('desktop-layout warning through the real App', () => {
     expect(app.find('[data-test="desktop-width-notice"]').exists()).toBe(false)
     expect(app.find('[data-test="page-heading"]').exists()).toBe(true)
     expect(requests).toEqual([])
-    if (path === '/welcome') for (const tab of ['features', 'guide', 'tips', 'welcome']) {
+    if (path === '/welcome') for (const tab of ['features', 'tips', 'welcome']) {
       await app.get(`#home-tab-${tab}`).trigger('click')
       expect(app.get(`#home-panel-${tab}`).isVisible()).toBe(true)
     }

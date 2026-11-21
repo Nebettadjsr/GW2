@@ -45,7 +45,7 @@ const AREAS = [
   // no hash route, and it is the one destination whose link is not a `#/…` fragment.
   {
     id: 'home',
-    heading: 'Welcome to GW2 Crafting Tool',
+    heading: 'Nebet’s GW2 Crafting Tool',
     title: 'GW2 Crafting Tool · Gold & Beginner Tips · Unofficial fan project',
     url: '/welcome',
     href: '/welcome',

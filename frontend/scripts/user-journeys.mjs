@@ -118,7 +118,7 @@ async function publicReading({ page, api, origin, step }) {
   await page.addInitScript(key => sessionStorage.setItem('gw2.apiKey', key), KEY_A)
   await page.goto(`${origin}/welcome`)
   await get(page, 'home-screen').waitFor()
-  for (const id of ['features', 'guide', 'tips', 'welcome']) {
+  for (const id of ['features', 'tips', 'welcome']) {
     await page.locator(`#home-tab-${id}`).click()
     assert.equal(await page.locator(`#home-tab-${id}`).getAttribute('aria-selected'), 'true')
     assert.equal(await page.locator(`#home-panel-${id}`).isVisible(), true)

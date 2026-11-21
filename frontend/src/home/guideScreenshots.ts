@@ -15,14 +15,28 @@ import craftingBagsSmall from './images/crafting-bags-320.webp?no-inline'
 import gatheringMagic from './images/gathering-magic.webp?no-inline'
 import dragonfallMap from './images/dragonfall-map.webp?no-inline'
 import dragonfallMapSmall from './images/dragonfall-map-320.webp?no-inline'
+import goldCrafting from './images/gold-crafting.webp?no-inline'
+import goldCraftingSmall from './images/gold-crafting-640.webp?no-inline'
+import goldCraftingMedium from './images/gold-crafting-960.webp?no-inline'
+import runeList from './images/rune-list.webp?no-inline'
+import runeListSmall from './images/rune-list-320.webp?no-inline'
+import necroRuneCraft from './images/necro-rune-craft.webp?no-inline'
+import necroRuneCraftSmall from './images/necro-rune-craft-640.webp?no-inline'
+import necroRuneCraftMedium from './images/necro-rune-craft-960.webp?no-inline'
+import teachMeSmall from './images/teach-me-small.webp?no-inline'
+import teachMeSmallThumbnail from './images/teach-me-small-320.webp?no-inline'
+import teachMeBig from './images/teach-me-big.webp?no-inline'
+import teachMeBigSmall from './images/teach-me-big-640.webp?no-inline'
+import teachMeBigMedium from './images/teach-me-big-1280.webp?no-inline'
 
 export type GuideScreenshotId =
-  | 'connect-key' | 'account-data' | 'crafting-settings' | 'crafting-plan'
   | 'identify-gear' | 'loot-prices' | 'salvage-gear' | 'consume-luck'
   | 'gathering-glyphs' | 'trophy-shipments' | 'vault-objectives' | 'vault-rewards'
   | 'trophy-materials' | 'trophy-sale'
   | 'intermediate-crafting-materials' | 'crafting-bags'
   | 'gathering-magic' | 'dragonfall-map'
+  | 'gold-crafting' | 'rune-list' | 'necro-rune-craft' | 'necro-rune-sell'
+  | 'teach-me-small' | 'teach-me-big'
   | 'mount-keybinds' | 'mount-abilities' | 'combat-positioning'
 
 interface GuideScreenshot {
@@ -34,9 +48,43 @@ interface GuideScreenshot {
   caption: string
 }
 
-// Owner-supplied guide screenshots; ArenaNet attribution is in the site footer.
+const necroRuneScreenshot: GuideScreenshot = {
+  src: necroRuneCraft, srcset: `${necroRuneCraftSmall} 640w, ${necroRuneCraftMedium} 960w, ${necroRuneCraft} 1785w`,
+  width: 1785, height: 1282,
+  alt: 'The Superior Rune of the Necromancer recipe and its ingredients at a Tailoring Station.',
+  caption: 'Crafting a Superior Rune of the Necromancer.'
+}
+
+// Owner-supplied landing-page images; game attribution is in the site footer.
 // Unfilled positions render nothing while more screenshots are being prepared.
 export const guideScreenshots: Partial<Record<GuideScreenshotId, GuideScreenshot>> = {
+  'gold-crafting': {
+    src: goldCrafting, srcset: `${goldCraftingSmall} 640w, ${goldCraftingMedium} 960w, ${goldCrafting} 1774w`,
+    width: 1774, height: 887,
+    alt: 'A painted pile of gold coins with crystals, crafting materials and tools.',
+    caption: 'Gold and crafting materials.'
+  },
+  'rune-list': {
+    src: runeList, srcset: `${runeListSmall} 320w, ${runeList} 498w`,
+    width: 498, height: 1061,
+    alt: 'A crafting-station list of runes and other upgrade components.',
+    caption: 'Rune recipes at a crafting station.'
+  },
+  'necro-rune-craft': necroRuneScreenshot,
+  // The supplied necroRuneSell.jpg currently contains the same image as necroRuneCraft.jpg.
+  'necro-rune-sell': necroRuneScreenshot,
+  'teach-me-small': {
+    src: teachMeSmall, srcset: `${teachMeSmallThumbnail} 320w, ${teachMeSmall} 569w`,
+    width: 569, height: 203,
+    alt: 'Jeweler dialogue options to learn the discipline or see what can be crafted.',
+    caption: 'Learning the jeweler discipline.'
+  },
+  'teach-me-big': {
+    src: teachMeBig, srcset: `${teachMeBigSmall} 640w, ${teachMeBigMedium} 1280w, ${teachMeBig} 2488w`,
+    width: 2488, height: 1802,
+    alt: 'A character speaking to Isabel, the Master Jeweler, with the crafting-discipline dialogue open.',
+    caption: 'Visiting the Master Jeweler.'
+  },
   'identify-gear': {
     src: unidentifiedGear, width: 431, height: 393,
     alt: 'Unidentified gear in the GW2 inventory with Use All highlighted in its right-click menu.',

@@ -88,7 +88,7 @@ not an exhaustive security or multi-account audit.
 
 ### Public pages, indexing and processing
 
-Welcome contains the introductory/tool/getting-started/beginner tabs and local compressed,
+Welcome contains the introductory/tool/beginner tabs and local compressed,
 responsive WebP screenshots. Tool bookmarks retain `/#/...` URLs.
 Public Home and footer information pages never restore a key or request account data.
 
