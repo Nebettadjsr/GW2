@@ -8,12 +8,14 @@ GW2 develops through GitHub issues, branches, PRs, CI and native Codex review.
 
 ## Role routing
 
-- Interactive Codex supervisor: [supervisor contract](agent/SUPERVISOR_INSTRUCTIONS.md).
-- Explicitly assigned Codex planner: [planner contract](agent/PLANNER_INSTRUCTIONS.md).
-  Planning does not include implementation or starting Claude.
-- Claude programmer: [CLAUDE.md](CLAUDE.md) and the approved issue contract.
-- Native Codex PR review follows the Code Review Rules below. Review is not
+- Supervisor (the interactive session with the owner): [supervisor contract](agent/SUPERVISOR_INSTRUCTIONS.md).
+- Planner (explicitly assigned): [planner contract](agent/PLANNER_INSTRUCTIONS.md).
+  Planning does not include implementation or starting the programmer.
+- Programmer (Claude in GitHub Actions): [CLAUDE.md](CLAUDE.md) and the approved issue contract.
+- Reviewer (native Codex PR review) follows the Code Review Rules below. Review is not
   a planning invocation.
+
+Roles are responsibilities, not models; the current assignment is in [agent/README.md](agent/README.md).
 
 The owner's current request and approved GitHub issues define work.
 The pinned GitHub issue "Backlog: unfinished owner goals" (#398) is only a short reminder of
@@ -76,6 +78,7 @@ update it when a delivered change affects its lasting rules or instructions.
 - `docs/CODING_GUIDELINES.md`: implementation conventions (rule document, harness).
 - `docs/KNOWN_PROBLEMS.md`: unresolved defects and concrete improvement opportunities.
 - `agent/DEVELOPMENT_WORKFLOW.md`: implemented agent/GitHub process.
+- `agent/VIDEO_COMPARISON.md`: how that process relates to the reference workflow, and the open improvements.
 - `docs/archive/agent/user-decisions/` and
   `docs/archive/architecture/decisions/`: historical decision rationale.
 
@@ -114,9 +117,10 @@ choice. Prefer incremental changes and clear, simple responsibility boundaries.
 
 ## Verification and repository care
 
-CI runs Maven/Vitest, type/build, workflow checks and the curated controlled
-browser journeys. Default CI includes isolated database-backed `*Test` cases;
-`*IT`, live API and real-backend browser checks need their explicit setup/evidence.
+CI runs Maven (with the quality gates) and Vitest, type/build, workflow checks, the curated
+controlled browser journeys and a container smoke, plus a bounded public API compatibility
+check. Default CI includes isolated database-backed `*Test` cases; `*IT`, other live API
+checks and real-backend browser checks need their explicit setup/evidence.
 Explain removed or weakened assertions. Never invent test results.
 
 Preserve unrelated maintainer edits, keep diffs focused and stop owned processes.
