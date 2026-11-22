@@ -40,14 +40,21 @@ export async function startStubOrigin({ port, distDir, answerApi }) {
 
   function serveStatic(response, pathname) {
     // Match the production proxy's canonical public entry point, including direct reloads.
-    const relative = pathname === '/' ? 'index.html' : pathname === '/welcome' ? 'welcome.html' : pathname.replace(/^\//, '')
+    if (pathname === '/welcome' || pathname === '/welcome.html') {
+      response.writeHead(308, { Location: '/home', 'X-Robots-Tag': 'noindex, nofollow' })
+      return response.end()
+    }
+    const relative = pathname === '/' ? 'index.html' : pathname === '/home' ? 'welcome.html' : pathname.replace(/^\//, '')
     const file = `${distDir}${relative}`
     if (!file.startsWith(distDir) || !existsSync(file)) {
-      response.writeHead(404)
+      response.writeHead(404, { 'X-Robots-Tag': 'noindex, nofollow' })
       return response.end('not found')
     }
     const extension = relative.slice(relative.lastIndexOf('.'))
-    response.writeHead(200, { 'Content-Type': MIME_TYPES[extension] ?? 'application/octet-stream' })
+    response.writeHead(200, {
+      'Content-Type': MIME_TYPES[extension] ?? 'application/octet-stream',
+      'X-Robots-Tag': pathname === '/home' ? 'index, follow' : 'noindex, nofollow'
+    })
     response.end(readFileSync(file))
   }
 

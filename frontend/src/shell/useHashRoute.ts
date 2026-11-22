@@ -1,7 +1,7 @@
 /**
  * Which application area is open, kept in the address bar.
  *
- * Tool destinations live in the location hash; Home has its own /welcome document so its indexing
+ * Tool destinations live in the location hash; Home has its own /home document so its indexing
  * policy can differ from account pages. Every screen has a real URL, the browser's Back and
  * Forward buttons move between the screens that were visited, and a link or bookmark opens the screen
  * it names. No router library is added for this: the application has one flat set of destinations and
@@ -56,7 +56,7 @@ export function useHashRoute(): HashRoute {
 
   function onHashChange(): void {
     // A historical Home skip-link anchor still names Home when Back changes the document path.
-    if (window.location.hash === '#main-content' && window.location.pathname !== '/welcome') return
+    if (window.location.hash === '#main-content' && window.location.pathname !== destinationOf('home').path) return
     current.value = destinationForHash(window.location.hash)
   }
 

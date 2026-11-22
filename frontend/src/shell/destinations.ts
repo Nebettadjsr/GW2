@@ -29,7 +29,7 @@ export interface Destination {
 export const SITE_NAME = 'GW2 Crafting Tool'
 
 export const DESTINATIONS: readonly Destination[] = [
-  { id: 'home', path: '/welcome', label: 'Home' },
+  { id: 'home', path: '/home', label: 'Home' },
   { id: 'crafting', path: '#/crafting', label: 'Crafting Profit' },
   { id: 'discovery', path: '#/discovery', label: 'Crafting Discovery' },
   { id: 'forge', path: '#/mystic-forge', label: 'Mystic Forge' },

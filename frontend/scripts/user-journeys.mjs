@@ -116,7 +116,7 @@ async function journey(name, run, viewport = WIDE) {
 
 async function publicReading({ page, api, origin, step }) {
   await page.addInitScript(key => sessionStorage.setItem('gw2.apiKey', key), KEY_A)
-  await page.goto(`${origin}/welcome`)
+  await page.goto(`${origin}/home`)
   await get(page, 'home-screen').waitFor()
   for (const id of ['features', 'tips', 'welcome']) {
     await page.locator(`#home-tab-${id}`).click()

@@ -2091,7 +2091,7 @@ because it does not ask for real names or email addresses.
 
 # 59. Public Home, Guide and Information Pages
 
-Home is the default landing page at `/welcome`. It welcomes players, explains who the
+Home is the default landing page at `/home`; legacy `/welcome` links redirect there. It welcomes players, explains who the
 tools are for, outlines the available features and account-to-crafting workflow, and
 offers personal GW2 beginner tips. The guide is an approachable account of useful
 experiences, not an exhaustive game manual or a promised gold-per-hour farming route.
@@ -2113,7 +2113,7 @@ not part of the current product; do not imply a consent banner is needed for tra
 the site does not use.
 
 Only Home is intended for search-engine indexing. Account/tool and legal/storage pages
-remain excluded. The crawler policy permits the exact `/welcome` document and required
+remain excluded. The crawler policy permits the exact `/home` document and required
 static assets while disallowing other paths, and the application sets the corresponding
 index/noindex page metadata. Crawler directives express indexing preferences; they do
 not make public legal pages private or replace account authorization.

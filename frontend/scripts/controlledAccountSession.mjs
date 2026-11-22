@@ -34,7 +34,7 @@ export function createControlledAccountSession({ calculationRoutes, searchQuerie
       }, { origin, key: DUMMY_KEY })
       page.on('request', request => {
         if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-          // A public document (Home at /welcome) restores no key, so it owes no proof and any
+          // A public document (Home at /home) restores no key, so it owes no proof and any
           // API read it made would still be rejected below as preceding one.
           const target = new URL(request.url())
           onPublicDocument = publicDocumentPaths.includes(target.pathname)

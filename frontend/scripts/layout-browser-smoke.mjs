@@ -41,14 +41,14 @@ const VIEWPORTS = [
  * so a destination added without an entry here fails instead of quietly going unchecked.
  */
 const AREAS = [
-  // Public Home is its own document (`/welcome`): it has its own heading and title, no account read and
+  // Public Home is its own document (`/home`): it has its own heading and title, no account read and
   // no hash route, and it is the one destination whose link is not a `#/…` fragment.
   {
     id: 'home',
     heading: 'Nebet’s GW2 Crafting Tool',
     title: 'GW2 Crafting Tool · Gold & Beginner Tips · Unofficial fan project',
-    url: '/welcome',
-    href: '/welcome',
+    url: '/home',
+    href: '/home',
     ready: '[data-test="home-screen"]'
   },
   { id: 'crafting', heading: 'Crafting Profit', ready: '[data-test="profit-table"]' },
@@ -449,7 +449,7 @@ const session = createControlledAccountSession({
     '/api/account/bank', '/api/account/materials', '/api/account/characters'
   ],
   publicReadRoutes: ['/api/items/metadata', '/api/items/prices'],
-  publicDocumentPaths: ['/welcome']
+  publicDocumentPaths: ['/home']
 })
 
 function answerApi(context) {
@@ -782,7 +782,7 @@ async function run() {
     // every comparison below agree with the wrong thing.
     record('every controlled row is a valid CraftingRow answer', checkRowContract(profitRows()))
 
-    await page.goto(`${stub.origin}/welcome`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
+    await page.goto(`${stub.origin}/home`, { waitUntil: 'networkidle', timeout: TIMEOUT_MS })
     check(
       stub.servedCount() > 0,
       `The page at ${stub.origin} was not served by this script — stop whatever else is listening ` +
@@ -1054,7 +1054,7 @@ async function run() {
       `Navigating submitted a synchronization request: ${JSON.stringify(stub.requestsTo('/api'))}`
     )
     const foreignCalls = browserCalls.filter(
-      (path) => path !== '/' && path !== '/welcome' && !path.startsWith('/api/') && !path.startsWith('/assets/')
+      (path) => path !== '/' && path !== '/home' && !path.startsWith('/api/') && !path.startsWith('/assets/')
     )
     check(foreignCalls.length === 0, `Calls outside the backend API and page assets: ${foreignCalls.join(', ')}`)
     check(pageErrors.length === 0, `Uncaught page errors: ${pageErrors.join(' | ')}`)

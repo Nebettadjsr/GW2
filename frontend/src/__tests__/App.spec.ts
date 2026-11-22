@@ -167,7 +167,7 @@ describe('App shell', () => {
 
     const links = open.findAll('[data-test="screen-nav"] a')
     expect(links.map((link) => link.attributes('href'))).toEqual([
-      '/welcome',
+      '/home',
       '#/crafting',
       '#/discovery',
       '#/mystic-forge',
@@ -328,7 +328,7 @@ describe('App shell', () => {
     expect(open.find('[data-test="home-screen"]').exists()).toBe(true)
     expect(currentDestination(open)).toBe('nav-home')
     // The address bar is corrected rather than left claiming a destination that does not exist.
-    expect(window.location.pathname).toBe('/welcome')
+    expect(window.location.pathname).toBe('/home')
     expect(window.location.hash).toBe('')
     expect(requested).toEqual([])
   })
