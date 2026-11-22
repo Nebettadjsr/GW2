@@ -58,6 +58,10 @@ orchestration or a transaction belongs in `application/`. The Spring entry point
 is the composition root and may wire connection suppliers and repositories into application services.
 Enforced by `backend/src/test/java/architecture/ArchitectureTest.java`.
 
+HTTP JSON (Jackson serialization of controller DTOs) and the upstream JSON adapters have different
+roles. Their mappings are preserved, not unified, and serializers or dependency versions are not
+changed as a side effect of other work.
+
 ## 3. Browser responsibilities and assets
 
 The [supported browser viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns
@@ -82,6 +86,11 @@ results. The frontend does not recalculate or scale a selected row's resolution 
 **Ectoplasm Salvage is the explicit exception:** the browser calculates expected salvage/Luck
 outcomes from backend-provided item, quote and account-Luck inputs. Editing its controls
 recalculates locally. This exception does not extend to crafting or character attributes.
+
+Browser lifecycle behaviors that other work must not change as a side effect: account epochs (the
+account-generation guards above), cancellation of superseded work, request ordering and coalescing,
+KeepAlive activation of kept screens, and the autosave semantics of material reservations
+([UI_SPEC](UI_SPEC.md) section 1).
 
 All GW2 API and asset access goes through the backend. Item and build-reference images use
 backend-relative URLs and a validated filesystem cache, HTTP caching and stable fallbacks.
@@ -131,6 +140,11 @@ Ordinary account reads do not use a configured/last-used account or fetch upstre
 Character roster, inventory, equipment and build-tab reads share
 `CharacterRosterService.ConnectionSource.snapshot`, which owns read-only `REPEATABLE READ`
 setup, rollback and connection closure. Each call retains its own connection and scoped queries.
+
+Persistence behavior that must survive refactoring: transaction ownership, the original connection
+mode, atomic publication, last-good generations, and rollback and cancellation behavior. The
+real-PostgreSQL tests demonstrate these paths and a mocked connection does not prove SQL semantics,
+so read those tests before changing them.
 
 ### Schema lifecycle
 
@@ -250,6 +264,10 @@ same-account context with the original required grants. Logout does not change a
 admitted worker's scope; completion grants no further HTTP access. Keys are cleared on every
 terminal path and errors carry no upstream credential/body text.
 
+Concurrency model: background work runs on the existing executor and admission model. Virtual
+threads suit blocking I/O, not faster CPU calculations. Cancellation, single-writer limits,
+interruption and shutdown behavior are preserved.
+
 | Work | Source/trigger | Default policy |
 | --- | --- | --- |
 | Account freshness | Per-source publication markers, feature demand | 15-minute maximum age; Bank/Materials/Characters refresh only their needed sources. The optional `WALLET` source is added only when the validated request context permits `WALLET_READ` (independent of whether a raw key accompanies the read); it joins calculation identity/freshness but never makes a calculation pending. Discovery tracks it the same way (unpublished = explicit unknown requested for refresh, expired = stale), never as a mandatory source, and a keyed read also needs the key's own proven wallet scope. |
@@ -344,6 +362,8 @@ PostgreSQL 17 runs separately. Only the frontend publishes a loopback host port;
 Nginx terminates TLS and Certbot renews the certificate. No Oracle-specific application service
 is required. Keep normal Docker-host portability and the selected Always Free budget; do not
 introduce Kubernetes, microservices or extra infrastructure without a concrete requirement.
+The build enables no Java preview features: `StructuredTaskScope` (a Java 25 preview API) is not used
+and preview is not enabled as incidental cleanup.
 
 Nginx forwards `/api` with original Host (including port), Origin, cookies and key/context headers.
 Client `Forwarded`/`X-Forwarded-*` headers are not trusted. The public edge requires exact canonical
