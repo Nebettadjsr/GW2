@@ -50,6 +50,14 @@ filesystem locations or raw GW2 response models. Application services coordinate
 controllers do not become a second calculation layer. Existing code is changed incrementally,
 without introducing extra services solely to make the design more elaborate.
 
+Controllers and repositories (owner decision, 22 November 2026): a controller may read through a
+repository for a simple lookup; it does not need an application service as a pass-through. A controller
+never opens a connection or runs SQL (a repository method that connects by itself covers that need),
+and never writes, publishes or otherwise changes data through a repository; anything with rules,
+orchestration or a transaction belongs in `application/`. The Spring entry point `Gw2ApiApplication`
+is the composition root and may wire connection suppliers and repositories into application services.
+Enforced by `backend/src/test/java/architecture/ArchitectureTest.java`.
+
 ## 3. Browser responsibilities and assets
 
 The [supported browser viewport policy](DOMAIN_SPEC.md#supported-browser-viewport) owns

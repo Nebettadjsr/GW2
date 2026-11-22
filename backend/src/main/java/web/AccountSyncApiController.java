@@ -84,12 +84,8 @@ public class AccountSyncApiController {
 
     @org.springframework.beans.factory.annotation.Autowired
     public AccountSyncApiController(ScopedAccountRefreshCoordinator coordinator, AccountAccessHttp http) {
-        this(coordinator, http, scope -> {
-            try (var con = repo.Db.open()) {
-                return new repo.AccountSourceStateRepository()
-                        .read(con, scope, AccountSyncStateRepository.CHARACTERS).isPresent();
-            }
-        });
+        this(coordinator, http, scope -> new repo.AccountSourceStateRepository()
+                .isPublished(scope, AccountSyncStateRepository.CHARACTERS));
     }
 
     AccountSyncApiController(ScopedAccountRefreshCoordinator coordinator, AccountAccessHttp http,
