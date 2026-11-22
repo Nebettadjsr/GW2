@@ -1,0 +1,6 @@
+#
+#Sun Nov 22 14:30:37 CET 2026
+no\ classes\ that\ reside\ in\ a\ package\ 'application..'\ should\ depend\ on\ classes\ that\ reside\ in\ any\ package\ ['java.sql..',\ 'javax.sql..',\ 'org.postgresql..'],\ because\ external\ systems\ belong\ behind\ adapters=772650ac-6281-4c92-bea8-3b87fd5120e1
+no\ classes\ that\ reside\ in\ a\ package\ 'web..'\ should\ depend\ on\ classes\ that\ reside\ in\ a\ package\ 'repo..',\ because\ controllers\ use\ application\ services,\ not\ repositories=6a47be7b-bf70-4719-bf40-fdc66e9c07ba
+no\ classes\ that\ reside\ in\ a\ package\ 'web..'\ should\ depend\ on\ classes\ that\ reside\ in\ any\ package\ ['java.sql..',\ 'javax.sql..',\ 'org.postgresql..'],\ because\ controllers\ delegate\ to\ application\ services;\ SQL\ belongs\ in\ repo=47790c3a-79a0-4942-87ea-382319f5d25f
+slices\ matching\ '(*)..'\ should\ be\ free\ of\ cycles,\ because\ cyclic\ package\ dependencies\ make\ boundaries\ meaningless=1e9c0220-3899-4ffc-af4e-201a11b79687

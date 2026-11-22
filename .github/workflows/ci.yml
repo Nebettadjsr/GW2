@@ -162,6 +162,10 @@ jobs:
       - name: Run frontend unit tests with coverage
         run: npm run test:coverage -- --reporter=default --reporter=github-actions
 
+      # Correctness lint (eslint.config.js). New errors fail; the warning count may not grow.
+      - name: Lint
+        run: npm run lint
+
       # `npm run build` type-checks first (vue-tsc --noEmit), so this covers
       # docs/TEST_STRATEGY.md §12.1's type-check and build verification levels.
       - name: Type-check and build

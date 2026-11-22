@@ -156,8 +156,13 @@ def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict]
     branch = pr.get("head", {}).get("ref") or ""
     if not branch.startswith(f"story/issue-{number}-run-"):
         return "PR is not on the Claude story branch"
-    protected = {"AGENTS.md", "CLAUDE.md", "GW2 GitHub Flow Migration.md"}
-    if any(path.startswith(".github/") or path in protected
+    protected = {"AGENTS.md", "CLAUDE.md", "GW2 GitHub Flow Migration.md",
+                 # Quality gates: an automatic run must not be able to weaken its own checks.
+                 "backend/pom.xml", "frontend/package.json", "frontend/package-lock.json",
+                 "frontend/eslint.config.js"}
+    protected_prefixes = (".github/", "backend/config/", "backend/src/test/java/architecture/",
+                          "backend/src/test/resources/archunit")
+    if any(path.startswith(protected_prefixes) or path in protected
            for file in files for path in (file.get("filename") or "", file.get("previous_filename") or "")):
         return "PR changes development automation or agent instructions"
     body = pr.get("body") or ""
