@@ -77,14 +77,20 @@ jobs:
           else
             baseline=false
             commits=$(git rev-list --count "${last_sha}..HEAD")
-            {
-              printf 'Commits since the last check (%s..%s): %s\n\n' "${last_sha:0:7}" "${head_sha:0:7}" "$commits"
-              # Limit inside git / with a filter that reads the whole stream: `| head` closes the pipe
-              # early and, under pipefail, aborts the step with SIGPIPE (141) once a backlog is large.
-              git log --oneline --no-merges --max-count=150 "${last_sha}..HEAD"
-              printf '\nChanged files:\n'
-              git diff --name-status "${last_sha}..HEAD" | awk 'NR <= 300'
-            } > "$changes"
+            if [[ "$commits" == '0' && "$FORCE" == 'true' ]]; then
+              # A forced check without changes has nothing to scope by: recheck the whole active documentation.
+              baseline=true
+              printf 'Forced check without new commits since %s: the whole active documentation is in scope.\n' "${last_sha:0:7}" > "$changes"
+            else
+              {
+                printf 'Commits since the last check (%s..%s): %s\n\n' "${last_sha:0:7}" "${head_sha:0:7}" "$commits"
+                # Limit inside git / with a filter that reads the whole stream: `| head` closes the pipe
+                # early and, under pipefail, aborts the step with SIGPIPE (141) once a backlog is large.
+                git log --oneline --no-merges --max-count=150 "${last_sha}..HEAD"
+                printf '\nChanged files:\n'
+                git diff --name-status "${last_sha}..HEAD" | awk 'NR <= 300'
+              } > "$changes"
+            fi
           fi
           if [[ "$baseline" == 'true' || "$commits" != '0' || "$FORCE" == 'true' ]]; then run=true; else run=false; fi
           {

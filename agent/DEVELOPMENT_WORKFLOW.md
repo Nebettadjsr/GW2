@@ -115,7 +115,8 @@ It is read-only: it commits nothing and starts no story. It runs nightly (02:00 
 when master has commits since the last successful check, so a quiet day costs one cheap job. The
 first run is a baseline check. A run counts as checked only if its model step completed and wrote a
 valid report (`STATUS: drift` or `STATUS: clean`); otherwise the run fails and the next night repeats it. `Run workflow` offers `force` (check although nothing changed) and
-`test_run` (do not count the run as a check, create no issue).
+`test_run` (do not count the run as a check, create no issue). A forced check without new commits
+runs in baseline mode, so it rechecks the whole active documentation.
 
 The check has two parts. [`check_doc_references.py`](../.github/scripts/check_doc_references.py)
 deterministically lists links and backticked repository paths that point at nothing. A Claude step
