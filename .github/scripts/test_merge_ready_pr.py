@@ -142,7 +142,24 @@ class MergeGateTest(unittest.TestCase):
     def test_report_without_criteria_evidence_prevents_merge(self):
         pr, issue, comments, checks, files = fixtures()
         pr["body"] = pr["body"].replace("## Acceptance criteria evidence", "## Notes")
-        self.assertIn("acceptance criteria evidence", gate.ready_reason(pr, issue, comments, checks, files, REPO))
+        self.assertIn("evidence rows", gate.ready_reason(pr, issue, comments, checks, files, REPO))
+
+    def test_criteria_section_needs_populated_table_rows(self):
+        header = "## Acceptance criteria evidence\n\n"
+        table = "| Criterion | Test or evidence | Result |\n|---|---|---|\n"
+        for name, section in (
+            ("heading only", header),
+            ("header and separator only", header + table),
+            ("empty cells", header + table + "| Quotes verified |  |  |\n"),
+            ("two columns", header + table + "| Quotes verified | TpPriceParserTest |\n"),
+            ("table in the wrong section", "## Notes\n\n" + table + "| A | B | C |\n\n" + header + "No table.\n"),
+        ):
+            with self.subTest(name):
+                pr, issue, comments, checks, files = fixtures()
+                start = pr["body"].index("## Acceptance criteria evidence")
+                end = pr["body"].index("Local-only checks")
+                pr["body"] = pr["body"][:start] + section + "\n" + pr["body"][end:]
+                self.assertIn("evidence rows", gate.ready_reason(pr, issue, comments, checks, files, REPO))
 
     def test_blocked_story_body_prevents_merge(self):
         pr, issue, comments, checks, files = fixtures()
