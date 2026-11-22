@@ -82,9 +82,10 @@ frontend assets; guide images use compressed WebP and responsive variants. Regen
 from the ignored `frontend/screenshots/` sources with `node scripts/prepare-guide-images.mjs [cwebp]`
 from `frontend/` (requires the `cwebp` CLI; writes `src/home/images`).
 
-Public Home has a separate HTML entry at `/welcome`; tool pages and information pages use the
+Public Home has a separate HTML entry at `/home`; tool pages and information pages use the
 shared application entry. Public pages do not restore a retained key or request account data.
-Only successful canonical Welcome responses permit indexing. See CURRENT_STATE_SPEC for the
+Only successful canonical Home responses permit indexing. Legacy `/welcome` links redirect to
+`/home`. See CURRENT_STATE_SPEC for the
 actual host policy and its limits.
 
 ## 4. PostgreSQL, schema and account publication

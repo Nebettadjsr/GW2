@@ -86,9 +86,9 @@ These startup/reset commands describe the local HTTP stack. See [Architecture](.
 
 The frontend defaults to `X-Robots-Tag: noindex, nofollow` (including errors and `/api/`), and
 `index.html` carries the matching meta tag. Home has one separate public HTML
-entry, `welcome.html`, served at `/welcome`. Its successful/cached responses and HTML metadata allow
-indexing; errors remain noindex. Direct `/welcome.html` requests redirect to the clean URL.
-`robots.txt` denies all paths except `/welcome` and `/assets/`, the resources needed to render it.
+entry, `welcome.html`, served at `/home`. Its successful/cached responses and HTML metadata allow
+indexing; errors remain noindex. Legacy `/welcome` and `/welcome.html` requests redirect to `/home`.
+`robots.txt` denies all paths except `/home` and `/assets/`, the resources needed to render it.
 Assets themselves retain their noindex response header. No sitemap is published. Tool/hash pages
 and the legal/privacy/storage pages remain excluded.
 

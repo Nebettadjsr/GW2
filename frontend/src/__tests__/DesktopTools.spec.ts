@@ -128,14 +128,14 @@ describe('desktop-layout warning through the real App', () => {
     expect(window.location.hash).toBe(`#/${destination === 'forge' ? 'mystic-forge' : destination}`)
   })
 
-  it.each(['/welcome', '/#/legal', '/#/privacy', '/#/storage'])('keeps public%s readable and request-quiet at360px', async path => {
+  it.each(['/home', '/#/legal', '/#/privacy', '/#/storage'])('keeps public%s readable and request-quiet at360px', async path => {
     await resize(360)
     window.sessionStorage.setItem(STORAGE_KEY, KEY)
     const app = await open(path)
     expect(app.find('[data-test="desktop-width-notice"]').exists()).toBe(false)
     expect(app.find('[data-test="page-heading"]').exists()).toBe(true)
     expect(requests).toEqual([])
-    if (path === '/welcome') for (const tab of ['features', 'tips', 'welcome']) {
+    if (path === '/home') for (const tab of ['features', 'tips', 'welcome']) {
       await app.get(`#home-tab-${tab}`).trigger('click')
       expect(app.get(`#home-panel-${tab}`).isVisible()).toBe(true)
     }

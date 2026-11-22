@@ -50,7 +50,7 @@ changes, does not imply another application deployment.
 
 | Runtime fact | Last verified deployment |
 | --- | --- |
-| Public entry | `https://gw2-crafting.de/welcome` |
+| Public entry | `https://gw2-crafting.de/home` |
 | Host | Oracle Frankfurt AD 2, Ubuntu 24.04 ARM64, 2 OCPUs / 12 GB RAM. |
 | Address | `130.61.78.114` |
 | Stack | Docker 29.9.3 / Compose 5.7.1; frontend/backend/PostgreSQL 17. |
@@ -92,10 +92,10 @@ Welcome contains the introductory/tool/beginner tabs and local compressed,
 responsive WebP screenshots. Tool bookmarks retain `/#/...` URLs.
 Public Home and footer information pages never restore a key or request account data.
 
-Vite builds `index.html` and `welcome.html`. Only successful canonical `/welcome` responses
+Vite builds `index.html` and `welcome.html`. Only successful canonical `/home` responses
 (200/206/304) permit `index, follow`. Errors, redirects, tools, legal/privacy/storage, APIs and
-assets remain `noindex, nofollow`. `/welcome.html` redirects to `/welcome`.
-`robots.txt` allows `/welcome$` and `/assets/`, then denies other paths. No sitemap is published.
+assets remain `noindex, nofollow`. Legacy `/welcome` and `/welcome.html` redirect to `/home`.
+`robots.txt` allows `/home$` and `/assets/`, then denies other paths. No sitemap is published.
 These directives guide cooperating crawlers, not access control or guaranteed search exclusion.
 
 The approved Legal notice, Privacy and Cookies & browser storage pages contain the operator's

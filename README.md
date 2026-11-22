@@ -90,7 +90,7 @@ For more detail, see the [Crafting Guide](docs/crafting/README.md), [Crafting Gl
 
 ## Project status
 
-The application is publicly available at **[gw2-crafting.de](https://gw2-crafting.de/welcome)**. The browser is its only interface. Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, Characters, beginner guides and System Status are implemented. The Java backend isolates cached game data by each verified GW2 account GUID.
+The application is publicly available at **[gw2-crafting.de](https://gw2-crafting.de/home)**. The browser is its only interface. Crafting Profit, Crafting Discovery, Ectoplasm Salvage, Bank, Materials, Characters, beginner guides and System Status are implemented. The Java backend isolates cached game data by each verified GW2 account GUID.
 
 Frontend, backend and PostgreSQL run as separate containers on the Oracle host behind HTTPS. Development continues on meaningful test coverage, concrete defects and performance improvements. No supported-user capacity is claimed; the current backend runs as one process. See [Current State](docs/CURRENT_STATE_SPEC.md) for the deployed revision and verified limits.
 

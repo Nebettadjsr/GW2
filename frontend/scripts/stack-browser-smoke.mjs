@@ -8,6 +8,7 @@
  *   GW2_SMOKE_HEADLESS (default true; set false to show the browser)
  * Exits 0 when every step passed, 1 otherwise.
  */
+import assert from 'node:assert/strict'
 import { chromium } from 'playwright-core'
 import { resolveBrowserPath } from './resolveBrowserPath.mjs'
 
@@ -41,13 +42,23 @@ try {
     const url = new URL(response.url())
     if (url.pathname.startsWith('/api/')) apiResponses.push({ origin: url.origin, path: url.pathname, status: response.status() })
   })
+  const homeResponse = await page.request.get(`${origin}/home`, { maxRedirects: 0 })
+  assert.equal(homeResponse.status(), 200, 'Canonical Home did not serve its public document')
+  assert.equal(homeResponse.headers()['x-robots-tag'], 'index, follow')
+  for (const legacyPath of ['/welcome', '/welcome.html']) {
+    const redirect = await page.request.get(`${origin}${legacyPath}`, { maxRedirects: 0 })
+    assert.equal(redirect.status(), 308, `${legacyPath} did not redirect permanently`)
+    assert.equal(redirect.headers().location, '/home', `${legacyPath} leaked a noncanonical redirect origin or path`)
+    assert.equal(redirect.headers()['x-robots-tag'], 'noindex, nofollow')
+  }
+  console.log('  ok   Home is indexable at /home; both legacy URLs redirect to relative /home with noindex')
   await page.goto(FRONTEND_URL)
   await page.waitForSelector('[data-test="screen-nav"]')
   console.log('  ok   shell rendered with navigation')
   for (const id of DESTINATIONS) {
     await page.locator(`[data-test="nav-${id}"]`).click()
     await page.waitForFunction((destination) => destination === 'home'
-      ? location.pathname === '/welcome' && location.hash === ''
+      ? location.pathname === '/home' && location.hash === ''
       : location.pathname === '/' && location.hash === `#/${destination}`, id)
     if (await page.locator(`[data-test="nav-${id}"]`).getAttribute('aria-current') !== 'page') {
       throw new Error(`${id} is not marked as the current destination`)

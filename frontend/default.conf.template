@@ -8,7 +8,7 @@ map $request_uri $gw2_log_path {
 }
 log_format gw2_minimal '$request_method $gw2_log_path $status $body_bytes_sent ${request_time}s';
 
-# Only a successfully served public welcome document may be indexed. Errors keep noindex.
+# Only a successfully served public Home document may be indexed. Errors keep noindex.
 map $status $gw2_welcome_robots {
     default "noindex, nofollow";
     200 "index, follow";
@@ -34,15 +34,22 @@ server {
     # site-wide robots.txt crawl block is separate from noindex; blocked crawlers cannot read it.
     add_header X-Robots-Tag "noindex, nofollow" always;
 
-    location = /welcome {
+    location = /home {
         try_files /welcome.html =404;
         add_header Cache-Control "no-cache";
         add_header X-Robots-Tag $gw2_welcome_robots always;
     }
 
-    location = /welcome.html {
+    location = /welcome {
+        absolute_redirect off;
         add_header X-Robots-Tag "noindex, nofollow" always;
-        return 308 /welcome;
+        return 308 /home;
+    }
+
+    location = /welcome.html {
+        absolute_redirect off;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        return 308 /home;
     }
 
     location /api/ {

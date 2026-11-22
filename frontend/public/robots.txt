@@ -1,4 +1,4 @@
 User-agent: *
-Allow: /welcome$
+Allow: /home$
 Allow: /assets/
 Disallow: /

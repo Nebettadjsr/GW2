@@ -43,21 +43,26 @@ async function open(path: string): Promise<VueWrapper> {
 }
 
 describe('public Home landing', () => {
-  it.each(['/', '/welcome'])('opens %s as the canonical Home without a key or API request', async path => {
+  it.each(['/', '/home', '/welcome', '/welcome.html'])('opens %s as the canonical Home without a key or API request', async path => {
+    const historyLength = window.history.length
     const app = await open(path)
 
-    expect(window.location.pathname + window.location.hash).toBe('/welcome')
+    expect(window.location.pathname + window.location.hash).toBe('/home')
+    expect(window.history.length).toBe(historyLength)
     expect(app.find('[data-test="home-screen"]').exists()).toBe(true)
     expect(app.get('[data-test="nav-home"]').attributes('aria-current')).toBe('page')
+    expect(app.get('[data-test="nav-home"]').attributes('href')).toBe('/home')
     expect(document.title).toBe('GW2 Crafting Tool · Gold & Beginner Tips · Unofficial fan project')
     expect(robots.content).toBe('index, follow')
     expect(app.find('[data-test="connection-needed"]').exists()).toBe(false)
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('keeps the guide and legal pages quiet with a retained key and preserves route focus and indexing', async () => {
+  it.each(['/home', '/welcome', '/welcome.html'])('keeps public reading from %s quiet with a retained key and preserves route focus and indexing', async path => {
     window.sessionStorage.setItem(STORAGE_KEY, 'RETAINED-QA-KEY')
-    const app = await open('/welcome')
+    const app = await open(path)
+
+    expect(window.location.pathname + window.location.hash).toBe('/home')
 
     for (const tab of ['features', 'tips', 'welcome']) {
       await app.get(`#home-tab-${tab}`).trigger('click')
@@ -76,7 +81,7 @@ describe('public Home landing', () => {
 
       await app.get('[data-test="nav-home"]').trigger('click')
       await flushPromises()
-      expect(window.location.pathname + window.location.hash).toBe('/welcome')
+      expect(window.location.pathname + window.location.hash).toBe('/home')
       expect(robots.content).toBe('index, follow')
       expect(document.activeElement).toBe(app.get('[data-test="page-heading"]').element)
     }
@@ -93,7 +98,7 @@ describe('public Home landing', () => {
     expect(window.location.pathname + window.location.hash).toBe('/#/bank')
     expect(robots.content).toBe('noindex, nofollow')
 
-    window.history.replaceState(null, '', '/welcome')
+    window.history.replaceState(null, '', '/home')
     window.dispatchEvent(new PopStateEvent('popstate'))
     await flushPromises()
     expect(app.find('[data-test="home-screen"]').exists()).toBe(true)
@@ -109,7 +114,7 @@ describe('public Home landing', () => {
   })
 
   it.each([
-    { path: '/welcome', destination: 'home' },
+    { path: '/home', destination: 'home' },
     { path: '/#/bank', destination: 'bank' }
   ])('skips to page content on $destination without changing its URL or history', async ({ path, destination }) => {
     const app = await open(path)
@@ -131,9 +136,9 @@ describe('public Home landing', () => {
   })
 
   it('restores Home when Back returns from Bank to a historical Home skip anchor', async () => {
-    const app = await open('/welcome')
+    const app = await open('/home')
     // An entry created by the former skip link is still present in browser history.
-    window.history.replaceState(null, '', '/welcome#main-content')
+    window.history.replaceState(null, '', '/home#main-content')
     await app.get('[data-test="nav-bank"]').trigger('click')
     await flushPromises()
     expect(window.location.pathname + window.location.hash).toBe('/#/bank')
@@ -147,7 +152,7 @@ describe('public Home landing', () => {
     await back
     await flushPromises()
 
-    expect(window.location.pathname + window.location.hash).toBe('/welcome#main-content')
+    expect(window.location.pathname + window.location.hash).toBe('/home#main-content')
     expect(app.find('[data-test="home-screen"]').exists()).toBe(true)
     expect(app.get('[data-test="nav-home"]').attributes('aria-current')).toBe('page')
     expect(document.title).toBe('GW2 Crafting Tool · Gold & Beginner Tips · Unofficial fan project')

@@ -153,7 +153,7 @@ Refresh only sources needed by the page: Bank only Bank, Materials only material
 
 ### 2.5 Public Home and beginner guide
 
-Home is the first main-navigation destination and the default landing at `/welcome`. Its three
+Home is the first main-navigation destination and the default landing at `/home`. Its three
 tabs are **About this tool**, **What you can do** and **GW2 beginner tips**. About this tool
 tells the owner's origin story in short paragraphs inside a restrained dark letter panel,
 using a readable, locally hosted Handlee face and a personal signature. Use the shared
