@@ -46,7 +46,7 @@ for (const [script, reportFile] of [['user-journeys.mjs', 'user-journeys.json'],
   commands.push({ script, exitCode, timedOut, error })
   if (exitCode !== 0) process.exitCode = 1
 }
-let journeys = []
+const journeys = []
 for (const [file, expected] of [['user-journeys.json', 11], ['reservations.json', 1]]) {
   try {
     const report = JSON.parse(await readFile(join(output, file), 'utf8'))

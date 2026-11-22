@@ -152,6 +152,16 @@ class MergeGateTest(unittest.TestCase):
         files.append({"filename": "archive/ci.yml", "previous_filename": ".github/workflows/ci.yml"})
         self.assertIn("development automation", gate.ready_reason(pr, issue, comments, checks, files, REPO))
 
+    def test_quality_gate_changes_require_manual_merge(self):
+        for path in ("backend/config/checkstyle/checkstyle.xml",
+                     "backend/src/test/java/architecture/ArchitectureTest.java",
+                     "backend/src/test/resources/archunit_store/stored.rules",
+                     "backend/src/test/resources/archunit.properties",
+                     "backend/pom.xml", "frontend/eslint.config.js", "frontend/package.json"):
+            pr, issue, comments, checks, files = fixtures()
+            files.append({"filename": path})
+            self.assertIn("development automation", gate.ready_reason(pr, issue, comments, checks, files, REPO), path)
+
     def test_rework_uses_latest_report_for_current_head(self):
         pr, issue, comments, checks, files = fixtures()
         comments.append({"user": {"login": "Nebettadjsr"},

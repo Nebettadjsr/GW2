@@ -1,8 +1,9 @@
-# Used with backend/Dockerfile (context backend/). Keep the build context to what the image build needs: mvnw, .mvn, pom.xml and src.
+# Used with backend/Dockerfile (context backend/). Keep the build context to what the image build needs: mvnw, .mvn, pom.xml, config and src.
 **
 !mvnw
 !pom.xml
 !.mvn/wrapper/maven-wrapper.properties
+!config/**
 !src/**
 # Never copy local state, even under src
 **/.env

@@ -31,6 +31,13 @@ The workflow commits, pushes and publishes PR evidence.
 
 ## Checks and care
 
+Before finishing, run the affected gates and report their exact results: in `backend/`
+`./mvnw test` (includes Checkstyle, Error Prone and the ArchUnit architecture rules), in
+`frontend/` `npm run lint`, `npm run type-check` and the relevant Vitest files. If a gate
+rejects your change, fix the code. Never edit gate configuration, the ArchUnit store or the
+lint cap yourself ([AGENTS.md](AGENTS.md#automated-quality-gates)). If a rule seems wrong,
+describe it in the report and the PR instead of working around it.
+
 Use the Test strategy for meaningful assertions. CI supplies an isolated
 PostgreSQL service for database-backed `*Test` cases; `*IT` remains outside
 the default naming set. Browser smoke/live API checks require their explicit

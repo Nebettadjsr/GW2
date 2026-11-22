@@ -98,6 +98,16 @@ Return deliverables to the main project. Use ignored output/OS temporary storage
 for disposable logs/builds; clean up completed temporary worktrees. Preserve
 evidence needed by a report without retaining unrelated scratch output.
 
+## Automated quality gates
+
+Architecture and code rules are enforced by tools, not only by review. They run in the
+default `./mvnw test` (Checkstyle, Error Prone, ArchUnit) and `npm run lint` (ESLint) and
+in CI. Rule sources: `backend/config/checkstyle/`, `backend/src/test/java/architecture/`,
+`frontend/eslint.config.js`; explanation in `docs/CODING_GUIDELINES.md` section 11.
+Fix the code, never the gate: do not edit those files, extend the ArchUnit violation store,
+add suppressions or raise the ESLint `--max-warnings` cap to make a change pass. Such changes
+are protected paths and need a supervised, explicitly requested story.
+
 ## Code Review Rules
 
 - Compare the PR with its linked issue and owning product docs. Flag missing
@@ -105,6 +115,8 @@ evidence needed by a report without retaining unrelated scratch output.
   code/test.
 - Flag removed, skipped or weakened assertions when required behavior is left
   unverified without a sound reason or replacement evidence.
+- Flag any change that weakens a quality gate (see Automated quality gates) or extends its
+  recorded violations without an approved reason in the issue.
 - Flag new frontend calculation of authoritative domain results, direct frontend
   GW2 API calls or exposed backend secrets, except the documented Ectoplasm
   Salvage calculation.
