@@ -79,9 +79,11 @@ jobs:
             commits=$(git rev-list --count "${last_sha}..HEAD")
             {
               printf 'Commits since the last check (%s..%s): %s\n\n' "${last_sha:0:7}" "${head_sha:0:7}" "$commits"
-              git log --oneline --no-merges "${last_sha}..HEAD" | head -n 150
+              # Limit inside git / with a filter that reads the whole stream: `| head` closes the pipe
+              # early and, under pipefail, aborts the step with SIGPIPE (141) once a backlog is large.
+              git log --oneline --no-merges --max-count=150 "${last_sha}..HEAD"
               printf '\nChanged files:\n'
-              git diff --name-status "${last_sha}..HEAD" | head -n 300
+              git diff --name-status "${last_sha}..HEAD" | awk 'NR <= 300'
             } > "$changes"
           fi
           if [[ "$baseline" == 'true' || "$commits" != '0' || "$FORCE" == 'true' ]]; then run=true; else run=false; fi
