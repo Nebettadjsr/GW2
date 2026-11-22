@@ -34,7 +34,7 @@ for (const [script, reportFile] of [['user-journeys.mjs', 'user-journeys.json'],
           const taskkill = join(process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows', 'System32', 'taskkill.exe')
           execFile(taskkill, ['/pid', String(child.pid), '/t', '/f'], () => {})
         }
-        else { try { process.kill(-child.pid, 'SIGKILL') } catch {} }
+        else { try { process.kill(-child.pid, 'SIGKILL') } catch { /* the process group already exited, so there is nothing left to kill */ } }
       }, CLEANUP_BUDGET_MS)
     }, CHILD_BUDGET_MS)
     child.stdout.on('data', append)

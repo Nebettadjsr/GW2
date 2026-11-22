@@ -4,7 +4,7 @@ import ItemIcon from '@/items/ItemIcon.vue'
 import EquipmentUpgradeDetails from './EquipmentUpgradeDetails.vue'
 import type { EquipmentEntry, EquipmentItemRef } from '@/api/types'
 
-const props = defineProps<{ entry?: EquipmentEntry; slot: string }>()
+const props = defineProps<{ entry?: EquipmentEntry; slotName: string }>()
 const tooltipId = useId()
 const opened = ref(false)
 const tooltip = ref<HTMLElement | null>(null)
@@ -38,11 +38,11 @@ async function show(event: MouseEvent | FocusEvent): Promise<void> {
 
 <template>
   <div class="gear-slot" :class="{ 'gear-slot--missing': !entry }" :style="{ '--rarity': colors[entry?.item.rarity ?? ''] ?? '#89939b' }"
-    tabindex="0" :aria-label="`${slot}: ${entry ? label(entry.item) : 'no saved item'}`" :aria-describedby="opened ? tooltipId : undefined"
-    :title="entry ? undefined : `${slot}: no saved item`" data-test="equipment-entry"
+    tabindex="0" :aria-label="`${slotName}: ${entry ? label(entry.item) : 'no saved item'}`" :aria-describedby="opened ? tooltipId : undefined"
+    :title="entry ? undefined : `${slotName}: no saved item`" data-test="equipment-entry"
     @mouseenter="show" @mouseleave="closeSoon" @focus="show" @blur="closeSoon" @keydown.esc="opened = false">
     <ItemIcon v-if="entry" :icon-url="entry.item.icon ?? null" :item-id="entry.item.itemId" :size="56" loading="eager" />
-    <span v-else class="gear-slot__hint" aria-hidden="true">{{ slot }}</span>
+    <span v-else class="gear-slot__hint" aria-hidden="true">{{ slotName }}</span>
     <Teleport to="body">
       <div v-if="opened && entry" :id="tooltipId" ref="tooltip" role="tooltip" class="gear-tooltip" :style="position" @mouseenter="keepOpen" @mouseleave="closeSoon" @wheel.stop>
         <div class="gear-tooltip__title" :style="{ color: colors[entry.item.rarity ?? ''] }">
@@ -65,7 +65,7 @@ async function show(event: MouseEvent | FocusEvent): Promise<void> {
           <div v-if="entry.item.rarity" :style="{ color: colors[entry.item.rarity] }" data-test="equipment-rarity">{{ entry.item.rarity }}</div>
           <div v-if="entry.item.details?.weightClass">{{ entry.item.details.weightClass }}</div>
           <div v-if="entry.item.details?.subtype || entry.item.type">{{ entry.item.details?.subtype ?? entry.item.type }}</div>
-          <div v-if="slot !== (entry.item.details?.subtype ?? entry.item.type)" data-test="equipment-slot">{{ slot }}</div>
+          <div v-if="slotName !== (entry.item.details?.subtype ?? entry.item.type)" data-test="equipment-slot">{{ slotName }}</div>
           <div v-if="typeof entry.item.details?.level === 'number'">Required Level: {{ entry.item.details.level }}</div>
           <div v-if="entry.binding">{{ entry.binding === 'Account' ? 'Accountbound' : entry.binding === 'Character' ? 'Soulbound' : entry.binding }}<template v-if="entry.boundTo"> · {{ entry.boundTo }}</template></div>
         </div>

@@ -44,7 +44,7 @@ export async function submitDraft(): Promise<void> {
   }
   // connectKey bumps the generation synchronously; later movement is an external change.
   const own = connection.generation
-  let accepted = false
+  let accepted: boolean
   try {
     accepted = await pending
   } finally {

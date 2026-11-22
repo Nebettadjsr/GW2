@@ -63,26 +63,26 @@ function stats(entry: EquipmentEntry): string[] {
           </div>
           <div class="equipment__stats"><EquipmentStats :key="shown.tab" :stats="shown.stats" /></div>
           <div class="equipment__armor" aria-label="Armor">
-            <EquipmentTile v-for="slot in armor" :key="slot" :slot="pretty(slot)" :entry="itemAt(slot)" />
+            <EquipmentTile v-for="slot in armor" :key="slot" :slot-name="pretty(slot)" :entry="itemAt(slot)" />
           </div>
           <div class="equipment__weapons" aria-label="Weapon sets">
-            <EquipmentTile v-for="slot in weapons" :key="slot" :slot="pretty(slot)" :entry="itemAt(slot)" />
+            <EquipmentTile v-for="slot in weapons" :key="slot" :slot-name="pretty(slot)" :entry="itemAt(slot)" />
           </div>
           <div class="equipment__trinkets" aria-label="Trinkets">
-            <EquipmentTile v-for="slot in trinkets" :key="slot" :slot="pretty(slot)" :entry="itemAt(slot)" />
+            <EquipmentTile v-for="slot in trinkets" :key="slot" :slot-name="pretty(slot)" :entry="itemAt(slot)" />
           </div>
           <div class="equipment__aquatic" aria-label="Aquatic equipment">
-            <EquipmentTile v-for="slot in aquatic" :key="slot" :slot="pretty(slot)" :entry="itemAt(slot)" />
+            <EquipmentTile v-for="slot in aquatic" :key="slot" :slot-name="pretty(slot)" :entry="itemAt(slot)" />
           </div>
           <div class="equipment__tools" aria-label="Gathering tools">
-            <EquipmentTile v-for="slot in tools" :key="slot" :slot="pretty(slot)" :entry="itemAt(slot)" />
+            <EquipmentTile v-for="slot in tools" :key="slot" :slot-name="pretty(slot)" :entry="itemAt(slot)" />
           </div>
           <div class="equipment__utility" aria-label="Fishing and jade bot equipment">
             <div class="equipment__utility-row" aria-label="Fishing equipment">
-              <EquipmentTile v-for="slot in fishing" :key="slot" :slot="pretty(slot)" :entry="itemAt(slot)" />
+              <EquipmentTile v-for="slot in fishing" :key="slot" :slot-name="pretty(slot)" :entry="itemAt(slot)" />
             </div>
             <div class="equipment__utility-row" aria-label="Jade bot equipment">
-              <EquipmentTile v-for="slot in jadeBot" :key="slot" :slot="pretty(slot)" :entry="itemAt(slot)" />
+              <EquipmentTile v-for="slot in jadeBot" :key="slot" :slot-name="pretty(slot)" :entry="itemAt(slot)" />
             </div>
           </div>
         </div>

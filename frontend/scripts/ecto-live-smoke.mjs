@@ -109,7 +109,7 @@ async function awaitAccountReadModel() {
     try {
       response = await fetch(`${backendOrigin}${LUCK_PATH}`, { headers: { accept: 'application/json' } })
     } catch (cause) {
-      throw new Error(`No backend answered ${backendOrigin}${LUCK_PATH} — start it first (${cause.message})`)
+      throw new Error(`No backend answered ${backendOrigin}${LUCK_PATH} — start it first (${cause.message})`, { cause })
     }
     const body = await response.json()
     if (response.status === 200) return

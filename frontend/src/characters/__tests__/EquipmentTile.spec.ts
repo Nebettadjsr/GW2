@@ -13,7 +13,7 @@ describe('EquipmentTile tooltip', () => {
   afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
 
   it('shows upgrade bonuses, inactive rune bonuses, deduplicated effects and coin formatting', async () => {
-    const w = mount(EquipmentTile, { props: { slot: 'Helm', entry: entry('Armor') }, attachTo: document.body })
+    const w = mount(EquipmentTile, { props: { slotName: 'Helm', entry: entry('Armor') }, attachTo: document.body })
     await w.trigger('mouseenter')
     const text = tip()!.textContent!
     expect(text).toContain('+5 Ferocity')
@@ -27,7 +27,7 @@ describe('EquipmentTile tooltip', () => {
   })
 
   it('suppresses upgrade descriptions on gathering tools', async () => {
-    const w = mount(EquipmentTile, { props: { slot: 'Helm', entry: entry('Gathering') }, attachTo: document.body })
+    const w = mount(EquipmentTile, { props: { slotName: 'Helm', entry: entry('Gathering') }, attachTo: document.body })
     await w.trigger('mouseenter')
     expect(tip()!.textContent).not.toContain('Rune text')
     w.unmount()
@@ -35,7 +35,7 @@ describe('EquipmentTile tooltip', () => {
 
   it('closes after a delay, cancels on return, and closes on Escape', async () => {
     vi.useFakeTimers()
-    const w = mount(EquipmentTile, { props: { slot: 'Helm', entry: entry('Armor') }, attachTo: document.body })
+    const w = mount(EquipmentTile, { props: { slotName: 'Helm', entry: entry('Armor') }, attachTo: document.body })
     await w.trigger('focus')
     await w.trigger('blur')
     await w.trigger('focus')
