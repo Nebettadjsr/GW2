@@ -14,6 +14,9 @@ import sys
 from pathlib import Path
 
 NONE_VALUES = {"", "none", "none.", "n/a", "-", "keine", "no harness feedback"}
+# Standalone status lines the report contract puts after its sections (see claude.yml); they are
+# never part of a section's content, even when the section is the last one.
+STATUS_LINE = re.compile(r"^(Local-only checks still needed|Unresolved gaps):", re.IGNORECASE)
 
 
 def feedback_section(report: str) -> str:
@@ -21,7 +24,12 @@ def feedback_section(report: str) -> str:
     if not heading:
         return ""
     section = re.split(r"^##+ ", report[heading.end():], maxsplit=1, flags=re.MULTILINE)[0]
-    return section.strip()
+    kept = []
+    for line in section.splitlines():
+        if STATUS_LINE.match(line.strip()):
+            break
+        kept.append(line)
+    return "\n".join(kept).strip()
 
 
 def is_none(text: str) -> bool:

@@ -113,6 +113,13 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual("The rework context lacked the test class.", section)
         self.assertFalse(feedback.is_none(section))
 
+    def test_status_lines_after_the_last_section_are_not_feedback(self):
+        last = "## Changes\nx\n\n## Harness feedback\n\n{}\n\nLocal-only checks still needed: none\nUnresolved gaps: none\n"
+        self.assertTrue(feedback.is_none(feedback.feedback_section(last.format("none"))))
+        self.assertEqual("Rule X is unclear.", feedback.feedback_section(last.format("Rule X is unclear.")))
+        self.assertTrue(feedback.is_none(feedback.feedback_section(
+            "## Harness feedback\nnone\nLocal-only checks still needed: none\nUnresolved gaps: none")))
+
     def test_missing_section_counts_as_none_here(self):
         self.assertEqual("", feedback.feedback_section("## Changes\nx\n"))
 
