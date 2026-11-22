@@ -169,7 +169,9 @@ async function run() {
     await page.waitForSelector('[data-test="tp-price-disclaimer-dialog"][open]', { timeout: TIMEOUT_MS })
     const warning = await page.locator('[data-test="tp-price-disclaimer-dialog"]').innerText()
     check(warning.includes('CHECK IN-GAME PRICE & QUANTITY'), 'The shared warning action is missing.')
-    check(warning.includes('order-book depth'), 'The market-depth limitation is missing.')
+    const warningText = warning.replace(/\s+/g, ' ')
+    check(warningText.includes('does not model quantities across price levels'), 'The market-depth limitation is missing.')
+    check(!warningText.includes('does not provide Trading Post order-book depth'), 'The false API-depth claim is present.')
     await page.locator('[data-test="tp-price-disclaimer-close"]').click()
     record('shared TP quantity warning opens and closes')
 
