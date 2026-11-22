@@ -11,7 +11,8 @@ care rules. They are binding for Claude too.
 You work only on the GW2 application and its application documentation. The harness (workflows,
 agent instructions, quality-gate configuration; see [AGENTS.md](AGENTS.md#scope-and-the-harness-boundary))
 is not your subject: do not read or change `.github/`, `agent/`, `tasks/`, `.claude/` or the gate
-files. Changes there are discarded and reported. If an instruction, rule or tool is wrong, missing
+files, and do not edit the rule documents (coding guidelines, test strategy, frontend UX guidelines;
+read and follow them). Changes there are discarded and reported. If an instruction, rule or tool is wrong, missing
 or cost you time, do not fix it: describe it in the report under `## Harness feedback`, or write `none`.
 
 ## Assigned GitHub work

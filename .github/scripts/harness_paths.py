@@ -18,6 +18,10 @@ OFF_LIMITS_FILES = frozenset({
     "CLAUDE.md",
     "GW2 GitHub Flow Migration.md",
     "frontend/eslint.config.js",
+    # Rule documents: the programmer reads and follows them, the owner or a supervisor edits them.
+    "docs/CODING_GUIDELINES.md",
+    "docs/TEST_STRATEGY.md",
+    "docs/FRONTEND_UX_GUIDELINES.md",
 })
 
 OFF_LIMITS_PREFIXES = (

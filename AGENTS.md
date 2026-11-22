@@ -23,8 +23,10 @@ unfinished longer-term goals. GitHub issues/PRs own execution state and evidence
 
 The programmer (Claude) and the planner work only on the GW2 application and its application
 documentation. The harness is not part of it: `.github/`, `agent/`, `tasks/`, `.claude/`,
-`AGENTS.md`, `CLAUDE.md` and the quality-gate configuration (`backend/config/`, the ArchUnit
-tests and violation store, `frontend/eslint.config.js`). Programmer and planner never change
+`AGENTS.md`, `CLAUDE.md`, the rule documents (`docs/CODING_GUIDELINES.md`, `docs/TEST_STRATEGY.md`,
+`docs/FRONTEND_UX_GUIDELINES.md`) and the quality-gate configuration (`backend/config/`, the
+ArchUnit tests and violation store, `frontend/eslint.config.js`). Read the rule documents and follow
+them; propose a change through `## Harness feedback`, never edit them. Programmer and planner never change
 harness files and never plan or write stories about them. The programmer has no need to read
 `agent/` or `.github/`; the planner reads its own contract but does not change it.
 
@@ -68,9 +70,9 @@ update it when a delivered change affects its lasting rules or instructions.
 - `docs/crafting/GLOSSARY.md`: player-facing crafting terms.
 - `docs/CURRENT_STATE_SPEC.md`: observed runtime/build/deployment facts.
 - `docs/ARCHITECTURE.md`: current structure, selected boundaries and open choices.
-- `docs/TEST_STRATEGY.md`: testing methods and coverage policy.
-- `docs/FRONTEND_UX_GUIDELINES.md`: browser UX conventions.
-- `docs/CODING_GUIDELINES.md`: implementation conventions.
+- `docs/TEST_STRATEGY.md`: testing methods and coverage policy (rule document, harness).
+- `docs/FRONTEND_UX_GUIDELINES.md`: browser UX conventions (rule document, harness).
+- `docs/CODING_GUIDELINES.md`: implementation conventions (rule document, harness).
 - `docs/KNOWN_PROBLEMS.md`: unresolved defects and concrete improvement opportunities.
 - `agent/DEVELOPMENT_WORKFLOW.md`: implemented agent/GitHub process.
 - `docs/archive/agent/user-decisions/` and

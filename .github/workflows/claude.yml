@@ -153,9 +153,10 @@ jobs:
             Read the full issue, its acceptance criteria, and relevant repository instructions.
             Work only on the GW2 application (backend, frontend, docker, application scripts and the
             application documentation under docs). The harness is not part of it: never change
-            `.github/`, `agent/`, `tasks/`, `.claude/`, `AGENTS.md`, `CLAUDE.md` or any quality-gate
-            configuration, and do not read `agent/` or `.github/`. Such changes are discarded and
-            reported. If an instruction, rule or tool of the harness is wrong, missing or cost you
+            `.github/`, `agent/`, `tasks/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, the rule documents
+            (`docs/CODING_GUIDELINES.md`, `docs/TEST_STRATEGY.md`, `docs/FRONTEND_UX_GUIDELINES.md`;
+            read and follow them) or any quality-gate configuration, and do not read `agent/` or
+            `.github/`. Such changes are discarded and reported. If an instruction, rule or tool of the harness is wrong, missing or cost you
             time, do not fix it: describe it in the report under `## Harness feedback`.
             Implement or finish that one issue on the checked-out story branch.
             If this branch already has a PR, this is rework: read the file named by GW2_REWORK_CONTEXT
@@ -189,7 +190,7 @@ jobs:
           claude_args: |
             --max-turns ${{ steps.limits.outputs.max_turns }}
             --allowedTools Read,Edit,Write,Glob,Grep,Bash
-            --disallowedTools "Read(./agent/**),Read(./.github/**),Edit(./agent/**),Edit(./.github/**),Edit(./tasks/**),Edit(./.claude/**),Edit(./AGENTS.md),Edit(./CLAUDE.md),Write(./agent/**),Write(./.github/**),Write(./tasks/**),Write(./.claude/**),Write(./AGENTS.md),Write(./CLAUDE.md)"
+            --disallowedTools "Read(./agent/**),Read(./.github/**),Edit(./agent/**),Edit(./.github/**),Edit(./tasks/**),Edit(./.claude/**),Edit(./AGENTS.md),Edit(./CLAUDE.md),Write(./agent/**),Write(./.github/**),Write(./tasks/**),Write(./.claude/**),Write(./AGENTS.md),Write(./CLAUDE.md),Edit(./docs/CODING_GUIDELINES.md),Edit(./docs/TEST_STRATEGY.md),Edit(./docs/FRONTEND_UX_GUIDELINES.md),Write(./docs/CODING_GUIDELINES.md),Write(./docs/TEST_STRATEGY.md),Write(./docs/FRONTEND_UX_GUIDELINES.md)"
 
       - name: Discard out-of-scope changes
         id: scope_guard

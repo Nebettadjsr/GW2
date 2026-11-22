@@ -35,10 +35,11 @@ class PathListTest(unittest.TestCase):
         for path in (".github/workflows/ci.yml", "agent/README.md", "tasks/lessons.md", "AGENTS.md", "CLAUDE.md",
                      "backend/config/checkstyle/checkstyle.xml", "frontend/eslint.config.js",
                      "backend/src/test/java/architecture/ArchitectureTest.java",
-                     "backend/src/test/resources/archunit_store/stored.rules", ".claude/settings.local.json"):
+                     "backend/src/test/resources/archunit_store/stored.rules", ".claude/settings.local.json",
+                     "docs/CODING_GUIDELINES.md", "docs/TEST_STRATEGY.md", "docs/FRONTEND_UX_GUIDELINES.md"):
             self.assertTrue(paths.is_off_limits(path), path)
         for path in ("backend/src/main/java/sync/TpSync.java", "frontend/src/App.vue", "docs/DOMAIN_SPEC.md",
-                     "docs/KNOWN_PROBLEMS.md", "backend/pom.xml", "docs/CODING_GUIDELINES.md"):
+                     "docs/KNOWN_PROBLEMS.md", "backend/pom.xml", "docs/ARCHITECTURE.md", "docs/CURRENT_STATE_SPEC.md"):
             self.assertFalse(paths.is_off_limits(path), path)
         for path in ("backend/pom.xml", "frontend/package.json", "frontend/package-lock.json", "agent/README.md"):
             self.assertTrue(paths.needs_supervised_merge(path), path)
