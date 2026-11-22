@@ -184,6 +184,7 @@ jobs:
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
           EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
           CLAUDE_BASE: ${{ steps.prepare.outputs.claude_base }}
+          RECOVERY_BASE: ${{ steps.prepare.outputs.recovery_base }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
         shell: bash
         run: |
@@ -199,7 +200,10 @@ jobs:
             echo 'Claude made no changes; no PR was opened.' >&2
             exit 1
           fi
-          if [[ "$EXISTING_PR" == 'true' ]] && [[ "$(git rev-parse HEAD)" == "$CLAUDE_BASE" ]]; then
+          # Preparation merges master into the PR branch (a PR that is merely behind needs exactly that).
+          # Only a rework that changed neither the branch nor anything on top of the merge is a failure.
+          if [[ "$EXISTING_PR" == 'true' ]] && [[ "$(git rev-parse HEAD)" == "$CLAUDE_BASE" ]] \
+              && [[ "$CLAUDE_BASE" == "$RECOVERY_BASE" ]]; then
             echo 'Claude made no changes to the existing PR; needs-rework stays and no report is published.' >&2
             exit 1
           fi
