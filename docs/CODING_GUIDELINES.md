@@ -154,12 +154,8 @@ numeric bounds and resource/lifecycle behavior, not just happy-path return value
 - Prefer `Optional<T>` for method return values. Preserve existing explicit snapshot/DTO fields
   that model absence; do not rewrite their API or serialization contracts for style. Avoid adding
   `Optional` parameters or `Optional` fields in ordinary mutable state.
-- Use the existing executor/admission model unless the task requires a change. Virtual
-  threads suit blocking I/O, not faster CPU calculations; preserve cancellation, single-writer
-  limits, interruption and shutdown. See the [Java 25 virtual-thread guide](https://docs.oracle.com/en/java/javase/25/core/virtual-threads.html).
-  This build does not enable preview features; do not require
-  [`StructuredTaskScope`, a Java 25 preview API](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/StructuredTaskScope.html),
-  or enable preview as incidental cleanup.
+- Use the existing executor/admission model unless the task requires a change; its guarantees are
+  in `ARCHITECTURE.md` section 6. Use no preview APIs: the build enables no preview features.
 - Text blocks (`"""..."""`) for multi-line strings (SQL, JSON, error messages).
 - `var` only when the right-hand side makes the type unambiguous at a glance — otherwise
   write the explicit type.
@@ -169,9 +165,8 @@ numeric bounds and resource/lifecycle behavior, not just happy-path return value
   testable; constructor injection, no field injection. Keep Spring wiring at the
   composition/transport boundary, outside pure domain code.
 - Prefer immutable data: records, `final` fields, unmodifiable collections from public methods.
-- Use the Maven wrapper and existing BOM-managed Spring/Jackson/Flyway/test dependencies.
-  HTTP Jackson and upstream JSON adapters have different roles; preserve their mappings
-  rather than changing serializers or dependency versions during cleanup.
+- Use the Maven wrapper and the existing BOM-managed Spring/Jackson/Flyway/test dependencies. Do not
+  change serializers or dependency versions as a side effect (JSON roles: `ARCHITECTURE.md` section 2).
 - No junk-drawer static utility classes for unrelated methods — put behavior where the data
   lives.
 - Name tests for behavior. Group by the contract/scenario being protected; a one-to-one
@@ -186,10 +181,11 @@ numeric bounds and resource/lifecycle behavior, not just happy-path return value
   Reuse typed API models; avoid `any`, broad casts and duplicated response shapes that hide
   invalid states. Preserve missing/unavailable values distinctly from zero/false.
 - Use computed values for derived state. Use watchers/effects for actual side effects and
-  clean them up with their owning lifecycle. Preserve account epochs, cancellation, request
-  ordering/coalescing, KeepAlive activation and reservation autosave semantics.
-- Keep templates and CSS readable. Preserve accepted desktop layout, keyboard/focus behavior,
-  stable list keys and the documented narrow-screen notice/scrolling; no mobile redesign.
+  clean them up with their owning lifecycle. The browser lifecycle behaviors to preserve are in
+  `ARCHITECTURE.md` section 3.
+- Keep templates and CSS readable and use stable list keys. Accepted layouts and keyboard/focus
+  behavior are in `UI_SPEC.md` and the UX guidelines; the supported viewport policy in
+  `DOMAIN_SPEC.md` rules out a mobile redesign.
 - Components use `<script setup lang="ts">` with typed `defineProps`/`defineEmits`; `const` by
   default; narrow a type instead of casting or asserting with `!`. Components are PascalCase,
   composables `useXxx`.
@@ -201,14 +197,10 @@ numeric bounds and resource/lifecycle behavior, not just happy-path return value
 
 ## 9. PostgreSQL, JDBC and Flyway
 
-- Keep SQL parameterized and resource ownership explicit with try-with-resources. Reuse the
-  scoped repository/publication boundaries; never broaden an account query during cleanup.
-- Preserve transaction ownership, original connection mode, atomic publication, last-good
-  generations and rollback/cancellation behavior. Read real PostgreSQL tests before changing
-  these paths; a mocked connection does not prove SQL semantics.
-- Avoid extra queries or loading broad data merely to shorten Java. Preserve ordering,
-  unknown/null facts and snapshot consistency. PostgreSQL remains a disposable cache, without new
-  preservation/backup machinery.
+- Keep SQL parameterized and resource ownership explicit with try-with-resources. Reuse the scoped
+  repository/publication boundaries and never broaden an account query. The persistence behavior to
+  preserve is in `ARCHITECTURE.md` section 4.
+- Avoid extra queries or loading broad data merely to shorten Java.
 - Schema changes are a new Flyway file `V<next number>__snake_case_description.sql`; never edit a
   migration that is on master, and keep one concern per migration. SQL identifiers are
   `snake_case`; declare the types, `NOT NULL`, keys and constraints that the code relies on; add an
@@ -216,10 +208,10 @@ numeric bounds and resource/lifecycle behavior, not just happy-path return value
 
 ## 10. Application support code
 
-- Keep Docker/Compose/Nginx configuration explicit and use the existing entry points.
-  Preserve private backend/database ports, required production settings, canonical Origin,
-  restricted DB credentials and the protected host override. Static config simplification
-  needs the relevant render/proxy checks; it does not imply a live deployment.
+- Keep Docker/Compose/Nginx configuration explicit and use the existing entry points. The deployment
+  invariants (private ports, required production settings, canonical Origin, restricted DB credentials,
+  protected host override) are in `ARCHITECTURE.md` section 8. Static configuration changes need the
+  relevant render/proxy checks and imply no live deployment.
 - Prefer existing Node ES modules and small shell commands to new dependencies or orchestration
   layers. Preserve quoting, exit status, bounded waits and cleanup of owned resources. Never
   interpolate credentials into logs or tracked files.
