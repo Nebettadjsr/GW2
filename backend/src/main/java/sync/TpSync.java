@@ -199,7 +199,8 @@ public final class TpSync {
             for (int id : batch) {
 
                 JsonNode one = upstream.fetchSingle(id, deadline);
-                if (one == null) continue;
+                // A confirmed single-item 404 is absence: store no market data, never keep the old quote.
+                if (one == null) { out.add(TpPrice.noData(id)); continue; }
 
                 TpPrice q = TpPriceParser.parse(one);
                 if (q != null) out.add(q);
@@ -223,7 +224,8 @@ public final class TpSync {
                 if (returned.contains(id)) continue;
 
                 JsonNode one = upstream.fetchSingle(id, deadline);
-                if (one == null) continue;
+                // A confirmed single-item 404 is absence: store no market data, never keep the old quote.
+                if (one == null) { out.add(TpPrice.noData(id)); continue; }
 
                 TpPrice q = TpPriceParser.parse(one);
                 if (q != null) out.add(q);

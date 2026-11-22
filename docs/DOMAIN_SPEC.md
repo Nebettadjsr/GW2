@@ -957,6 +957,8 @@ current prices and available quantities in-game before committing significant go
 
 A missing Trading Post price is not equivalent to a free item.
 
+When a refresh confirms an item's absence from the Trading Post (the single-item lookup reports not found), the stored quote is replaced by a no-market-data row with all four quote columns NULL, never 0.
+
 If a required purchase has:
 
 ```text
