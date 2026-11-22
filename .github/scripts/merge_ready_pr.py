@@ -16,7 +16,8 @@ import urllib.request
 from pathlib import Path
 
 
-REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report", "Workflow checks"}
+REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report", "Workflow checks",
+                   "Container smoke (Compose)"}
 BOT_LOGIN = "chatgpt-codex-connector[bot]"
 REVIEW_MARKER = "<!-- codex-pull-request-review-summary -->"
 REVIEW_STATE = re.compile(r"<!-- codex-review-state:v1 (\{.*?\}) -->", re.DOTALL)
@@ -172,6 +173,8 @@ def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict]
     report = report_for_head(pr, comments, repository)
     if not report or "## Implementation report" not in report or "Claude did not supply a run report" in report:
         return "PR lacks a Claude implementation report for this head commit"
+    if not re.search(r"^##+ Acceptance criteria evidence\s*$", report, re.MULTILINE):
+        return "implementation report lacks the acceptance criteria evidence section"
     if not re.search(r"^Local-only checks still needed: none$", report, re.MULTILINE):
         return "PR still needs local-only checks or lacks their status"
     if not re.search(r"^Unresolved gaps: none$", report, re.MULTILINE):

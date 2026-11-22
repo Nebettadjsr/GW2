@@ -22,6 +22,8 @@ merge. Ask genuine product questions in the issue/PR with `needs-decision`;
 do not invent behavior. Use follow-ups for small nonblocking improvements
 instead of expanding scope. Missing criteria/material correctness gaps block.
 
+The run report must contain an `## Acceptance criteria evidence` table: one row per
+acceptance criterion with the concrete test or evidence that verifies it (or `none` and why).
 Normally implement meaningful tests/fixtures with code. A scoped approved issue
 or session may give independent QA that ownership; honor the override. Run narrow
 checks locally and let CI run full default suites. Report actual commands/results,
