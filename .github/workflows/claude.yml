@@ -74,6 +74,9 @@ jobs:
           cp .github/scripts/save_claude_recovery.py "$RUNNER_TEMP/save_claude_recovery.py"
           cp .github/scripts/summarize_claude_run.py "$RUNNER_TEMP/summarize_claude_run.py"
           cp .github/scripts/collect_rework_context.py "$RUNNER_TEMP/collect_rework_context.py"
+          cp .github/scripts/harness_paths.py "$RUNNER_TEMP/harness_paths.py"
+          cp .github/scripts/discard_out_of_scope.py "$RUNNER_TEMP/discard_out_of_scope.py"
+          cp .github/scripts/extract_harness_feedback.py "$RUNNER_TEMP/extract_harness_feedback.py"
 
       - name: Verify workflow helpers
         run: python -m unittest discover -s .github/scripts
@@ -148,6 +151,12 @@ jobs:
           prompt: |
             Work on GitHub issue #${{ steps.select.outputs.issue_number }} in ${{ github.repository }} only.
             Read the full issue, its acceptance criteria, and relevant repository instructions.
+            Work only on the GW2 application (backend, frontend, docker, application scripts and the
+            application documentation under docs). The harness is not part of it: never change
+            `.github/`, `agent/`, `tasks/`, `.claude/`, `AGENTS.md`, `CLAUDE.md` or any quality-gate
+            configuration, and do not read `agent/` or `.github/`. Such changes are discarded and
+            reported. If an instruction, rule or tool of the harness is wrong, missing or cost you
+            time, do not fix it: describe it in the report under `## Harness feedback`.
             Implement or finish that one issue on the checked-out story branch.
             If this branch already has a PR, this is rework: read the file named by GW2_REWORK_CONTEXT
             first. It lists the failing checks of the current head with their messages and the
@@ -167,7 +176,9 @@ jobs:
             section headed exactly `## Acceptance criteria evidence` with a Markdown table
             `| Criterion | Test or evidence | Result |`, one row per acceptance criterion of the issue.
             Name the concrete test class/method, Vitest file or browser journey that verifies the
-            criterion; if no automated test applies, write `none` and the reason. Do not put
+            criterion; if no automated test applies, write `none` and the reason. The report must also
+            contain a section headed exactly `## Harness feedback`: what in the instructions, rules or
+            tools was wrong, missing or unclear and what you would change, or `none`. Do not put
             secrets in the report or commit the report file.
             For an automatic merge, include standalone lines exactly
             `Local-only checks still needed: none` and `Unresolved gaps: none` only when true.
@@ -178,6 +189,15 @@ jobs:
           claude_args: |
             --max-turns ${{ steps.limits.outputs.max_turns }}
             --allowedTools Read,Edit,Write,Glob,Grep,Bash
+            --disallowedTools "Read(./agent/**),Read(./.github/**),Edit(./agent/**),Edit(./.github/**),Edit(./tasks/**),Edit(./.claude/**),Edit(./AGENTS.md),Edit(./CLAUDE.md),Write(./agent/**),Write(./.github/**),Write(./tasks/**),Write(./.claude/**),Write(./AGENTS.md),Write(./CLAUDE.md)"
+
+      - name: Discard out-of-scope changes
+        id: scope_guard
+        if: steps.claude.outcome == 'success'
+        env:
+          DISCARD_BASE: ${{ steps.prepare.outputs.claude_base }}
+          DISCARD_REPORT: ${{ runner.temp }}/gw2-discarded.md
+        run: python "$RUNNER_TEMP/discard_out_of_scope.py"
 
       - name: Publish story branch
         id: publish_branch
@@ -247,6 +267,7 @@ jobs:
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
           EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
           RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+          DISCARDED_FILE: ${{ runner.temp }}/gw2-discarded.md
           CLAUDE_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
           RUN_STARTED_AT: ${{ steps.prepare.outputs.started_at }}
           CLAUDE_MAX_TURNS: ${{ steps.limits.outputs.max_turns }}
@@ -267,6 +288,10 @@ jobs:
             printf '\n## Workflow evidence\n\n'
             printf -- '- Claude run: https://github.com/%s/actions/runs/%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
             printf -- '- CI and Codex review: check this PR before merging.\n'
+            if [[ -s "$DISCARDED_FILE" ]]; then
+              printf '\n## Out-of-scope changes discarded\n\n'
+              cat "$DISCARDED_FILE"
+            fi
             printf '\n'
             python "$RUNNER_TEMP/summarize_claude_run.py" || printf '## Run metrics\n\n- not available\n'
           } > "$body"
@@ -278,6 +303,28 @@ jobs:
               --body-file "$body"
           fi
 
+
+      - name: Record harness feedback
+        id: harness_feedback
+        if: steps.publish_pr.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
+          STORY_ISSUE: ${{ steps.select.outputs.issue_number }}
+          RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+          DISCARDED_FILE: ${{ runner.temp }}/gw2-discarded.md
+          OUTPUT_FILE: ${{ runner.temp }}/gw2-harness-feedback.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR_URL=$(gh pr view "$BRANCH_NAME" --json url --jq .url || true)
+          export PR_URL
+          export RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ "$(python "$RUNNER_TEMP/extract_harness_feedback.py")" == 'create' ]]; then
+            gh label create harness-feedback --color fbca04 --description 'Proposal about the harness, for the supervisor or owner' 2>/dev/null || true
+            gh issue create --title "Harness feedback from story #${STORY_ISSUE}" --label harness-feedback --body-file "$OUTPUT_FILE"
+          fi
 
       - name: Save interrupted implementation
         id: recovery

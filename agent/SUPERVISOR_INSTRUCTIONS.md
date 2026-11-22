@@ -14,7 +14,7 @@ GitHub implementation and its limits.
   into an invented product requirement.
 - Own readiness and activation in the approved GitHub issue. The planner proposes,
   the supervisor releases, Claude implements. A draft plan is not authorization
-  to start a run. Use [the backlog](BACKLOG.md) only for unfinished longer-term goals.
+  to start a run. Use the pinned backlog issue (#398) only for unfinished longer-term goals.
 - During an authorized session, inspect failed/stalled runs and current PRs.
   Require exact-head CI, native Codex review and necessary local evidence before
   accepting completion. This contract does not create unattended monitoring.
