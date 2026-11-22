@@ -3,7 +3,7 @@
 [AGENTS.md](../AGENTS.md) contains the binding shared rules and documentation map;
 [role instructions](README.md) define planner, supervisor and programmer responsibilities.
 GitHub issues, PRs and Actions hold plans, execution state and evidence. The optional
-[backlog](BACKLOG.md) contains only unfinished longer-term owner goals.
+pinned backlog issue (#398) contains only unfinished longer-term owner goals.
 
 ## Prepare and release work
 
@@ -89,15 +89,17 @@ using trusted default-branch code. Automatic squash merge requires:
 
 - An open, non-draft, same-repository PR to `master`, on `story/issue-<N>-run-...`, closing
   its linked open `auto` story, with no issue/PR hold.
-- A current-head implementation report with both truthful `none` lines above and an
-  `## Acceptance criteria evidence` table (criterion, concrete test or evidence, result).
+- A current-head implementation report with both truthful `none` lines above, an
+  `## Acceptance criteria evidence` table (criterion, concrete test or evidence, result) and a
+  `## Harness feedback` section, and without `## Out-of-scope changes discarded`.
 - All five Actions checks successful at the exact head: `Backend tests (Maven)`,
   `Frontend tests (Vitest)`, `Workflow checks`, `Coverage KPI report`,
   `Container smoke (Compose)`.
 - The latest native Codex summary's `code_review` has that `commit_sha`, `status: completed`,
   `has_any_findings: false` and `has_unresolved_findings: false`.
-- No protected changed/previous path: `.github/**`, `AGENTS.md`, `CLAUDE.md` or the reserved
-  legacy name `GW2 GitHub Flow Migration.md`. These require supervised merging.
+- No supervised-only changed/previous path: the harness paths and dependency manifests listed in
+  `harness_paths.py` (`.github/`, `agent/`, `tasks/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, the
+  quality-gate configuration, `backend/pom.xml`, `frontend/package*.json`). These require supervised merging.
 
 The merge is conditioned on that SHA; GitHub protection still applies. A new head needs
 fresh checks/report/review. The supervisor also verifies required local evidence and obtains
@@ -107,6 +109,22 @@ Browser automation does not replace visual acceptance. Other PR formats are supe
 Current definitive CI failures, completed review findings or a behind-base eligible PR can
 queue `needs-rework` for the next explicit dispatch. Running/stale results do not. A missing
 report or pending local check holds merge without automatically starting another coding run.
+
+## Harness boundary and feedback
+
+[`harness_paths.py`](../.github/scripts/harness_paths.py) lists the harness paths once; the merge gate and
+the post-run step both use it. After Claude finishes, `discard_out_of_scope.py` (trusted copy) restores
+every off-limits path to the state the run started from and lists the files in the PR body under
+`## Out-of-scope changes discarded`; such a PR is never merged automatically. The run also denies
+reading `agent/` and `.github/` and editing harness paths. Dependency manifests are not discarded
+(a story may need a dependency) but never merge automatically.
+
+The report must contain `## Harness feedback` (or `none`). A non-empty section, or discarded
+changes, opens an issue labelled `harness-feedback` for the supervisor, even when the run publishes no
+PR (for example because its only edits were discarded harness changes) or fails after writing its report. The supervisor corrects the
+harness in its own pull request when the same deviation occurs twice, a single deviation is costly,
+review findings recur or a drift finding confirms it; deterministic checks are preferred over
+prose, and obsolete rules are removed.
 
 ## Documentation drift check
 

@@ -16,7 +16,7 @@ def fixtures():
         "state": "open", "draft": False,
         "base": {"ref": "master", "repo": {"full_name": REPO}},
         "head": {"ref": "story/issue-42-run-100-1", "sha": SHA, "repo": {"full_name": REPO}},
-        "body": f"<!-- gw2-claude-run-report:v1 head={SHA} -->\nCloses #42\n\n## Implementation report\n\n## Acceptance criteria evidence\n\n| Criterion | Test or evidence | Result |\n|---|---|---|\n| Quotes verified | TpPriceParserTest | pass |\n\nLocal-only checks still needed: none\nUnresolved gaps: none\n",
+        "body": f"<!-- gw2-claude-run-report:v1 head={SHA} -->\nCloses #42\n\n## Implementation report\n\n## Acceptance criteria evidence\n\n| Criterion | Test or evidence | Result |\n|---|---|---|\n| Quotes verified | TpPriceParserTest | pass |\n\n## Harness feedback\n\nnone\n\nLocal-only checks still needed: none\nUnresolved gaps: none\n",
         "labels": [],
     }
     issue = {"number": 42, "state": "open", "title": "STORY-TEST-011: Verify quotes", "labels": [{"name": "auto"}]}
@@ -161,6 +161,22 @@ class MergeGateTest(unittest.TestCase):
                 pr["body"] = pr["body"][:start] + section + "\n" + pr["body"][end:]
                 self.assertIn("evidence rows", gate.ready_reason(pr, issue, comments, checks, files, REPO))
 
+    def test_report_without_harness_feedback_section_prevents_merge(self):
+        pr, issue, comments, checks, files = fixtures()
+        pr["body"] = pr["body"].replace("## Harness feedback", "## Notes")
+        self.assertIn("harness feedback", gate.ready_reason(pr, issue, comments, checks, files, REPO))
+
+    def test_discarded_harness_changes_require_a_supervisor(self):
+        pr, issue, comments, checks, files = fixtures()
+        pr["body"] += "\n## Out-of-scope changes discarded\n\n- `agent/README.md`\n"
+        self.assertIn("harness changes", gate.ready_reason(pr, issue, comments, checks, files, REPO))
+
+    def test_harness_paths_require_manual_merge(self):
+        for path in ("agent/README.md", "tasks/lessons.md", ".claude/settings.local.json"):
+            pr, issue, comments, checks, files = fixtures()
+            files.append({"filename": path})
+            self.assertIn("development automation", gate.ready_reason(pr, issue, comments, checks, files, REPO), path)
+
     def test_blocked_story_body_prevents_merge(self):
         pr, issue, comments, checks, files = fixtures()
         issue["body"] = "Migration status: BLOCKED. Dependencies: STORY-API-010."
@@ -187,7 +203,7 @@ class MergeGateTest(unittest.TestCase):
     def test_rework_uses_latest_report_for_current_head(self):
         pr, issue, comments, checks, files = fixtures()
         comments.append({"user": {"login": "Nebettadjsr"},
-                         "body": f"<!-- gw2-claude-run-report:v1 head={SHA} -->\n## Implementation report\n\n## Acceptance criteria evidence\n\n| Criterion | Test or evidence | Result |\n|---|---|---|\n| Quotes verified | TpPriceParserTest | pass |\n\nLocal-only checks still needed: browser smoke\nUnresolved gaps: none"})
+                         "body": f"<!-- gw2-claude-run-report:v1 head={SHA} -->\n## Implementation report\n\n## Acceptance criteria evidence\n\n| Criterion | Test or evidence | Result |\n|---|---|---|\n| Quotes verified | TpPriceParserTest | pass |\n\n## Harness feedback\n\nnone\n\nLocal-only checks still needed: browser smoke\nUnresolved gaps: none"})
         self.assertIn("local-only", gate.ready_reason(pr, issue, comments, checks, files, REPO))
         comments[-1]["body"] = comments[-1]["body"].replace("browser smoke", "none")
         self.assertIsNone(gate.ready_reason(pr, issue, comments, checks, files, REPO))

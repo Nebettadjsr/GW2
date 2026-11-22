@@ -16,8 +16,31 @@ GW2 develops through GitHub issues, branches, PRs, CI and native Codex review.
   a planning invocation.
 
 The owner's current request and approved GitHub issues define work.
-`agent/BACKLOG.md` is only a short reminder of unfinished longer-term goals.
-GitHub issues/PRs own execution state and evidence.
+The pinned GitHub issue "Backlog: unfinished owner goals" (#398) is only a short reminder of
+unfinished longer-term goals. GitHub issues/PRs own execution state and evidence.
+
+## Scope and the harness boundary
+
+The programmer (Claude) and the planner work only on the GW2 application and its application
+documentation. The harness is not part of it: `.github/`, `agent/`, `tasks/`, `.claude/`,
+`AGENTS.md`, `CLAUDE.md` and the quality-gate configuration (`backend/config/`, the ArchUnit
+tests and violation store, `frontend/eslint.config.js`). Programmer and planner never change
+harness files and never plan or write stories about them. The programmer has no need to read
+`agent/` or `.github/`; the planner reads its own contract but does not change it.
+
+The boundary is enforced in code (`.github/scripts/harness_paths.py`): changes to these paths made
+by a story run are discarded and listed in the PR, such a PR is not merged automatically, and the
+merge gate treats dependency manifests (`backend/pom.xml`, `frontend/package*.json`) as supervised
+as well.
+
+The harness is improved only by the owner or a supervisor session. Programmer and planner report
+proposals instead of fixing: the run report's `## Harness feedback` section (what was wrong,
+missing or unclear, and what they would change, or `none`) becomes an issue labelled
+`harness-feedback`. The planner ignores issues labelled `harness-feedback` and `docs-drift`.
+Supervisors correct the harness when the same deviation occurs twice, one deviation is costly,
+review findings recur or a drift finding confirms it. Prefer a deterministic check over prose,
+make each correction its own pull request with the evidence, and remove rules that no longer
+earn their place.
 
 ## Work contract
 
@@ -106,7 +129,7 @@ in CI. Rule sources: `backend/config/checkstyle/`, `backend/src/test/java/archit
 `frontend/eslint.config.js`; explanation in `docs/CODING_GUIDELINES.md` section 11.
 Fix the code, never the gate: do not edit those files, extend the ArchUnit violation store,
 add suppressions or raise the ESLint `--max-warnings` cap to make a change pass. Such changes
-are protected paths and need a supervised, explicitly requested story.
+are harness paths (see Scope and the harness boundary): propose a change, never make it.
 
 ## Code Review Rules
 

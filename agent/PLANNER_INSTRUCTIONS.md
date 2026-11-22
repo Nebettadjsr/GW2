@@ -12,9 +12,9 @@ contract.
 ## Work method
 
 1. Read the owner's request, live GitHub issues/PRs,
-   [unfinished goals](BACKLOG.md), relevant owning documents and existing evidence.
+   the pinned backlog issue (#398), relevant owning documents and existing evidence.
    Verify whether old findings remain unresolved before proposing new work.
-2. Keep a brief reminder in the backlog only for owner goals left unfinished
+2. Keep a brief reminder in the pinned backlog issue (#398) only for owner goals left unfinished
    across sessions. Put detailed proposals and execution state in GitHub.
    Do not invent a roadmap, a parallel queue or another planning report.
 3. Propose bounded issues with a stable story ID, goal, dependencies, constraints,

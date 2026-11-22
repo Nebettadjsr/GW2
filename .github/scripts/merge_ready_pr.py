@@ -15,6 +15,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from harness_paths import needs_supervised_merge
+
 
 REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report", "Workflow checks",
                    "Container smoke (Compose)"}
@@ -178,13 +180,8 @@ def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict]
     branch = pr.get("head", {}).get("ref") or ""
     if not branch.startswith(f"story/issue-{number}-run-"):
         return "PR is not on the Claude story branch"
-    protected = {"AGENTS.md", "CLAUDE.md", "GW2 GitHub Flow Migration.md",
-                 # Quality gates: an automatic run must not be able to weaken its own checks.
-                 "backend/pom.xml", "frontend/package.json", "frontend/package-lock.json",
-                 "frontend/eslint.config.js"}
-    protected_prefixes = (".github/", "backend/config/", "backend/src/test/java/architecture/",
-                          "backend/src/test/resources/archunit")
-    if any(path.startswith(protected_prefixes) or path in protected
+    # The harness boundary lives in harness_paths.py (shared with the post-run discard step).
+    if any(needs_supervised_merge(path)
            for file in files for path in (file.get("filename") or "", file.get("previous_filename") or "")):
         return "PR changes development automation or agent instructions"
     body = pr.get("body") or ""
@@ -196,6 +193,10 @@ def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict]
         return "PR lacks a Claude implementation report for this head commit"
     if not criteria_evidence_rows(report):
         return "implementation report lacks acceptance criteria evidence rows (criterion, test or evidence, result)"
+    if re.search(r"^##+ Out-of-scope changes discarded\s*$", report, re.MULTILINE):
+        return "the run attempted harness changes that were discarded; a supervisor reviews it"
+    if not re.search(r"^##+ Harness feedback\s*$", report, re.MULTILINE):
+        return "implementation report lacks the harness feedback section"
     if not re.search(r"^Local-only checks still needed: none$", report, re.MULTILINE):
         return "PR still needs local-only checks or lacks their status"
     if not re.search(r"^Unresolved gaps: none$", report, re.MULTILINE):

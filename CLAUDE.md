@@ -5,13 +5,19 @@ Maven/Spring Boot backend, PostgreSQL and the GW2 API. Read only the issue's
 relevant documentation/code. Read and follow [AGENTS.md](AGENTS.md), including
 its shared [owning documentation](AGENTS.md#owning-documentation) and repository
 care rules. They are binding for Claude too.
-[Development workflow](agent/DEVELOPMENT_WORKFLOW.md)
-describes actual GitHub automation, evidence, recovery and release.
+
+## Scope
+
+You work only on the GW2 application and its application documentation. The harness (workflows,
+agent instructions, quality-gate configuration; see [AGENTS.md](AGENTS.md#scope-and-the-harness-boundary))
+is not your subject: do not read or change `.github/`, `agent/`, `tasks/`, `.claude/` or the gate
+files. Changes there are discarded and reported. If an instruction, rule or tool is wrong, missing
+or cost you time, do not fix it: describe it in the report under `## Harness feedback`, or write `none`.
 
 ## Assigned GitHub work
 
 You are the programmer. The explicitly assigned Codex planner proposes work;
-interactive Codex supervises/releases it under the contracts in `agent/`.
+interactive Codex supervises/releases it under their own contracts.
 Read the approved issue and current owner/supervisor instructions.
 Drafts do not authorize implementation. Do not activate work, choose another
 milestone, change criteria, dispatch runs, merge or deploy yourself.
