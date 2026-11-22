@@ -51,8 +51,9 @@ function restoreFocus(): void {
       </p>
 
       <p>
-        The GW2 API does not provide Trading Post order-book depth. This tool therefore only knows
-        the current best unit price — not how many items are actually available at that price.
+        This tool uses only the current best buy/sell unit quote and does not model quantities
+        across price levels (order-book depth). It does not know how many items are actually
+        available at that price.
       </p>
 
       <p>
