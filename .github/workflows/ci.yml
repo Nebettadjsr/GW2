@@ -22,6 +22,20 @@ permissions:
   contents: read
 
 jobs:
+  # Builds both production images exactly as Compose does (including the backend's Maven quality
+  # gates inside the image build), starts the stack and runs the offline smoke from
+  # scripts/compose-smoke.sh: health, static UI, proxied read, keyless refusal, session boundary,
+  # published ports and schema reuse after a restart. No GW2 key or ArenaNet access is needed.
+  container-smoke:
+    name: Container smoke (Compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compose stack smoke
+        run: bash scripts/compose-smoke.sh
+
   workflow-checks:
     name: Workflow checks
     runs-on: ubuntu-latest

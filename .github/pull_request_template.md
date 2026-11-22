@@ -10,6 +10,10 @@ Closes #
 
 - [ ] Each acceptance criterion is met; note any justified difference from the suggested approach.
 
+| Criterion | Test or evidence (class/method, Vitest file, journey) | Result |
+|---|---|---|
+|  |  |  |
+
 ## Changes and tests
 
 - Code and behavior:

@@ -16,7 +16,8 @@ import urllib.request
 from pathlib import Path
 
 
-REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report", "Workflow checks"}
+REQUIRED_CHECKS = {"Backend tests (Maven)", "Frontend tests (Vitest)", "Coverage KPI report", "Workflow checks",
+                   "Container smoke (Compose)"}
 BOT_LOGIN = "chatgpt-codex-connector[bot]"
 REVIEW_MARKER = "<!-- codex-pull-request-review-summary -->"
 REVIEW_STATE = re.compile(r"<!-- codex-review-state:v1 (\{.*?\}) -->", re.DOTALL)
@@ -137,6 +138,27 @@ def report_for_head(pr: dict, comments: list[dict], repository: str) -> str | No
     return body if marker and marker.group(1) == head_sha else None
 
 
+def criteria_evidence_rows(report: str) -> list[list[str]]:
+    """Populated data rows of the `## Acceptance criteria evidence` table, or an empty list."""
+    heading = re.search(r"^##+ Acceptance criteria evidence\s*$", report, re.MULTILINE)
+    if not heading:
+        return []
+    section = re.split(r"^##+ ", report[heading.end():], maxsplit=1, flags=re.MULTILINE)[0]
+    rows = []
+    for line in section.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells if cell) and any(cells):
+            continue  # separator row
+        if cells and cells[0].lower() == "criterion":
+            continue  # header row
+        if len(cells) >= 3 and all(cells[:3]):
+            rows.append(cells)
+    return rows
+
+
 def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict], files: list[dict], repository: str) -> str | None:
     if pr.get("state") != "open" or pr.get("draft") or pr.get("base", {}).get("ref") != "master":
         return "PR is closed, draft, or targets another branch"
@@ -172,6 +194,8 @@ def ready_reason(pr: dict, issue: dict, comments: list[dict], checks: list[dict]
     report = report_for_head(pr, comments, repository)
     if not report or "## Implementation report" not in report or "Claude did not supply a run report" in report:
         return "PR lacks a Claude implementation report for this head commit"
+    if not criteria_evidence_rows(report):
+        return "implementation report lacks acceptance criteria evidence rows (criterion, test or evidence, result)"
     if not re.search(r"^Local-only checks still needed: none$", report, re.MULTILINE):
         return "PR still needs local-only checks or lacks their status"
     if not re.search(r"^Unresolved gaps: none$", report, re.MULTILINE):

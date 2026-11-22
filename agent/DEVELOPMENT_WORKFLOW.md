@@ -49,7 +49,8 @@ provided. Never use the owner database or real account credentials for routine c
 
 Claude reads the issue and shared instructions, implements its scope and runs focused checks.
 Normally it authors tests with code; an explicit independent-QA assignment takes precedence.
-It writes the temporary `GW2_RUN_REPORT` with actual results, assertion changes/reasons,
+It writes the temporary `GW2_RUN_REPORT` with an `## Acceptance criteria evidence` table that maps
+every acceptance criterion to the concrete test or evidence, plus actual results, assertion changes/reasons,
 remaining local checks and gaps. Only when true, include these standalone lines:
 
 ```text
@@ -60,12 +61,19 @@ Unresolved gaps: none
 The workflow commits/pushes and publishes the PR/report with `Closes #N` and an exact-head
 marker `<!-- gw2-claude-run-report:v1 head=<40-character-SHA> -->`. It clears `needs-rework`
 after publication. An unchanged new story fails rather than publishing an empty PR.
+The published body ends with a `## Run metrics` section (turns used of allowed, wall-clock time,
+tokens, API-equivalent cost) rendered by
+[`summarize_claude_run.py`](../.github/scripts/summarize_claude_run.py) from the action's execution
+log; missing fields show `n/a` and never fail the run. Use these numbers to judge whether changes to
+the harness make runs cheaper or more reliable.
 Rework publication explicitly dispatches CI because `GITHUB_TOKEN` pushes suppress events.
 
 ## CI, review and acceptance
 
 [`ci.yml`](../.github/workflows/ci.yml) runs default backend/frontend tests, type/build,
-workflow checks and the curated controlled browser journeys. It publishes JaCoCo/Vitest
+workflow checks, the curated controlled browser journeys and a container smoke
+(`scripts/compose-smoke.sh`: both images built as Compose builds them, stack started, offline
+health/boundary checks, restart on the managed schema). It publishes JaCoCo/Vitest
 coverage and browser artifacts. Commands, layers and limits belong in
 [Test strategy](../docs/TEST_STRATEGY.md); actual run counts stay in CI/PRs.
 
@@ -74,9 +82,11 @@ using trusted default-branch code. Automatic squash merge requires:
 
 - An open, non-draft, same-repository PR to `master`, on `story/issue-<N>-run-...`, closing
   its linked open `auto` story, with no issue/PR hold.
-- A current-head implementation report with both truthful `none` lines above.
-- All four Actions checks successful at the exact head: `Backend tests (Maven)`,
-  `Frontend tests (Vitest)`, `Workflow checks`, `Coverage KPI report`.
+- A current-head implementation report with both truthful `none` lines above and an
+  `## Acceptance criteria evidence` table (criterion, concrete test or evidence, result).
+- All five Actions checks successful at the exact head: `Backend tests (Maven)`,
+  `Frontend tests (Vitest)`, `Workflow checks`, `Coverage KPI report`,
+  `Container smoke (Compose)`.
 - The latest native Codex summary's `code_review` has that `commit_sha`, `status: completed`,
   `has_any_findings: false` and `has_unresolved_findings: false`.
 - No protected changed/previous path: `.github/**`, `AGENTS.md`, `CLAUDE.md` or the reserved

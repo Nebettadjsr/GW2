@@ -69,7 +69,9 @@ jobs:
             exit 1
           }
           echo "max_turns=$CLAUDE_MAX_TURNS" >> "$GITHUB_OUTPUT"
+          # Helpers run from trusted copies so the story branch cannot alter them.
           cp .github/scripts/save_claude_recovery.py "$RUNNER_TEMP/save_claude_recovery.py"
+          cp .github/scripts/summarize_claude_run.py "$RUNNER_TEMP/summarize_claude_run.py"
 
       - name: Verify workflow helpers
         run: python -m unittest discover -s .github/scripts
@@ -117,6 +119,7 @@ jobs:
           fi
           echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
           echo "recovery_base=$recovery_base" >> "$GITHUB_OUTPUT"
+          echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Implement one story
         id: claude
@@ -141,9 +144,14 @@ jobs:
             focus on the remaining acceptance gaps, and write the run report before lengthy checks.
             Keep that report updated so an interrupted attempt can be recovered.
             Before finishing, write a concise Markdown implementation report to the file named by
-            GW2_RUN_REPORT. Include changes, acceptance-criteria evidence, exact checks run and
-            results, changed or weakened assertions with reasons, local-only checks still needed,
-            and any unresolved gap. Do not put secrets in the report or commit the report file.
+            GW2_RUN_REPORT. Include changes, exact checks run and results (including the
+            quality gates named in CLAUDE.md), changed or weakened assertions with reasons,
+            local-only checks still needed, and any unresolved gap. The report must contain a
+            section headed exactly `## Acceptance criteria evidence` with a Markdown table
+            `| Criterion | Test or evidence | Result |`, one row per acceptance criterion of the issue.
+            Name the concrete test class/method, Vitest file or browser journey that verifies the
+            criterion; if no automated test applies, write `none` and the reason. Do not put
+            secrets in the report or commit the report file.
             For an automatic merge, include standalone lines exactly
             `Local-only checks still needed: none` and `Unresolved gaps: none` only when true.
             Leave committing, pushing, and PR creation to the workflow steps after this action.
@@ -192,6 +200,9 @@ jobs:
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
           EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
           RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+          CLAUDE_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          RUN_STARTED_AT: ${{ steps.prepare.outputs.started_at }}
+          CLAUDE_MAX_TURNS: ${{ steps.limits.outputs.max_turns }}
         shell: bash
         run: |
           set -euo pipefail
@@ -209,6 +220,8 @@ jobs:
             printf '\n## Workflow evidence\n\n'
             printf -- '- Claude run: https://github.com/%s/actions/runs/%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
             printf -- '- CI and Codex review: check this PR before merging.\n'
+            printf '\n'
+            python "$RUNNER_TEMP/summarize_claude_run.py" || printf '## Run metrics\n\n- not available\n'
           } > "$body"
           if [[ "$EXISTING_PR" == 'true' ]]; then
             gh pr comment "$BRANCH_NAME" --body-file "$body"
