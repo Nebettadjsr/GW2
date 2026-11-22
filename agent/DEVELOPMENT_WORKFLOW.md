@@ -71,7 +71,9 @@ the current head with their annotation messages, unresolved review threads) that
 A rework run that changes nothing (not even the prepared merge of `master`) fails visibly and keeps
 `needs-rework`; it does not publish a report or clear the label. A PR that is only behind `master` is
 published with the merge.
-Rework publication explicitly dispatches CI because `GITHUB_TOKEN` pushes suppress events.
+A rework is pushed with the automation token so the normal `pull_request` CI runs without an
+approval hold; if that push is refused the workflow falls back to the workflow token and dispatches CI.
+Rework publication via the workflow token explicitly dispatches CI because `GITHUB_TOKEN` pushes suppress events.
 
 ## CI, review and acceptance
 
