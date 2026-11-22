@@ -122,7 +122,8 @@ The check has two parts. [`check_doc_references.py`](../.github/scripts/check_do
 deterministically lists links and backticked repository paths that point at nothing. A Claude step
 then verifies the documents that own the changed areas (baseline: their key factual claims) and
 reports only drift it confirmed with code evidence, marking product or architecture questions
-`owner-decision`. Findings go into one open issue labelled `docs-drift` (a new comment when one is
+`owner-decision`. Each run keeps its report, scope and path check as a 30-day artifact (`docs-drift-<run id>`) and prints
+the result text in its log, so even a clean result can be audited through its `Checked` list. Findings go into one open issue labelled `docs-drift` (a new comment when one is
 already open); a clean result writes only the run summary. Drift issues are not `auto` stories:
 the owner or supervisor decides each finding, then fixes the document or opens a story.
 
