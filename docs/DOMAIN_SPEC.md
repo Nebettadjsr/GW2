@@ -2097,7 +2097,7 @@ Home is the default landing page at `/home`; legacy `/welcome` links redirect th
 tools are for, outlines the available features and account-to-crafting workflow, and
 offers personal GW2 beginner tips. The guide is an approachable account of useful
 experiences, not an exhaustive game manual or a promised gold-per-hour farming route.
-Its reading tabs and screenshot layout follow `FRONTEND_UX_GUIDELINES.md` §2.5.
+Its reading tabs and screenshot layout follow `UI_SPEC.md` section 5.
 
 Home and the footer's Legal notice, Privacy and Cookies & browser storage pages are
 readable without a connection. Opening them must not restore a retained key, fetch

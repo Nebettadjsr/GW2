@@ -71,7 +71,8 @@ update it when a delivered change affects its lasting rules or instructions.
 - `docs/CURRENT_STATE_SPEC.md`: observed runtime/build/deployment facts.
 - `docs/ARCHITECTURE.md`: current structure, selected boundaries and open choices.
 - `docs/TEST_STRATEGY.md`: testing methods and coverage policy (rule document, harness).
-- `docs/FRONTEND_UX_GUIDELINES.md`: browser UX conventions (rule document, harness).
+- `docs/FRONTEND_UX_GUIDELINES.md`: reusable browser UX rules (rule document, harness).
+- `docs/UI_SPEC.md`: page-specific browser behavior and accepted layouts.
 - `docs/CODING_GUIDELINES.md`: implementation conventions (rule document, harness).
 - `docs/KNOWN_PROBLEMS.md`: unresolved defects and concrete improvement opportunities.
 - `agent/DEVELOPMENT_WORKFLOW.md`: implemented agent/GitHub process.
