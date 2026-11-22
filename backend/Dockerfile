@@ -15,6 +15,8 @@ COPY pom.xml ./
 COPY --chmod=755 mvnw ./
 # Existing Windows checkouts may still contain CRLF even after the repository attributes change.
 RUN sed -i 's/\r$//' mvnw && ./mvnw -B -q dependency:resolve
+# Checkstyle runs in the validate phase and reads its rules from config/.
+COPY config/ config/
 COPY src/ src/
 # The pom deliberately has no repackage execution (ordinary `mvn package` keeps a plain jar), so the
 # executable Spring Boot jar is produced by invoking the pinned plugin goal explicitly. Tests run in CI.
