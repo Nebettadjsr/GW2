@@ -44,5 +44,12 @@ owning references, known limits and unresolved decisions. State whether local
 database/browser checks or explicit visual acceptance are required. If a scoped
 issue assigns independent QA, make test/fixture ownership explicit.
 
+Acceptance criteria describe application behavior only. Never write a criterion that requires reading
+or changing a harness path (`.github/`, `agent/`, `tasks/`, `AGENTS.md`, `CLAUDE.md`, quality-gate
+configuration; see the harness boundary in `AGENTS.md`), such as "update the workflow document" or
+"confirm the CI workflow runs the new class". The programmer is not allowed to do it and reports the
+criterion as an unresolved gap, which also stops automatic merging. If a story needs a harness change,
+say so in the handoff note to the supervisor, who does it as a separate step.
+
 For a Product Owner question, prepare it in the live issue/PR with
 `needs-decision`; do not revive the retired decision-file/harness queue.
