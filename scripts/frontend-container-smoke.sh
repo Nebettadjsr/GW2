@@ -7,6 +7,10 @@
 # ArenaNet. Needs Docker, Bash, curl, GNU date; no GW2 key. Only resources created here (unique
 # gw2-fsmoke-<id> names, tracked by immutable ID) are removed, anonymous volumes included.
 set -euo pipefail
+
+# Search a command's output without piping it into `grep -q`: under pipefail, grep exiting early on a
+# match can kill the producer with SIGPIPE (141) and turn a present line into a failed pipeline.
+logs_have() { local pattern=$1; shift; local text; text=$("$@" 2>&1) || true; grep -q -- "$pattern" <<<"$text"; }
 cd "$(dirname "$0")/.."
 
 ID="${GW2_SMOKE_ID:-$(date +%s)-$$}"
@@ -173,5 +177,5 @@ want="method=POST uri=/api/session/renew?a=1&b=two host=127.0.0.1:$PORT2 origin=
 grep -qi '^HTTP/1.1 218' "$WORK/h2" || fail "upstream status not preserved"
 grep -qi '^set-cookie: GW2_SESSION=echo; Path=/; HttpOnly; SameSite=Strict' "$WORK/h2" || fail "Set-Cookie not preserved"
 echo "forwarding: status 218, path/query/body, Host with port, Origin, Cookie, key, context, Set-Cookie preserved"
-docker logs "$NS-front2" 2>&1 | grep -q 'smoke-not-a-real-key' && fail "key value appeared in proxy logs"
+logs_have 'smoke-not-a-real-key' docker logs "$NS-front2" && fail "key value appeared in proxy logs"
 echo "PASS"

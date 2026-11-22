@@ -68,6 +68,9 @@ OVERRIDE
 now_ms() { date +%s%3N; }
 curl() { command curl --connect-timeout 2 --max-time 5 "$@"; }
 fail() { echo "FAIL: $*" >&2; dc logs --tail 30 >&2 || true; exit 1; }
+# Search a command's output without piping it into `grep -q`: under pipefail, grep exiting early on a
+# match can kill the producer with SIGPIPE (141) and turn a present line into a failed pipeline.
+logs_have() { local pattern=$1; shift; local text; text=$("$@" 2>&1) || true; grep -q -- "$pattern" <<<"$text"; }
 expect() { echo "$1 -> $2"; [ "$2" = "$3" ] || fail "$1: expected $3, got $2"; }
 
 start_stack() {
@@ -105,7 +108,7 @@ echo "== first startup ($PROJECT)"
 start_stack
 check_stack
 dc logs backend 2>&1 | grep '\[schema\]' || true
-dc logs backend 2>&1 | grep -q 'versioned chain applied (found EMPTY)' || fail "first start did not initialize an empty schema"
+logs_have 'versioned chain applied (found EMPTY)' dc logs backend || fail "first start did not initialize an empty schema"
 for s in postgres backend frontend; do
   echo "image_bytes $s=$(docker inspect -f '{{.Size}}' "$(dc images -q "$s" | head -1)" 2>/dev/null || echo n/a)"
 done
@@ -158,6 +161,6 @@ dc down >/dev/null
 start_stack
 check_stack
 dc logs backend 2>&1 | grep '\[schema\]' || true
-dc logs backend 2>&1 | grep -q 'unmanaged schema reset' && fail "restart reset the schema"
-dc logs backend 2>&1 | grep -q 'versioned chain applied (found MANAGED)' || fail "restart did not find a managed schema"
+logs_have 'unmanaged schema reset' dc logs backend && fail "restart reset the schema"
+logs_have 'versioned chain applied (found MANAGED)' dc logs backend || fail "restart did not find a managed schema"
 echo "PASS"
