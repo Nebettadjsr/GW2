@@ -1,0 +1,222 @@
+# Documentation drift check (read-only for the repository).
+#
+# Runs nightly but only does work when master changed since the last successful check, so a quiet
+# day costs one cheap job and no model usage. The first run (no earlier success) is a baseline check
+# of the active documents. Findings become ONE labelled issue (`docs-drift`), or a comment on the open
+# one; nothing is committed. A run whose model step fails does not count as checked: the next night
+# repeats it.
+#
+# Manual start: Actions -> Documentation drift check -> Run workflow
+#   force: check even if nothing changed since the last check
+#   test_run: do not count this run as the last check (for trying the workflow out)
+name: Documentation drift check
+
+run-name: Documentation drift check${{ inputs.test_run && ' [test]' || '' }}
+
+on:
+  schedule:
+    # 02:00 UTC (03:00 in Germany in winter). Quiet days are skipped by the change detection below.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Check even if master has not changed since the last check
+        type: boolean
+        default: false
+      test_run:
+        description: Try-out run; do not count it as the last check
+        type: boolean
+        default: false
+
+concurrency:
+  group: docs-drift
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+  id-token: write
+
+jobs:
+  drift:
+    if: github.repository == 'Nebettadjsr/GW2' && github.ref == 'refs/heads/master' && (github.event_name == 'schedule' || github.actor == 'Nebettadjsr')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Use the Claude subscription; do not fall back to Console/API billing.
+      ANTHROPIC_API_KEY: ''
+      DRIFT_MAX_TURNS: ${{ vars.DRIFT_MAX_TURNS || '40' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Decide whether anything changed since the last check
+        id: scope
+        env:
+          FORCE: ${{ inputs.force }}
+          CURRENT_RUN: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_sha=$(git rev-parse HEAD)
+          last_sha=$(gh run list --workflow docs-drift.yml --branch master --status success --limit 50 \
+            --json headSha,displayTitle,databaseId \
+            --jq "[.[] | select(.displayTitle | contains(\"[test]\") | not) | select(.databaseId != ${CURRENT_RUN})][0].headSha // \"\"")
+          if [[ -n "$last_sha" ]] && ! git cat-file -e "${last_sha}^{commit}" 2>/dev/null; then
+            echo "Last checked commit $last_sha is not in the history; running a baseline check."
+            last_sha=''
+          fi
+          changes="$RUNNER_TEMP/gw2-drift-changes.txt"
+          if [[ -z "$last_sha" ]]; then
+            baseline=true; commits=0
+            printf 'Baseline check: no earlier successful check, so the whole active documentation is in scope.\n' > "$changes"
+          else
+            baseline=false
+            commits=$(git rev-list --count "${last_sha}..HEAD")
+            {
+              printf 'Commits since the last check (%s..%s): %s\n\n' "${last_sha:0:7}" "${head_sha:0:7}" "$commits"
+              git log --oneline --no-merges "${last_sha}..HEAD" | head -n 150
+              printf '\nChanged files:\n'
+              git diff --name-status "${last_sha}..HEAD" | head -n 300
+            } > "$changes"
+          fi
+          if [[ "$baseline" == 'true' || "$commits" != '0' || "$FORCE" == 'true' ]]; then run=true; else run=false; fi
+          {
+            echo "run=$run"
+            echo "baseline=$baseline"
+            echo "last_sha=$last_sha"
+            echo "head_sha=$head_sha"
+            echo "commits=$commits"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo '## Documentation drift check'
+            if [[ "$run" == 'true' ]]; then
+              echo "Checking ${head_sha:0:7} (baseline: $baseline, commits since last check: $commits)."
+            else
+              echo "No commits on master since the last check (${last_sha:0:7}); skipped."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check links and repository paths in the documents
+        if: steps.scope.outputs.run == 'true'
+        run: python .github/scripts/check_doc_references.py | tee "$RUNNER_TEMP/gw2-drift-refs.md"
+
+      - name: Compare the documents with the code
+        id: claude
+        if: steps.scope.outputs.run == 'true'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        env:
+          GW2_DRIFT_REPORT: ${{ runner.temp }}/gw2-drift-report.md
+          GW2_DRIFT_CHANGES: ${{ runner.temp }}/gw2-drift-changes.txt
+          GW2_DRIFT_REFS: ${{ runner.temp }}/gw2-drift-refs.md
+          GW2_DRIFT_BASELINE: ${{ steps.scope.outputs.baseline }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Check whether the repository's active documentation still matches the code, scripts and
+            workflows. This is read-only: do not edit, commit or push anything. The only file you
+            write is the report named by GW2_DRIFT_REPORT (outside the repository).
+
+            Scope: AGENTS.md, CLAUDE.md, README.md, CONTRIBUTING.md, agent/*.md, docker/README.md and
+            docs/*.md. Ignore docs/archive and docs/investigations. The owning-document map in AGENTS.md
+            says which document owns which subject.
+
+            Mode: if GW2_DRIFT_BASELINE is `true`, verify the key factual claims of the active documents
+            (prioritize docs/CURRENT_STATE_SPEC.md, agent/DEVELOPMENT_WORKFLOW.md, AGENTS.md, CLAUDE.md,
+            docs/CODING_GUIDELINES.md section 11, docs/TEST_STRATEGY.md commands, docker/README.md,
+            README.md). Otherwise read the file named by GW2_DRIFT_CHANGES, map every changed file to its
+            owning documents and verify those documents' statements against the new code.
+
+            A deterministic path/link check already ran; its result is in the file named by
+            GW2_DRIFT_REFS. Do not repeat it. Do not report problems that docs/KNOWN_PROBLEMS.md already lists.
+
+            Method: for each claim you check, read the code. Report only drift you CONFIRMED, with
+            evidence. Typical drift: file, class, command, flag, label or check names; workflow behavior
+            and limits (turns, timeouts, required checks); thresholds; lists of packages, modules, tests or
+            scripts; things that were removed or renamed but are still described. Ignore wording and style.
+            Separate facts from inferences. If the code and a document disagree and the intended behavior is
+            a product or architecture choice, mark it `owner-decision`; never decide it yourself.
+
+            Output: a Markdown file whose first line is exactly `STATUS: drift` or `STATUS: clean`. Then
+            a table with columns `#`, `Document and line`, `Documented claim`, `Evidence in code`,
+            `Proposed correction`, `Kind` (`doc-wrong`, `code-wrong` or `owner-decision`), at most 15 rows,
+            most important first. Then a `Checked` list (one line per document or area you verified) and a
+            `Not checked` list, so that a clean result is credible.
+          claude_args: |
+            --max-turns ${{ env.DRIFT_MAX_TURNS }}
+            --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git ls-files:*)"
+
+      - name: Publish the result
+        if: steps.scope.outputs.run == 'true'
+        env:
+          BASELINE: ${{ steps.scope.outputs.baseline }}
+          LAST_SHA: ${{ steps.scope.outputs.last_sha }}
+          HEAD_SHA: ${{ steps.scope.outputs.head_sha }}
+          COMMITS: ${{ steps.scope.outputs.commits }}
+          CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
+          CLAUDE_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          CLAUDE_MAX_TURNS: ${{ env.DRIFT_MAX_TURNS }}
+          TEST_RUN: ${{ inputs.test_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          refs="$RUNNER_TEMP/gw2-drift-refs.md"
+          report="$RUNNER_TEMP/gw2-drift-report.md"
+          body="$RUNNER_TEMP/gw2-drift-body.md"
+          refs_dirty=false; grep -q 'unresolved reference' "$refs" && refs_dirty=true
+          model_status=unavailable
+          if [[ "$CLAUDE_OUTCOME" == 'success' && -s "$report" ]]; then
+            if head -n 1 "$report" | grep -q '^STATUS: drift'; then model_status=drift
+            elif head -n 1 "$report" | grep -q '^STATUS: clean'; then model_status=clean
+            fi
+          fi
+          {
+            printf '<!-- docs-drift-check head=%s -->\n' "$HEAD_SHA"
+            printf '# Documentation drift: %s\n\n' "$(date -u +%Y-%m-%d)"
+            if [[ "$BASELINE" == 'true' ]]; then
+              printf 'Mode: baseline check of the active documents at `%s`.\n\n' "${HEAD_SHA:0:7}"
+            else
+              printf 'Mode: %s commit(s) on master since the last check, `%s..%s`.\n\n' "$COMMITS" "${LAST_SHA:0:7}" "${HEAD_SHA:0:7}"
+            fi
+            if [[ "$model_status" == 'drift' ]]; then
+              printf '## Findings of the comparison with the code\n\n'
+              tail -n +2 "$report"
+              printf '\n'
+            elif [[ "$model_status" == 'clean' ]]; then
+              printf 'The comparison with the code found no confirmed drift.\n\n'
+            else
+              printf '> The model comparison did not complete (%s). This run is not recorded as checked; the next run repeats it.\n\n' "$CLAUDE_OUTCOME"
+            fi
+            printf '## Links and repository paths\n\n'
+            cat "$refs"
+            printf '\n'
+            python .github/scripts/summarize_claude_run.py || true
+            printf '\nThis issue was written by the Documentation drift check workflow (run %s). It is not an `auto` story: decide each finding, then fix the document or open a story.\n' "$GITHUB_RUN_ID"
+          } > "$body"
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$TEST_RUN" == 'true' ]]; then
+            echo 'Test run: no issue is created or updated.'
+            exit 0
+          fi
+          if [[ "$model_status" != 'drift' && "$refs_dirty" != 'true' ]]; then
+            echo 'Nothing to report.'
+            exit 0
+          fi
+          gh label create docs-drift --color 5319e7 --description 'Documentation no longer matches the code' 2>/dev/null || true
+          existing=$(gh issue list --label docs-drift --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --body-file "$body"
+          else
+            gh issue create --title "Documentation drift: $(date -u +%Y-%m-%d)" --label docs-drift --body-file "$body"
+          fi
+
+      - name: Fail when the comparison did not complete
+        if: steps.scope.outputs.run == 'true' && steps.claude.outcome != 'success'
+        run: |
+          echo 'The model comparison did not complete; this run is not recorded as checked.' >&2
+          exit 1

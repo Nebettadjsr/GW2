@@ -108,6 +108,23 @@ Current definitive CI failures, completed review findings or a behind-base eligi
 queue `needs-rework` for the next explicit dispatch. Running/stale results do not. A missing
 report or pending local check holds merge without automatically starting another coding run.
 
+## Documentation drift check
+
+[`docs-drift.yml`](../.github/workflows/docs-drift.yml) compares the active documents with the code.
+It is read-only: it commits nothing and starts no story. It runs nightly (02:00 UTC) but works only
+when master has commits since the last successful check, so a quiet day costs one cheap job. The
+first run is a baseline check. A run counts as checked only if its model step completed; otherwise
+the next night repeats it. `Run workflow` offers `force` (check although nothing changed) and
+`test_run` (do not count the run as a check, create no issue).
+
+The check has two parts. [`check_doc_references.py`](../.github/scripts/check_doc_references.py)
+deterministically lists links and backticked repository paths that point at nothing. A Claude step
+then verifies the documents that own the changed areas (baseline: their key factual claims) and
+reports only drift it confirmed with code evidence, marking product or architecture questions
+`owner-decision`. Findings go into one open issue labelled `docs-drift` (a new comment when one is
+already open); a clean result writes only the run summary. Drift issues are not `auto` stories:
+the owner or supervisor decides each finding, then fixes the document or opens a story.
+
 ## Failed attempts
 
 [`save_claude_recovery.py`](../.github/scripts/save_claude_recovery.py) attempts to save a
