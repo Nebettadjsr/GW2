@@ -171,6 +171,9 @@ jobs:
             secrets in the report or commit the report file.
             For an automatic merge, include standalone lines exactly
             `Local-only checks still needed: none` and `Unresolved gaps: none` only when true.
+            Local-only means a check that needs the owner's machine (a real database outside CI, a
+            browser smoke that CI does not run, a live GW2 API call). The complete CI suites are not
+            local-only checks: never list them there. Say in the report which checks CI will run.
             Leave committing, pushing, and PR creation to the workflow steps after this action.
           claude_args: |
             --max-turns ${{ steps.limits.outputs.max_turns }}
@@ -186,6 +189,7 @@ jobs:
           CLAUDE_BASE: ${{ steps.prepare.outputs.claude_base }}
           RECOVERY_BASE: ${{ steps.prepare.outputs.recovery_base }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          AUTOMATION_TOKEN: ${{ secrets.GW2_AUTOMATION_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -208,12 +212,29 @@ jobs:
             exit 1
           fi
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
-          gh auth setup-git
-          git push --set-upstream origin "$BRANCH_NAME"
-          # A push made with GITHUB_TOKEN does not trigger CI on an existing PR.
-          # workflow_dispatch is the documented exception to that suppression.
+          pushed_as_owner=false
+          if [[ "$EXISTING_PR" == 'true' && -n "$AUTOMATION_TOKEN" ]]; then
+            # A rework push made by the automation account triggers the normal pull_request CI,
+            # without the approval hold a GITHUB_TOKEN push leaves behind.
+            header=$(printf 'x-access-token:%s' "$AUTOMATION_TOKEN" | base64 -w0)
+            echo "::add-mask::$header"
+            if git -c credential.helper= -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $header" \
+                push --set-upstream origin "$BRANCH_NAME"; then
+              pushed_as_owner=true
+            else
+              echo '::warning::Push with the automation token failed; falling back to the workflow token and an explicit CI dispatch.'
+            fi
+          fi
+          if [[ "$pushed_as_owner" != 'true' ]]; then
+            gh auth setup-git
+            git push --set-upstream origin "$BRANCH_NAME"
+            # A push made with GITHUB_TOKEN does not trigger CI on an existing PR.
+            # workflow_dispatch is the documented exception to that suppression.
+            if [[ "$EXISTING_PR" == 'true' ]]; then
+              gh workflow run ci.yml --ref "$BRANCH_NAME"
+            fi
+          fi
           if [[ "$EXISTING_PR" == 'true' ]]; then
-            gh workflow run ci.yml --ref "$BRANCH_NAME"
             gh issue edit "$ISSUE_NUMBER" --remove-label needs-rework
           fi
 
