@@ -98,8 +98,8 @@ using trusted default-branch code. Automatic squash merge requires:
 - The latest native Codex summary's `code_review` has that `commit_sha`, `status: completed`,
   `has_any_findings: false` and `has_unresolved_findings: false`.
 - No supervised-only changed/previous path: the harness paths and dependency manifests listed in
-  `harness_paths.py` (`.github/`, `agent/`, `tasks/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, the
-  quality-gate configuration, `backend/pom.xml`, `frontend/package*.json`). These require supervised merging.
+  `harness_paths.py` (`.github/`, `agent/`, `tasks/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`, the rule
+  documents, the quality-gate configuration, `backend/pom.xml`, `frontend/package*.json`). These require supervised merging.
 
 The merge is conditioned on that SHA; GitHub protection still applies. A new head needs
 fresh checks/report/review. The supervisor also verifies required local evidence and obtains
