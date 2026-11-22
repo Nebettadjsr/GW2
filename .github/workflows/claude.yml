@@ -306,7 +306,9 @@ jobs:
 
       - name: Record harness feedback
         id: harness_feedback
-        if: steps.publish_pr.outcome == 'success'
+        # Independent of publication: a run whose only edits were discarded harness changes publishes no
+        # PR, and a failed run may still have written a report. Both are exactly the signals to keep.
+        if: ${{ always() && steps.claude.outcome != 'skipped' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

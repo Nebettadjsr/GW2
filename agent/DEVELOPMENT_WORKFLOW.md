@@ -120,7 +120,8 @@ reading `agent/` and `.github/` and editing harness paths. Dependency manifests 
 (a story may need a dependency) but never merge automatically.
 
 The report must contain `## Harness feedback` (or `none`). A non-empty section, or discarded
-changes, opens an issue labelled `harness-feedback` for the supervisor. The supervisor corrects the
+changes, opens an issue labelled `harness-feedback` for the supervisor, even when the run publishes no
+PR (for example because its only edits were discarded harness changes) or fails after writing its report. The supervisor corrects the
 harness in its own pull request when the same deviation occurs twice, a single deviation is costly,
 review findings recur or a drift finding confirms it; deterministic checks are preferred over
 prose, and obsolete rules are removed.
