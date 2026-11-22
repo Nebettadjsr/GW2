@@ -50,6 +50,17 @@ public final class AccountSourceStateRepository {
      */
     public record SourceState(String source, long generation, Instant completedAt) {}
 
+    /**
+     * Whether {@code source} has a published state for this account. Opens and closes its own
+     * connection, so a caller above the persistence layer (a controller) can ask without ever holding
+     * a connection.
+     */
+    public boolean isPublished(AccountScope scope, String source) throws SQLException {
+        try (Connection con = Db.open()) {
+            return read(con, scope, source).isPresent();
+        }
+    }
+
     /** The last successful publication of one source, or empty when that source is missing. */
     public Optional<SourceState> read(Connection con, AccountScope scope, String source) throws SQLException {
         ManagedSchema.requireManagedAccountSchema(con, "account_source_state lookup");
