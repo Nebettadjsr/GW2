@@ -152,6 +152,7 @@ jobs:
             --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git ls-files:*)"
 
       - name: Publish the result
+        id: publish
         if: steps.scope.outputs.run == 'true'
         env:
           BASELINE: ${{ steps.scope.outputs.baseline }}
@@ -175,6 +176,7 @@ jobs:
             elif head -n 1 "$report" | grep -q '^STATUS: clean'; then model_status=clean
             fi
           fi
+          echo "model_status=$model_status" >> "$GITHUB_OUTPUT"
           {
             printf '<!-- docs-drift-check head=%s -->\n' "$HEAD_SHA"
             printf '# Documentation drift: %s\n\n' "$(date -u +%Y-%m-%d)"
@@ -216,7 +218,8 @@ jobs:
           fi
 
       - name: Fail when the comparison did not complete
-        if: steps.scope.outputs.run == 'true' && steps.claude.outcome != 'success'
+        # Also covers a model step that "succeeded" without a valid report (missing file or no STATUS line).
+        if: steps.scope.outputs.run == 'true' && (steps.claude.outcome != 'success' || steps.publish.outputs.model_status == 'unavailable')
         run: |
-          echo 'The model comparison did not complete; this run is not recorded as checked.' >&2
+          echo 'The model comparison did not produce a valid report; this run is not recorded as checked.' >&2
           exit 1
