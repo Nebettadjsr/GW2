@@ -9,7 +9,7 @@ to restore an obsolete implementation.
 
 [DOMAIN_SPEC](DOMAIN_SPEC.md) owns product and calculation rules. [CURRENT_STATE_SPEC](CURRENT_STATE_SPEC.md)
 owns deployed revisions and verification limits. [TEST_STRATEGY](TEST_STRATEGY.md) owns test procedures;
-[FRONTEND_UX_GUIDELINES](FRONTEND_UX_GUIDELINES.md) owns presentation rules and
+[FRONTEND_UX_GUIDELINES](FRONTEND_UX_GUIDELINES.md) owns presentation rules, [UI_SPEC](UI_SPEC.md) owns page-specific behavior and
 [the glossary](crafting/GLOSSARY.md) owns player-facing terminology. Development automation is
 documented in [agent/README](../agent/README.md), separately from this application architecture.
 
