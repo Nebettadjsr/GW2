@@ -807,7 +807,7 @@ class SyncFetchPublicationTest {
     }
 
     @Test
-    void tpSync_partialBatchFetchesOnlyMissingIdsIndividuallyAndKeepsConfirmedAbsenceUnwritten() throws Exception {
+    void tpSync_partialBatchFetchesOnlyMissingIdsIndividuallyAndStoresConfirmedAbsenceAsNoData() throws Exception {
         List<Integer> singles = new ArrayList<>();
         tp(b -> ok(206, "[" + quote(1, 5, 100, 7, 120) + "]"), id -> {
             singles.add(id);
@@ -817,7 +817,7 @@ class SyncFetchPublicationTest {
         TpSync.syncTpPrices(Set.of(1, 2, 3));
 
         assertEquals(List.of(2, 3), singles);
-        assertEquals("1:5/100/7/120,2:3/30/4/40", prices());
+        assertEquals("1:5/100/7/120,2:3/30/4/40,3:-/-/-/-", prices());
     }
 
     @Test
@@ -831,7 +831,7 @@ class SyncFetchPublicationTest {
         TpSync.syncTpPrices(Set.of(7, 8, 9));
 
         assertEquals(List.of(7, 8, 9), singles);
-        assertEquals("7:7/70/8/75,9:9/90/10/95", prices());
+        assertEquals("7:7/70/8/75,8:-/-/-/-,9:9/90/10/95", prices());
     }
 
     @Test
