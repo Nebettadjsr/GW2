@@ -620,7 +620,7 @@ async function run() {
       const dir = fileURLToPath(new URL('../quality-reports/', import.meta.url))
       mkdirSync(dir, { recursive: true })
       writeFileSync(`${dir}icon-tree-settle-failure.json`, JSON.stringify(diagnostics, null, 2))
-      throw new Error(`The 503 tree node did not settle: ${JSON.stringify(diagnostics)}`)
+      throw new Error(`The 503 tree node did not settle: ${JSON.stringify(diagnostics)}`, { cause: error })
     }
     const settledTree = await page.$$eval('[data-test="tree-node"] .node__identity', (nodes) =>
       nodes.map((node) => ({

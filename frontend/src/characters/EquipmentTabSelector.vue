@@ -9,7 +9,7 @@ function name(tab: TemplateTab): string { return tab.name?.trim() || `${props.ki
 function description(tab: TemplateTab): string { return `${name(tab)}${tab.active ? ' · In use in game' : ''}` }
 async function onKey(event: KeyboardEvent, index: number): Promise<void> {
   const last = props.tabs.length - 1
-  let next = index
+  let next: number
   if (event.key === 'ArrowRight') next = index === last ? 0 : index + 1
   else if (event.key === 'ArrowLeft') next = index === 0 ? last : index - 1
   else if (event.key === 'Home') next = 0

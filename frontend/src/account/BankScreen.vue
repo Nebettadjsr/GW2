@@ -129,7 +129,7 @@ const tabs = computed(() => {
           <div class="bank-tab__body">
           <div class="bank-tab__scroll">
             <ol class="slots" data-test="bank-slots">
-              <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :slot="slot"
+              <BankSlotTile v-for="slot in tab.slots" :key="slot.slot" :bank-slot="slot"
                 :selected="selectable && slot.protectionSelectable !== false && slot.itemId !== null ? stackState(slot).selected : undefined"
                 :mixed="stackState(slot).mixed" :finite="stackState(slot).finite" :reserved="stackState(slot).reserved"
                 @menu="(_id: number, x: number, y: number) => openActions(slot, x, y)"

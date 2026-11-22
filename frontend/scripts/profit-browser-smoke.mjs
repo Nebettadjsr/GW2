@@ -534,20 +534,6 @@ function requestsToPath(stub, path) {
   return stub.requests.filter((request) => request.path === path)
 }
 
-/** Waits until this process has answered `atLeast` requests to `path`, or fails naming the shortfall. */
-async function waitForRequestCount(stub, path, atLeast) {
-  const deadline = Date.now() + TIMEOUT_MS
-  while (requestsToPath(stub, path).length < atLeast) {
-    if (Date.now() > deadline) {
-      throw new Error(
-        `Timed out waiting for ${atLeast} requests to ${path}; ` +
-          `${requestsToPath(stub, path).length} arrived.`
-      )
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-}
-
 async function listedRecipes(page) {
   return page.$$eval('[data-test="profit-row"] .recipe-name', (names) =>
     names.map((name) => (name.textContent ?? '').replace(/\s+/g, ' ').trim())

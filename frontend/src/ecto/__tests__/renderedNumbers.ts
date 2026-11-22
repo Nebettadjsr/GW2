@@ -17,5 +17,5 @@
  * Indian grouping of `en-IN`, say) are out of scope: no expectation here depends on one.
  */
 export function withoutDigitGrouping(text: string): string {
-  return text.replace(/(?<=\d)[.,'   ](?=\d{3}(?!\d))/g, '')
+  return text.replace(/(?<=\d)[.,'\u00A0\u202F\u2009](?=\d{3}(?!\d))/g, '')
 }

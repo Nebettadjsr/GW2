@@ -38,7 +38,7 @@ async function forceStop({ server, child }) {
     const taskkill = `${process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'}\\System32\\taskkill.exe`
     await new Promise(resolve => execFile(taskkill, ['/pid', String(child.pid), '/t', '/f'], () => resolve()))
   } else {
-    try { await server.kill() } catch { try { child.kill('SIGKILL') } catch {} }
+    try { await server.kill() } catch { try { child.kill('SIGKILL') } catch { /* the child already exited, so there is nothing left to kill */ } }
   }
   return waitForExit(child, EXIT_WAIT_MS)
 }

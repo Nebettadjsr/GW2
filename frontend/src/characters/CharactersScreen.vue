@@ -101,7 +101,7 @@ function setTab(id: SectionId, el: unknown): void {
 /** Arrow/Home/End move between section tabs (roving tabindex); selection follows focus. */
 async function onTabKey(event: KeyboardEvent): Promise<void> {
   const i = SECTIONS.findIndex((t) => t.id === c.section.value)
-  let n = i
+  let n: number
   if (event.key === 'ArrowRight') n = (i + 1) % SECTIONS.length
   else if (event.key === 'ArrowLeft') n = (i - 1 + SECTIONS.length) % SECTIONS.length
   else if (event.key === 'Home') n = 0

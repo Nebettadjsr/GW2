@@ -36,7 +36,8 @@ export function useAutomaticAccountRefresh(options: RefreshOptions, shared?: Sha
       let stop = () => {}
       const finish = (error?: Error) => {
         stop(); clearTimeout(bound); cancelWaits.delete(cancel)
-        error ? reject(error) : resolve()
+        if (error) reject(error)
+        else resolve()
       }
       const cancel = () => finish()
       const bound = setTimeout(() => finish(new Error('Refresh timed out')), 300_000)
