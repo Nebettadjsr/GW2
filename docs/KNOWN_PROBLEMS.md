@@ -25,16 +25,6 @@ Evidence: `application/ScopedAccountRefreshCoordinator.java`, `application/Accou
 
 Evidence: `repo/CraftingGraphCache.java`, especially `load`, `loadForSnapshot`, `rebuild` and `invalidate`.
 
-## KP-17 Incremental TP refresh retains quotes after confirmed absence
-
-**Observed:** ordinary `sync.TpSync.fetchTpBatchParsed` skips a requested ID when the single-item 404 fallback returns null; an earlier stored quote remains. The owner full-catalog path uses `fetchTpBatchStrict`, which already writes `TpPrice.noData` for that absence. Profit reports quote age separately.
-
-**Risk:** incremental refresh can leave an obsolete quote in storage after the upstream explicitly reports no quote. Freshness metadata alone does not persist that absence.
-
-**Follow-up:** align ordinary refresh's confirmed-absence semantics with the documented quote contract, distinguishing absence from a transient upstream failure. Preserve the full-catalog behavior already implemented.
-
-Evidence: `sync/TpSync.java` (`fetchTpBatchParsed`, `fetchTpBatchStrict`), `api/tp/TpPriceApi.java` (`fetchSingle`).
-
 ## KP-30 Broad graph and root work for narrow crafting scopes
 
 **Observed:** snapshot-bound calculation loads the complete recipe graph and broad item/quote inputs. Coordinated evaluation receives the global recipe set even for a narrow visible scope; disallowed roots can be rejected early, so this does not imply every root receives a full recursive simulation. Candidate queries also read broad ingredient data before discipline filtering.
