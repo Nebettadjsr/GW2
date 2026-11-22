@@ -128,7 +128,7 @@ default `./mvnw test` (Checkstyle, Error Prone, ArchUnit) and `npm run lint` (ES
 in CI. Rule sources: `backend/config/checkstyle/`, `backend/src/test/java/architecture/`,
 `frontend/eslint.config.js`; explanation in `docs/CODING_GUIDELINES.md` section 11.
 Fix the code, never the gate: do not edit those files, extend the ArchUnit violation store,
-add suppressions or raise the ESLint `--max-warnings` cap to make a change pass. Such changes
+add suppressions or loosen the ESLint configuration (rules, severities, `--max-warnings`) to make a change pass. Such changes
 are harness paths (see Scope and the harness boundary): propose a change, never make it.
 
 ## Code Review Rules
