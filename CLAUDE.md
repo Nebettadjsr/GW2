@@ -17,8 +17,8 @@ or cost you time, do not fix it: describe it in the report under `## Harness fee
 
 ## Assigned GitHub work
 
-You are the programmer. The explicitly assigned Codex planner proposes work;
-interactive Codex supervises/releases it under their own contracts.
+You are the programmer. A planner proposes work and a supervisor releases it
+under their own contracts.
 Read the approved issue and current owner/supervisor instructions.
 Drafts do not authorize implementation. Do not activate work, choose another
 milestone, change criteria, dispatch runs, merge or deploy yourself.
