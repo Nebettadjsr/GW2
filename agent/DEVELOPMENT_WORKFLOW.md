@@ -66,6 +66,11 @@ tokens, API-equivalent cost) rendered by
 [`summarize_claude_run.py`](../.github/scripts/summarize_claude_run.py) from the action's execution
 log; missing fields show `n/a` and never fail the run. Use these numbers to judge whether changes to
 the harness make runs cheaper or more reliable.
+For rework the workflow first writes a context file (`collect_rework_context.py`: failing checks of
+the current head with their annotation messages, unresolved review threads) that Claude must read.
+A rework run that changes nothing (not even the prepared merge of `master`) fails visibly and keeps
+`needs-rework`; it does not publish a report or clear the label. A PR that is only behind `master` is
+published with the merge.
 Rework publication explicitly dispatches CI because `GITHUB_TOKEN` pushes suppress events.
 
 ## CI, review and acceptance

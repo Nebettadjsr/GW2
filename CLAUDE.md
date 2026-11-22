@@ -24,6 +24,10 @@ instead of expanding scope. Missing criteria/material correctness gaps block.
 
 The run report must contain an `## Acceptance criteria evidence` table: one row per
 acceptance criterion with the concrete test or evidence that verifies it (or `none` and why).
+When you change production behavior, search the existing tests for assertions of the old behavior
+(grep the changed method and its callers) and run those complete test classes, not only new ones; a
+test that asserts the old behavior is updated with a stated reason. On rework, read the context file
+named by `GW2_REWORK_CONTEXT` first.
 Normally implement meaningful tests/fixtures with code. A scoped approved issue
 or session may give independent QA that ownership; honor the override. Run narrow
 checks locally and let CI run full default suites. Report actual commands/results,

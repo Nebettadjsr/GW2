@@ -13,6 +13,7 @@ permissions:
   issues: write
   id-token: write
   actions: write
+  checks: read
 
 jobs:
   implement:
@@ -72,6 +73,7 @@ jobs:
           # Helpers run from trusted copies so the story branch cannot alter them.
           cp .github/scripts/save_claude_recovery.py "$RUNNER_TEMP/save_claude_recovery.py"
           cp .github/scripts/summarize_claude_run.py "$RUNNER_TEMP/summarize_claude_run.py"
+          cp .github/scripts/collect_rework_context.py "$RUNNER_TEMP/collect_rework_context.py"
 
       - name: Verify workflow helpers
         run: python -m unittest discover -s .github/scripts
@@ -120,6 +122,16 @@ jobs:
           echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
           echo "recovery_base=$recovery_base" >> "$GITHUB_OUTPUT"
           echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "claude_base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Collect rework context
+        id: rework_context
+        if: steps.select.outputs.issue_number != '' && steps.prepare.outputs.existing_pr == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REWORK_BRANCH: ${{ steps.prepare.outputs.branch_name }}
+          REWORK_CONTEXT_FILE: ${{ runner.temp }}/gw2-rework-context.md
+        run: python "$RUNNER_TEMP/collect_rework_context.py"
 
       - name: Implement one story
         id: claude
@@ -128,6 +140,7 @@ jobs:
         env:
           CLAUDE_BRANCH: ${{ steps.prepare.outputs.branch_name }}
           GW2_RUN_REPORT: ${{ runner.temp }}/gw2-claude-report.md
+          GW2_REWORK_CONTEXT: ${{ runner.temp }}/gw2-rework-context.md
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
@@ -136,7 +149,11 @@ jobs:
             Work on GitHub issue #${{ steps.select.outputs.issue_number }} in ${{ github.repository }} only.
             Read the full issue, its acceptance criteria, and relevant repository instructions.
             Implement or finish that one issue on the checked-out story branch.
-            If this branch already has a PR, address its review and CI feedback as part of this issue.
+            If this branch already has a PR, this is rework: read the file named by GW2_REWORK_CONTEXT
+            first. It lists the failing checks of the current head with their messages and the
+            unresolved review threads. Fix every item. If a changed production behavior is asserted
+            by existing tests, update those assertions with a stated reason and run the complete test
+            classes you found. A rework that changes nothing is a failed attempt: say so in the report.
             Run narrow checks and report the exact results. Do not start another issue.
             Java 25 and disposable PostgreSQL are available with the CI environment variables.
             Run required database checks against isolated test schemas, never the public schema.
@@ -166,6 +183,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH_NAME: ${{ steps.prepare.outputs.branch_name }}
           EXISTING_PR: ${{ steps.prepare.outputs.existing_pr }}
+          CLAUDE_BASE: ${{ steps.prepare.outputs.claude_base }}
+          RECOVERY_BASE: ${{ steps.prepare.outputs.recovery_base }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
         shell: bash
         run: |
@@ -179,6 +198,13 @@ jobs:
           fi
           if [[ "$EXISTING_PR" == 'false' ]] && [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/master)" ]]; then
             echo 'Claude made no changes; no PR was opened.' >&2
+            exit 1
+          fi
+          # Preparation merges master into the PR branch (a PR that is merely behind needs exactly that).
+          # Only a rework that changed neither the branch nor anything on top of the merge is a failure.
+          if [[ "$EXISTING_PR" == 'true' ]] && [[ "$(git rev-parse HEAD)" == "$CLAUDE_BASE" ]] \
+              && [[ "$CLAUDE_BASE" == "$RECOVERY_BASE" ]]; then
+            echo 'Claude made no changes to the existing PR; needs-rework stays and no report is published.' >&2
             exit 1
           fi
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
