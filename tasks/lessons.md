@@ -47,3 +47,10 @@ A passing stand-in does not prove the real application route. For timing or
 security checks, sample at the boundary after every required condition is
 satisfied. Report the actual output or behavior the criterion asks for, along
 with measurements that support it.
+
+## Find tests that assert the old behavior
+
+A narrow test selection proves the new tests, not the change. When production behavior moves,
+grep the changed method and its callers in the tests before choosing which classes to run. Tests
+that explicitly pin the old behavior (for example "keeps ... unwritten") exist for exactly the case
+being changed and must be updated with a reason.
