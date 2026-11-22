@@ -49,7 +49,10 @@ when the issue/session assigns independent QA, preserve that ownership and
 communicate it in the implementation contract.
 
 Before release, require goal, owner, dependencies, acceptance criteria, meaningful
-verification plan, owning references and unresolved decisions. Before acceptance,
+verification plan, owning references and unresolved decisions. Reject or split any criterion that
+requires reading or changing a harness path: the programmer cannot satisfy it and the run would end
+with an unresolved gap (observed on story #404 / harness feedback #406). Do such changes yourself,
+as a separate pull request. Before acceptance,
 inspect the actual diff, assertions and evidence. Required local-only checks
 need supervision, not automatic repeated coding runs.
 
