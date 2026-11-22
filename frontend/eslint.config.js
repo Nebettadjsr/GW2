@@ -33,19 +33,6 @@ export default tseslint.config(
     },
   },
   {
-    // Findings that existed when the gate was introduced. They stay visible as warnings and
-    // `npm run lint` fails when their number grows (--max-warnings). Fix them, then lower the cap.
-    rules: {
-      'no-empty': 'warn',
-      'preserve-caught-error': 'warn',
-      'no-useless-assignment': 'warn',
-      'no-irregular-whitespace': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn',
-      '@typescript-eslint/no-unused-expressions': 'warn',
-      'vue/no-deprecated-slot-attribute': 'warn',
-    },
-  },
-  {
     // The TypeScript compiler (vue-tsc) already resolves identifiers in typed files.
     files: ['**/*.vue'],
     rules: { 'no-undef': 'off' },

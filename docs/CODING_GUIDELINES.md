@@ -206,7 +206,7 @@ Tools enforce what they can; review covers judgment. The gates run locally and i
 | Architecture rules (ArchUnit) | `backend/src/test/java/architecture/ArchitectureTest.java`, run by `./mvnw test` | Domain packages (`craft`, `domain`, `model`, `tradingpost`, `luck`) have no dependency on web, adapters, Spring, JSON, JDBC or HTTP; Spring stays in `web`; nothing depends on `web`. Frozen target rules: no JDBC in `web`/`application`, no `web` -> `repo`, no package cycles. |
 | Static analysis (Checkstyle) | `backend/config/checkstyle/`, bound to `validate` | Correctness-oriented rules the code already meets, plus limits for file length (1500), method length (200) and nesting. |
 | Bug patterns (Error Prone) | `backend/pom.xml` compiler arguments | Error-level bug patterns fail compilation; warnings are off. |
-| Lint (ESLint) | `frontend/eslint.config.js`, `npm run lint`, CI job `Frontend tests (Vitest)` | `typescript-eslint` and `eslint-plugin-vue` correctness rules. Pre-existing findings are warnings; the count may not grow. |
+| Lint (ESLint) | `frontend/eslint.config.js`, `npm run lint`, CI job `Frontend tests (Vitest)` | `typescript-eslint` and `eslint-plugin-vue` correctness rules. All findings are errors and no warnings are tolerated (`--max-warnings=0`). |
 
 **Frozen rules.** `freeze(...)` rules record violations that existed when they were introduced
 in `backend/src/test/resources/archunit_store`. A new violation fails the build; fixing an
