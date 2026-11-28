@@ -1,3 +1,0 @@
-#
-#Sun Nov 22 14:30:37 CET 2026
-no\ classes\ that\ reside\ in\ a\ package\ 'application..'\ should\ depend\ on\ classes\ that\ reside\ in\ any\ package\ ['java.sql..',\ 'javax.sql..',\ 'org.postgresql..'],\ because\ external\ systems\ belong\ behind\ adapters=772650ac-6281-4c92-bea8-3b87fd5120e1
