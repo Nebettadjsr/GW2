@@ -18,7 +18,7 @@ import application.ItemReadService;
 import application.TradingPostPriceRefreshService;
 import application.TradingPostPriceCacheStatusService;
 import application.access.AccountAccessService;
-import application.access.AccountProofPort;
+import domain.access.AccountProofPort;
 import application.access.AccountSessions;
 import application.icons.IconDelivery;
 import infra.access.FixtureAccountProofAdapter;

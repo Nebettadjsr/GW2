@@ -1,5 +1,11 @@
 package application.access;
 
+import domain.access.AccountProof;
+import domain.access.AccountProofPort;
+import domain.access.AccountGrant;
+import domain.access.InvalidCredentialException;
+import domain.access.MalformedProofException;
+import domain.access.ProofUnavailableException;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;

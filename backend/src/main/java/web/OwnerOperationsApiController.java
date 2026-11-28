@@ -1,11 +1,11 @@
 package web;
 
-import application.ops.ForegroundAccounts;
-import application.ops.LatencyHistogram;
-import application.ops.MinuteBucket;
+import domain.ops.ForegroundAccounts;
+import domain.ops.LatencyHistogram;
+import domain.ops.MinuteBucket;
 import application.ops.OwnerOperationsService;
-import application.ops.PeriodDescriptor;
-import application.ops.RouteGroupAggregate;
+import domain.ops.PeriodDescriptor;
+import domain.ops.RouteGroupAggregate;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;

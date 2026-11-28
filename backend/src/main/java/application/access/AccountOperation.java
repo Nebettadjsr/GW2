@@ -1,5 +1,6 @@
 package application.access;
 
+import domain.access.AccountGrant;
 import java.util.Set;
 
 /**

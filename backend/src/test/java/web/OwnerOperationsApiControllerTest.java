@@ -1,12 +1,13 @@
 package web;
 
 import application.access.AccountAccessService;
-import application.access.AccountGrant;
-import application.access.AccountProof;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
 import application.access.AccountSessions;
-import application.access.InvalidCredentialException;
+import domain.access.InvalidCredentialException;
 import application.access.OwnerPolicy;
 import application.ops.*;
+import domain.ops.*;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;

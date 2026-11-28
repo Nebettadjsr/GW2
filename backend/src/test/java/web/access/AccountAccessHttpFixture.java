@@ -2,11 +2,11 @@ package web.access;
 
 import application.access.AccountAccessService;
 import application.access.AccountContext;
-import application.access.AccountGrant;
-import application.access.AccountProof;
-import application.access.AccountProofPort;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
+import domain.access.AccountProofPort;
 import application.access.AccountSessions;
-import application.access.InvalidCredentialException;
+import domain.access.InvalidCredentialException;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;

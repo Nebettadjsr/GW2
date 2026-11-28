@@ -45,17 +45,15 @@ Evidence: `repo/CraftingGraphCache.loadForSnapshot`, `application/CraftingProfit
 
 Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFull`).
 
-## KP-33 Recipe sync uses the legacy unpinned API profile
+## KP-34 Owner refresh of all recipes fails in production
 
-**Observed (before #372):** `sync.RecipeSync` requested `/v2/recipes` without a `v=` schema version. The default catalog omits some modern recipes (for example Jade recipe 13839, present under `v=2022-03-09T02:00:00.000Z` with typed Item/Currency ingredients). Sync, validation and the owner API compatibility check now use the pinned version; the default-schema Jade probe is informational.
+**Observed (owner report, production, 28 Nov 2026 around 07:12):** starting the refresh of all recipes from the owner's System Status view fails; the owner reports that it fails every time. The cause is not yet established, and no log or task detail has been analysed for this entry.
 
-**Risk:** recipes that exist only under newer schemas are invisible or have no readable ingredients. The check samples a small fixed public set; authenticated account endpoint payloads are not live-verified.
+**Risk:** the full recipe catalogue cannot be refreshed by the owner, so new or changed recipes only arrive through the incremental safe sync, whose limits KP-32 describes.
 
-**Update (#372):** recipe sync now pins one schema version for catalog and details; typed Item/Currency requirements are stored apart (`recipe_non_item_requirements`). Structurally valid records with a known unsupported kind (`GuildUpgrade`, e.g. recipe 13324) are skipped in both the safe and the full sync, never published as free; unknown/malformed kinds still fail the full sync. No guild-upgrade acquisition planner exists. AutoLearned recipes (e.g. 13839) are known without unlock rows; level/discipline/account boundaries still apply and they are not Discovery candidates. Wallet balances join the calculation identity/freshness (WALLET source) only for requests with the wallet grant, using the configured account freshness policy; currencies consumed only after the first craft stay visible via the union of per-craft and total currency.
+**Follow-up:** reproduce with the failing task's details and the production log of that run (task status, error text, upstream responses), find the failing step, then decide the fix. Check first whether the strict validation of the full sync rejects a current upstream record (see `FullCatalogSupport.requireRecipe`) or the run hits a deadline.
 
-**Fixed (#372):** the safe sync compares the upstream catalog with stored ids plus the skipped unsupported ids recorded in `recipe_catalog_publication.skipped_recipe_ids`, written only together with `complete = true`; an unchanged catalog with skipped recipes is skipped on the next run, a changed one or an unfinished publication still syncs. Currency valuation follows DOMAIN_SPEC 2.1.0.
-
-Evidence: `sync/RecipeSync.java`, `parser/RecipeParser.java`, `api/ApiCompatibilityChecker.java`.
+Evidence: `application/FullCatalogAdministrationService`, `sync/FullCatalogGateway`, `sync/RecipeSync.syncAllRecipesFull`.
 
 ## Further performance opportunities
 
@@ -80,6 +78,8 @@ Evidence: `sync/RecipeSync.java`, `parser/RecipeParser.java`, `api/ApiCompatibil
 
 ## Other open follow-ups
 
+- **Timestamps in the task details of System Status are shown in the technical format.** They read like `2026-11-28T07:12:03Z`. Show them in a form that is friendly to the user (local date and time, with the technical value still available, for example as the tooltip). Cosmetic; found by the owner on the production site.
+- **Authenticated account endpoint payloads are not live-verified.** The API compatibility check samples a small fixed set of public endpoints only; an upstream change to an account endpoint would show up at refresh time, not in the check.
 - **Legacy branding images are packaged without a runtime caller.**
   `backend/src/main/resources/images` includes originals (for example the two
   `ChatGPT Image ...` PNGs and `favicon.zip`) that no runtime code references (inference

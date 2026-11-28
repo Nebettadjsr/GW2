@@ -1,9 +1,9 @@
 package infra.access;
 
-import application.access.AccountGrant;
-import application.access.AccountProof;
-import application.access.InvalidCredentialException;
-import application.access.MalformedProofException;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
+import domain.access.InvalidCredentialException;
+import domain.access.MalformedProofException;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Clock;

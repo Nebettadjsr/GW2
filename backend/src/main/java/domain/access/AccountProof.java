@@ -1,4 +1,4 @@
-package application.access;
+package domain.access;
 
 import java.time.Instant;
 import java.util.Set;

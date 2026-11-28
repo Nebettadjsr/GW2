@@ -4,10 +4,10 @@ import application.AccountRefreshService;
 import application.BackgroundTasks;
 import application.ScopedAccountRefreshCoordinator;
 import application.access.AccountAccessService;
-import application.access.AccountGrant;
-import application.access.AccountProof;
-import application.access.AccountProofPort;
-import application.access.InvalidCredentialException;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
+import domain.access.AccountProofPort;
+import domain.access.InvalidCredentialException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flywaydb.core.Flyway;
@@ -116,7 +116,7 @@ class AccountIsolationHttpPostgresIT {
                     AccountGrant.UNLOCKS, AccountGrant.PROGRESSION, AccountGrant.TRADINGPOST);
             return key -> {
                 if (PROOF_OUTAGE.get()) {
-                    throw new application.access.ProofUnavailableException("simulated proof outage",
+                    throw new domain.access.ProofUnavailableException("simulated proof outage",
                             java.time.Duration.ofSeconds(7));
                 }
                 return proofFor(key, all);

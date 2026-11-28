@@ -1,4 +1,4 @@
-package application.ops;
+package domain.ops;
 
 import java.time.Instant;
 import java.util.List;

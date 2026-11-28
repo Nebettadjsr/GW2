@@ -35,9 +35,9 @@ class SystemStatusApiControllerTest {
     @Test
     void projectsOnlyTheAuthorizedAccountsGrantLimitedFreshnessAndRejectsBadProof() throws Exception {
         var sessions = new application.access.AccountSessions(java.time.Clock.systemUTC(), 4);
-        var access = new application.access.AccountAccessService(key -> { throw new application.access.InvalidCredentialException("no"); }, sessions);
-        var issued = sessions.establish(new application.access.AccountProof("11111111-2222-3333-4444-555555555555",
-                java.util.Set.of(application.access.AccountGrant.ACCOUNT, application.access.AccountGrant.INVENTORIES), java.util.Set.of(), null));
+        var access = new application.access.AccountAccessService(key -> { throw new domain.access.InvalidCredentialException("no"); }, sessions);
+        var issued = sessions.establish(new domain.access.AccountProof("11111111-2222-3333-4444-555555555555",
+                java.util.Set.of(domain.access.AccountGrant.ACCOUNT, domain.access.AccountGrant.INVENTORIES), java.util.Set.of(), null));
         var seen = new java.util.ArrayList<java.util.Set<String>>();
         var done = java.time.Instant.parse("2026-10-25T10:00:00Z");
         var activity = new java.util.ArrayList<String>();
@@ -76,12 +76,12 @@ class SystemStatusApiControllerTest {
     @Test
     void overviewIsOwnAccountLimitedByGrantsAndUrlRestrictionsAndQueriedOnlyForPermittedSources() throws Exception {
         var sessions = new application.access.AccountSessions(java.time.Clock.systemUTC(), 4);
-        var access = new application.access.AccountAccessService(key -> { throw new application.access.InvalidCredentialException("no"); }, sessions);
-        var grants = java.util.Set.of(application.access.AccountGrant.ACCOUNT, application.access.AccountGrant.CHARACTERS,
-                application.access.AccountGrant.INVENTORIES, application.access.AccountGrant.UNLOCKS);
+        var access = new application.access.AccountAccessService(key -> { throw new domain.access.InvalidCredentialException("no"); }, sessions);
+        var grants = java.util.Set.of(domain.access.AccountGrant.ACCOUNT, domain.access.AccountGrant.CHARACTERS,
+                domain.access.AccountGrant.INVENTORIES, domain.access.AccountGrant.UNLOCKS);
         // URL restriction excludes the recipes endpoint although the grant is present.
         var restrictions = java.util.Set.of("/v2/characters", "/v2/account/materials");
-        var issued = sessions.establish(new application.access.AccountProof("11111111-2222-3333-4444-555555555555",
+        var issued = sessions.establish(new domain.access.AccountProof("11111111-2222-3333-4444-555555555555",
                 grants, restrictions, null));
         var asked = new java.util.ArrayList<java.util.Set<String>>();
         var overview = new application.AccountOverviewService(() -> { throw new java.sql.SQLException("x"); },
@@ -115,22 +115,22 @@ class SystemStatusApiControllerTest {
 
     @Test
     void reducedGrantsAloneOrUrlRestrictionsAloneNeverReachTheSourceReader() throws Exception {
-        record Case(java.util.Set<application.access.AccountGrant> grants, java.util.Set<String> restrictions,
+        record Case(java.util.Set<domain.access.AccountGrant> grants, java.util.Set<String> restrictions,
                     java.util.Set<String> expected) {}
-        var account = application.access.AccountGrant.ACCOUNT;
+        var account = domain.access.AccountGrant.ACCOUNT;
         var cases = java.util.List.of(
                 // Grants reduced: no unlocks (recipes), no URL restriction.
-                new Case(java.util.Set.of(account, application.access.AccountGrant.CHARACTERS,
-                        application.access.AccountGrant.INVENTORIES), java.util.Set.of(),
+                new Case(java.util.Set.of(account, domain.access.AccountGrant.CHARACTERS,
+                        domain.access.AccountGrant.INVENTORIES), java.util.Set.of(),
                         java.util.Set.of("CHARACTERS", "MATERIALS")),
                 // Broad grants but URLs restrict everything away.
-                new Case(java.util.Set.of(account, application.access.AccountGrant.CHARACTERS,
-                        application.access.AccountGrant.INVENTORIES, application.access.AccountGrant.UNLOCKS),
+                new Case(java.util.Set.of(account, domain.access.AccountGrant.CHARACTERS,
+                        domain.access.AccountGrant.INVENTORIES, domain.access.AccountGrant.UNLOCKS),
                         java.util.Set.of("/v2/account"), java.util.Set.of()));
         for (Case c : cases) {
             var sessions = new application.access.AccountSessions(java.time.Clock.systemUTC(), 4);
-            var access = new application.access.AccountAccessService(key -> { throw new application.access.InvalidCredentialException("no"); }, sessions);
-            var issued = sessions.establish(new application.access.AccountProof("11111111-2222-3333-4444-555555555555",
+            var access = new application.access.AccountAccessService(key -> { throw new domain.access.InvalidCredentialException("no"); }, sessions);
+            var issued = sessions.establish(new domain.access.AccountProof("11111111-2222-3333-4444-555555555555",
                     c.grants(), c.restrictions(), null));
             var asked = new java.util.ArrayList<java.util.Set<String>>();
             var overview = new application.AccountOverviewService(() -> { throw new java.sql.SQLException("x"); },

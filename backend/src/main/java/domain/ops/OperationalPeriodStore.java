@@ -1,4 +1,4 @@
-package application.ops;
+package domain.ops;
 
 import java.io.InputStream;
 import java.util.List;

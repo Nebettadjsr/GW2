@@ -5,6 +5,7 @@ import api.ApiCompatibilityResult;
 import api.PublicApiTransport;
 import application.ApiCompatibilityService;
 import application.access.*;
+import domain.access.*;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

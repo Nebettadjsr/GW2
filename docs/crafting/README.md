@@ -294,7 +294,10 @@ silently-completed calculation. The same principle extends to every reason a cra
 | `INSUFFICIENT_CURRENCY` | The known wallet balance, with any verified production source, cannot pay the recipe's currency requirement. |
 
 These are backend diagnostic reasons, not a normal table's Status column. The comparison
-tables and selected-result panels omit generic row-state labels; the resolution tree keeps
+tables and selected-result panels omit most row-state labels. They keep a minimal diagnostic only for
+a missing result, an unreported state, `CYCLE_DETECTED` ("Recipe loop"), `PRICE_UNAVAILABLE` ("Price
+missing") and `WORK_LIMIT` ("Incomplete"); the Discovery table shows all of them, the Profit table the
+"Incomplete" label. The resolution tree keeps
 item-specific sourcing quantities and uses **Not craftable** or **Not available on TP** only
 where the corresponding facts are known. A failed path alone does not prove that no crafting
 path exists. Missing values remain distinct from zero. In Profit, a reason can explain why the

@@ -1,7 +1,7 @@
 package web.dto;
 
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 
 import java.time.Instant;
 import java.util.List;

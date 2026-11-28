@@ -192,7 +192,7 @@ class CachedCraftingProfitServiceScopedTest {
         covered = true;
         AccountScope scope = AccountScope.of("11111111-2222-3333-4444-555555555555");
         var context = new application.access.AccountContext(scope.id(),
-                java.util.Set.of(application.access.AccountGrant.ACCOUNT, application.access.AccountGrant.WALLET),
+                java.util.Set.of(domain.access.AccountGrant.ACCOUNT, domain.access.AccountGrant.WALLET),
                 java.util.Set.of(), "ctx", NOW.plusSeconds(3600));
 
         evaluatedAt = NOW.minusSeconds(1);

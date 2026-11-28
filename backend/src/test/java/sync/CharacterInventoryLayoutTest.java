@@ -3,7 +3,7 @@ package sync;
 import application.CharacterInventoryLayoutService;
 import application.CharacterInventoryLayoutService.State;
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import model.AccountScope;

@@ -1,10 +1,10 @@
 package infra.access;
 
-import application.access.AccountProof;
-import application.access.AccountProofPort;
-import application.access.InvalidCredentialException;
-import application.access.MalformedProofException;
-import application.access.ProofUnavailableException;
+import domain.access.AccountProof;
+import domain.access.AccountProofPort;
+import domain.access.InvalidCredentialException;
+import domain.access.MalformedProofException;
+import domain.access.ProofUnavailableException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
