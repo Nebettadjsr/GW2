@@ -1,5 +1,6 @@
 package infra.icons;
 
+import domain.icons.IconSource;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ProxySelector;

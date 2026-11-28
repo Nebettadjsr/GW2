@@ -44,7 +44,7 @@ import java.util.List;
  * @param missingToBuy        still-missing materials for {@code craftableCount} crafts
  * @param missingToBuyOne     still-missing materials for one further craft
  * @param iconUrl             this application's image URL for the recipe's <em>output item</em>
- *                            (see {@code application.icons.ItemIconUrls}) - a recipe has no icon of its own - or
+ *                            (see {@code domain.icons.ItemIconUrls}) - a recipe has no icon of its own - or
  *                            null when that item's retained metadata is absent or not an accepted
  *                            source. Display metadata only: it never affects craftability, a result's
  *                            availability or any economic value

@@ -1,7 +1,7 @@
 package application.icons;
 
-import infra.icons.IconSource;
-import infra.icons.IconSourcePolicy;
+import domain.icons.IconSource;
+import domain.icons.IconSourcePolicy;
 import model.BuildResourceType;
 
 import java.util.Optional;

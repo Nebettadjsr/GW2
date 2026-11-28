@@ -1,6 +1,6 @@
 package sync;
 
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;

@@ -1,7 +1,7 @@
 package web;
 
 import application.BankContentsService;
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import model.AccountScope;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;

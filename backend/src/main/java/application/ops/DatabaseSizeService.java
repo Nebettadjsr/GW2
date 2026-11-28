@@ -1,5 +1,7 @@
 package application.ops;
 
+import domain.ops.DatabaseSizeMeasurement;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -12,17 +14,12 @@ import java.util.concurrent.CompletableFuture;
 public final class DatabaseSizeService {
     public static final Duration CACHE = Duration.ofMinutes(5);
 
-    /** Narrow port: {@code SELECT pg_database_size(current_database())}. */
-    public interface Measurement {
-        long totalBytes() throws Exception;
-    }
-
-    private final Measurement measurement;
+    private final DatabaseSizeMeasurement measurement;
     private final Clock clock;
     private DatabaseSize lastSuccess;
     private CompletableFuture<DatabaseSize> inFlight;
 
-    public DatabaseSizeService(Measurement measurement, Clock clock) {
+    public DatabaseSizeService(DatabaseSizeMeasurement measurement, Clock clock) {
         this.measurement = measurement;
         this.clock = clock;
     }

@@ -1,4 +1,4 @@
-package infra.icons;
+package domain.icons;
 
 /**
  * One accepted canonical upstream image source.

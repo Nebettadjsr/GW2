@@ -4,7 +4,7 @@ import api.BatchUtils;
 import api.Gw2ApiClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import infra.icons.IconSourcePolicy;
+import domain.icons.IconSourcePolicy;
 import parser.ItemParser;
 import repo.Db;
 import util.DbBind;

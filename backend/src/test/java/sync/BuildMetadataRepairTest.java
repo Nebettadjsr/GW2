@@ -186,7 +186,7 @@ class BuildMetadataRepairTest {
         var s7 = t.specializations().get(0);
         assertTrue(s7.specialization().resolved());
         assertEquals("Spec7", s7.specialization().name());
-        assertEquals("/api/resources/specializations/7/icon/" + infra.icons.IconSourcePolicy.accept(ICON).orElseThrow().sourceKey() + ".png",
+        assertEquals("/api/resources/specializations/7/icon/" + domain.icons.IconSourcePolicy.accept(ICON).orElseThrow().sourceKey() + ".png",
                 s7.specialization().iconUrl());
         assertEquals(3, s7.minorTraits().size());
         assertEquals(9, s7.majorTraits().size());
