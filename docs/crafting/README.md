@@ -289,6 +289,9 @@ silently-completed calculation. The same principle extends to every reason a cra
 | `INSUFFICIENT_BUDGET` | Completing the plan would exceed the purchase budget. |
 | `MATERIAL_LIMIT` | The plan would require more than 2,500 units of one material item ID. |
 | `VALUE_RANGE` | Quantity or money arithmetic would exceed the calculation's supported range. |
+| `WORK_LIMIT` | The calculation spent its work budget before every alternative was checked; the result is a limited prefix, not a proven maximum. |
+| `WALLET_UNAVAILABLE` | The recipe consumes a currency (for example Research Notes) and the account's balance is unknown. Unknown is neither zero nor unlimited. |
+| `INSUFFICIENT_CURRENCY` | The known wallet balance, with any verified production source, cannot pay the recipe's currency requirement. |
 
 These are backend diagnostic reasons, not a normal table's Status column. The comparison
 tables and selected-result panels omit generic row-state labels; the resolution tree keeps

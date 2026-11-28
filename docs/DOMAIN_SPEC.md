@@ -1421,6 +1421,9 @@ RECIPE_NOT_ALLOWED
 INSUFFICIENT_BUDGET
 MATERIAL_LIMIT
 VALUE_RANGE
+WORK_LIMIT
+WALLET_UNAVAILABLE
+INSUFFICIENT_CURRENCY
 ```
 
 All of these are represented explicitly in the implementation (`craft.BlockedReason`) and are
@@ -1444,6 +1447,8 @@ contract fields. Their meanings are:
 | `MATERIAL_LIMIT` | A candidate recipe plan would require more than 2,500 units of one material item ID (see "Material demand bound" below). |
 | `WORK_LIMIT` | The root's deterministic speculative-work budget was spent (see "Work budget" below). The outcome is limited, never exact. |
 | `VALUE_RANGE` | A quantity, copper price, total, fee or profit in the attempt fell outside the supported range of the calculation; nothing is wrapped, clamped or invented. |
+| `WALLET_UNAVAILABLE` | A recipe consumes a currency whose account balance is unknown (no wallet permission, never published, failed refresh). An unknown balance is never zero and never unlimited (section 2.1.0). |
+| `INSUFFICIENT_CURRENCY` | The known wallet balance, plus any verified production source, cannot pay the next craft's currency requirement. A fully published wallet without a row for the currency is a known zero (section 2.1.0). |
 | Unknown/future code | Preserve the supplied code as an unknown state. Do not map it to `NONE`, zero, success or a known reason. |
 
 **Work budget.** One root evaluation may make at most 50,000 craft-step attempts (`PlanState.MAX_WORK_UNITS`),

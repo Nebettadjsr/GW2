@@ -14,9 +14,9 @@ A practical reference for understanding the status codes returned by the GW2 cra
 
 For example, `craftableCount = 5` together with `blockedReason = BUYING_DISABLED` means five crafts were counted, but another craft could not be completed because a required purchase is disabled. It does **not** mean that the five completed crafts are invalid.
 
-## 2. All ten `BlockedReason` values
+## 2. All thirteen `BlockedReason` values
 
-The enum defines **ten values in total: `NONE` plus nine reasons a path may stop**.
+The enum defines **thirteen values in total: `NONE` plus twelve reasons a path may stop**.
 
 ### `NONE` — No blocking reason
 
@@ -130,6 +130,41 @@ Profit batches remain valid when only the next batch exceeds the range.
 
 **UI:** Preserve unavailable versus known-zero values and the backend reason. Do not turn the
 guard into a fabricated negative cost, inflated profit, or a new normal row-state badge.
+
+### `WORK_LIMIT` — The root's work budget was spent
+
+**Meaning:** One root evaluation may make at most 50,000 craft-step attempts (`PlanState.MAX_WORK_UNITS`).
+When it is spent, unevaluated alternatives remain, so the result is limited, never exact (DOMAIN_SPEC §42,
+"Work budget").
+
+**Developer check:** Look at how many alternatives, retries and rollbacks the root made. The root keeps its
+fully accepted prefix of crafts and its actual output quote. With no accepted craft the cost, profit and total
+fields are `null` (unknown), never `0`.
+
+**UI:** The row is labelled "Incomplete" and says that at least N crafts were calculated and that this is not
+a proven maximum, or that profit is unknown when no craft was accepted.
+
+### `WALLET_UNAVAILABLE` — A required currency balance is unknown
+
+**Meaning:** A recipe consumes a currency (for example Research Notes) and the account wallet is unknown: no
+wallet permission, never published, or a failed refresh. Currency ids are not item ids.
+
+**Developer check:** Check whether the request's session may read the wallet and whether the wallet was ever
+published for the account. An unknown balance must never be treated as zero or as unlimited, and it must not
+disable item-only workflows (DOMAIN_SPEC §2.1.0).
+
+**UI:** Say that the currency balance is unknown. Do not show the requirement as unaffordable.
+
+### `INSUFFICIENT_CURRENCY` — The known wallet cannot pay the currency requirement
+
+**Meaning:** The wallet is known, but its balance together with any verified production source (such as the
+Research Note production from Peer Reviewed Research) cannot pay the next craft's currency requirement. A fully
+published wallet without a row for the currency is a known zero.
+
+**Developer check:** Compare the node's currency sourcing (needed, from wallet, from production, shortfall) with
+the captured balance.
+
+**UI:** Show the shortfall in the currency itself, using the exact quantities supplied by the backend.
 
 ## 3. Result states that are not `BlockedReason` values
 
