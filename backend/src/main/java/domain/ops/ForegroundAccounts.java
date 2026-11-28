@@ -1,4 +1,4 @@
-package application.ops;
+package domain.ops;
 
 /** The only account information a history bucket carries: a state and a count, never an identity. */
 public record ForegroundAccounts(State state, Integer exactCount, Integer lowerBound) {

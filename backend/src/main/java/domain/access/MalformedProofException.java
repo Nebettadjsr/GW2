@@ -1,4 +1,4 @@
-package application.access;
+package domain.access;
 
 /**
  * An upstream validation response was not the documented shape, so nothing about the key was

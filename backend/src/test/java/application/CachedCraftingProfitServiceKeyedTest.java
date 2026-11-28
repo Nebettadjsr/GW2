@@ -1,7 +1,7 @@
 package application;
 
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import craft.CraftResult;
 import craft.CraftingSettings;
 import craft.Recipe;

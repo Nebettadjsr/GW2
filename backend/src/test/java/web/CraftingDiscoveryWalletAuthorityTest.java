@@ -2,7 +2,7 @@ package web;
 
 import application.CraftingDiscoveryService;
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import craft.CraftingSettings;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;

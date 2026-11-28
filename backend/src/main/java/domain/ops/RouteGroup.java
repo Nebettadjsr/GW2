@@ -1,4 +1,4 @@
-package application.ops;
+package domain.ops;
 
 /** The fixed, compile-time route groups of the operational history (STORY-OPS-001); never dynamic labels. */
 public enum RouteGroup {

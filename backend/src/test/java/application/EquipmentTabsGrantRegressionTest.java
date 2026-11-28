@@ -1,6 +1,6 @@
 package application;
 
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import application.access.AccountOperation;
 import model.AccountScope;
 import org.junit.jupiter.api.Test;

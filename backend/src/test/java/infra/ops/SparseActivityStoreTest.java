@@ -1,6 +1,7 @@
 package infra.ops;
 
 import application.ops.*;
+import domain.ops.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

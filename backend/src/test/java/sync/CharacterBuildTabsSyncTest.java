@@ -2,7 +2,7 @@ package sync;
 
 import application.CharacterBuildTabsService;
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import model.AccountScope;
 import model.CharacterInfo;

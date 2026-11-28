@@ -3,7 +3,7 @@ package web;
 import application.CharacterBuildTabsService;
 import application.CharacterRosterService;
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import model.AccountScope;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;

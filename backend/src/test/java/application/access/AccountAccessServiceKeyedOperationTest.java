@@ -1,5 +1,9 @@
 package application.access;
 
+import domain.access.AccountProof;
+import domain.access.AccountGrant;
+import domain.access.InvalidCredentialException;
+import domain.access.ProofUnavailableException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;

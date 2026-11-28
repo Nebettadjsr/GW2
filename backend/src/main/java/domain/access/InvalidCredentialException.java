@@ -1,4 +1,4 @@
-package application.access;
+package domain.access;
 
 /**
  * Upstream definitively rejected the credential, or it cannot establish account identity

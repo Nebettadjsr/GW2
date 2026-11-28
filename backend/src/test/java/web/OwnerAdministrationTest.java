@@ -2,10 +2,10 @@ package web;
 
 import application.GlobalDataRefreshService;
 import application.access.AccountAccessService;
-import application.access.AccountGrant;
-import application.access.AccountProof;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
 import application.access.AccountSessions;
-import application.access.InvalidCredentialException;
+import domain.access.InvalidCredentialException;
 import application.access.OwnerPolicy;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;

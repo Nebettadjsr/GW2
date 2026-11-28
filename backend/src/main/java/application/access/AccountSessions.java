@@ -1,5 +1,6 @@
 package application.access;
 
+import domain.access.AccountProof;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

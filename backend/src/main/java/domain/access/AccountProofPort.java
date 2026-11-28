@@ -1,4 +1,4 @@
-package application.access;
+package domain.access;
 
 /**
  * Validates one transient GW2 API key upstream.

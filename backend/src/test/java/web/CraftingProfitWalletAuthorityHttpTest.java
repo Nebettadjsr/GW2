@@ -8,7 +8,7 @@ import sync.TradingPostPriceRefreshGateway;
 import application.TradingPostPriceRefreshService;
 import application.TradingPostRefreshCoordinator;
 import application.access.AccountContext;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import model.AccountScope;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
