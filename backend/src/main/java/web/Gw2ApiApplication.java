@@ -151,7 +151,8 @@ public class Gw2ApiApplication {
                 tasks,
                 Clock.systemUTC(),
                 Duration.ofMillis(accountMaxAgeMs)).withScopedRefresh(scopedAccountRefreshCoordinator)
-                .withCharacterRoster(scope -> new repo.CharacterRepository().loadAllCharacterNames(scope));
+                .withCharacterRoster(scope -> application.DataStoreException.translate(
+                        () -> new repo.CharacterRepository().loadAllCharacterNames(scope)));
     }
 
     /**

@@ -52,6 +52,8 @@ class CachedCraftingProfitServiceScopedTest {
     private Instant walletCompletedAt = FRESH_AT;
     private CraftResult calculationResult = RESULT;
     private final List<CraftingSettings> calculatedSettings = new ArrayList<>();
+    private SQLException stateFailure;
+    private CachedCraftingProfitService.CharacterRoster roster;
     private final List<AccountScope> opened = new ArrayList<>();
     private final List<AccountScope> requiredScopes = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -231,7 +233,31 @@ class CachedCraftingProfitServiceScopedTest {
         assertEquals(before, service().profit(scope, DiscChoice.all(), settings()).freshness().calculationId());
     }
 
+    @Test
+    void aDatabaseFailureWhileCapturingIsReportedAsDataStoreFailureWithTheOriginalCause() {
+        stateFailure = new SQLException("down");
+        AccountScope scope = AccountScope.of("11111111-2222-3333-4444-555555555555");
+        DataStoreException e = org.junit.jupiter.api.Assertions.assertThrows(DataStoreException.class,
+                () -> service().profit(scope, DiscChoice.all(), settings()));
+        assertEquals(stateFailure, e.getCause());
+    }
+
+    @Test
+    void aRosterFailureIsReportedAsDataStoreFailure() {
+        DataStoreException failure = new DataStoreException("down", new SQLException("down"));
+        roster = scope -> { throw failure; };
+        AccountScope scope = AccountScope.of("11111111-2222-3333-4444-555555555555");
+        DataStoreException e = org.junit.jupiter.api.Assertions.assertThrows(DataStoreException.class,
+                () -> service().profit(scope, DiscChoice.charDiscipline("Artificer", 400, "Aria"), settings()));
+        assertEquals(failure, e);
+    }
+
     private CachedCraftingProfitService service() {
+        CachedCraftingProfitService built = serviceWithoutRoster();
+        return roster == null ? built : built.withCharacterRoster(roster);
+    }
+
+    private CachedCraftingProfitService serviceWithoutRoster() {
         return new CachedCraftingProfitService(
                 new ProfitInputSession.Factory() {
                     @Override public ProfitInputSession open(AccountScope scope) throws SQLException {
@@ -255,6 +281,7 @@ class CachedCraftingProfitServiceScopedTest {
                     }
                 },
                 (con, scope, sources) -> {
+                    if (stateFailure != null) throw stateFailure;
                     Map<String, AccountSourceStateRepository.SourceState> states = new java.util.LinkedHashMap<>();
                     for (String s : sources) states.put(s, new AccountSourceStateRepository.SourceState(s, sourceGeneration,
                             repo.AccountSyncStateRepository.WALLET.equals(s) ? walletCompletedAt : completedAt));

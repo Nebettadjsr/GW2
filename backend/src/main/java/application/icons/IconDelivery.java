@@ -1,5 +1,6 @@
 package application.icons;
 
+import application.DataStoreException;
 import domain.icons.IconSource;
 import domain.icons.IconSourcePolicy;
 import domain.icons.ItemIconUrls;
@@ -13,7 +14,6 @@ import repo.ItemIconMetadataRepository;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.SQLException;
 import java.util.Optional;
 
 /**
@@ -81,9 +81,10 @@ public class IconDelivery {
         if (resourceRepo == null) return new IconDeliveryResult.NotFound("resource images are not configured");
         Optional<String> retained;
         try {
-            retained = request.image().equals("icon") ? resourceRepo.findIconSource(request.type(), request.id())
-                    : resourceRepo.findDetailImageSource(request.type(), request.id(), request.image());
-        } catch (SQLException metadataUnavailable) {
+            retained = DataStoreException.translate(() -> request.image().equals("icon")
+                    ? resourceRepo.findIconSource(request.type(), request.id())
+                    : resourceRepo.findDetailImageSource(request.type(), request.id(), request.image()));
+        } catch (DataStoreException metadataUnavailable) {
             return unavailable("icon metadata is unavailable");
         }
         if (retained.isEmpty()) return new IconDeliveryResult.NotFound("no retained icon metadata for this resource");
@@ -119,8 +120,8 @@ public class IconDelivery {
     private IconDeliveryResult acquireForMiss(ItemIconUrls.ItemIconRequest request) {
         Optional<String> retainedSource;
         try {
-            retainedSource = metadataRepo.findIconSource(request.itemId());
-        } catch (SQLException metadataUnavailable) {
+            retainedSource = DataStoreException.translate(() -> metadataRepo.findIconSource(request.itemId()));
+        } catch (DataStoreException metadataUnavailable) {
             return unavailable("icon metadata is unavailable");
         }
 

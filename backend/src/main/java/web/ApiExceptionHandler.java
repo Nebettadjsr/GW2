@@ -120,6 +120,16 @@ public class ApiExceptionHandler {
     /** The database backing the calculation could not be read. */
     @ExceptionHandler(SQLException.class)
     public ResponseEntity<ApiErrorResponse> handleSqlFailure(SQLException e) {
+        return dataStoreUnavailable(e);
+    }
+
+    /** The same answer for the application's {@code DataStoreException}, which wraps the database failure. */
+    @ExceptionHandler(application.DataStoreException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataStoreFailure(application.DataStoreException e) {
+        return dataStoreUnavailable(e);
+    }
+
+    private static ResponseEntity<ApiErrorResponse> dataStoreUnavailable(Exception e) {
         LOG.log(Level.SEVERE, "Crafting calculation failed reading the database", e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new ApiErrorResponse("DATA_STORE_UNAVAILABLE",
