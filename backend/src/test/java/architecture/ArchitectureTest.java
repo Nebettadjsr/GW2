@@ -2,7 +2,6 @@ package architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
-import static com.tngtech.archunit.library.freeze.FreezingArchRule.freeze;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 import com.tngtech.archunit.base.DescribedPredicate;
@@ -15,11 +14,8 @@ import com.tngtech.archunit.lang.ArchRule;
 /**
  * Executable form of the boundary rules in {@code AGENTS.md} and {@code docs/ARCHITECTURE.md}.
  *
- * <p>Rules marked "strict" hold today and must keep holding. Rules wrapped in {@code freeze(...)}
- * describe the target state; violations that already existed are recorded in
- * {@code src/test/resources/archunit_store} and may only shrink. A new violation fails the build.
- * Do not weaken a rule or extend the store to make a change pass; fix the dependency or raise the
- * boundary question in the issue.
+ * <p>Every rule here is strict and holds today. Do not weaken a rule or add an exception to make a change
+ * pass; fix the dependency or raise the boundary question in the issue.
  */
 @AnalyzeClasses(
     packages = {
@@ -193,16 +189,54 @@ class ArchitectureTest {
           .mayOnlyBeAccessedByLayers("Api", "Repo", "Infra", "Sync", "Application", "Web")
           .because("a lower layer must not know the layers above it");
 
-  // ---- frozen rules (target state, existing violations recorded) ------------------------------
+  /**
+   * The application classes that own a database snapshot or a transaction and therefore hold a
+   * {@code java.sql.Connection} (owner decision, issue #419). Every other application class must not
+   * touch JDBC. Add a class here only with a reason in the pull request.
+   */
+  private static final String SNAPSHOT_AND_TRANSACTION_CLASSES =
+      "application\\.(AccountDataDeletionService|AccountOverviewService|CalculationInputVersions"
+          + "|CharacterRosterService|CraftingDiscoveryService|CraftingProfitService"
+          + "|OwnerCatalogSummaryService|ProfitInputSession|ScopedAccountRefreshCoordinator"
+          + "|ScopedSourceGate)(\\$.*)?";
 
   @ArchTest
-  static final ArchRule applicationDoesNotUseJdbcDirectly =
-      freeze(
-          noClasses()
-              .that()
-              .resideInAPackage("application..")
-              .should()
-              .dependOnClassesThat()
-              .resideInAnyPackage("java.sql..", "javax.sql..", "org.postgresql..")
-              .because("external systems belong behind adapters"));
+  static final ArchRule onlySnapshotAndTransactionClassesTouchJdbc =
+      noClasses()
+          .that()
+          .resideInAPackage("application..")
+          .and()
+          .haveNameNotMatching(SNAPSHOT_AND_TRANSACTION_CLASSES)
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage("java.sql..", "javax.sql..", "org.postgresql..")
+          .because(
+              "application services see the database only through repositories and"
+                  + " DataStoreException; the listed snapshot and transaction classes may hold a"
+                  + " connection");
+
+  @ArchTest
+  static final ArchRule applicationNeverRunsSql =
+      noClasses()
+          .that()
+          .resideInAPackage("application..")
+          .should()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("java.sql.Statement")
+          .orShould()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("java.sql.PreparedStatement")
+          .orShould()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("java.sql.CallableStatement")
+          .orShould()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("java.sql.ResultSet")
+          .orShould()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("java.sql.DriverManager")
+          .orShould()
+          .dependOnClassesThat()
+          .haveFullyQualifiedName("javax.sql.DataSource")
+          .because("SQL belongs in repositories, even for the snapshot classes");
 }

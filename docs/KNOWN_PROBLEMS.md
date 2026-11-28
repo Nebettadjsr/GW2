@@ -51,7 +51,7 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 **Risk:** the full recipe catalogue cannot be refreshed by the owner, so new or changed recipes only arrive through the incremental safe sync, whose limits KP-32 describes.
 
-**Follow-up:** reproduce with the failing task's details and the production log of that run (task status, error text, upstream responses), find the failing step, then decide the fix. Check first whether the strict validation of the full sync rejects a current upstream record (see `FullCatalogSupport.requireRecipe`) or the run hits a deadline.
+**Follow-up:** reproduce with the failing task's details and the production log of that run (task status, error text, upstream responses), find the failing step, then decide the fix. Check first whether the strict validation of the full sync rejects a current upstream record (see `parser.PayloadValidators.requireRecipe`, called by `FullCatalogSupport.parseExact`) or the run hits a deadline.
 
 Evidence: `application/FullCatalogAdministrationService`, `sync/FullCatalogGateway`, `sync/RecipeSync.syncAllRecipesFull`.
 
