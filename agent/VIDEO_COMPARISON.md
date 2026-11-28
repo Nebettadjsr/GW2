@@ -48,7 +48,7 @@ Status: **Implemented**, **Partly**, **Different** (deliberately), **Open**.
 | Test layers | Domain unit, property, application, real-PostgreSQL integration, HTTP contract and parity, controlled browser journeys, container smoke | [TEST_STRATEGY](../docs/TEST_STRATEGY.md) | Implemented (different layering: real database and fixtures instead of mocked services) |
 | Idea-driven development by voice | Requests reach the planner or supervisor in chat; there is no idea intake, vision or requirement stage | none | Open (item 1) |
 | Agent with access to environments | The programmer runs in an isolated runner with a database service and a browser; it cannot reach a test or production environment, and deployment stays manual | [DEVELOPMENT_WORKFLOW](DEVELOPMENT_WORKFLOW.md) sections 2 and 8 | Different (deliberate) |
-| Nightly documentation | A nightly drift check that reports confirmed drift in one issue; it does not rewrite the documents | [docs-drift.yml](../.github/workflows/docs-drift.yml) | Implemented (detects instead of regenerating) |
+| Nightly documentation | A nightly drift check of the application documents (domain, UI, architecture, current state, known problems) against code and tests, with git history per finding; it reports in one issue and does not rewrite the documents | [docs-drift.yml](../.github/workflows/docs-drift.yml) | Implemented (detects instead of regenerating) |
 | Measurements | Per-run turns, time, tokens and API-equivalent cost; a coverage KPI with a 90% target that only warns | `.github/scripts/summarize_claude_run.py`, `.github/scripts/publish_coverage_kpi.py` | Partly (no structural-debt measure over time) |
 | Role of the human | The owner sets goals and decides; a supervisor session runs the process; the programmer works in Actions | [README](README.md) | Implemented |
 
@@ -64,7 +64,7 @@ Status: **Implemented**, **Partly**, **Different** (deliberately), **Open**.
   failed runs.
 - A container smoke in CI builds both images as Compose builds them and starts the stack.
 - The documentation check keeps its report as an auditable artifact and counts a run as checked only when
-  the model step produced a valid report.
+  the every group produced a valid report.
 
 ## Open items
 

@@ -1,10 +1,15 @@
 # Documentation drift check (read-only for the repository).
 #
 # Runs nightly but only does work when master changed since the last successful check, so a quiet
-# day costs one cheap job and no model usage. The first run (no earlier success) is a baseline check
-# of the active documents. Findings become ONE labelled issue (`docs-drift`), or a comment on the open
-# one; nothing is committed. A run whose model step fails does not count as checked: the next night
-# repeats it.
+# day costs one cheap job and no model usage. The first run (no earlier success) is a baseline check.
+# Every counted run compares ALL documents that describe the application (domain, UI, architecture,
+# current state, known problems) with the code, one parallel job per document group, so the
+# coverage does not depend on how often work happens. The harness documents are not part of the model
+# comparison: the supervisor reviews them, and the deterministic path check below covers their references.
+# Each finding carries the git history of the document and of the code it cites, so the supervisor can
+# tell which side changed last. Findings become ONE labelled issue (`docs-drift`), or a comment on the
+# open one; nothing is committed. A run in which any group did not produce a valid report does not count
+# as checked: the next night repeats it.
 #
 # Manual start: Actions -> Documentation drift check -> Run workflow
 #   force: check even if nothing changed since the last check
@@ -38,16 +43,23 @@ permissions:
   actions: read
   id-token: write
 
+env:
+  # Use the Claude subscription; do not fall back to Console/API billing.
+  ANTHROPIC_API_KEY: ''
+  DRIFT_MAX_TURNS: ${{ vars.DRIFT_MAX_TURNS || '60' }}
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
-  drift:
+  scope:
     if: github.repository == 'Nebettadjsr/GW2' && github.ref == 'refs/heads/master' && (github.event_name == 'schedule' || github.actor == 'Nebettadjsr')
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    env:
-      # Use the Claude subscription; do not fall back to Console/API billing.
-      ANTHROPIC_API_KEY: ''
-      DRIFT_MAX_TURNS: ${{ vars.DRIFT_MAX_TURNS || '40' }}
-      GH_TOKEN: ${{ github.token }}
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+      baseline: ${{ steps.scope.outputs.baseline }}
+      last_sha: ${{ steps.scope.outputs.last_sha }}
+      head_sha: ${{ steps.scope.outputs.head_sha }}
+      commits: ${{ steps.scope.outputs.commits }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -70,17 +82,18 @@ jobs:
             echo "Last checked commit $last_sha is not in the history; running a baseline check."
             last_sha=''
           fi
-          changes="$RUNNER_TEMP/gw2-drift-changes.txt"
+          mkdir -p scope
+          changes="scope/gw2-drift-changes.txt"
           if [[ -z "$last_sha" ]]; then
             baseline=true; commits=0
-            printf 'Baseline check: no earlier successful check, so the whole active documentation is in scope.\n' > "$changes"
+            printf 'Baseline check: no earlier successful check, so the whole documentation is in scope.\n' > "$changes"
           else
             baseline=false
             commits=$(git rev-list --count "${last_sha}..HEAD")
             if [[ "$commits" == '0' && "$FORCE" == 'true' ]]; then
-              # A forced check without changes has nothing to scope by: recheck the whole active documentation.
+              # A forced check without changes has nothing to scope by: recheck everything.
               baseline=true
-              printf 'Forced check without new commits since %s: the whole active documentation is in scope.\n' "${last_sha:0:7}" > "$changes"
+              printf 'Forced check without new commits since %s: the whole documentation is in scope.\n' "${last_sha:0:7}" > "$changes"
             else
               {
                 printf 'Commits since the last check (%s..%s): %s\n\n' "${last_sha:0:7}" "${head_sha:0:7}" "$commits"
@@ -111,138 +124,261 @@ jobs:
 
       - name: Check links and repository paths in the documents
         if: steps.scope.outputs.run == 'true'
-        run: python .github/scripts/check_doc_references.py | tee "$RUNNER_TEMP/gw2-drift-refs.md"
+        run: python .github/scripts/check_doc_references.py | tee scope/gw2-drift-refs.md
+
+      - name: Hand the scope to the comparison jobs
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scope-files
+          path: scope/
+          retention-days: 30
+
+  compare:
+    needs: scope
+    if: needs.scope.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: domain
+            docs: docs/DOMAIN_SPEC.md, docs/CRAFTING_STATUS_LABEL_REFERENCE.md and docs/crafting/*.md
+            task: >-
+              These documents describe how the application behaves: rules, formulas, statuses, labels,
+              limits and what the user can do. Verify each rule against the code that implements it and
+              against the tests that pin it (read the tests too: a documented rule that no code or test
+              supports is a finding).
+          - id: ui
+            docs: docs/UI_SPEC.md
+            task: >-
+              This document specifies the pages, their states and interactions. Verify each page
+              specification against the Vue components, routes, stores and the controlled browser
+              journeys that exercise them.
+          - id: architecture
+            docs: docs/ARCHITECTURE.md
+            task: >-
+              This document records the architecture decisions, package responsibilities and boundaries.
+              Verify them against the actual packages, the dependencies between them and the ArchUnit
+              rules (backend/src/test/java/architecture/), including lists of packages, modules and
+              rules.
+          - id: state
+            docs: docs/CURRENT_STATE_SPEC.md, docker/README.md and README.md
+            task: >-
+              These documents state versions, ports, defaults, schedulers, limits, build and run
+              commands and deployment inputs. Verify each stated fact against the code, the build files
+              and the Compose files. Facts about the live host that cannot be seen in the repository
+              go under `Not checked`.
+          - id: problems
+            docs: docs/KNOWN_PROBLEMS.md
+            task: >-
+              This document lists known problems. For each entry decide from the code and tests whether
+              it still exists. A problem that is already fixed, or that no longer matches the code, is a
+              finding (`doc-wrong`).
+    env:
+      GW2_DRIFT_REPORT: ${{ github.workspace }}/out/gw2-drift-report.md
+      GW2_DRIFT_CHANGES: ${{ github.workspace }}/scope/gw2-drift-changes.txt
+      GW2_DRIFT_REFS: ${{ github.workspace }}/scope/gw2-drift-refs.md
+      GW2_DRIFT_BASELINE: ${{ needs.scope.outputs.baseline }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Fetch the scope
+        uses: actions/download-artifact@v5
+        with:
+          name: scope-files
+          path: scope
 
       - name: Compare the documents with the code
         id: claude
-        if: steps.scope.outputs.run == 'true'
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
-        env:
-          GW2_DRIFT_REPORT: ${{ runner.temp }}/gw2-drift-report.md
-          GW2_DRIFT_CHANGES: ${{ runner.temp }}/gw2-drift-changes.txt
-          GW2_DRIFT_REFS: ${{ runner.temp }}/gw2-drift-refs.md
-          GW2_DRIFT_BASELINE: ${{ steps.scope.outputs.baseline }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Check whether the repository's active documentation still matches the code, scripts and
-            workflows. This is read-only: do not edit, commit or push anything. The only file you
-            write is the report named by GW2_DRIFT_REPORT (outside the repository).
+            Check whether these documents still match the code, scripts and tests: ${{ matrix.docs }}.
+            This is read-only: do not edit, commit or push anything. The only file you write is the
+            report named by GW2_DRIFT_REPORT (a path outside the tracked files; create its directory).
 
-            Scope: AGENTS.md, CLAUDE.md, README.md, CONTRIBUTING.md, agent/*.md, docker/README.md and
-            docs/*.md. Ignore docs/archive and docs/investigations. The owning-document map in AGENTS.md
-            says which document owns which subject.
+            ${{ matrix.task }}
 
-            Mode: if GW2_DRIFT_BASELINE is `true`, verify the key factual claims of the active documents
-            (prioritize docs/CURRENT_STATE_SPEC.md, agent/DEVELOPMENT_WORKFLOW.md, AGENTS.md, CLAUDE.md,
-            docs/CODING_GUIDELINES.md section 11, docs/TEST_STRATEGY.md commands, docker/README.md,
-            README.md). Otherwise read the file named by GW2_DRIFT_CHANGES, map every changed file to its
-            owning documents and verify those documents' statements against the new code.
+            Coverage: read the whole document, not only the parts mentioned in the change list. If
+            GW2_DRIFT_BASELINE is `true`, the whole document is in scope. Otherwise the file named by
+            GW2_DRIFT_CHANGES lists the commits and files changed since the last check: start with the
+            claims those changes can affect, then continue through the rest of the document as far as your
+            turns allow. The owning-document map in AGENTS.md says which document owns which subject.
+            A deterministic path/link check already ran (GW2_DRIFT_REFS); do not repeat it. Do not
+            report problems that docs/KNOWN_PROBLEMS.md already lists (unless you are checking that file).
 
-            A deterministic path/link check already ran; its result is in the file named by
-            GW2_DRIFT_REFS. Do not repeat it. Do not report problems that docs/KNOWN_PROBLEMS.md already lists.
+            Method: for each claim, read the code. Report only drift you CONFIRMED, with evidence.
+            Separate facts from inferences. If the code and the document disagree and the intended
+            behavior is a product or architecture choice, mark it `owner-decision`; never decide it
+            yourself. Ignore wording and style.
 
-            Method: for each claim you check, read the code. Report only drift you CONFIRMED, with
-            evidence. Typical drift: file, class, command, flag, label or check names; workflow behavior
-            and limits (turns, timeouts, required checks); thresholds; lists of packages, modules, tests or
-            scripts; things that were removed or renamed but are still described. Ignore wording and style.
-            Separate facts from inferences. If the code and a document disagree and the intended behavior is
-            a product or architecture choice, mark it `owner-decision`; never decide it yourself.
+            History: for every finding, give the evidence that lets the supervisor decide which side is
+            stale. Use `git log -1 --format='%h %ad %s' --date=short -- <path>` for the document and for
+            each code file you cite, `git log --format='%h %ad %s' --date=short <doc commit>..HEAD -- <code
+            path>` for the commits that touched the code after the document last changed, and the PR or
+            issue numbers `(#N)` in those subjects (at most 5 entries per finding).
 
-            Output: a Markdown file whose first line is exactly `STATUS: drift` or `STATUS: clean`. Then
-            a table with columns `#`, `Document and line`, `Documented claim`, `Evidence in code`,
-            `Proposed correction`, `Kind` (`doc-wrong`, `code-wrong` or `owner-decision`), at most 15 rows,
-            most important first. Then a `Checked` list (one line per document or area you verified) and a
-            `Not checked` list, so that a clean result is credible.
+            Output: a Markdown file whose first line is exactly `STATUS: drift` or `STATUS: clean`. Then a
+            table with the columns `#`, `Document and line`, `Documented claim`, `Evidence in code`,
+            `History`, `Proposed correction`, `Kind` (`doc-wrong`, `code-wrong` or `owner-decision`), at
+            most 15 rows, most important first. Then a `Checked` list (one line per section or area you
+            verified) and a `Not checked` list (name the sections you did not reach), so that a clean
+            result is credible.
           claude_args: |
             --max-turns ${{ env.DRIFT_MAX_TURNS }}
-            --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git ls-files:*)"
+            --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git blame:*),Bash(git ls-files:*),Bash(mkdir:*)"
 
-      - name: Publish the result
-        id: publish
-        if: steps.scope.outputs.run == 'true'
+      - name: Record the outcome of this group
+        if: always()
         env:
-          BASELINE: ${{ steps.scope.outputs.baseline }}
-          LAST_SHA: ${{ steps.scope.outputs.last_sha }}
-          HEAD_SHA: ${{ steps.scope.outputs.head_sha }}
-          COMMITS: ${{ steps.scope.outputs.commits }}
           CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
           CLAUDE_EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
           CLAUDE_MAX_TURNS: ${{ env.DRIFT_MAX_TURNS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          report="out/gw2-drift-report.md"
+          status=unavailable
+          if [[ "$CLAUDE_OUTCOME" == 'success' && -s "$report" ]]; then
+            if head -n 1 "$report" | grep -q '^STATUS: drift'; then status=drift
+            elif head -n 1 "$report" | grep -q '^STATUS: clean'; then status=clean
+            fi
+          fi
+          echo "$status" > out/status.txt
+          python .github/scripts/summarize_claude_run.py > out/metrics.md || true
+          echo "${{ matrix.id }}: $status"
+
+      - name: Keep the report of this group
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-${{ matrix.id }}
+          path: out/
+          retention-days: 30
+          if-no-files-found: warn
+
+  publish:
+    needs: [scope, compare]
+    if: always() && needs.scope.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Fetch the reports
+        uses: actions/download-artifact@v5
+        with:
+          path: reports
+
+      - name: Publish the result
+        id: publish
+        env:
+          BASELINE: ${{ needs.scope.outputs.baseline }}
+          LAST_SHA: ${{ needs.scope.outputs.last_sha }}
+          HEAD_SHA: ${{ needs.scope.outputs.head_sha }}
+          COMMITS: ${{ needs.scope.outputs.commits }}
           TEST_RUN: ${{ inputs.test_run }}
         shell: bash
         run: |
           set -euo pipefail
-          refs="$RUNNER_TEMP/gw2-drift-refs.md"
-          report="$RUNNER_TEMP/gw2-drift-report.md"
+          refs="reports/scope-files/gw2-drift-refs.md"
           body="$RUNNER_TEMP/gw2-drift-body.md"
+          issue_body="$RUNNER_TEMP/gw2-drift-issue.md"
           refs_dirty=false; grep -q 'unresolved reference' "$refs" && refs_dirty=true
-          model_status=unavailable
-          if [[ "$CLAUDE_OUTCOME" == 'success' && -s "$report" ]]; then
-            if head -n 1 "$report" | grep -q '^STATUS: drift'; then model_status=drift
-            elif head -n 1 "$report" | grep -q '^STATUS: clean'; then model_status=clean
-            fi
-          fi
-          echo "model_status=$model_status" >> "$GITHUB_OUTPUT"
-          {
+          any_drift=false; any_unavailable=false
+          groups=(domain ui architecture state problems)
+          declare -A status
+          for g in "${groups[@]}"; do
+            s=unavailable
+            [[ -f "reports/drift-$g/status.txt" ]] && s=$(cat "reports/drift-$g/status.txt")
+            status[$g]=$s
+            [[ "$s" == 'drift' ]] && any_drift=true
+            [[ "$s" == 'unavailable' ]] && any_unavailable=true
+          done
+          overall=clean
+          [[ "$any_drift" == 'true' ]] && overall=drift
+          [[ "$any_unavailable" == 'true' ]] && overall=unavailable
+          echo "any_drift=$any_drift" >> "$GITHUB_OUTPUT"
+          echo "any_unavailable=$any_unavailable" >> "$GITHUB_OUTPUT"
+
+          header() {
             printf '<!-- docs-drift-check head=%s -->\n' "$HEAD_SHA"
             printf '# Documentation drift: %s\n\n' "$(date -u +%Y-%m-%d)"
             if [[ "$BASELINE" == 'true' ]]; then
-              printf 'Mode: baseline check of the active documents at `%s`.\n\n' "${HEAD_SHA:0:7}"
+              printf 'Mode: baseline check of all application documents at `%s`.\n\n' "${HEAD_SHA:0:7}"
             else
               printf 'Mode: %s commit(s) on master since the last check, `%s..%s`.\n\n' "$COMMITS" "${LAST_SHA:0:7}" "${HEAD_SHA:0:7}"
             fi
-            if [[ "$model_status" == 'drift' ]]; then
-              printf '## Findings of the comparison with the code\n\n'
-              tail -n +2 "$report"
-              printf '\n'
-            elif [[ "$model_status" == 'clean' ]]; then
-              printf 'The comparison with the code found no confirmed drift.\n\n'
-            else
-              printf '> The model comparison did not complete (%s). This run is not recorded as checked; the next run repeats it.\n\n' "$CLAUDE_OUTCOME"
-            fi
+          }
+          {
+            header
+            for g in "${groups[@]}"; do
+              printf '## %s: %s\n\n' "$g" "${status[$g]}"
+              case "${status[$g]}" in
+                drift|clean) tail -n +2 "reports/drift-$g/gw2-drift-report.md"; printf '\n' ;;
+                *) printf '> The comparison of this group did not complete. This run is not recorded as checked; the next run repeats it.\n\n' ;;
+              esac
+              [[ -f "reports/drift-$g/metrics.md" ]] && { cat "reports/drift-$g/metrics.md"; printf '\n'; }
+            done
             printf '## Links and repository paths\n\n'
             cat "$refs"
             printf '\n'
-            python .github/scripts/summarize_claude_run.py || true
-            printf '\nThis issue was written by the Documentation drift check workflow (run %s). It is not an `auto` story: decide each finding, then fix the document or open a story.\n' "$GITHUB_RUN_ID"
           } > "$body"
+          {
+            header
+            for g in "${groups[@]}"; do
+              case "${status[$g]}" in
+                drift) printf '## %s: drift\n\n' "$g"; tail -n +2 "reports/drift-$g/gw2-drift-report.md"; printf '\n' ;;
+                clean) printf '## %s: no confirmed drift\n\n' "$g" ;;
+                *) printf '## %s: not completed\n\n' "$g" ;;
+              esac
+            done
+            printf '## Links and repository paths\n\n'
+            cat "$refs"
+            printf '\nThis issue was written by the Documentation drift check workflow (run %s); the artifacts `drift-<group>` hold the full reports, including what was checked. It is not an `auto` story: decide each finding, then fix the document or open a story.\n' "$GITHUB_RUN_ID"
+          } > "$issue_body"
           cat "$body" >> "$GITHUB_STEP_SUMMARY"
           # The job summary is not readable through the API; keep the text in the log as well.
           cat "$body"
+          cp "$body" "$RUNNER_TEMP/gw2-drift-full.md"
           if [[ "$TEST_RUN" == 'true' ]]; then
             echo 'Test run: no issue is created or updated.'
             exit 0
           fi
-          if [[ "$model_status" != 'drift' && "$refs_dirty" != 'true' ]]; then
+          if [[ "$any_drift" != 'true' && "$refs_dirty" != 'true' ]]; then
             echo 'Nothing to report.'
             exit 0
           fi
           gh label create docs-drift --color 5319e7 --description 'Documentation no longer matches the code' 2>/dev/null || true
           existing=$(gh issue list --label docs-drift --state open --limit 1 --json number --jq '.[0].number // empty')
           if [[ -n "$existing" ]]; then
-            gh issue comment "$existing" --body-file "$body"
+            gh issue comment "$existing" --body-file "$issue_body"
           else
-            gh issue create --title "Documentation drift: $(date -u +%Y-%m-%d)" --label docs-drift --body-file "$body"
+            gh issue create --title "Documentation drift: $(date -u +%Y-%m-%d)" --label docs-drift --body-file "$issue_body"
           fi
 
-      - name: Keep the report, scope and path check as evidence
-        if: always() && steps.scope.outputs.run == 'true'
+      - name: Keep the combined report as evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: docs-drift-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/gw2-drift-report.md
-            ${{ runner.temp }}/gw2-drift-body.md
-            ${{ runner.temp }}/gw2-drift-changes.txt
-            ${{ runner.temp }}/gw2-drift-refs.md
+          path: ${{ runner.temp }}/gw2-drift-full.md
           retention-days: 30
           if-no-files-found: warn
 
-      - name: Fail when the comparison did not complete
-        # Also covers a model step that "succeeded" without a valid report (missing file or no STATUS line).
-        if: steps.scope.outputs.run == 'true' && (steps.claude.outcome != 'success' || steps.publish.outputs.model_status == 'unavailable')
+      - name: Fail when a comparison did not complete
+        # Covers a model step that "succeeded" without a valid report (missing file or no STATUS line).
+        if: steps.publish.outputs.any_unavailable == 'true' || needs.compare.result != 'success'
         run: |
-          echo 'The model comparison did not produce a valid report; this run is not recorded as checked.' >&2
+          echo 'At least one document group did not produce a valid report; this run is not recorded as checked.' >&2
           exit 1

@@ -154,19 +154,28 @@ sentence of prose, and rules that stopped earning their place are removed.
 
 ## 6. Documentation drift check
 
-[`docs-drift.yml`](../.github/workflows/docs-drift.yml) compares the active documents with the code. It
-commits nothing and starts no story. It runs nightly (02:00 UTC) but works only when `master` has commits
-since the last successful check, so a quiet day costs one cheap job; the first run is a baseline check. A
-run counts as checked only if its model step completed and wrote a valid report (`STATUS: drift` or
-`STATUS: clean`); otherwise it fails and the next night repeats it. `Run workflow` offers `force` and
-`test_run` (not counted, no issue). A forced check without new commits runs in baseline mode.
+[`docs-drift.yml`](../.github/workflows/docs-drift.yml) compares the documents that describe the
+application with the code. It commits nothing and starts no story. It runs nightly (02:00 UTC, in practice
+a few hours later) but works only when `master` has commits since the last successful check, so a quiet
+day costs one cheap job; the first run is a baseline check. `Run workflow` offers `force` and `test_run`
+(not counted, no issue). A forced check without new commits runs in baseline mode.
 
-It has two parts. `check_doc_references.py` lists links and repository paths that point at nothing. A
-Claude step then verifies the documents that own the changed areas and reports only drift it confirmed with
-code evidence, marking product or architecture questions `owner-decision`. Each run keeps its report, scope
-and path check as a 30-day artifact and prints the result text in its log, so a clean result can be audited
-through its `Checked` list. Findings go into one open `docs-drift` issue (a comment when one is open). The
-owner or supervisor decides each finding, then fixes the document or opens a story.
+Every counted run checks all of these, one parallel job per group, so coverage does not depend on how
+often work happens: the domain rules (`DOMAIN_SPEC` and the crafting references), `UI_SPEC`,
+`ARCHITECTURE`, the current-state documents (`CURRENT_STATE_SPEC`, `docker/README.md`, `README.md`) and
+`KNOWN_PROBLEMS` (entries that are already fixed). Behavior claims are checked against the code and the
+tests. The harness documents are not part of the model comparison: judging them is the supervisor's job, and
+`check_doc_references.py` still lists links and repository paths in all active documents that point at
+nothing.
+
+Each finding carries its git history: the last change of the document and of the cited code, and the
+commits and PR numbers that touched the code since. The supervisor uses it to decide which side is stale
+(`doc-wrong`, `code-wrong` or `owner-decision`) and can look at the issues that touched the subject. A run
+counts as checked only if every group completed and wrote a valid report (`STATUS: drift` or
+`STATUS: clean`); otherwise it fails and the next night repeats it. Each group keeps its report, including
+the `Checked` and `Not checked` lists, as a 30-day artifact, and the log prints the combined result. Findings
+go into one open `docs-drift` issue (a comment when one is open); the owner or supervisor decides each
+finding, then fixes the document or opens a story.
 
 ## 7. Failed attempts
 
