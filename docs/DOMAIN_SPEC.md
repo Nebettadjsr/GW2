@@ -108,7 +108,7 @@ details, Profit and Total Profit carry a small explanatory note, such as
 listing/exchange-fee and net-revenue displays are not required. All amounts come
 from the backend; no presentation layer calculates fees or profit.
 
-A row blocked by a currency requirement shows the label "Wallet unknown" (the account's balance of a required currency is unknown) or "Not enough currency" (the known balance is too low); the unknown balance never reads as unaffordable.
+Neither comparison table (Crafting Profit and Crafting Discovery) nor either selected-result detail shows a row-state label or generic state line; a row blocked by a currency requirement therefore carries none either. Both tables keep only the recipe label's "Incomplete" hint for a `WORK_LIMIT` result and the "≈ est." hint for an estimated yield, and every value the backend did not supply shows the explicit "not supplied" marker "—", never zero; an unknown wallet balance never reads as unaffordable.
 
 The entire recipe row must be selectable, with an accessible keyboard equivalent
 and a visible selection indicator. On wide screens, selection populates a dedicated
@@ -329,7 +329,9 @@ consistency contract in ARCHITECTURE.md; do not derive missing economics.
 
 Use the application-wide icon strategy when available, established signed money
 formatting/treatments, keyboard-operable selection and clear loading, empty,
-blocked and error states. Keep raw backend diagnostics secondary.
+blocked and error states. Keep raw backend diagnostics secondary. Like Crafting Profit, the Discovery table and
+detail show no row-state label or generic state line; they keep the "Incomplete" and "≈ est."
+hints and the "not supplied" marker for a value the backend did not supply.
 
 ## 2.3 Ectoplasm Salvage Analysis
 

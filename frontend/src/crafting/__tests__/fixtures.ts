@@ -277,7 +277,7 @@ export const budgetBlockedRow: CraftingRow = {
 
 /**
  * The one reason DOMAIN_SPEC 2.1.1 keeps as a row-level diagnostic, until the Product Owner asks for
- * its removal. Marked in the spec, and in `rowState.rowDiagnostic`, as temporary technical debt.
+ * its removal.
  */
 export const cycleDetectedRow: CraftingRow = {
   ...profitableRow,

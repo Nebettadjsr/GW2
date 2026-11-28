@@ -280,8 +280,14 @@ describe('CraftingDiscoveryScreen', () => {
 
     const wrapper = await openScreen(api)
 
-    // Neither row is dropped, and neither reads as an ordinary poor result.
-    expect(cells(wrapper, 'discovery-row-diagnostic')).toEqual(['Price missing', 'No result'])
+    // Neither row is dropped, and no row-state label stands beside any recipe (as in Crafting Profit).
+    expect(wrapper.findAll('[data-test="discovery-row-diagnostic"]')).toHaveLength(0)
+    expect(wrapper.find('.row-diagnostic').exists()).toBe(false)
+    expect(recipeNames(wrapper)).toContain(priceUnavailableRow.outputName)
+    expect(recipeNames(wrapper)).toContain(noResultRow.outputName)
+    for (const label of ['Price missing', 'No result', 'State not reported', 'Recipe loop', 'Unrecognized state']) {
+      expect(normalized(wrapper, '[data-test="discovery-table"]')).not.toContain(label)
+    }
     expect(normalized(wrapper, '[data-test="discovery-table"]')).not.toContain('PRICE_UNAVAILABLE')
 
     await selectRecipe(wrapper, priceUnavailableRow.outputName as string)
@@ -292,7 +298,11 @@ describe('CraftingDiscoveryScreen', () => {
     expect(wrapper.find('[data-test="discovery-detail-output-unavailable"] a').attributes('href')).toContain('Mystic%20Curio')
 
     await selectRecipe(wrapper, noResultRow.outputName as string)
-    expect(wrapper.find('[data-test="discovery-detail-status"]').text()).toBe('No result')
+    expect(wrapper.find('[data-test="discovery-detail-status"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="discovery-detail-state"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="discovery-detail-status-explanation"]').exists()).toBe(false)
+    // The missing result still shows the explicit "not supplied" marker, never zero.
+    expect(wrapper.find('[data-test="discovery-detail-profit"]').text()).toBe('—')
     // Absent lists stay "not supplied", which is not "nothing needs to be bought".
     expect(wrapper.find('[data-test="discovery-missing-items"]').exists()).toBe(false)
   })
