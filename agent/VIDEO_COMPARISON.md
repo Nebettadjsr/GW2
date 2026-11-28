@@ -39,7 +39,7 @@ Status: **Implemented**, **Partly**, **Different** (deliberately), **Open**.
 | Reference element | Here | Where | Status |
 |---|---|---|---|
 | Harness as the agent's prompt | Shared rules, programmer guide, rule documents, owning documents and the run prompt | [AGENTS.md](../AGENTS.md), [CLAUDE.md](../CLAUDE.md), `docs/*_GUIDELINES.md`, [claude.yml](../.github/workflows/claude.yml) | Implemented |
-| Architecture guideline | Written decisions plus executable rules (layering, no JDBC or connections in the web layer, frozen known debt) | [ARCHITECTURE.md](../docs/ARCHITECTURE.md), `backend/src/test/java/architecture/` | Implemented |
+| Architecture guideline | Written decisions plus executable rules (a strict layer order without cycles, no JDBC or connections in the web layer, one frozen known debt) | [ARCHITECTURE.md](../docs/ARCHITECTURE.md), `backend/src/test/java/architecture/` | Implemented |
 | Coding guideline | Cross-language principles and rules per language, including comments and simplicity | [CODING_GUIDELINES.md](../docs/CODING_GUIDELINES.md) | Implemented |
 | Analyzers as the gate after every change | ArchUnit, Checkstyle and Error Prone for Java, ESLint for TypeScript and Vue; the agent runs them before it finishes and CI enforces them | `backend/config/`, `backend/pom.xml`, `frontend/eslint.config.js` | Implemented (other tools; the reference tools are .NET) |
 | Harness-correction development | Agents report `## Harness feedback`, which opens an issue; the supervisor corrects the harness in its own PR when a deviation recurs, is costly or is confirmed by a drift finding | [DEVELOPMENT_WORKFLOW](DEVELOPMENT_WORKFLOW.md) section 5 | Implemented (and answers who and when, which the reference leaves open) |
@@ -79,8 +79,9 @@ Status: **Implemented**, **Partly**, **Different** (deliberately), **Open**.
    owner: who the application is for, what the user wants to achieve, what it must never become, the two or
    three scenarios that carry its value, and how success is recognized. Tracked in the pinned backlog issue
    (#398).
-2. **Frozen architecture debt:** `application` still uses JDBC directly and some packages form cycles; both
-   are recorded in the ArchUnit violation store and may only shrink.
+2. **Frozen architecture debt:** `application` still uses JDBC directly (182 recorded violations, decision
+   in issue #419: wrap pass-through services, keep the connection in the snapshot classes). The package
+   cycles are gone and the layer order is enforced without exceptions.
 3. **Boundary in a real run:** the discard step and the read-deny rules are unit-tested but no agent has yet
    tried to cross the boundary in a live run.
 4. **Test-first** is not enforced; tests are written with the code and mapped afterwards.

@@ -229,15 +229,15 @@ Tools enforce what they can; review covers judgment. The gates run locally and i
 
 | Gate | Where | What it enforces |
 |---|---|---|
-| Architecture rules (ArchUnit) | `backend/src/test/java/architecture/ArchitectureTest.java`, run by `./mvnw test` | Domain packages (`craft`, `domain`, `model`, `tradingpost`, `luck`) have no dependency on web, adapters, Spring, JSON, JDBC or HTTP; Spring stays in `web`; nothing depends on `web`. `web` may read through repositories but never opens a connection, runs SQL (`SQLException` and `Timestamp`/`Date`/`Time` values are fine) or calls a mutating repository method (the entry point `Gw2ApiApplication` is exempt as composition root); see `ARCHITECTURE.md`. Frozen target rules: no JDBC in `application`, no package cycles. |
+| Architecture rules (ArchUnit) | `backend/src/test/java/architecture/ArchitectureTest.java`, run by `./mvnw test` | Domain packages (`craft`, `domain`, `model`, `tradingpost`, `luck`) have no dependency on web, adapters, Spring, JSON, JDBC or HTTP; Spring stays in `web`; nothing depends on `web`. `web` may read through repositories but never opens a connection, runs SQL (`SQLException` and `Timestamp`/`Date`/`Time` values are fine) or calls a mutating repository method (the entry point `Gw2ApiApplication` is exempt as composition root); see `ARCHITECTURE.md`. Packages depend only downwards (see the layer order in `ARCHITECTURE.md`) and form no cycle. Frozen target rule: no JDBC in `application`. |
 | Static analysis (Checkstyle) | `backend/config/checkstyle/`, bound to `validate` | Correctness-oriented rules the code already meets, plus limits for file length (1500), method length (200) and nesting. |
 | Bug patterns (Error Prone) | `backend/pom.xml` compiler arguments | Error-level bug patterns fail compilation; warnings are off. |
 | Lint (ESLint) | `frontend/eslint.config.js`, `npm run lint`, CI job `Frontend tests (Vitest)` | `typescript-eslint` and `eslint-plugin-vue` correctness rules. All findings are errors and no warnings are tolerated (`--max-warnings=0`). |
 
 **Frozen rules.** `freeze(...)` rules record violations that existed when they were introduced
 in `backend/src/test/resources/archunit_store`. A new violation fails the build; fixing an
-old one removes it from the store automatically. Never add entries to make a change pass.
-When you fix recorded violations, include the shrunk store in the same PR.
+old one removes it from the store automatically. Never add entries to make a change pass, and do not
+edit the store yourself: the supervisor refreezes it when recorded violations are gone.
 
 **Harness correction.** When review or CI finds the same kind of mistake twice, do not only
 fix the instance. Propose a stronger rule in a follow-up issue: an ArchUnit rule, a lint
