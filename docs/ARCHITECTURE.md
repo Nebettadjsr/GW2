@@ -51,6 +51,12 @@ filesystem locations or raw GW2 response models. Application services coordinate
 controllers do not become a second calculation layer. Existing code is changed incrementally,
 without introducing extra services solely to make the design more elaborate.
 
+Layer order (enforced by `ArchitectureTest`, no exceptions recorded): lowest first, `util`, `model`, `domain`,
+`tradingpost`, `luck` and `craft` (the core and shared types), `parser`, `api`, `repo`, `infra`, `sync`,
+`application`, `web`. A package may use the ones before it and never one after it, so ports and value types
+that a lower layer implements or needs live in the core, and no package cycle can form. SQL stays out of the
+core: a SQL form of a core rule belongs in `repo`.
+
 Controllers and repositories (owner decision, 22 November 2026): a controller may read through a
 repository for a simple lookup; it does not need an application service as a pass-through. A controller
 never opens a connection or runs SQL (a repository method that connects by itself covers that need),
