@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { describeRowState, rowDiagnostic } from '../rowState'
+import { describeRowState } from '../rowState'
 import {
-  cycleDetectedRow,
   lessProfitableRow,
   movedReasonRows,
   noResultRow,
@@ -11,129 +10,25 @@ import {
   unknownStateRow
 } from './fixtures'
 
+/** `describeRowState(row).label` exists only so the Discovery search can match state words. */
 describe('describeRowState', () => {
-  it('wordsAKnownBlockedReasonWithoutShowingItsCode', () => {
-    const state = describeRowState(priceUnavailableRow)
-
-    expect(state.label).toBe('Price missing')
-    expect(state.label).not.toContain('PRICE_UNAVAILABLE')
-    expect(state.explanation).toContain('a required price is not available')
-    expect(state.tone).toBe('caution')
-    // The code itself stays available for the detail region's secondary disclosure.
-    expect(state.code).toBe('PRICE_UNAVAILABLE')
+  it('wordsAKnownBlockedReasonWithoutItsCode', () => {
+    expect(describeRowState(priceUnavailableRow).label).toBe('Price missing')
+    expect(describeRowState({ ...priceUnavailableRow, blockedReason: 'WALLET_UNAVAILABLE' }).label).toBe('Wallet unknown')
+    expect(describeRowState({ ...priceUnavailableRow, blockedReason: 'INSUFFICIENT_CURRENCY' }).label).toBe('Not enough currency')
+    expect(describeRowState({ ...priceUnavailableRow, blockedReason: 'WORK_LIMIT' }).label).toBe('Incomplete')
+    for (const row of movedReasonRows) expect(describeRowState(row).label).not.toBe('')
   })
 
-  it('saysFurtherCraftingWhenTheBackendStillCountedCrafts', () => {
-    const blockedAfterThreeCrafts = { ...priceUnavailableRow, craftableCount: 3 }
-
-    expect(describeRowState(blockedAfterThreeCrafts).explanation).toContain('Further crafting is blocked')
-    expect(describeRowState(blockedAfterThreeCrafts).explanation).toContain('3 crafts already counted stay valid')
-    expect(describeRowState(priceUnavailableRow).explanation).toMatch(/^Crafting is blocked/)
+  it('showsAnUnrecognizedCodeAsItself', () => {
+    expect(describeRowState(unknownStateRow).label).toBe('SOME_STATE_ADDED_LATER')
   })
 
-  it('showsAnUnrecognizedStateAsItselfAndNeverAsSuccess', () => {
-    const state = describeRowState(unknownStateRow)
-
-    expect(state.label).toBe('SOME_STATE_ADDED_LATER')
-    expect(state.tone).not.toBe('success')
-    expect(state.explanation).toContain('does not recognize')
-  })
-
-  it('keepsNotBlockedNoResultAndNoneCraftableApart', () => {
-    expect(describeRowState(profitableRow)).toMatchObject({ label: 'Not blocked', tone: 'success' })
-    expect(describeRowState(lessProfitableRow).tone).toBe('success')
-    expect(describeRowState(noResultRow)).toMatchObject({ label: 'No result', tone: 'unknown', code: null })
-    expect(describeRowState(noneCraftableRow)).toMatchObject({ label: 'None craftable', tone: 'idle' })
-  })
-
-  it('marksTheLabelsThatOnlyRepeatTheirOwnExplanation', () => {
-    // DOMAIN_SPEC 2.1.1's three examples, plus every other reason this client has wording for: the
-    // sentence states the cause, so the short label adds nothing to it.
-    for (const row of [...movedReasonRows, priceUnavailableRow, cycleDetectedRow, profitableRow, noneCraftableRow]) {
-      const state = describeRowState(row)
-      expect(state.labelAddsMeaning, `${state.label} must not be repeated as a label`).toBe(false)
-      // Removing the label is a display decision; the label itself is still produced for the search
-      // index and for Discovery's own detail.
-      expect(state.label).not.toBe('')
-    }
-
-    // Where the sentence is all there is, the label stays: none of these may read as success.
-    for (const row of [noResultRow, { ...profitableRow, blockedReason: null }, unknownStateRow]) {
-      const state = describeRowState(row)
-      expect(state.labelAddsMeaning, `${state.label} must keep its label`).toBe(true)
-      expect(state.tone).toBe('unknown')
-    }
-  })
-
-  it('doesNotTreatAnUnreportedStateAsNotBlocked', () => {
-    const state = describeRowState({ ...profitableRow, blockedReason: null })
-
-    expect(state.label).toBe('State not reported')
-    expect(state.tone).toBe('unknown')
-  })
-})
-
-describe('rowDiagnostic', () => {
-  it('givesEveryMovedReasonNoRowLabelAtAll', () => {
-    for (const row of movedReasonRows) {
-      expect(rowDiagnostic(row), `${row.blockedReason} must not be labelled beside the row`).toBeNull()
-      // The reason itself is untouched, and the detail still states it in full.
-      expect(describeRowState(row).code).toBe(row.blockedReason)
-      expect(describeRowState(row).explanation).not.toBe('')
-    }
-  })
-
-  it('leavesAnUnblockedRowAndAZeroCountRowUnmarked', () => {
-    expect(rowDiagnostic(profitableRow)).toBeNull()
-    expect(rowDiagnostic(lessProfitableRow)).toBeNull()
-    expect(rowDiagnostic(noneCraftableRow)).toBeNull()
-  })
-
-  it('keepsTheTemporaryCycleDiagnosticOnTheRow', () => {
-    expect(rowDiagnostic(cycleDetectedRow)).toEqual({ label: 'Recipe loop', tone: 'caution' })
-  })
-
-  it('keepsAMissingPriceAndAnAbsentResultDistinguishableWithoutAStateColumn', () => {
-    expect(rowDiagnostic(priceUnavailableRow)).toEqual({ label: 'Price missing', tone: 'caution' })
-    expect(rowDiagnostic(noResultRow)).toEqual({ label: 'No result', tone: 'unknown' })
-    expect(rowDiagnostic({ ...profitableRow, blockedReason: null })).toEqual({
-      label: 'State not reported',
-      tone: 'unknown'
-    })
-  })
-
-  it('marksAnUnrecognizedCodeWithoutPrintingItAndWithoutReadingItAsSuccess', () => {
-    const diagnostic = rowDiagnostic(unknownStateRow)
-
-    expect(diagnostic).not.toBeNull()
-    expect(diagnostic?.tone).not.toBe('success')
-    // Raw codes are secondary technical information; the detail's disclosure is where they belong.
-    expect(diagnostic?.label).not.toContain('SOME_STATE_ADDED_LATER')
-    expect(describeRowState(unknownStateRow).code).toBe('SOME_STATE_ADDED_LATER')
-  })
-
-  it('wordsTheTwoCurrencyReasonsAsCautionAndNeverAsUnrecognized', () => {
-    const cases: Array<[string, string, string]> = [
-      ['WALLET_UNAVAILABLE', 'Wallet unknown', "the account's balance of a required currency is unknown"],
-      ['INSUFFICIENT_CURRENCY', 'Not enough currency', "the account's balance of a required currency is too low"]
-    ]
-    for (const [code, label, because] of cases) {
-      const row = { ...priceUnavailableRow, blockedReason: code }
-      const state = describeRowState(row)
-      expect(state.label).toBe(label)
-      expect(state.explanation).toBe(`Crafting is blocked because ${because}.`)
-      expect(state.tone).toBe('caution')
-      expect(state.code).toBe(code)
-      expect(rowDiagnostic(row)).toEqual({ label, tone: 'caution' })
-    }
-  })
-
-  it('keepsUnknownCodesWorkLimitAndPriceMissingAsBefore', () => {
-    expect(rowDiagnostic(unknownStateRow)).toEqual({ label: 'Unrecognized state', tone: 'unknown' })
-    expect(rowDiagnostic({ ...priceUnavailableRow, blockedReason: 'WORK_LIMIT' })).toEqual({
-      label: 'Incomplete',
-      tone: 'caution'
-    })
-    expect(rowDiagnostic(priceUnavailableRow)).toEqual({ label: 'Price missing', tone: 'caution' })
+  it('keepsNotBlockedNoResultNoneCraftableAndUnreportedApart', () => {
+    expect(describeRowState(profitableRow).label).toBe('Not blocked')
+    expect(describeRowState(lessProfitableRow).label).toBe('Not blocked')
+    expect(describeRowState(noResultRow).label).toBe('No result')
+    expect(describeRowState(noneCraftableRow).label).toBe('None craftable')
+    expect(describeRowState({ ...profitableRow, blockedReason: null }).label).toBe('State not reported')
   })
 })

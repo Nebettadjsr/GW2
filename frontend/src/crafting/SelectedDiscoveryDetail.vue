@@ -5,7 +5,6 @@ import ItemIcon from '@/items/ItemIcon.vue'
 import CraftingResolution from './CraftingResolution.vue'
 import { formatCopper, formatSignedCopper, moneyTone, NO_VALUE } from './formatCopper'
 import { materialLabel, recipeLabel, wikiUrl } from './recipeLabel'
-import { describeRowState } from './rowState'
 import { formatStackQuantity } from './formatStackQuantity'
 import type { ResolutionPhase } from './useResolutionDetail'
 
@@ -19,7 +18,6 @@ const props = defineProps<{
   resolutionRecipeId: number | null
 }>()
 
-const state = computed(() => props.row === null ? null : describeRowState(props.row))
 const wikiHref = computed(() => props.row === null ? null : wikiUrl(props.row.outputName))
 const purchases = computed<MissingItem[] | null>(() => props.row?.missingToBuyOne ?? null)
 const outputQuoteUnavailable = computed(() => {
@@ -33,7 +31,7 @@ const outputQuoteUnavailable = computed(() => {
   <section class="panel detail" aria-labelledby="discovery-detail-heading" data-test="discovery-detail">
     <h2 id="discovery-detail-heading" class="panel__title">Selected result</h2>
 
-    <p v-if="row === null || state === null" class="meta" data-test="discovery-detail-placeholder">
+    <p v-if="row === null" class="meta" data-test="discovery-detail-placeholder">
       {{ placeholder }}
     </p>
 
@@ -54,11 +52,6 @@ const outputQuoteUnavailable = computed(() => {
       <p v-if="hiddenBySearch" class="notice notice--info" data-test="discovery-detail-hidden">
         This recipe is hidden by the current search.
       </p>
-
-      <div v-if="!row.resultAvailable" class="stack" data-test="discovery-detail-state">
-        <span :class="`status status--${state.tone}`" data-test="discovery-detail-status">{{ state.label }}</span>
-        <p data-test="discovery-detail-status-explanation">{{ state.explanation }}</p>
-      </div>
 
       <section class="detail__section" aria-labelledby="discovery-calculation-heading">
         <h3 id="discovery-calculation-heading">Calculation</h3>

@@ -3,8 +3,7 @@ import { computed } from 'vue'
 import type { CraftingRow } from '@/api/types'
 import ItemIcon from '@/items/ItemIcon.vue'
 import { formatCopper, formatSignedCopper, moneyTone } from './formatCopper'
-import { recipeLabel } from './recipeLabel'
-import { rowDiagnostic } from './rowState'
+import { estimatedHint, incompleteNote, isWorkLimited, recipeLabel } from './recipeLabel'
 import type { DiscoverySortKey, SortDirection } from './useDiscoveryTableView'
 
 /**
@@ -36,7 +35,10 @@ const displayRows = computed(() =>
     sellValue: formatCopper(row.totalSellValueCopper),
     profit: formatSignedCopper(row.totalProfitCopper),
     profitTone: moneyTone(row.totalProfitCopper),
-    diagnostic: rowDiagnostic(row)
+    estimated: row.expectedYield?.estimated === true,
+    estimatedTitle: estimatedHint(row),
+    incomplete: isWorkLimited(row),
+    incompleteTitle: incompleteNote(row) ?? ''
   }))
 )
 
@@ -143,20 +145,21 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
             <span class="recipe-text">
               <span class="recipe-name">{{ row.name }}</span>
               <span class="recipe-ids">recipe {{ row.recipeId }}</span>
+              <span
+                v-if="row.estimated"
+                class="estimated-hint"
+                data-test="discovery-estimated-hint"
+                :title="row.estimatedTitle"
+              >≈ est.</span>
+              <span
+                v-if="row.incomplete"
+                class="estimated-hint"
+                data-test="discovery-incomplete-hint"
+                :title="row.incompleteTitle"
+              >Incomplete</span>
             </span>
             <span v-if="row.recipeId === selectedRecipeId" class="visually-hidden">Selected</span>
           </button>
-          <!--
-            The same minimal diagnostic Crafting Profit shows, outside the selection button so it is
-            read as information about the recipe rather than as part of the control's name.
-          -->
-          <span
-            v-if="row.diagnostic !== null"
-            :class="`status status--${row.diagnostic.tone} row-diagnostic`"
-            data-test="discovery-row-diagnostic"
-          >
-            {{ row.diagnostic.label }}
-          </span>
         </th>
         <td class="numeric" data-test="discovery-level">{{ row.level }}</td>
         <td class="numeric" data-test="discovery-buy-cost">
@@ -235,9 +238,10 @@ function onRowClick(event: MouseEvent, recipeId: number): void {
   align-items: flex-end;
 }
 
-/* Sits under the recipe name rather than in a column of its own; absent on an ordinary row. */
-.row-diagnostic {
-  margin-left: 1.5rem;
+.estimated-hint {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  margin-left: 0.25rem;
 }
 
 /* The whole row selects, so the whole row says so to a pointer. The keyboard route is the button. */
