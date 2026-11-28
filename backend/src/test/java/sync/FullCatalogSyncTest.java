@@ -274,6 +274,48 @@ class FullCatalogSyncTest {
         assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
     }
 
+    private static final String PLACEHOLDER_13373 = "{\"id\":13373,\"type\":\"Component\",\"output_item_id\":94257,\"output_item_count\":1,"
+            + "\"time_to_craft_ms\":1000,\"disciplines\":[],\"min_rating\":400,\"flags\":[\"LearnedFromItem\"],"
+            + "\"ingredients\":[],\"chat_link\":\"[&CT00AAA=]\"}";
+    private static final String PLACEHOLDER_13390 = PLACEHOLDER_13373.replace("13373", "13390").replace("[&CT00AAA=]", "[&CT4AAAA=]");
+
+    @Test
+    void fullRecipes_ingredientlessItemPlaceholdersAreSkippedRecordedAndStaleRowRemoved_othersPublished() throws Exception {
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (13373, 'stale-free')");
+        exec("INSERT INTO items (item_id, name) VALUES (5, 'x')");
+        exec("INSERT INTO recipe_ingredients (recipe_id, item_id, count) VALUES (13373, 5, 1)");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1,13373,13390,2]")
+                : json("[" + recipeJson(1, 100001, 500001) + "," + PLACEHOLDER_13373 + "," + PLACEHOLDER_13390
+                        + "," + recipeJson(2, 100002, 500002) + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"));
+        assertEquals("1,2", scalar("SELECT string_agg(recipe_id::text, ',' ORDER BY recipe_id) FROM recipes"));
+        assertEquals("0", scalar("SELECT count(*) FROM recipe_ingredients WHERE recipe_id>=13000"));
+        assertEquals("13373,13390", scalar("SELECT array_to_string(ARRAY(SELECT unnest(skipped_recipe_ids) ORDER BY 1), ',') FROM recipe_catalog_publication"));
+        // A missing ingredient list is the same placeholder.
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[1,13373]")
+                : json("[" + recipeJson(1, 100001, 500001) + "," + PLACEHOLDER_13373.replace("\"ingredients\":[],", "") + "]");
+        RecipeSync.syncAllRecipesFull(TaskDeadline.start());
+        assertEquals("13373", scalar("SELECT array_to_string(skipped_recipe_ids, ',') FROM recipe_catalog_publication"));
+    }
+
+    @Test
+    void fullRecipes_anotherMalformedRecordAlongsidePlaceholdersStillFails() throws Exception {
+        String malformed = PLACEHOLDER_13373.replace("13373", "5").replace("\"min_rating\":400", "\"min_rating\":-4");
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[13373,5]")
+                : json("[" + PLACEHOLDER_13373 + "," + malformed + "]");
+        ItemSync.fetcher = url -> itemsFor(url, "I");
+        assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+        assertEquals("f", scalar("SELECT complete FROM recipe_catalog_publication"));
+        // omitted and unexpected ids still fail with a placeholder present
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[13373,6]") : json("[" + PLACEHOLDER_13373 + "]");
+        assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+        RecipeSync.fetcher = url -> isRecipeCatalog(url) ? json("[13373]")
+                : json("[" + PLACEHOLDER_13373 + "," + recipeJson(7, 10, 11) + "]");
+        assertThrows(IllegalStateException.class, () -> RecipeSync.syncAllRecipesFull(TaskDeadline.start()));
+    }
+
     @Test
     void fullRecipes_arbitraryUnknownRequirementKindStillRejected() throws Exception {
         String bad = typedRecipe(5, 10, "[{\"type\":\"Mystery\",\"id\":1,\"count\":1}]");
@@ -454,8 +496,9 @@ class FullCatalogSyncTest {
         String head = "\"id\":1,\"type\":\"Refinement\",\"output_item_id\":10,\"output_item_count\":1,\"min_rating\":0,\"time_to_craft_ms\":1";
         String[] bad = {
                 "{\"id\":1}",
-                "{" + head + "}",                                                     // item output without ingredients
-                "{" + head + ",\"ingredients\":[]}",
+                // an item recipe without/with empty ingredients is now a skipped placeholder (see the test below)
+                "{" + head + ",\"ingredients\":null,\"min_rating\":-1}",
+                "{" + head + ",\"ingredients\":\"x\"}",
                 "{" + head + ",\"ingredients\":[{\"item_id\":11,\"count\":0}]}",
                 "{" + head + ",\"ingredients\":[{\"item_id\":11,\"count\":-2}]}",
                 "{" + head + ",\"ingredients\":[{\"item_id\":\"11\",\"count\":1}]}",

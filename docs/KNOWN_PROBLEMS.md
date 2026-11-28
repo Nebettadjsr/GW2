@@ -45,16 +45,6 @@ Evidence: `repo/CraftingGraphCache.loadForSnapshot`, `application/CraftingProfit
 
 Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFull`).
 
-## KP-34 Owner refresh of all recipes fails in production
-
-**Observed (owner report, production, 28 Nov 2026 around 07:12):** starting the refresh of all recipes from the owner's System Status view fails; the owner reports that it fails every time. The cause is not yet established, and no log or task detail has been analysed for this entry.
-
-**Risk:** the full recipe catalogue cannot be refreshed by the owner, so new or changed recipes only arrive through the incremental safe sync, whose limits KP-32 describes.
-
-**Follow-up:** reproduce with the failing task's details and the production log of that run (task status, error text, upstream responses), find the failing step, then decide the fix. Check first whether the strict validation of the full sync rejects a current upstream record (see `parser.PayloadValidators.requireRecipe`, called by `FullCatalogSupport.parseExact`) or the run hits a deadline.
-
-Evidence: `application/FullCatalogAdministrationService`, `sync/FullCatalogGateway`, `sync/RecipeSync.syncAllRecipesFull`.
-
 ## Further performance opportunities
 
 - **Bound ordinary upstream waits and release database leases.** Authenticated
