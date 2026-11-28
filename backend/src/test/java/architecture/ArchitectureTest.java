@@ -1,6 +1,7 @@
 package architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.freeze.FreezingArchRule.freeze;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
@@ -142,6 +143,56 @@ class ArchitectureTest {
                           && MUTATING_REPOSITORY_METHOD.matcher(call.getName()).matches()))
           .because("writes and publication belong in application services that own the transaction");
 
+  // ---- strict rules, continued ----------------------------------------------------------------
+
+  @ArchTest
+  static final ArchRule topLevelPackagesAreFreeOfCycles =
+      slices()
+          .matching("(*)..")
+          .should()
+          .beFreeOfCycles()
+          .because("cyclic package dependencies make boundaries meaningless");
+
+  /**
+   * The direction every dependency between the packages must follow, lowest layer first. A package may
+   * use the layers below it and never one above it.
+   */
+  @ArchTest
+  static final ArchRule packagesDependOnlyDownwards =
+      layeredArchitecture()
+          .consideringOnlyDependenciesInLayers()
+          .layer("Foundation")
+          .definedBy("util..", "model..", "domain..", "tradingpost..", "luck..", "craft..")
+          .layer("Parser")
+          .definedBy("parser..")
+          .layer("Api")
+          .definedBy("api..")
+          .layer("Repo")
+          .definedBy("repo..")
+          .layer("Infra")
+          .definedBy("infra..")
+          .layer("Sync")
+          .definedBy("sync..")
+          .layer("Application")
+          .definedBy("application..")
+          .layer("Web")
+          .definedBy("web..")
+          .whereLayer("Web")
+          .mayNotBeAccessedByAnyLayer()
+          .whereLayer("Application")
+          .mayOnlyBeAccessedByLayers("Web")
+          .whereLayer("Sync")
+          .mayOnlyBeAccessedByLayers("Application", "Web")
+          .whereLayer("Infra")
+          .mayOnlyBeAccessedByLayers("Sync", "Application", "Web")
+          .whereLayer("Repo")
+          .mayOnlyBeAccessedByLayers("Infra", "Sync", "Application", "Web")
+          .whereLayer("Api")
+          .mayOnlyBeAccessedByLayers("Repo", "Infra", "Sync", "Application", "Web")
+          .whereLayer("Parser")
+          .mayOnlyBeAccessedByLayers("Api", "Repo", "Infra", "Sync", "Application", "Web")
+          .because("a lower layer must not know the layers above it");
+
   // ---- frozen rules (target state, existing violations recorded) ------------------------------
 
   @ArchTest
@@ -154,13 +205,4 @@ class ArchitectureTest {
               .dependOnClassesThat()
               .resideInAnyPackage("java.sql..", "javax.sql..", "org.postgresql..")
               .because("external systems belong behind adapters"));
-
-  @ArchTest
-  static final ArchRule topLevelPackagesAreFreeOfCycles =
-      freeze(
-          slices()
-              .matching("(*)..")
-              .should()
-              .beFreeOfCycles()
-              .because("cyclic package dependencies make boundaries meaningless"));
 }
