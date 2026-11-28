@@ -51,13 +51,13 @@ class CharacterSelectionServiceTest {
     }
 
     @Test
-    void craftingReadFailurePropagatesUnchanged() {
+    void craftingReadFailureBecomesDataStoreException() {
         var repo = new FakeCharacterRepository();
         repo.craftingFailure = new SQLException("simulated character crafting read failure");
 
-        SQLException thrown = assertThrows(SQLException.class,
+        DataStoreException thrown = assertThrows(DataStoreException.class,
                 () -> new CharacterSelectionService(repo).getCraftingCharacterOptions(SCOPE));
-        assertSame(repo.craftingFailure, thrown);
+        assertSame(repo.craftingFailure, thrown.getCause());
     }
 
     private static class FakeCharacterRepository extends CharacterRepository {

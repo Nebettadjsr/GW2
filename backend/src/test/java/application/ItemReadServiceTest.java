@@ -2,6 +2,9 @@ package application;
 
 import api.tp.EctoLivePriceGateway;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import repo.ItemRepository;
 
 import java.util.HashMap;
@@ -33,5 +36,29 @@ class ItemReadServiceTest {
         assertEquals("new-icon", result.get(23041).iconUrl);
         assertEquals(1, requestedRefresh.size());
         assertTrue(result.containsKey(19721));
+    }
+
+    @Test
+    void loadFailureBecomesDataStoreException() {
+        var failure = new java.sql.SQLException("simulated item read failure");
+        var repository = new ItemRepository() {
+            @Override public Map<Integer, ItemInfo> loadItems(Set<Integer> ids) throws java.sql.SQLException {
+                throw failure;
+            }
+        };
+        var service = new ItemReadService(new EctoLivePriceGateway(), repository, ids -> { });
+        var thrown = assertThrows(DataStoreException.class, () -> service.metadata(Set.of(1)));
+        assertSame(failure, thrown.getCause());
+    }
+
+    @Test
+    void refreshDatabaseFailureBecomesDataStoreException() {
+        var failure = new java.sql.SQLException("simulated metadata write failure");
+        var repository = new ItemRepository() {
+            @Override public Map<Integer, ItemInfo> loadItems(Set<Integer> ids) { return Map.of(); }
+        };
+        var service = new ItemReadService(new EctoLivePriceGateway(), repository, ids -> { throw failure; });
+        var thrown = assertThrows(DataStoreException.class, () -> service.metadata(Set.of(1)));
+        assertSame(failure, thrown.getCause());
     }
 }

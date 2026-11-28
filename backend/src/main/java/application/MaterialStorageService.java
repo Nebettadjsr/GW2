@@ -4,7 +4,6 @@ import model.AccountScope;
 import repo.MaterialStorageRepository;
 import repo.MaterialStorageRepository.MaterialStorageRow;
 
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,8 +23,8 @@ public class MaterialStorageService {
      * One account's material storage over the shared ordered catalog (STORY-APP-015). Grouping is
      * unchanged; only which account's quantities fill the catalog positions is now explicit.
      */
-    public List<MaterialCategory> getMaterialStorage(AccountScope scope) throws SQLException {
-        return group(materialRepo.loadMaterialStorage(scope));
+    public List<MaterialCategory> getMaterialStorage(AccountScope scope) throws DataStoreException {
+        return DataStoreException.translate(() -> group(materialRepo.loadMaterialStorage(scope)));
     }
 
     private static List<MaterialCategory> group(List<MaterialStorageRow> rows) {

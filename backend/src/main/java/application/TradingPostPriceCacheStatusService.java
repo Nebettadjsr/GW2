@@ -2,9 +2,6 @@ package application;
 
 import repo.tp.TpPriceRepository;
 
-import java.sql.SQLException;
-import java.sql.Timestamp;
-
 /** Read-only freshness summary for the shared Trading Post price cache. */
 public class TradingPostPriceCacheStatusService {
     private final TpPriceRepository repository;
@@ -17,7 +14,7 @@ public class TradingPostPriceCacheStatusService {
         this.repository = repository;
     }
 
-    public TpPriceRepository.CacheStatus read() throws SQLException {
-        return repository.cacheStatus();
+    public TpPriceRepository.CacheStatus read() throws DataStoreException {
+        return DataStoreException.translate(() -> repository.cacheStatus());
     }
 }

@@ -3,7 +3,6 @@ package application;
 import model.AccountScope;
 import repo.CharacterRepository;
 
-import java.sql.SQLException;
 import java.util.List;
 
 /**
@@ -14,8 +13,8 @@ import java.util.List;
  * caller.
  *
  * <p>Read-only: no synchronization and no database write happens here or in
- * {@link CharacterRepository}. A {@link SQLException} propagates unchanged, so the caller keeps
- * deciding how to present a selector-load failure.
+ * {@link CharacterRepository}. A repository failure is reported as {@link DataStoreException} (cause: the original
+ * database exception), so the caller keeps deciding how to present a selector-load failure.
  *
  * <p>Deliberately not merged into {@code CraftingProfitService}/{@code CraftingDiscoveryService}:
  * those own one calculation each, whereas both need the same selector read, and the read must not
@@ -38,7 +37,7 @@ public class CharacterSelectionService {
      * One account's crafting-discipline rows (STORY-APP-015). The scope is passed in by the boundary
      * that authorized the request; this use case has no account of its own to fall back to.
      */
-    public List<CharacterRepository.DiscRow> getCraftingCharacterOptions(AccountScope scope) throws SQLException {
-        return charRepo.loadAllCharacterCrafting(scope);
+    public List<CharacterRepository.DiscRow> getCraftingCharacterOptions(AccountScope scope) throws DataStoreException {
+        return DataStoreException.translate(() -> charRepo.loadAllCharacterCrafting(scope));
     }
 }
