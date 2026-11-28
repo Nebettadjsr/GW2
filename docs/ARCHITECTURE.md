@@ -41,9 +41,10 @@ Local development uses Vite's same-origin proxy or the three-container Compose s
 | `frontend/src/` | Screens, HTTP clients, interaction state, presentation and the Ecto exception below. |
 | `web/`, `web/access/`, `web/task/` | Spring entry point, thin controllers, DTOs, authorization mapping and task transport. |
 | `application/` | Use-case orchestration, scoped input capture, refresh coordination, access and operational aggregates. |
-| `craft/`, `domain/` | Crafting/economy rules, inventory resolution and bounded character attribute projections. |
+| `craft/`, `domain/`, `model/`, `tradingpost/`, `luck/` | The pure core: crafting/economy rules, inventory resolution, bounded character attribute projections, shared value types, Trading Post fee and sale calculation and Luck progression. |
 | `repo/` | PostgreSQL queries, publication, scoped reads and infrastructure-to-domain mapping. |
 | `sync/`, `api/`, `parser/`, `infra/` | ArenaNet adapters, payload validation, schema initialization, icon delivery and file stores. |
+| `util/` | Small shared helpers (JDBC parameter binding, Trading Post price value). |
 
 Domain code must not depend on Vue, JavaFX, HTTP/JSON DTOs, SQL/JDBC, PostgreSQL, Docker,
 filesystem locations or raw GW2 response models. Application services coordinate adapters;
