@@ -732,6 +732,17 @@ class CraftingProfitApiControllerTest {
     }
 
     @Test
+    void dataStoreFailureIsMappedLikeADatabaseFailureWithoutLeakingDetail() throws Exception {
+        factory.next(service -> service.failure = new application.DataStoreException(
+                "connection to jdbc:postgresql://host/db refused", new SQLException("refused")));
+
+        mockMvc.perform(post("/api/crafting/profit").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("DATA_STORE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("The crafting data store is currently unavailable"));
+    }
+
+    @Test
     void craftingGraphCacheFailureIsMappedToInternalServerError() throws Exception {
         factory.next(service -> service.failure =
                 new RuntimeException("Failed to load crafting graph cache"));
@@ -890,6 +901,7 @@ class CraftingProfitApiControllerTest {
             call.capturedSettings = settings;
 
             if (call.failure instanceof SQLException sqlException) throw sqlException;
+            if (call.failure instanceof application.DataStoreException dataStoreException) throw dataStoreException;
             if (call.failure instanceof RuntimeException runtimeException) throw runtimeException;
 
             if (!call.resultAvailable) {

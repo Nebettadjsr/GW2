@@ -8,7 +8,6 @@ import repo.CharacterInventoryLayoutRepository;
 import repo.CharacterInventoryLayoutRepository.Bag;
 import repo.Db;
 
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -54,7 +53,7 @@ public class CharacterInventoryLayoutService {
         this.maxAge = maxAge;
     }
 
-    public Result read(AccountContext context, AccountScope scope, String name) throws SQLException {
+    public Result read(AccountContext context, AccountScope scope, String name) throws DataStoreException {
         if (context.lacksGrantFor(AccountOperation.CHARACTERS_READ)) {
             return plain(State.GRANT_REQUIRED, "GRANT_REQUIRED",
                     "Reading character inventory needs the account, characters and inventories permissions.");
@@ -64,7 +63,7 @@ public class CharacterInventoryLayoutService {
                     "The verified key is restricted from the character endpoint, so inventory cannot be read.");
         }
         CharacterInventoryLayoutRepository.Snapshot snap;
-        snap = connections.snapshot(con -> repository.load(con, scope, name));
+        snap = DataStoreException.translate(() -> connections.snapshot(con -> repository.load(con, scope, name)));
         boolean refreshing = coordinator != null
                 && coordinator.isRefreshing(scope, AccountSyncStateRepository.CHARACTERS);
         boolean failed = coordinator != null

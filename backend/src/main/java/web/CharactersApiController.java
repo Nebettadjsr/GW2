@@ -76,10 +76,10 @@ public class CharactersApiController {
         try {
             if (inventory == null) throw new IllegalStateException("inventory layout is not configured");
             return web.dto.CharacterInventoryResponse.respond(inventory.read(context, scope, name));
-        } catch (SQLException | RuntimeException e) {
+        } catch (application.DataStoreException | RuntimeException e) {
             LOG.log(Level.SEVERE, "Inventory layout read failed", e);
             return web.dto.CharacterInventoryResponse.unavailable(
-                    e instanceof SQLException ? "DATA_STORE_UNAVAILABLE" : "INVENTORY_READ_FAILED");
+                    e instanceof application.DataStoreException ? "DATA_STORE_UNAVAILABLE" : "INVENTORY_READ_FAILED");
         }
     }
 
@@ -92,10 +92,10 @@ public class CharactersApiController {
         try {
             if (equipmentTabs == null) throw new IllegalStateException("equipment tabs are not configured");
             return web.dto.CharacterEquipmentTabsResponse.respond(equipmentTabs.read(context, scope, name));
-        } catch (SQLException | RuntimeException e) {
+        } catch (application.DataStoreException | RuntimeException e) {
             LOG.log(Level.SEVERE, "Equipment tabs read failed", e);
             return web.dto.CharacterEquipmentTabsResponse.unavailable(
-                    e instanceof SQLException ? "DATA_STORE_UNAVAILABLE" : "EQUIPMENT_READ_FAILED");
+                    e instanceof application.DataStoreException ? "DATA_STORE_UNAVAILABLE" : "EQUIPMENT_READ_FAILED");
         }
     }
 
@@ -108,10 +108,10 @@ public class CharactersApiController {
         try {
             if (buildTabs == null) throw new IllegalStateException("build tabs are not configured");
             return web.dto.CharacterBuildTabsResponse.respond(buildTabs.read(context, scope, name));
-        } catch (SQLException | RuntimeException e) {
+        } catch (application.DataStoreException | RuntimeException e) {
             LOG.log(Level.SEVERE, "Build tabs read failed", e);
             return web.dto.CharacterBuildTabsResponse.unavailable(
-                    e instanceof SQLException ? "DATA_STORE_UNAVAILABLE" : "BUILD_TABS_READ_FAILED");
+                    e instanceof application.DataStoreException ? "DATA_STORE_UNAVAILABLE" : "BUILD_TABS_READ_FAILED");
         }
     }
 

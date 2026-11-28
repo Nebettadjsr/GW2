@@ -5,7 +5,6 @@ import model.AccountScope;
 import repo.AccountSourceStateRepository;
 import repo.DiscChoice;
 
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -78,7 +77,7 @@ public class CachedCraftingProfitService {
     /** The names of the characters one account owns, read without recording activity. */
     @FunctionalInterface
     public interface CharacterRoster {
-        List<String> namesOf(AccountScope scope) throws SQLException;
+        List<String> namesOf(AccountScope scope) throws DataStoreException;
     }
 
     /** The selected character is not on the authorized account's roster; nothing was calculated. */
@@ -99,7 +98,7 @@ public class CachedCraftingProfitService {
      * calculation. An account whose roster was never published has nothing to compare with; that
      * stays the pending (no-result) case rather than a rejection.
      */
-    private void verifyCharacter(AccountScope scope, DiscChoice choice) throws SQLException {
+    private void verifyCharacter(AccountScope scope, DiscChoice choice) throws DataStoreException {
         if (roster == null || choice == null || choice.kind != DiscChoice.Kind.CHAR_DISCIPLINE) return;
         List<String> owned = roster.namesOf(scope);
         if (!owned.isEmpty() && !owned.contains(choice.charName)) throw new CharacterNotOwnedException();
@@ -333,7 +332,7 @@ public class CachedCraftingProfitService {
 
     /** The scoped capture: this account's markers and generations, plus the shared quote coverage. */
     private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet,
-                                             CraftingSettings settings) throws SQLException {
+                                             CraftingSettings settings) throws DataStoreException {
         return capture(session, scope, wallet, settings, null, null, null);
     }
 
@@ -341,7 +340,15 @@ public class CachedCraftingProfitService {
     private CalculationInputVersions capture(ProfitInputSession session, AccountScope scope, boolean wallet,
                                              CraftingSettings settings, Integer projectRecipeId,
                                              java.util.Set<Integer> projectPathIds, craft.ForgeSettings forgeSettings)
-            throws SQLException {
+            throws DataStoreException {
+        return DataStoreException.translate(() -> readCapture(session, scope, wallet, settings, projectRecipeId,
+                projectPathIds, forgeSettings));
+    }
+
+    private CalculationInputVersions readCapture(ProfitInputSession session, AccountScope scope, boolean wallet,
+                                                 CraftingSettings settings, Integer projectRecipeId,
+                                                 java.util.Set<Integer> projectPathIds,
+                                                 craft.ForgeSettings forgeSettings) throws Exception {
         Instant evaluatedAt = clock.instant();
         session.withWalletFreshness(evaluatedAt, accountMaxAge);
         Set<String> sources = new java.util.LinkedHashSet<>(CalculationInputVersions.REQUIRED_ACCOUNT_SOURCES);

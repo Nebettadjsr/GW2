@@ -8,7 +8,6 @@ import repo.CharacterEquipmentTabsRepository;
 import repo.CharacterEquipmentTabsRepository.Snapshot;
 import repo.Db;
 
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -66,7 +65,7 @@ public class CharacterEquipmentTabsService {
         this.maxAge = maxAge;
     }
 
-    public Result read(AccountContext context, AccountScope scope, String name) throws SQLException {
+    public Result read(AccountContext context, AccountScope scope, String name) throws DataStoreException {
         // Fixed order: the cached-parent dependency (CHARACTERS_READ) first, then the tabs endpoint's own.
         if (context.lacksGrantFor(AccountOperation.CHARACTERS_READ)) {
             return denied(State.GRANT_REQUIRED, "PARENT_GRANT_REQUIRED",
@@ -81,7 +80,7 @@ public class CharacterEquipmentTabsService {
                     "The verified key is restricted from an endpoint equipment tabs need.");
         }
         Snapshot snapshot;
-        snapshot = connections.snapshot(con -> repository.load(con, scope, name));
+        snapshot = DataStoreException.translate(() -> connections.snapshot(con -> repository.load(con, scope, name)));
         if (snapshot.parent().isEmpty()) {
             return denied(State.PENDING, "PARENT_NOT_PUBLISHED",
                     "Characters have not been published for this account yet; equipment tabs depend on them.");
