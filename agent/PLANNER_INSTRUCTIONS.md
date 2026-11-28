@@ -51,8 +51,7 @@ acceptance are required. If a scoped issue assigns independent QA, make test and
 
 When a story removes a dependency between packages, find every use before writing the criteria: search imports
 and also fully qualified names and Javadoc references (`grep -rn "sync\."`), because a miss turns the
-criterion into an unresolved gap. A story that fixes a violation recorded in the ArchUnit store needs no store
-criterion; the supervisor refreezes it.
+criterion into an unresolved gap.
 
 Acceptance criteria describe application behavior only. Never write a criterion that requires reading or
 changing a harness path (`.github/`, `agent/`, `tasks/`, `AGENTS.md`, `CLAUDE.md`, the rule documents, the

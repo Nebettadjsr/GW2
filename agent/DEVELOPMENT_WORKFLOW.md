@@ -146,11 +146,6 @@ paths, and `discard_out_of_scope.py` restores any harness path the agent changed
 started from, listing the files in the PR body under `## Out-of-scope changes discarded`. Such a PR is
 never merged automatically.
 
-The ArchUnit store is such a path. A story that fixes a recorded violation makes the test run rewrite the store;
-the discard step restores it, so the PR lists it as discarded and is merged by the supervisor, who refreezes
-the store on the PR branch (`./mvnw test -Dtest=ArchitectureTest -Darchunit.freeze.refreeze=true`) and checks
-that the diff only removes entries or, for the package cycles, adds no dependency edge between packages.
-
 Agents report instead of fixing. A non-empty `## Harness feedback`, or discarded changes, opens an issue
 labelled `harness-feedback` even when the run publishes no PR. The supervisor (or the owner) corrects the
 harness, in its own pull request with the evidence, when the same deviation occurs twice, one deviation is
