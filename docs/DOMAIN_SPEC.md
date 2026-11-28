@@ -139,6 +139,11 @@ intermediate: search ignores inventory, character eligibility, buying settings,
 resolver path selection and profitability. This search behavior does not alter
 either feature's calculation rules.
 
+The Crafting Discovery search covers only values a user can see: output name, direct
+ingredient names, disciplines, recipe id, output item id and minimum rating. It does
+not match the raw blocked-reason code or any state wording, because Discovery shows
+no row-state label.
+
 Crafting Resolution uses compact summaries and progressive disclosure. Each
 requirement shows item identity, required quantity (for example, "20 needed"),
 backend-provided sourcing labels such as "From stock", "Crafted" and "Bought",

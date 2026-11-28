@@ -1,6 +1,5 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { CraftingRow } from '@/api/types'
-import { describeRowState } from './rowState'
 
 /**
  * Search, sort and selection over the Discovery candidates the backend returned.
@@ -139,14 +138,11 @@ function matchesSearch(row: CraftingRow, searchText: string): boolean {
   const needle = searchText.trim().toLowerCase()
   if (needle === '') return true
 
+  // Only values a user can see: the state words and the raw blocked-reason code are shown nowhere.
   return [
     row.outputName ?? '',
     ...(row.ingredientNames ?? []),
     row.disciplines,
-    row.blockedReason ?? '',
-    // The words the selected-result detail states for this row, so a search for what a state is
-    // called finds it even though the comparison list carries no state column.
-    describeRowState(row).label,
     String(row.recipeId),
     String(row.outputItemId),
     String(row.minRating)
