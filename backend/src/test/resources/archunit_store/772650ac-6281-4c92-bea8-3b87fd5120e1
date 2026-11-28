@@ -144,5 +144,5 @@ Method <application.ScopedSourceGate.read(model.AccountScope, java.lang.String, 
 Method <application.ScopedSourceGate.recordUse(model.AccountScope)> throws type <java.sql.SQLException> in (ScopedSourceGate.java:0)
 Method <application.ScopedSourceGate.through(application.ScopedSourceGate, model.AccountScope, java.lang.String, application.ScopedSourceGate$Rows)> throws type <java.sql.SQLException> in (ScopedSourceGate.java:0)
 Method <application.TradingPostPriceCacheStatusService.read()> throws type <java.sql.SQLException> in (TradingPostPriceCacheStatusService.java:0)
-Method <application.icons.IconDelivery.acquireForMiss(application.icons.ItemIconUrls$ItemIconRequest)> catches type <java.sql.SQLException> in (IconDelivery.java:121)
-Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> catches type <java.sql.SQLException> in (IconDelivery.java:83)
+Method <application.icons.IconDelivery.acquireForMiss(domain.icons.ItemIconUrls$ItemIconRequest)> catches type <java.sql.SQLException> in (IconDelivery.java:122)
+Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> catches type <java.sql.SQLException> in (IconDelivery.java:84)
