@@ -111,4 +111,29 @@ describe('rowDiagnostic', () => {
     expect(diagnostic?.label).not.toContain('SOME_STATE_ADDED_LATER')
     expect(describeRowState(unknownStateRow).code).toBe('SOME_STATE_ADDED_LATER')
   })
+
+  it('wordsTheTwoCurrencyReasonsAsCautionAndNeverAsUnrecognized', () => {
+    const cases: Array<[string, string, string]> = [
+      ['WALLET_UNAVAILABLE', 'Wallet unknown', "the account's balance of a required currency is unknown"],
+      ['INSUFFICIENT_CURRENCY', 'Not enough currency', "the account's balance of a required currency is too low"]
+    ]
+    for (const [code, label, because] of cases) {
+      const row = { ...priceUnavailableRow, blockedReason: code }
+      const state = describeRowState(row)
+      expect(state.label).toBe(label)
+      expect(state.explanation).toBe(`Crafting is blocked because ${because}.`)
+      expect(state.tone).toBe('caution')
+      expect(state.code).toBe(code)
+      expect(rowDiagnostic(row)).toEqual({ label, tone: 'caution' })
+    }
+  })
+
+  it('keepsUnknownCodesWorkLimitAndPriceMissingAsBefore', () => {
+    expect(rowDiagnostic(unknownStateRow)).toEqual({ label: 'Unrecognized state', tone: 'unknown' })
+    expect(rowDiagnostic({ ...priceUnavailableRow, blockedReason: 'WORK_LIMIT' })).toEqual({
+      label: 'Incomplete',
+      tone: 'caution'
+    })
+    expect(rowDiagnostic(priceUnavailableRow)).toEqual({ label: 'Price missing', tone: 'caution' })
+  })
 })
