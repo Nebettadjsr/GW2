@@ -5,7 +5,7 @@ import java.sql.SQLException;
 
 /**
  * Shared JDBC connection helper for both the {@code repo} and {@code sync} packages
- * (STORY-INFRA-003; previously duplicated as {@code sync.Db}).
+ * (STORY-INFRA-003; formerly duplicated in the sync package).
  */
 public final class Db {
     private Db() {}

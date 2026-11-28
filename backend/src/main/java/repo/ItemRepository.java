@@ -1,6 +1,7 @@
 package repo;
 
 import java.sql.*;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -62,11 +63,38 @@ public class ItemRepository {
         return out;
     }
 
-    /** Positive ids whose stored row is missing/incomplete under the canonical {@link sync.IconSync} policy (one short read). */
+    /** Positive ids whose stored row is missing/incomplete under the canonical item metadata policy (one short read). */
     public Set<Integer> incompleteMetadataIds(Set<Integer> itemIds) throws SQLException {
         try (Connection con = Db.open()) {
-            return sync.IconSync.incompleteIds(con, itemIds);
+            return incompleteIds(con, itemIds);
         }
+    }
+
+    /** The positive ids of {@code itemIds} whose stored metadata row is missing or incomplete (read-only, one short query). */
+    public static Set<Integer> incompleteIds(Connection con, Collection<Integer> itemIds) throws SQLException {
+        Set<Integer> wanted = new java.util.TreeSet<>();
+        for (Integer id : itemIds) if (id != null && id > 0) wanted.add(id);
+        if (wanted.isEmpty()) return wanted;
+        wanted.removeAll(completeMetadataIds(con, wanted));
+        return wanted;
+    }
+
+    /** The subset of {@code wanted} whose stored row already carries every canonical metadata field and an accepted icon. */
+    public static Set<Integer> completeMetadataIds(Connection con, Collection<Integer> wanted) throws SQLException {
+        Set<Integer> complete = new java.util.HashSet<>();
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL"
+                        + " AND btrim(coalesce(name, '')) <> '' AND btrim(coalesce(type, '')) <> ''"
+                        + " AND btrim(coalesce(rarity, '')) <> '' AND no_mystic_forge IS NOT NULL"
+                        + " AND (type NOT IN ('Weapon', 'Armor') OR btrim(coalesce(subtype, '')) <> '')")) {
+            ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    if (domain.icons.IconSourcePolicy.accept(rs.getString(2)).isPresent()) complete.add(rs.getInt(1));
+                }
+            }
+        }
+        return complete;
     }
 
     public Map<Integer, ItemInfo> loadItems(Set<Integer> itemIds) throws SQLException {
