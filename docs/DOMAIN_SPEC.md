@@ -878,7 +878,7 @@ Conceptually:
 max_buy_copper
 ```
 
-A value of zero or below currently represents no effective purchase limit.
+Zero represents no effective purchase limit. The API rejects a negative value (HTTP 400); the planner itself treats any value of zero or below as unlimited.
 
 When a positive budget is active:
 
