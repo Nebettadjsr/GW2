@@ -1,5 +1,6 @@
 package web;
 
+import application.DataStoreException;
 import application.ItemReadService;
 import application.ItemReadService.PriceSourceUnavailableException;
 import application.ItemReadService.MetadataSourceUnavailableException;
@@ -14,7 +15,6 @@ import repo.ItemRepository;
 import web.dto.ItemMetadataResponse;
 import web.dto.ItemPricesResponse;
 
-import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -41,7 +41,7 @@ public class ItemReadApiController {
     }
 
     @GetMapping(path = "/metadata", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ItemMetadataResponse metadata(@RequestParam("ids") String ids) throws SQLException, MetadataSourceUnavailableException {
+    public ItemMetadataResponse metadata(@RequestParam("ids") String ids) throws MetadataSourceUnavailableException, DataStoreException {
         int[] itemIds = parseIds(ids);
         Set<Integer> requested = new LinkedHashSet<>();
         for (int id : itemIds) requested.add(id);

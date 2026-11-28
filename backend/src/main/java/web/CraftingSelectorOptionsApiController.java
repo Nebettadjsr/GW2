@@ -71,7 +71,8 @@ public class CraftingSelectorOptionsApiController {
             HttpServletRequest http) throws SQLException {
         var scope = RequestAccountContext.scopeOf(http);
         var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.CHARACTERS,
-                () -> characterSelectionService.getCraftingCharacterOptions(scope));
+                () -> DataStoreFailures.asSql(
+                        () -> characterSelectionService.getCraftingCharacterOptions(scope)));
         var freshness = gate == null ? null : web.dto.AccountSourceFreshnessDto.of(read);
         if (!read.hasData()) {
             // Characters never published: pending. The account-independent entries stay valid.

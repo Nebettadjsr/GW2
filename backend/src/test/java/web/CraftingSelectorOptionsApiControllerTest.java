@@ -223,10 +223,10 @@ class CraftingSelectorOptionsApiControllerTest {
 
         @Override
         public List<CharacterRepository.DiscRow> getCraftingCharacterOptions(model.AccountScope scope)
-                throws SQLException {
+                throws application.DataStoreException {
             craftingCallCount++;
             scopes.add(scope);
-            if (sqlFailure != null) throw sqlFailure;
+            if (sqlFailure != null) throw new application.DataStoreException(sqlFailure.getMessage(), sqlFailure);
             if (runtimeFailure != null) throw runtimeFailure;
             return rows;
         }

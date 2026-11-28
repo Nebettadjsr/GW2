@@ -56,13 +56,13 @@ class MaterialStorageServiceTest {
     }
 
     @Test
-    void repositoryFailurePropagatesUnchanged() {
+    void repositoryFailureBecomesDataStoreException() {
         var repo = new FakeMaterialStorageRepository();
         repo.failure = new SQLException("simulated material storage read failure");
 
-        SQLException thrown = assertThrows(SQLException.class,
+        DataStoreException thrown = assertThrows(DataStoreException.class,
                 () -> new MaterialStorageService(repo).getMaterialStorage(SCOPE));
-        assertSame(repo.failure, thrown);
+        assertSame(repo.failure, thrown.getCause());
     }
 
     private static MaterialStorageRow row(int category, String name, int order, int position, int itemId, int count) {

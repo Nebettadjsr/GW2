@@ -5,7 +5,6 @@ import model.AccountLuck;
 import model.AccountScope;
 import repo.AccountLuckRepository;
 
-import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,8 +26,8 @@ public class AccountLuckService {
      * One account's Luck status (STORY-APP-015). The progression itself is global and unchanged -
      * only the stored consumed-Luck row it is resolved against is scoped.
      */
-    public Optional<AccountLuckStatus> getStatus(AccountScope scope) throws SQLException {
-        return repository.find(scope).map(this::resolve);
+    public Optional<AccountLuckStatus> getStatus(AccountScope scope) throws DataStoreException {
+        return DataStoreException.translate(() -> repository.find(scope).map(this::resolve));
     }
 
     public AccountLuckStatus resolve(AccountLuck luck) {

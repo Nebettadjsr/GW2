@@ -3,7 +3,6 @@ package application;
 import model.AccountScope;
 import repo.BankRepository;
 
-import java.sql.SQLException;
 import java.util.List;
 
 /**
@@ -12,8 +11,8 @@ import java.util.List;
  * collaborator; {@code BankContentsApiController} is its caller.
  *
  * <p>Read-only: no synchronization and no database write happens here or in
- * {@link BankRepository}. A {@link SQLException} propagates unchanged, so the caller keeps deciding
- * how to present a load failure.
+ * {@link BankRepository}. A repository failure is reported as {@link DataStoreException} (cause: the original
+ * database exception), so the caller keeps deciding how to present a load failure.
  */
 public class BankContentsService {
 
@@ -33,7 +32,7 @@ public class BankContentsService {
      * something this use case resolves: it is passed in by the boundary that authorized the request,
      * so there is no configured, last-used or default account it could fall back to.
      */
-    public List<BankRepository.BankSlotRow> getBankContents(AccountScope scope) throws SQLException {
-        return bankRepo.loadBankSlots(scope);
+    public List<BankRepository.BankSlotRow> getBankContents(AccountScope scope) throws DataStoreException {
+        return DataStoreException.translate(() -> bankRepo.loadBankSlots(scope));
     }
 }

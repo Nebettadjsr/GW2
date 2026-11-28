@@ -58,7 +58,7 @@ public class MaterialStorageApiController {
             HttpServletRequest request) throws SQLException {
         var scope = RequestAccountContext.scopeOf(request);
         var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.MATERIALS,
-                () -> materialStorageService.getMaterialStorage(scope));
+                () -> DataStoreFailures.asSql(() -> materialStorageService.getMaterialStorage(scope)));
         var freshness = gate == null ? null : web.dto.AccountSourceFreshnessDto.of(read);
         if (!read.hasData()) {
             // Never published: pending, not an inventory of zeros.

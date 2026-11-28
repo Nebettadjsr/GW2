@@ -65,4 +65,18 @@ class AccountLuckServiceTest {
                 custom.targets().get(1).remainingLuck());
         assertTrue(service.getStatus(scopeB).isEmpty());
     }
+
+    @Test
+    void repositoryFailureBecomesDataStoreException() {
+        var failure = new java.sql.SQLException("simulated luck read failure");
+        var repository = new AccountLuckRepository() {
+            @Override public Optional<AccountLuck> find(model.AccountScope scope) throws java.sql.SQLException {
+                throw failure;
+            }
+        };
+        var service = new AccountLuckService(repository, MagicFindProgression.canonical());
+        var scope = model.AccountScope.of("11111111-1111-1111-1111-111111111111");
+        var thrown = assertThrows(DataStoreException.class, () -> service.getStatus(scope));
+        assertSame(failure, thrown.getCause());
+    }
 }

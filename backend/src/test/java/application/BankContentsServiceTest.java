@@ -49,13 +49,13 @@ class BankContentsServiceTest {
     }
 
     @Test
-    void repositoryFailurePropagatesUnchanged() {
+    void repositoryFailureBecomesDataStoreException() {
         var repo = new FakeBankRepository();
         repo.failure = new SQLException("simulated bank read failure");
 
-        SQLException thrown = assertThrows(SQLException.class,
+        DataStoreException thrown = assertThrows(DataStoreException.class,
                 () -> new BankContentsService(repo).getBankContents(SCOPE));
-        assertSame(repo.failure, thrown);
+        assertSame(repo.failure, thrown.getCause());
     }
 
     private static class FakeBankRepository extends BankRepository {

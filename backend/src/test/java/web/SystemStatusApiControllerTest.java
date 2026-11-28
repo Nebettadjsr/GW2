@@ -11,6 +11,20 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 class SystemStatusApiControllerTest {
     @Test
+    void priceCacheDatabaseFailureReportsPriceProblemWithoutFailingTheStatus() throws Exception {
+        MockMvc mvc = standaloneSetup(new SystemStatusApiController(new GlobalDataRefreshService(),
+                new application.TradingPostPriceCacheStatusService(new repo.tp.TpPriceRepository() {
+                    @Override public CacheStatus cacheStatus() throws java.sql.SQLException {
+                        throw new java.sql.SQLException("jdbc:postgresql://host/db password hunter2");
+                    }
+                }))).build();
+
+        mvc.perform(get("/api/system/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.priceHealth").value("PROBLEM"));
+    }
+
+    @Test
     void exposesProcessLocalGlobalRefreshStatus() throws Exception {
         var service = new GlobalDataRefreshService();
         MockMvc mvc = standaloneSetup(new SystemStatusApiController(service,
