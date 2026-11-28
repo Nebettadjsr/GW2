@@ -108,6 +108,8 @@ details, Profit and Total Profit carry a small explanatory note, such as
 listing/exchange-fee and net-revenue displays are not required. All amounts come
 from the backend; no presentation layer calculates fees or profit.
 
+A row blocked by a currency requirement shows the label "Wallet unknown" (the account's balance of a required currency is unknown) or "Not enough currency" (the known balance is too low); the unknown balance never reads as unaffordable.
+
 The entire recipe row must be selectable, with an accessible keyboard equivalent
 and a visible selection indicator. On wide screens, selection populates a dedicated
 right-hand detail panel that remains visible while scrolling; adapt within the supported

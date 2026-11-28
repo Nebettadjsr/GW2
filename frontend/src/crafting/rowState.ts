@@ -74,6 +74,14 @@ const BLOCKED_REASONS: Record<string, { label: string; because: string }> = {
   VALUE_RANGE: {
     label: 'Value out of range',
     because: 'a quantity or price in the plan is too large to calculate reliably'
+  },
+  WALLET_UNAVAILABLE: {
+    label: 'Wallet unknown',
+    because: "the account's balance of a required currency is unknown"
+  },
+  INSUFFICIENT_CURRENCY: {
+    label: 'Not enough currency',
+    because: "the account's balance of a required currency is too low"
   }
 }
 
@@ -197,6 +205,8 @@ export function rowDiagnostic(row: CraftingRow): RowDiagnostic | null {
   if (code === 'CYCLE_DETECTED') return { label: 'Recipe loop', tone: 'caution' }
   if (code === 'PRICE_UNAVAILABLE') return { label: 'Price missing', tone: 'caution' }
   if (code === 'WORK_LIMIT') return { label: 'Incomplete', tone: 'caution' }
+  if (code === 'WALLET_UNAVAILABLE') return { label: 'Wallet unknown', tone: 'caution' }
+  if (code === 'INSUFFICIENT_CURRENCY') return { label: 'Not enough currency', tone: 'caution' }
 
   return { label: 'Unrecognized state', tone: 'unknown' }
 }
