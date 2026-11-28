@@ -1,0 +1,64 @@
+{
+  "groups": [
+    {
+      "id": "domain-objectives",
+      "docs": "docs/DOMAIN_SPEC.md sections 1 to 2.3 (purpose, objectives, result presentation, discovery, ectoplasm salvage analysis)",
+      "task": "These sections describe what the user sees and can do in Crafting Profit, Crafting Discovery and Ectoplasm Salvage. Verify the stated behavior, texts and defaults against the Vue components, stores, backend DTOs and the tests that pin them."
+    },
+    {
+      "id": "domain-rules-1",
+      "docs": "docs/DOMAIN_SPEC.md sections 3 to 22 (money, items, recipes, knowledge, pools, consumption, opportunity cost, acquisition, recursion, output, buying, price semantics, craft versus buy)",
+      "task": "These sections state domain rules, formulas, statuses and limits. For every rule, read the code that implements it and name the test class that pins it. A rule that neither code nor tests support is a finding."
+    },
+    {
+      "id": "domain-rules-2",
+      "docs": "docs/DOMAIN_SPEC.md sections 23 to 42 (cost, revenue, fees, profit, craftable count, allowed recipes, daily crafts, discovery, freshness, feasibility, blocked reasons)",
+      "task": "These sections state domain rules, formulas, statuses and limits. For every rule, read the code that implements it and name the test class that pins it. A rule that neither code nor tests support is a finding."
+    },
+    {
+      "id": "domain-model",
+      "docs": "docs/DOMAIN_SPEC.md sections 43 to 54 (result structure, resolution tree, ectoplasm, luck, invariants, example scenario, decision register, relationship to tests)",
+      "task": "These sections describe result structures, invariants and the worked example. Verify the structures and invariants against the code and the tests; recompute the worked example from the rules and the code and report a difference."
+    },
+    {
+      "id": "domain-account",
+      "docs": "docs/DOMAIN_SPEC.md sections 55 to 59 and the section on Mystic Forge recipes at the end",
+      "task": "These sections cover consumed Luck, characters, system status roles, account connection and deletion, public pages and the Mystic Forge. These sections state domain rules, formulas, statuses and limits. For every rule, read the code that implements it and name the test class that pins it. A rule that neither code nor tests support is a finding."
+    },
+    {
+      "id": "crafting-refs",
+      "docs": "docs/CRAFTING_STATUS_LABEL_REFERENCE.md and docs/crafting/README.md and docs/crafting/GLOSSARY.md",
+      "task": "These documents explain the calculation and its status codes for developers and users. Verify every stated value, label, bound and status against the code, the frontend wording and docs/DOMAIN_SPEC.md; a contradiction with the domain specification is a finding."
+    },
+    {
+      "id": "ui-1",
+      "docs": "docs/UI_SPEC.md sections 1 to 4 (material protection, characters, system status, automatic refresh)",
+      "task": "This document specifies pages, their states and interactions. Verify each statement about behavior, not only labels: persistence rules, defaults, enabled and disabled states, refresh rules, against the Vue components, stores and routes and the Vitest specs and browser journeys that exercise them (see the scripts in frontend/package.json, `smoke:ci`)."
+    },
+    {
+      "id": "ui-2",
+      "docs": "docs/UI_SPEC.md sections 5 to 8 (home and guide, delete cached data, footer and information pages, Mystic Forge destination)",
+      "task": "This document specifies pages, their states and interactions. Verify each statement about behavior, not only labels, against the Vue components, stores and routes and the Vitest specs and browser journeys that exercise them (see the scripts in frontend/package.json, `smoke:ci`)."
+    },
+    {
+      "id": "architecture",
+      "docs": "docs/ARCHITECTURE.md",
+      "task": "This document records the architecture decisions, package responsibilities and boundaries. Verify them against the actual packages, the dependencies between them and the ArchUnit rules (backend/src/test/java/architecture/), including every list of packages, modules and rules, and the numeric limits and defaults it states."
+    },
+    {
+      "id": "state-facts",
+      "docs": "docs/CURRENT_STATE_SPEC.md sections up to and including 'Public Oracle deployment', docker/README.md and README.md",
+      "task": "These documents state versions, ports, defaults, schedulers, limits, build and run commands and deployment inputs. Verify each stated fact against the code, the build files and the Compose files. Facts about the live host that cannot be seen in the repository go under `Not checked`."
+    },
+    {
+      "id": "state-behavior",
+      "docs": "docs/CURRENT_STATE_SPEC.md sections 'Current workflows' to the end",
+      "task": "These sections describe the current workflows, the persistence layout, the verification workflow and the remaining limits. Verify each workflow statement (reservation rules, refresh and cache behavior, status codes, Mystic Forge planning) against the code, and each table or column name against the Flyway migrations."
+    },
+    {
+      "id": "problems",
+      "docs": "docs/KNOWN_PROBLEMS.md",
+      "task": "This document lists known problems. For each entry decide from the code and tests whether it still exists, and whether the described cause and the cited files and issues are still right. A problem that is already fixed, or that no longer matches the code, is a finding (`doc-wrong`). Check the GitHub state of cited issues only through the commit subjects, you cannot reach GitHub."
+    }
+  ]
+}

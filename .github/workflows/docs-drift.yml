@@ -3,9 +3,10 @@
 # Runs nightly but only does work when master changed since the last successful check, so a quiet
 # day costs one cheap job and no model usage. The first run (no earlier success) is a baseline check.
 # Every counted run compares ALL documents that describe the application (domain, UI, architecture,
-# current state, known problems) with the code, one parallel job per document group, so the
-# coverage does not depend on how often work happens. The harness documents are not part of the model
-# comparison: the supervisor reviews them, and the deterministic path check below covers their references.
+# current state, known problems) with the code, one parallel job per document group (the groups are
+# listed in .github/drift-groups.json), so the coverage does not depend on how often work happens.
+# The harness documents are not part of the model comparison: the supervisor reviews them, and the
+# deterministic path check below covers their references.
 # Each finding carries the git history of the document and of the code it cites, so the supervisor can
 # tell which side changed last. Findings become ONE labelled issue (`docs-drift`), or a comment on the
 # open one; nothing is committed. A run in which any group did not produce a valid report does not count
@@ -60,6 +61,7 @@ jobs:
       last_sha: ${{ steps.scope.outputs.last_sha }}
       head_sha: ${{ steps.scope.outputs.head_sha }}
       commits: ${{ steps.scope.outputs.commits }}
+      matrix: ${{ steps.groups.outputs.matrix }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -122,6 +124,11 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Read the document groups
+        id: groups
+        run: |
+          echo "matrix=$(jq -c '{include: .groups}' .github/drift-groups.json)" >> "$GITHUB_OUTPUT"
+
       - name: Check links and repository paths in the documents
         if: steps.scope.outputs.run == 'true'
         run: python .github/scripts/check_doc_references.py | tee scope/gw2-drift-refs.md
@@ -141,41 +148,8 @@ jobs:
     timeout-minutes: 35
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - id: domain
-            docs: docs/DOMAIN_SPEC.md, docs/CRAFTING_STATUS_LABEL_REFERENCE.md and docs/crafting/*.md
-            task: >-
-              These documents describe how the application behaves: rules, formulas, statuses, labels,
-              limits and what the user can do. Verify each rule against the code that implements it and
-              against the tests that pin it (read the tests too: a documented rule that no code or test
-              supports is a finding).
-          - id: ui
-            docs: docs/UI_SPEC.md
-            task: >-
-              This document specifies the pages, their states and interactions. Verify each page
-              specification against the Vue components, routes, stores and the controlled browser
-              journeys that exercise them.
-          - id: architecture
-            docs: docs/ARCHITECTURE.md
-            task: >-
-              This document records the architecture decisions, package responsibilities and boundaries.
-              Verify them against the actual packages, the dependencies between them and the ArchUnit
-              rules (backend/src/test/java/architecture/), including lists of packages, modules and
-              rules.
-          - id: state
-            docs: docs/CURRENT_STATE_SPEC.md, docker/README.md and README.md
-            task: >-
-              These documents state versions, ports, defaults, schedulers, limits, build and run
-              commands and deployment inputs. Verify each stated fact against the code, the build files
-              and the Compose files. Facts about the live host that cannot be seen in the repository
-              go under `Not checked`.
-          - id: problems
-            docs: docs/KNOWN_PROBLEMS.md
-            task: >-
-              This document lists known problems. For each entry decide from the code and tests whether
-              it still exists. A problem that is already fixed, or that no longer matches the code, is a
-              finding (`doc-wrong`).
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.scope.outputs.matrix) }}
     env:
       GW2_DRIFT_REPORT: ${{ github.workspace }}/out/gw2-drift-report.md
       GW2_DRIFT_CHANGES: ${{ github.workspace }}/scope/gw2-drift-changes.txt
@@ -225,12 +199,16 @@ jobs:
             path>` for the commits that touched the code after the document last changed, and the PR or
             issue numbers `(#N)` in those subjects (at most 5 entries per finding).
 
+            Tests: read the tests that pin the documented behavior, not only the production code. A
+            documented rule that exists in code but that no test pins is not drift; list it under
+            `Untested rules` (the rule and the code that implements it) so that the supervisor can decide.
+
             Output: a Markdown file whose first line is exactly `STATUS: drift` or `STATUS: clean`. Then a
             table with the columns `#`, `Document and line`, `Documented claim`, `Evidence in code`,
             `History`, `Proposed correction`, `Kind` (`doc-wrong`, `code-wrong` or `owner-decision`), at
             most 15 rows, most important first. Then a `Checked` list (one line per section or area you
-            verified) and a `Not checked` list (name the sections you did not reach), so that a clean
-            result is credible.
+            verified, naming the pinning test where there is one), an `Untested rules` list and a
+            `Not checked` list (name the sections you did not reach), so that a clean result is credible.
           claude_args: |
             --max-turns ${{ env.DRIFT_MAX_TURNS }}
             --allowedTools "Read,Glob,Grep,Write,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git blame:*),Bash(git ls-files:*),Bash(mkdir:*)"
@@ -296,7 +274,7 @@ jobs:
           issue_body="$RUNNER_TEMP/gw2-drift-issue.md"
           refs_dirty=false; grep -q 'unresolved reference' "$refs" && refs_dirty=true
           any_drift=false; any_unavailable=false
-          groups=(domain ui architecture state problems)
+          mapfile -t groups < <(jq -r '.groups[].id' .github/drift-groups.json)
           declare -A status
           for g in "${groups[@]}"; do
             s=unavailable

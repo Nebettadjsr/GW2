@@ -160,13 +160,15 @@ a few hours later) but works only when `master` has commits since the last succe
 day costs one cheap job; the first run is a baseline check. `Run workflow` offers `force` and `test_run`
 (not counted, no issue). A forced check without new commits runs in baseline mode.
 
-Every counted run checks all of these, one parallel job per group, so coverage does not depend on how
-often work happens: the domain rules (`DOMAIN_SPEC` and the crafting references), `UI_SPEC`,
-`ARCHITECTURE`, the current-state documents (`CURRENT_STATE_SPEC`, `docker/README.md`, `README.md`) and
-`KNOWN_PROBLEMS` (entries that are already fixed). Behavior claims are checked against the code and the
-tests. The harness documents are not part of the model comparison: judging them is the supervisor's job, and
-`check_doc_references.py` still lists links and repository paths in all active documents that point at
-nothing.
+Every counted run checks all of these, one parallel job per group (twelve, at most four at a time), so coverage
+does not depend on how often work happens. The groups are listed in
+[`drift-groups.json`](../.github/drift-groups.json): the domain specification in five parts, the crafting
+references, the UI specification in two parts, `ARCHITECTURE`, the current-state documents in two parts
+(facts, workflows) and `KNOWN_PROBLEMS` (entries that are already fixed). Behavior claims are checked against
+the code and the tests that pin them; a rule that code implements but no test pins is listed as an untested
+rule, not as drift. The harness documents are not part of the model comparison: judging them is the
+supervisor's job, and `check_doc_references.py` still lists links and repository paths in all active documents
+that point at nothing.
 
 Each finding carries its git history: the last change of the document and of the cited code, and the
 commits and PR numbers that touched the code since. The supervisor uses it to decide which side is stale
