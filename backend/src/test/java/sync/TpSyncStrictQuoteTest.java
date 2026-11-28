@@ -5,13 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import parser.PayloadValidators;
 import util.TpPrice;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/** Direct, database-free tests of {@link TpSync#strictQuote(JsonNode)}. */
+/** Direct, database-free tests of {@link PayloadValidators#strictQuote(JsonNode)}. */
 class TpSyncStrictQuoteTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -26,7 +27,7 @@ class TpSyncStrictQuoteTest {
     }
 
     private static void assertMalformed(JsonNode quote) {
-        IllegalStateException e = assertThrows(IllegalStateException.class, () -> TpSync.strictQuote(quote));
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> PayloadValidators.strictQuote(quote));
         assertEquals("tp quote is malformed", e.getMessage());
     }
 
@@ -36,21 +37,21 @@ class TpSyncStrictQuoteTest {
 
     @Test
     void completeQuoteWithBothSidesIsAccepted() {
-        TpPrice q = TpSync.strictQuote(json("{\"id\":7,\"buys\":{\"quantity\":5,\"unit_price\":100},"
+        TpPrice q = PayloadValidators.strictQuote(json("{\"id\":7,\"buys\":{\"quantity\":5,\"unit_price\":100},"
                 + "\"sells\":{\"quantity\":9,\"unit_price\":150}}"));
         assertEquals(new TpPrice(7, 5L, 100, 9L, 150), q);
     }
 
     @Test
     void zeroQuantityAndZeroPriceAreAccepted() {
-        TpPrice q = TpSync.strictQuote(json("{\"id\":7,\"buys\":{\"quantity\":0,\"unit_price\":0},"
+        TpPrice q = PayloadValidators.strictQuote(json("{\"id\":7,\"buys\":{\"quantity\":0,\"unit_price\":0},"
                 + "\"sells\":{\"quantity\":0,\"unit_price\":0}}"));
         assertEquals(new TpPrice(7, 0L, 0, 0L, 0), q);
     }
 
     @Test
     void bothSidesNullIsStoredAsNoMarketData() {
-        TpPrice q = TpSync.strictQuote(json("{\"id\":7,\"buys\":null,\"sells\":null}"));
+        TpPrice q = PayloadValidators.strictQuote(json("{\"id\":7,\"buys\":null,\"sells\":null}"));
         assertEquals(TpPrice.noData(7), q);
         assertFalse(q.hasMarketData());
     }

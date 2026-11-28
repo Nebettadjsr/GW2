@@ -4,6 +4,7 @@ import api.BatchUtils;
 import api.TaskDeadline;
 import api.tp.TpPriceApi;
 import com.fasterxml.jackson.databind.JsonNode;
+import parser.PayloadValidators;
 import parser.TpPriceParser;
 import repo.Db;
 import repo.ManagedSchema;
@@ -252,7 +253,7 @@ public final class TpSync {
                 throw new IllegalStateException("tp batch is not an array");
             }
             for (JsonNode p : br.array()) {
-                TpPrice q = strictQuote(p);
+                TpPrice q = PayloadValidators.strictQuote(p);
                 if (!wanted.contains(q.itemId())) throw new IllegalStateException("tp batch contains an unexpected id");
                 if (resolved.put(q.itemId(), q) != null) throw new IllegalStateException("tp batch contains a duplicate id");
             }
@@ -268,38 +269,13 @@ public final class TpSync {
                 resolved.put(id, TpPrice.noData(id));
                 continue;
             }
-            TpPrice q = strictQuote(one);
+            TpPrice q = PayloadValidators.strictQuote(one);
             if (q.itemId() != id) throw new IllegalStateException("tp single returned a different id");
             resolved.put(id, q);
         }
         List<TpPrice> out = new ArrayList<>(batch.size());
         for (int id : batch) out.add(resolved.get(id));
         return out;
-    }
-
-    /** A quote needs a positive id and either both null sides or both well-formed non-negative sides. */
-    public static TpPrice strictQuote(JsonNode p) {
-        if (p == null || !p.isObject() || !p.has("id") || !p.get("id").isInt() || p.get("id").asInt() <= 0) {
-            throw new IllegalStateException("tp quote is malformed");
-        }
-        // Both side fields must be present: an explicit JSON null is the supported "no market data"
-        // shape, but an absent field (e.g. a bare {"id":1}) is a malformed quote.
-        if (!p.has("buys") || !p.has("sells")) throw new IllegalStateException("tp quote is malformed");
-        JsonNode buys = p.get("buys");
-        JsonNode sells = p.get("sells");
-        boolean noBuys = buys.isNull();
-        boolean noSells = sells.isNull();
-        if (noBuys && noSells) return TpPrice.noData(p.get("id").asInt());
-        if (!validSide(buys) || !validSide(sells)) throw new IllegalStateException("tp quote is malformed");
-        return new TpPrice(p.get("id").asInt(), buys.get("quantity").asLong(), buys.get("unit_price").asInt(),
-                sells.get("quantity").asLong(), sells.get("unit_price").asInt());
-    }
-
-    private static boolean validSide(JsonNode side) {
-        return side != null && side.isObject()
-                && side.path("quantity").canConvertToLong() && side.path("quantity").isIntegralNumber()
-                && side.get("quantity").asLong() >= 0
-                && side.path("unit_price").isInt() && side.get("unit_price").asInt() >= 0;
     }
 
     private static void upsertTpRow(

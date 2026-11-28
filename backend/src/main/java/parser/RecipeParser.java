@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class RecipeParser {
+    /** The one explicitly supported recipe schema version (see {@code RecipeSync.SCHEMA_VERSION}). */
+    public static final String SCHEMA_VERSION = "2022-03-09T02:00:00.000Z";
 
     private RecipeParser() {}
 
