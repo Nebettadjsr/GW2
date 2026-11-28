@@ -13,8 +13,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Public {@code /v2/commerce/prices} transport for cached Trading Post synchronization ({@code
- * sync.TpSync}): bounded 429 retry with backoff, optional {@link TaskDeadline}, and a 404 batch
+ * Public {@code /v2/commerce/prices} transport for cached Trading Post synchronization (the Trading Post sync job): bounded 429 retry with
+ * backoff, optional {@link TaskDeadline}, and a 404 batch
  * result so the caller can retry items individually. The live item-detail route uses {@link
  * EctoLivePriceGateway} instead, with different status and retry rules.
  */

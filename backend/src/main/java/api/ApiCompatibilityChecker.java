@@ -6,8 +6,8 @@ import api.ApiCompatibilityResult.Status;
 import api.ApiCompatibilityResult.VersionEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import parser.PayloadValidators;
 import parser.RecipeParser;
-import sync.FullCatalogSupport;
 
 import java.io.IOException;
 import java.net.http.HttpTimeoutException;
@@ -39,7 +39,7 @@ public class ApiCompatibilityChecker {
     public static final String SCHEMA_DOC_URL = "https://wiki.guildwars2.com/wiki/API:2#Schemas";
 
     /** The one recipe schema production {@code RecipeSync} requests for catalog, details and validation. */
-    public static final String PINNED_RECIPE_VERSION = sync.RecipeSync.SCHEMA_VERSION;
+    public static final String PINNED_RECIPE_VERSION = RecipeParser.SCHEMA_VERSION;
     /** Honest label of the production recipe requests: explicitly pinned, typed Item/Currency ingredients. */
     public static final String RECIPE_PROFILE = "v=" + PINNED_RECIPE_VERSION + " (explicit, production)";
     static final String PINNED_PROFILE = RECIPE_PROFILE;
@@ -229,7 +229,7 @@ public class ApiCompatibilityChecker {
                 // Reuse the production strict quote contract (positive int id, null/null no-data or two
                 // non-negative sides, long quantity) so the check cannot diverge from the real sync.
                 try {
-                    sync.TpSync.strictQuote(n);
+                    PayloadValidators.strictQuote(n);
                 } catch (IllegalStateException e) {
                     return "quote (rejected by the production Trading Post validator)";
                 }
@@ -403,7 +403,7 @@ public class ApiCompatibilityChecker {
             return "unsupported ingredient";
         // The same strict validator the production full-catalog refresh applies (min_rating, time_to_craft_ms, ...).
         try {
-            FullCatalogSupport.requireRecipe(n);
+            PayloadValidators.requireRecipe(n);
         } catch (IllegalStateException e) {
             return "recipe (production validation)";
         }
