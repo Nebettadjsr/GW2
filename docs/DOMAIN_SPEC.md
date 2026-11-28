@@ -892,6 +892,13 @@ must hold for a plan to be considered feasible under that budget.
 
 ---
 
+**Cash-first retry (owner decision, 28 Nov 2026).** The planner first picks each route by lowest effective
+economic cost (section 22). If one craft then needs more purchases than a positive budget allows, the planner
+retries that single craft once and chooses, at every choice, the route with the lowest cash cost (purchases), so a
+mix of affordable purchases and crafts can still fit. It keeps the retry only if the craft is fully satisfied and
+within the budget; otherwise the original result stands and the usual `INSUFFICIENT_BUDGET` handling applies.
+Without a positive budget there is no retry and section 22 alone decides.
+
 # 20. Trading Post Price Semantics
 
 Guild Wars 2 Trading Post data exposes two relevant prices.
@@ -1006,6 +1013,8 @@ not:
 ```text
 minimize immediate cash spending
 ```
+
+One exception follows from the buying budget: when the cheapest route by this objective exceeds a positive budget, section 19 describes the cash-first retry.
 
 This means owned materials are not automatically preferred merely because they require no new cash expenditure.
 
@@ -1585,7 +1594,6 @@ cost. For a selected batch, it is consumed Ecto value plus tool coin cost minus 
 Dust proceeds after fees. Any Gem usage is an additional separately displayed cost,
 not converted into coin or silently treated as included in that coin result.
 
-Profit is expected recovered sale value minus the 15% fee and acquisition cost.
 Section 47 retains its existing fee-inclusive economic net-cost basis for Luck.
 These economic costs are distinct from displayed market prices: Dust quotes
 and gross recovered sale values remain gross. Apply no selling fee to acquisition
