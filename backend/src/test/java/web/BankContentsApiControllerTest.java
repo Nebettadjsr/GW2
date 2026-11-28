@@ -318,9 +318,9 @@ class BankContentsApiControllerTest {
         }
 
         @Override
-        public List<BankRepository.BankSlotRow> getBankContents(model.AccountScope scope) throws SQLException {
+        public List<BankRepository.BankSlotRow> getBankContents(model.AccountScope scope) throws application.DataStoreException {
             callCount++;
-            if (sqlFailure != null) throw sqlFailure;
+            if (sqlFailure != null) throw new application.DataStoreException(sqlFailure.getMessage(), sqlFailure);
             if (runtimeFailure != null) throw runtimeFailure;
             return rows;
         }

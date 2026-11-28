@@ -232,7 +232,7 @@ public class SystemStatusApiController {
             cachedPriceItems = prices.cachedItems();
             stalePriceItems = prices.staleItems();
             newestPriceFetchedAt = prices.newestFetchedAt() == null ? null : prices.newestFetchedAt().toInstant();
-        } catch (SQLException e) {
+        } catch (application.DataStoreException e) {
             priceCacheError = "Database status unavailable";
         }
         return new DetailedStatus(global.running(), global.lastCheckedAt(), global.lastChangedAt(),

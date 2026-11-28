@@ -39,7 +39,7 @@ public class AccountLuckApiController {
         if (!request.getParameterMap().isEmpty()) throw new ApiValidationException("Account Luck accepts no query parameters");
         var scope = RequestAccountContext.scopeOf(request);
         var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.LUCK,
-                () -> luckService.getStatus(scope));
+                () -> DataStoreFailures.asSql(() -> luckService.getStatus(scope)));
         // Never published (or no stored row): the existing not-synced answer, never zero Luck.
         if (!read.hasData() || read.data().isEmpty()) throw new AccountLuckNotSyncedException();
         AccountLuckService.AccountLuckStatus status = read.data().get();

@@ -89,4 +89,21 @@ class ItemReadApiControllerTest {
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.error").value("PRICE_SOURCE_UNAVAILABLE"));
     }
+
+    @Test
+    void databaseFailureIsServiceUnavailableWithoutLeakingDetail() throws Exception {
+        var failing = new ItemReadService(null, null, null) {
+            @Override public Map<Integer, ItemRepository.ItemInfo> metadata(java.util.Set<Integer> ids)
+                    throws application.DataStoreException {
+                throw new application.DataStoreException("jdbc:postgresql://host/db password hunter2",
+                        new java.sql.SQLException("jdbc:postgresql://host/db password hunter2"));
+            }
+        };
+        MockMvcBuilders.standaloneSetup(new ItemReadApiController(failing))
+                .setControllerAdvice(new ItemReadApiExceptionHandler()).build()
+                .perform(get("/api/items/metadata").param("ids", "19721"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").value("DATA_STORE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("Item metadata is currently unavailable"));
+    }
 }

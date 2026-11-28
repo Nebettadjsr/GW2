@@ -59,7 +59,7 @@ public class BankContentsApiController {
     public ResponseEntity<BankContentsResponse> bankContents(HttpServletRequest request) throws SQLException {
         var scope = RequestAccountContext.scopeOf(request);
         var read = application.ScopedSourceGate.through(gate, scope, repo.AccountSyncStateRepository.BANK,
-                () -> bankContentsService.getBankContents(scope));
+                () -> DataStoreFailures.asSql(() -> bankContentsService.getBankContents(scope)));
         var freshness = read.status() == null || gate == null ? null : AccountSourceFreshnessDto.of(read);
         if (!read.hasData()) {
             // Never published: pending, not an empty bank.

@@ -1,5 +1,6 @@
 package web;
 
+import application.DataStoreException;
 import application.ItemReadService.PriceSourceUnavailableException;
 import application.ItemReadService.MetadataSourceUnavailableException;
 import org.slf4j.Logger;
@@ -10,8 +11,6 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import web.dto.ApiErrorResponse;
 
-import java.sql.SQLException;
-
 @RestControllerAdvice(assignableTypes = ItemReadApiController.class)
 public class ItemReadApiExceptionHandler {
     private static final Logger LOG = LoggerFactory.getLogger(ItemReadApiExceptionHandler.class);
@@ -20,8 +19,8 @@ public class ItemReadApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiErrorResponse("INVALID_REQUEST", e.getMessage()));
     }
 
-    @ExceptionHandler(SQLException.class)
-    public ResponseEntity<ApiErrorResponse> databaseUnavailable(SQLException error) {
+    @ExceptionHandler(DataStoreException.class)
+    public ResponseEntity<ApiErrorResponse> databaseUnavailable(DataStoreException error) {
         LOG.error("Item metadata database read failed", error);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ApiErrorResponse(
                 "DATA_STORE_UNAVAILABLE", "Item metadata is currently unavailable"));
