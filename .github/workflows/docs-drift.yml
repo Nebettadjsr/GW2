@@ -180,11 +180,13 @@ jobs:
 
             ${{ matrix.task }}
 
-            Coverage: read the whole document, not only the parts mentioned in the change list. If
-            GW2_DRIFT_BASELINE is `true`, the whole document is in scope. Otherwise the file named by
-            GW2_DRIFT_CHANGES lists the commits and files changed since the last check: start with the
-            claims those changes can affect, then continue through the rest of the document as far as your
-            turns allow. The owning-document map in AGENTS.md says which document owns which subject.
+            Coverage: your scope is exactly the documents and sections named in the first sentence
+            above; other sections of the same file belong to other jobs, so do not read or report
+            them. Read all of your scope, not only the parts mentioned in the change list, whether or
+            not GW2_DRIFT_BASELINE is `true`. If it is not `true`, the file named by GW2_DRIFT_CHANGES
+            lists the commits and files changed since the last check: start with the claims those
+            changes can affect, then continue through the rest of your scope as far as your turns
+            allow. The owning-document map in AGENTS.md says which document owns which subject.
             A deterministic path/link check already ran (GW2_DRIFT_REFS); do not repeat it. Do not
             report problems that docs/KNOWN_PROBLEMS.md already lists (unless you are checking that file).
 
