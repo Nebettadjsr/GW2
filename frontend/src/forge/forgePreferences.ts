@@ -1,3 +1,4 @@
+import { registerDeletionCleanup } from '@/api/accountSession'
 import type { ForgeSettings } from '@/api/types'
 
 export const DEFAULT_FORGE_SETTINGS: ForgeSettings = {
@@ -40,3 +41,14 @@ export function saveForgePreferences(accountId: string | null, settings: ForgeSe
     return true
   } catch { return false }
 }
+
+/** Removes only this account's saved choices; a storage failure never breaks the deletion and reports false. */
+export function forgetForgePreferences(accountId: string): boolean {
+  try {
+    window.localStorage.removeItem(KEY_PREFIX + accountId)
+    return true
+  } catch { return false }
+}
+
+// Account-data deletion also clears this GUID's saved Forge choices (STORY-FORGE-002).
+registerDeletionCleanup(accountId => { forgetForgePreferences(accountId) })

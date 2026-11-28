@@ -250,8 +250,9 @@ const heading = computed(() => ({
         <h2 id="storage-preferences">Local storage · your saved selections</h2>
         <ul>
           <li><strong>What:</strong> <code>gw2.materialProtection.v1.&lt;account ID&gt;</code> stores saved Bank/Materials exclusions and their Crafting Profit setting, separately for each account.</li>
+          <li><strong>What:</strong> <code>gw2.mysticForge.settings.v1.&lt;account ID&gt;</code> stores the six Mystic Forge calculation choices (material price, use own, value own, daily cooldowns, promotions, reduce amount), separately for each account.</li>
           <li><strong>Why:</strong> to remember the selections and settings you save in this browser.</li>
-          <li><strong>How long:</strong> until changed or cleared; there is no automatic expiry. Disconnect keeps them. Delete cached data clears this account's saved selections in this browser. Other browsers and devices keep their own copies.</li>
+          <li><strong>How long:</strong> until changed or cleared; there is no automatic expiry. Disconnect keeps them. Delete cached data clears this account's saved selections and Mystic Forge settings in this browser. Other browsers and devices keep their own copies.</li>
         </ul>
       </section>
 

@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { connection, deleteAccountData, disconnect, retryConnection } from '@/api/accountSession'
 import '@/materials/materialProtectionState'
+import '@/forge/forgePreferences'
 import { clearDraft, draft, isAttempting, showDraft, submitDraft } from './keyDraft'
 
 /**
