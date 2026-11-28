@@ -5,6 +5,7 @@ import api.Gw2ApiClient;
 import api.TaskDeadline;
 import com.fasterxml.jackson.databind.JsonNode;
 import parser.IdListParser;
+import parser.PayloadValidators;
 import parser.RecipeParser;
 import repo.Db;
 
@@ -21,7 +22,7 @@ public final class RecipeSync {
      * 13839 that only exist with typed {@code {type,id,count}} ingredients. Item and currency ids are
      * different namespaces in this schema.
      */
-    public static final String SCHEMA_VERSION = "2022-03-09T02:00:00.000Z";
+    public static final String SCHEMA_VERSION = RecipeParser.SCHEMA_VERSION;
     public static final String CATALOG_URL = "https://api.guildwars2.com/v2/recipes?v=" + SCHEMA_VERSION;
 
     static String detailUrl(String idsParam) {
@@ -95,7 +96,7 @@ public final class RecipeSync {
                         // Only a strictly valid known unsupported record may complete the skipped set. Unknown
                         // kinds or malformed records must be retried even when the catalog's ids stay unchanged.
                         try {
-                            FullCatalogSupport.requireRecipe(r);
+                            PayloadValidators.requireRecipe(r);
                         } catch (IllegalStateException malformed) {
                             incompleteDetails = true;
                         }
@@ -216,7 +217,7 @@ public final class RecipeSync {
                 JsonNode root = fetcher.get(detailUrl(BatchUtils.idsParam(batch)));
                 deadline.check();
                 List<RecipeParser.RecipeRow> rows = FullCatalogSupport.parseExact(
-                        root, batch, n -> RecipeParser.parseRecipe(FullCatalogSupport.requireRecipe(n)),
+                        root, batch, n -> RecipeParser.parseRecipe(PayloadValidators.requireRecipe(n)),
                         RecipeParser.RecipeRow::recipeId, "recipes");
                 List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
                 List<RecipeParser.RequirementRow> requirementRows = new ArrayList<>();
