@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import domain.tp.TpPriceFreshness;
+import repo.tp.TpPriceFreshnessSql;
 
 /**
  * Collects TP-relevant item ids for CraftingProfitView:
@@ -137,7 +138,7 @@ relevant_tradeable AS (
     private static final String SELECT_STALE = """
 SELECT item_id FROM relevant_tradeable tp
 WHERE
-""" + TpPriceFreshness.STALE_SQL_PREDICATE;
+""" + TpPriceFreshnessSql.STALE_PREDICATE;
 
     private static String scopedSql(boolean forge) { return scopedTemplate(forge) + SELECT_STALE; }
 

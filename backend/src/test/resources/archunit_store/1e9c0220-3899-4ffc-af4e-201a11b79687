@@ -67,8 +67,8 @@ Cycle detected: Slice application -> \
     - Constructor <application.CharacterRosterService.<init>(application.ScopedSourceGate, application.CharacterRosterService$RefreshStatus, repo.CharacterRepository, application.CharacterRosterService$ConnectionSource)> has parameter of type <repo.CharacterRepository> in (CharacterRosterService.java:0)\
     (385 further dependencies have been omitted...)\
   2. Dependencies of Slice repo\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:37)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:37)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:36)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:36)\
     - Method <repo.ItemRepository.incompleteMetadataIds(java.util.Set)> calls method <sync.IconSync.incompleteIds(java.sql.Connection, java.util.Collection)> in (ItemRepository.java:68)\
   3. Dependencies of Slice sync\
     - Method <sync.IconSync.main([Ljava.lang.String;)> calls method <infra.db.SchemaInitializer.initializeRuntimeDatabase()> in (IconSync.java:45)\
@@ -153,8 +153,8 @@ Cycle detected: Slice infra -> \
     - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_USER> in (SchemaInitializer.java:247)\
     - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_PASS> in (SchemaInitializer.java:248)\
   2. Dependencies of Slice repo\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:37)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:37)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:36)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:36)\
     - Method <repo.ItemRepository.incompleteMetadataIds(java.util.Set)> calls method <sync.IconSync.incompleteIds(java.sql.Connection, java.util.Collection)> in (ItemRepository.java:68)\
   3. Dependencies of Slice sync\
     - Method <sync.IconSync.main([Ljava.lang.String;)> calls method <infra.db.SchemaInitializer.initializeRuntimeDatabase()> in (IconSync.java:45)
@@ -162,8 +162,8 @@ Cycle detected: Slice repo -> \
                 Slice sync -> \
                 Slice repo\
   1. Dependencies of Slice repo\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:37)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:37)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:36)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:36)\
     - Method <repo.ItemRepository.incompleteMetadataIds(java.util.Set)> calls method <sync.IconSync.incompleteIds(java.sql.Connection, java.util.Collection)> in (ItemRepository.java:68)\
   2. Dependencies of Slice sync\
     - Field <sync.BuildMetadataRepair.repo> has type <repo.BuildMetadataRepository> in (BuildMetadataRepair.java:0)\
@@ -177,6 +177,7 @@ Cycle detected: Slice repo -> \
     - Method <sync.CharacterBuildTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterBuildTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterBuildTabsSync.java:0)\
     - Method <sync.CharacterEquipmentTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterEquipmentTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterEquipmentTabsSync.java:0)\
     - Method <sync.CharacterSync.publishRoster(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterSync.java:0)\
+    - Static Initializer <sync.tp.relevance.DiscoveryItemCollector.<clinit>()> gets field <repo.tp.TpPriceFreshnessSql.STALE_PREDICATE> in (DiscoveryItemCollector.java:12)\
     - Method <sync.AccountSync.publication(java.time.Clock)> calls constructor <repo.AccountSourcePublication.<init>(java.time.Clock)> in (AccountSync.java:23)\
     - Method <sync.CurrencySync.syncCurrencies(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (CurrencySync.java:28)\
     - Method <sync.MaterialCategorySync.syncMaterialCategories(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (MaterialCategorySync.java:28)\
@@ -185,5 +186,4 @@ Cycle detected: Slice repo -> \
     - Method <sync.IconSync.reportCoverage()> calls method <repo.Db.open()> in (IconSync.java:58)\
     - Constructor <sync.BuildMetadataRepair.<init>(sync.BuildMetadataRepair$Source, java.time.Clock)> calls constructor <repo.BuildMetadataRepository.<init>()> in (BuildMetadataRepair.java:59)\
     - Method <sync.AccountRefreshGateway.repairItemMetadata(java.util.Collection)> calls method <repo.Db.open()> in (AccountRefreshGateway.java:65)\
-    - Method <sync.AccountSync.syncAccountBankImpl(model.AccountScope, sync.AccountSync$AuthFetcher, sync.IconSync$ItemMetadataRepair)> calls method <repo.Db.open()> in (AccountSync.java:65)\
-    (97 further dependencies have been omitted...)
+    (99 further dependencies have been omitted...)

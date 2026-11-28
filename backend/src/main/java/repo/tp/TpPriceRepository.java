@@ -1,7 +1,6 @@
 package repo.tp;
 
 import craft.PriceQuote;
-import domain.tp.TpPriceFreshness;
 
 import java.sql.*;
 import java.util.HashMap;
@@ -18,7 +17,7 @@ public class TpPriceRepository {
     public record CacheStatus(long cachedItems, long staleItems, Timestamp newestFetchedAt) { }
 
     public CacheStatus cacheStatus() throws SQLException {
-        String sql = "SELECT COUNT(*), COUNT(*) FILTER (WHERE " + TpPriceFreshness.STALE_SQL_PREDICATE
+        String sql = "SELECT COUNT(*), COUNT(*) FILTER (WHERE " + TpPriceFreshnessSql.STALE_PREDICATE
                 + "), MAX(tp.fetched_at) FROM tp_prices tp";
         try (Connection con = repo.Db.open(); PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
