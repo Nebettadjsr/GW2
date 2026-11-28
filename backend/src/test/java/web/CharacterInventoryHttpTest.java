@@ -186,7 +186,7 @@ class CharacterInventoryHttpTest {
     }
 
     private static String sourceKey(String a, String b) {
-        var s = infra.icons.IconSourcePolicy.accept("https://render.guildwars2.com/file/" + a + "/" + b + ".png").orElseThrow();
+        var s = domain.icons.IconSourcePolicy.accept("https://render.guildwars2.com/file/" + a + "/" + b + ".png").orElseThrow();
         return s.sourceKey() + "." + s.extension();
     }
 

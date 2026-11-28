@@ -2,7 +2,7 @@ package web;
 
 import application.icons.IconDelivery;
 import application.icons.IconDeliveryResult;
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;

@@ -9,133 +9,15 @@ Cycle detected: Slice application -> \
     - Field <application.icons.IconDelivery.acquisition> has type <infra.icons.IconAcquisition> in (IconDelivery.java:0)\
     - Field <application.icons.IconDelivery.store> has type <infra.icons.IconStore> in (IconDelivery.java:0)\
     - Method <application.icons.IconDelivery.delivered(infra.icons.StoredIcon, java.lang.String)> has parameter of type <infra.icons.StoredIcon> in (IconDelivery.java:0)\
-    - Method <application.icons.ResourceIconUrls.imageUrlFor(model.BuildResourceType, int, java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (ResourceIconUrls.java:29)\
-    - Method <application.icons.ResourceIconUrls.imageUrlFor(model.BuildResourceType, int, java.lang.String, java.lang.String)> calls method <infra.icons.IconSource.sourceKey()> in (ResourceIconUrls.java:31)\
-    - Method <application.icons.ResourceIconUrls.imageUrlFor(model.BuildResourceType, int, java.lang.String, java.lang.String)> calls method <infra.icons.IconSource.extension()> in (ResourceIconUrls.java:32)\
-    - Method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (ItemIconUrls.java:44)\
-    - Method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> calls method <infra.icons.IconSource.extension()> in (ItemIconUrls.java:47)\
-    - Method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> calls method <infra.icons.IconSource.sourceKey()> in (ItemIconUrls.java:47)\
-    - Method <application.icons.ResourceIconUrls.parse(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isExtension(java.lang.String)> in (ResourceIconUrls.java:54)\
-    - Method <application.icons.ResourceIconUrls.parse(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isSourceKey(java.lang.String)> in (ResourceIconUrls.java:54)\
-    - Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconStore.find(java.lang.String, java.lang.String)> in (IconDelivery.java:75)\
-    - Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> catches type <infra.icons.IconStorageException> in (IconDelivery.java:75)\
-    - Method <application.icons.ItemIconUrls.parse(java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isExtension(java.lang.String)> in (ItemIconUrls.java:75)\
-    - Method <application.icons.ItemIconUrls.parse(java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isSourceKey(java.lang.String)> in (ItemIconUrls.java:75)\
-    - Method <application.icons.IconDelivery.deliver(java.lang.String, java.lang.String)> calls method <infra.icons.IconStore.find(java.lang.String, java.lang.String)> in (IconDelivery.java:108)\
-    (9 further dependencies have been omitted...)\
+    - Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconStore.find(java.lang.String, java.lang.String)> in (IconDelivery.java:76)\
+    - Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> catches type <infra.icons.IconStorageException> in (IconDelivery.java:76)\
+    - Method <application.icons.IconDelivery.deliver(java.lang.String, java.lang.String)> calls method <infra.icons.IconStore.find(java.lang.String, java.lang.String)> in (IconDelivery.java:109)\
+    - Method <application.icons.IconDelivery.deliver(java.lang.String, java.lang.String)> catches type <infra.icons.IconStorageException> in (IconDelivery.java:109)\
+    - Method <application.icons.IconDelivery.acquireMatching(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconAcquisition.acquire(domain.icons.IconSource)> in (IconDelivery.java:147)\
+    - Method <application.icons.IconDelivery.acquireMatching(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconAcquisitionResult$Available.icon()> in (IconDelivery.java:148)\
+    - Method <application.icons.IconDelivery.acquireMatching(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconAcquisitionResult$Unavailable.reason()> in (IconDelivery.java:151)\
+    - Method <application.icons.IconDelivery.delivered(infra.icons.StoredIcon, java.lang.String)> calls method <infra.icons.StoredIcon.bytes()> in (IconDelivery.java:157)\
   2. Dependencies of Slice infra\
-    - Class <infra.access.FixtureAccountProofAdapter> implements interface <application.access.AccountProofPort> in (FixtureAccountProofAdapter.java:0)\
-    - Class <infra.access.Gw2AccountProofAdapter> implements interface <application.access.AccountProofPort> in (Gw2AccountProofAdapter.java:0)\
-    - Class <infra.ops.SparseActivityStore> implements interface <application.ops.HistoryStore> in (SparseActivityStore.java:0)\
-    - Class <infra.ops.SparseActivityStore> implements interface <application.ops.OperationalPeriodStore> in (SparseActivityStore.java:0)\
-    - Field <infra.ops.SparseActivityStore$Day.lastGroups> has generic type <java.util.EnumSet<application.ops.RouteGroup>> with type argument depending on <application.ops.RouteGroup> in (SparseActivityStore.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> has return type <application.access.AccountProof> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> throws type <application.access.InvalidCredentialException> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> throws type <application.access.MalformedProofException> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> throws type <application.access.ProofUnavailableException> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.get(java.lang.String, java.lang.String)> throws type <application.access.InvalidCredentialException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.get(java.lang.String, java.lang.String)> throws type <application.access.MalformedProofException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.get(java.lang.String, java.lang.String)> throws type <application.access.ProofUnavailableException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> has return type <application.access.AccountProof> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> throws type <application.access.InvalidCredentialException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> throws type <application.access.MalformedProofException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> throws type <application.access.ProofUnavailableException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2ProofResponses.accountId(com.fasterxml.jackson.databind.JsonNode)> throws type <application.access.MalformedProofException> in (Gw2ProofResponses.java:0)\
-    - Method <infra.access.Gw2ProofResponses.endpointRestrictions(com.fasterxml.jackson.databind.JsonNode)> throws type <application.access.MalformedProofException> in (Gw2ProofResponses.java:0)\
-    - Method <infra.access.Gw2ProofResponses.expiry(com.fasterxml.jackson.databind.JsonNode, java.time.Clock)> throws type <application.access.InvalidCredentialException> in (Gw2ProofResponses.java:0)\
-    - Method <infra.access.Gw2ProofResponses.expiry(com.fasterxml.jackson.databind.JsonNode, java.time.Clock)> throws type <application.access.MalformedProofException> in (Gw2ProofResponses.java:0)\
-    (118 further dependencies have been omitted...)
-Cycle detected: Slice application -> \
-                Slice infra -> \
-                Slice repo -> \
-                Slice application\
-  1. Dependencies of Slice application\
-    - Constructor <application.icons.IconDelivery.<init>(repo.ItemIconMetadataRepository, infra.icons.IconStore, infra.icons.IconAcquisition)> has parameter of type <infra.icons.IconAcquisition> in (IconDelivery.java:0)\
-    - Constructor <application.icons.IconDelivery.<init>(repo.ItemIconMetadataRepository, infra.icons.IconStore, infra.icons.IconAcquisition)> has parameter of type <infra.icons.IconStore> in (IconDelivery.java:0)\
-    - Constructor <application.icons.IconDelivery.<init>(repo.ItemIconMetadataRepository, infra.icons.IconStore, infra.icons.IconAcquisition, repo.BuildMetadataRepository)> has parameter of type <infra.icons.IconAcquisition> in (IconDelivery.java:0)\
-    - Constructor <application.icons.IconDelivery.<init>(repo.ItemIconMetadataRepository, infra.icons.IconStore, infra.icons.IconAcquisition, repo.BuildMetadataRepository)> has parameter of type <infra.icons.IconStore> in (IconDelivery.java:0)\
-    - Field <application.icons.IconDelivery.acquisition> has type <infra.icons.IconAcquisition> in (IconDelivery.java:0)\
-    - Field <application.icons.IconDelivery.store> has type <infra.icons.IconStore> in (IconDelivery.java:0)\
-    - Method <application.icons.IconDelivery.delivered(infra.icons.StoredIcon, java.lang.String)> has parameter of type <infra.icons.StoredIcon> in (IconDelivery.java:0)\
-    - Method <application.icons.ResourceIconUrls.imageUrlFor(model.BuildResourceType, int, java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (ResourceIconUrls.java:29)\
-    - Method <application.icons.ResourceIconUrls.imageUrlFor(model.BuildResourceType, int, java.lang.String, java.lang.String)> calls method <infra.icons.IconSource.sourceKey()> in (ResourceIconUrls.java:31)\
-    - Method <application.icons.ResourceIconUrls.imageUrlFor(model.BuildResourceType, int, java.lang.String, java.lang.String)> calls method <infra.icons.IconSource.extension()> in (ResourceIconUrls.java:32)\
-    - Method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (ItemIconUrls.java:44)\
-    - Method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> calls method <infra.icons.IconSource.extension()> in (ItemIconUrls.java:47)\
-    - Method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> calls method <infra.icons.IconSource.sourceKey()> in (ItemIconUrls.java:47)\
-    - Method <application.icons.ResourceIconUrls.parse(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isExtension(java.lang.String)> in (ResourceIconUrls.java:54)\
-    - Method <application.icons.ResourceIconUrls.parse(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isSourceKey(java.lang.String)> in (ResourceIconUrls.java:54)\
-    - Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <infra.icons.IconStore.find(java.lang.String, java.lang.String)> in (IconDelivery.java:75)\
-    - Method <application.icons.IconDelivery.deliverResource(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> catches type <infra.icons.IconStorageException> in (IconDelivery.java:75)\
-    - Method <application.icons.ItemIconUrls.parse(java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isExtension(java.lang.String)> in (ItemIconUrls.java:75)\
-    - Method <application.icons.ItemIconUrls.parse(java.lang.String, java.lang.String)> calls method <infra.icons.IconSourcePolicy.isSourceKey(java.lang.String)> in (ItemIconUrls.java:75)\
-    - Method <application.icons.IconDelivery.deliver(java.lang.String, java.lang.String)> calls method <infra.icons.IconStore.find(java.lang.String, java.lang.String)> in (IconDelivery.java:108)\
-    (9 further dependencies have been omitted...)\
-  2. Dependencies of Slice infra\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_URL> in (SchemaInitializer.java:246)\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_USER> in (SchemaInitializer.java:247)\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_PASS> in (SchemaInitializer.java:248)\
-  3. Dependencies of Slice repo\
-    - Class <repo.DatabaseSizeRepository> implements interface <application.ops.DatabaseSizeService$Measurement> in (DatabaseSizeRepository.java:0)\
-    - Method <repo.CharacterInventoryLayoutRepository.metadata(java.sql.Connection, java.util.Set)> calls method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> in (CharacterInventoryLayoutRepository.java:137)
-Cycle detected: Slice application -> \
-                Slice repo -> \
-                Slice application\
-  1. Dependencies of Slice application\
-    - Constructor <application.AccountLuckService.<init>(repo.AccountLuckRepository, luck.MagicFindProgression)> has parameter of type <repo.AccountLuckRepository> in (AccountLuckService.java:0)\
-    - Constructor <application.AccountOverviewService.<init>(application.AccountOverviewService$ConnectionSource, repo.AccountOverviewRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.AccountOverviewRepository> in (AccountOverviewService.java:0)\
-    - Constructor <application.BankContentsService.<init>(repo.BankRepository)> has parameter of type <repo.BankRepository> in (BankContentsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService$Result.<init>(application.CharacterBuildTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List)> has generic parameter type <java.util.List<repo.CharacterBuildTabsRepository$TabView>> with type argument depending on <repo.CharacterBuildTabsRepository$TabView> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService$Result.<init>(application.CharacterBuildTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, repo.BuildMetadataRepository$Metadata)> has generic parameter type <java.util.List<repo.CharacterBuildTabsRepository$TabView>> with type argument depending on <repo.CharacterBuildTabsRepository$TabView> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService$Result.<init>(application.CharacterBuildTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, repo.BuildMetadataRepository$Metadata)> has parameter of type <repo.BuildMetadataRepository$Metadata> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterBuildTabsRepository, application.CharacterRosterService$ConnectionSource, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterBuildTabsRepository> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterBuildTabsRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterBuildTabsRepository> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService$Result.<init>(application.CharacterEquipmentTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List)> has generic parameter type <java.util.List<repo.CharacterEquipmentTabsRepository$TabView>> with type argument depending on <repo.CharacterEquipmentTabsRepository$TabView> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService$Result.<init>(application.CharacterEquipmentTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, java.util.List)> has generic parameter type <java.util.List<repo.CharacterEquipmentTabsRepository$Entry>> with type argument depending on <repo.CharacterEquipmentTabsRepository$Entry> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService$Result.<init>(application.CharacterEquipmentTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, java.util.List)> has generic parameter type <java.util.List<repo.CharacterEquipmentTabsRepository$TabView>> with type argument depending on <repo.CharacterEquipmentTabsRepository$TabView> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterEquipmentTabsRepository, application.CharacterRosterService$ConnectionSource, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterEquipmentTabsRepository> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterEquipmentTabsRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterEquipmentTabsRepository> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterInventoryLayoutService$Result.<init>(application.CharacterInventoryLayoutService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, application.CharacterInventoryLayoutService$Contents, java.util.List)> has generic parameter type <java.util.List<repo.CharacterInventoryLayoutRepository$Bag>> with type argument depending on <repo.CharacterInventoryLayoutRepository$Bag> in (CharacterInventoryLayoutService.java:0)\
-    - Constructor <application.CharacterInventoryLayoutService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterInventoryLayoutRepository, application.CharacterRosterService$ConnectionSource, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterInventoryLayoutRepository> in (CharacterInventoryLayoutService.java:0)\
-    - Constructor <application.CharacterInventoryLayoutService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterInventoryLayoutRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterInventoryLayoutRepository> in (CharacterInventoryLayoutService.java:0)\
-    - Constructor <application.CharacterRosterService$Result.<init>(application.CharacterRosterService$State, java.lang.String, java.lang.String, java.time.Instant, java.lang.String, java.util.List, repo.CharacterRepository$CharacterProfile)> has generic parameter type <java.util.List<repo.CharacterRepository$CharacterProfile>> with type argument depending on <repo.CharacterRepository$CharacterProfile> in (CharacterRosterService.java:0)\
-    - Constructor <application.CharacterRosterService$Result.<init>(application.CharacterRosterService$State, java.lang.String, java.lang.String, java.time.Instant, java.lang.String, java.util.List, repo.CharacterRepository$CharacterProfile)> has parameter of type <repo.CharacterRepository$CharacterProfile> in (CharacterRosterService.java:0)\
-    - Constructor <application.CharacterRosterService.<init>(application.ScopedSourceGate, application.CharacterRosterService$RefreshStatus, repo.CharacterRepository)> has parameter of type <repo.CharacterRepository> in (CharacterRosterService.java:0)\
-    - Constructor <application.CharacterRosterService.<init>(application.ScopedSourceGate, application.CharacterRosterService$RefreshStatus, repo.CharacterRepository, application.CharacterRosterService$ConnectionSource)> has parameter of type <repo.CharacterRepository> in (CharacterRosterService.java:0)\
-    (385 further dependencies have been omitted...)\
-  2. Dependencies of Slice repo\
-    - Class <repo.DatabaseSizeRepository> implements interface <application.ops.DatabaseSizeService$Measurement> in (DatabaseSizeRepository.java:0)\
-    - Method <repo.CharacterInventoryLayoutRepository.metadata(java.sql.Connection, java.util.Set)> calls method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> in (CharacterInventoryLayoutRepository.java:137)
-Cycle detected: Slice application -> \
-                Slice repo -> \
-                Slice infra -> \
-                Slice application\
-  1. Dependencies of Slice application\
-    - Constructor <application.AccountLuckService.<init>(repo.AccountLuckRepository, luck.MagicFindProgression)> has parameter of type <repo.AccountLuckRepository> in (AccountLuckService.java:0)\
-    - Constructor <application.AccountOverviewService.<init>(application.AccountOverviewService$ConnectionSource, repo.AccountOverviewRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.AccountOverviewRepository> in (AccountOverviewService.java:0)\
-    - Constructor <application.BankContentsService.<init>(repo.BankRepository)> has parameter of type <repo.BankRepository> in (BankContentsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService$Result.<init>(application.CharacterBuildTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List)> has generic parameter type <java.util.List<repo.CharacterBuildTabsRepository$TabView>> with type argument depending on <repo.CharacterBuildTabsRepository$TabView> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService$Result.<init>(application.CharacterBuildTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, repo.BuildMetadataRepository$Metadata)> has generic parameter type <java.util.List<repo.CharacterBuildTabsRepository$TabView>> with type argument depending on <repo.CharacterBuildTabsRepository$TabView> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService$Result.<init>(application.CharacterBuildTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, repo.BuildMetadataRepository$Metadata)> has parameter of type <repo.BuildMetadataRepository$Metadata> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterBuildTabsRepository, application.CharacterRosterService$ConnectionSource, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterBuildTabsRepository> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterBuildTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterBuildTabsRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterBuildTabsRepository> in (CharacterBuildTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService$Result.<init>(application.CharacterEquipmentTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List)> has generic parameter type <java.util.List<repo.CharacterEquipmentTabsRepository$TabView>> with type argument depending on <repo.CharacterEquipmentTabsRepository$TabView> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService$Result.<init>(application.CharacterEquipmentTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, java.util.List)> has generic parameter type <java.util.List<repo.CharacterEquipmentTabsRepository$Entry>> with type argument depending on <repo.CharacterEquipmentTabsRepository$Entry> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService$Result.<init>(application.CharacterEquipmentTabsService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, java.time.Instant, java.lang.Long, java.lang.Long, java.util.List, java.util.List)> has generic parameter type <java.util.List<repo.CharacterEquipmentTabsRepository$TabView>> with type argument depending on <repo.CharacterEquipmentTabsRepository$TabView> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterEquipmentTabsRepository, application.CharacterRosterService$ConnectionSource, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterEquipmentTabsRepository> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterEquipmentTabsService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterEquipmentTabsRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterEquipmentTabsRepository> in (CharacterEquipmentTabsService.java:0)\
-    - Constructor <application.CharacterInventoryLayoutService$Result.<init>(application.CharacterInventoryLayoutService$State, java.lang.String, java.lang.String, java.lang.String, java.time.Instant, java.lang.Long, application.CharacterInventoryLayoutService$Contents, java.util.List)> has generic parameter type <java.util.List<repo.CharacterInventoryLayoutRepository$Bag>> with type argument depending on <repo.CharacterInventoryLayoutRepository$Bag> in (CharacterInventoryLayoutService.java:0)\
-    - Constructor <application.CharacterInventoryLayoutService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterInventoryLayoutRepository, application.CharacterRosterService$ConnectionSource, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterInventoryLayoutRepository> in (CharacterInventoryLayoutService.java:0)\
-    - Constructor <application.CharacterInventoryLayoutService.<init>(application.CharacterRosterService$RefreshStatus, repo.CharacterInventoryLayoutRepository, java.time.Clock, java.time.Duration)> has parameter of type <repo.CharacterInventoryLayoutRepository> in (CharacterInventoryLayoutService.java:0)\
-    - Constructor <application.CharacterRosterService$Result.<init>(application.CharacterRosterService$State, java.lang.String, java.lang.String, java.time.Instant, java.lang.String, java.util.List, repo.CharacterRepository$CharacterProfile)> has generic parameter type <java.util.List<repo.CharacterRepository$CharacterProfile>> with type argument depending on <repo.CharacterRepository$CharacterProfile> in (CharacterRosterService.java:0)\
-    - Constructor <application.CharacterRosterService$Result.<init>(application.CharacterRosterService$State, java.lang.String, java.lang.String, java.time.Instant, java.lang.String, java.util.List, repo.CharacterRepository$CharacterProfile)> has parameter of type <repo.CharacterRepository$CharacterProfile> in (CharacterRosterService.java:0)\
-    - Constructor <application.CharacterRosterService.<init>(application.ScopedSourceGate, application.CharacterRosterService$RefreshStatus, repo.CharacterRepository)> has parameter of type <repo.CharacterRepository> in (CharacterRosterService.java:0)\
-    - Constructor <application.CharacterRosterService.<init>(application.ScopedSourceGate, application.CharacterRosterService$RefreshStatus, repo.CharacterRepository, application.CharacterRosterService$ConnectionSource)> has parameter of type <repo.CharacterRepository> in (CharacterRosterService.java:0)\
-    (385 further dependencies have been omitted...)\
-  2. Dependencies of Slice repo\
-    - Method <repo.CharacterEquipmentTabsRepository.metadata(java.sql.Connection, java.util.Set)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (CharacterEquipmentTabsRepository.java:429)\
-    - Method <repo.CharacterEquipmentTabsRepository.metadata(java.sql.Connection, java.util.Set)> references method <infra.icons.IconSource.canonicalUrl()> in (CharacterEquipmentTabsRepository.java:429)\
-  3. Dependencies of Slice infra\
     - Class <infra.access.FixtureAccountProofAdapter> implements interface <application.access.AccountProofPort> in (FixtureAccountProofAdapter.java:0)\
     - Class <infra.access.Gw2AccountProofAdapter> implements interface <application.access.AccountProofPort> in (Gw2AccountProofAdapter.java:0)\
     - Class <infra.ops.SparseActivityStore> implements interface <application.ops.HistoryStore> in (SparseActivityStore.java:0)\
@@ -185,14 +67,11 @@ Cycle detected: Slice application -> \
     - Constructor <application.CharacterRosterService.<init>(application.ScopedSourceGate, application.CharacterRosterService$RefreshStatus, repo.CharacterRepository, application.CharacterRosterService$ConnectionSource)> has parameter of type <repo.CharacterRepository> in (CharacterRosterService.java:0)\
     (385 further dependencies have been omitted...)\
   2. Dependencies of Slice repo\
-    - Method <repo.tp.TpPriceRepository.cacheStatus()> gets field <sync.tp.TpPriceFreshness.STALE_SQL_PREDICATE> in (TpPriceRepository.java:21)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:37)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:37)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:36)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:36)\
     - Method <repo.ItemRepository.incompleteMetadataIds(java.util.Set)> calls method <sync.IconSync.incompleteIds(java.sql.Connection, java.util.Collection)> in (ItemRepository.java:68)\
   3. Dependencies of Slice sync\
     - Method <sync.IconSync.main([Ljava.lang.String;)> calls method <infra.db.SchemaInitializer.initializeRuntimeDatabase()> in (IconSync.java:45)\
-    - Method <sync.IconSync.repairItemIconMetadata(java.sql.Connection, sync.IconSync$ItemMetadataSource)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:235)\
-    - Method <sync.IconSync.completeIds(java.sql.Connection, java.util.Collection)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:316)\
   4. Dependencies of Slice infra\
     - Class <infra.access.FixtureAccountProofAdapter> implements interface <application.access.AccountProofPort> in (FixtureAccountProofAdapter.java:0)\
     - Class <infra.access.Gw2AccountProofAdapter> implements interface <application.access.AccountProofPort> in (Gw2AccountProofAdapter.java:0)\
@@ -243,172 +122,7 @@ Cycle detected: Slice application -> \
     (41 further dependencies have been omitted...)\
   2. Dependencies of Slice sync\
     - Method <sync.IconSync.main([Ljava.lang.String;)> calls method <infra.db.SchemaInitializer.initializeRuntimeDatabase()> in (IconSync.java:45)\
-    - Method <sync.IconSync.repairItemIconMetadata(java.sql.Connection, sync.IconSync$ItemMetadataSource)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:235)\
-    - Method <sync.IconSync.completeIds(java.sql.Connection, java.util.Collection)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:316)\
   3. Dependencies of Slice infra\
-    - Class <infra.access.FixtureAccountProofAdapter> implements interface <application.access.AccountProofPort> in (FixtureAccountProofAdapter.java:0)\
-    - Class <infra.access.Gw2AccountProofAdapter> implements interface <application.access.AccountProofPort> in (Gw2AccountProofAdapter.java:0)\
-    - Class <infra.ops.SparseActivityStore> implements interface <application.ops.HistoryStore> in (SparseActivityStore.java:0)\
-    - Class <infra.ops.SparseActivityStore> implements interface <application.ops.OperationalPeriodStore> in (SparseActivityStore.java:0)\
-    - Field <infra.ops.SparseActivityStore$Day.lastGroups> has generic type <java.util.EnumSet<application.ops.RouteGroup>> with type argument depending on <application.ops.RouteGroup> in (SparseActivityStore.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> has return type <application.access.AccountProof> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> throws type <application.access.InvalidCredentialException> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> throws type <application.access.MalformedProofException> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.FixtureAccountProofAdapter.prove(java.lang.String)> throws type <application.access.ProofUnavailableException> in (FixtureAccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.get(java.lang.String, java.lang.String)> throws type <application.access.InvalidCredentialException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.get(java.lang.String, java.lang.String)> throws type <application.access.MalformedProofException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.get(java.lang.String, java.lang.String)> throws type <application.access.ProofUnavailableException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> has return type <application.access.AccountProof> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> throws type <application.access.InvalidCredentialException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> throws type <application.access.MalformedProofException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2AccountProofAdapter.prove(java.lang.String)> throws type <application.access.ProofUnavailableException> in (Gw2AccountProofAdapter.java:0)\
-    - Method <infra.access.Gw2ProofResponses.accountId(com.fasterxml.jackson.databind.JsonNode)> throws type <application.access.MalformedProofException> in (Gw2ProofResponses.java:0)\
-    - Method <infra.access.Gw2ProofResponses.endpointRestrictions(com.fasterxml.jackson.databind.JsonNode)> throws type <application.access.MalformedProofException> in (Gw2ProofResponses.java:0)\
-    - Method <infra.access.Gw2ProofResponses.expiry(com.fasterxml.jackson.databind.JsonNode, java.time.Clock)> throws type <application.access.InvalidCredentialException> in (Gw2ProofResponses.java:0)\
-    - Method <infra.access.Gw2ProofResponses.expiry(com.fasterxml.jackson.databind.JsonNode, java.time.Clock)> throws type <application.access.MalformedProofException> in (Gw2ProofResponses.java:0)\
-    (118 further dependencies have been omitted...)
-Cycle detected: Slice application -> \
-                Slice sync -> \
-                Slice infra -> \
-                Slice repo -> \
-                Slice application\
-  1. Dependencies of Slice application\
-    - Constructor <application.AccountRefreshService.<init>(sync.AccountRefreshGateway)> has parameter of type <sync.AccountRefreshGateway> in (AccountRefreshService.java:0)\
-    - Constructor <application.FullCatalogAdministrationService.<init>(sync.FullCatalogGateway, application.CraftingGraphRebuildService, java.util.function.Supplier)> has parameter of type <sync.FullCatalogGateway> in (FullCatalogAdministrationService.java:0)\
-    - Constructor <application.GlobalDataRefreshService.<init>(sync.GlobalDataRefreshGateway, application.CraftingGraphRebuildService)> has parameter of type <sync.GlobalDataRefreshGateway> in (GlobalDataRefreshService.java:0)\
-    - Constructor <application.ScopedAccountRefreshCoordinator.<init>(application.AccountRefreshService, application.BackgroundTasks, application.access.AccountAccessService, java.util.function.Function)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.ScopedAccountRefreshCoordinator.<init>(application.AccountRefreshService, application.BackgroundTasks, application.access.AccountAccessService, java.util.function.Function, java.util.function.Predicate)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.TradingPostPriceRefreshService.<init>(sync.TradingPostPriceRefreshGateway)> has parameter of type <sync.TradingPostPriceRefreshGateway> in (TradingPostPriceRefreshService.java:0)\
-    - Field <application.AccountRefreshService.gateway> has type <sync.AccountRefreshGateway> in (AccountRefreshService.java:0)\
-    - Field <application.CalculationInputVersions$DatabasePriceCoverageReader.collector> has type <sync.tp.relevance.CraftingProfitItemCollector> in (CalculationInputVersions.java:0)\
-    - Field <application.FullCatalogAdministrationService.gateway> has type <sync.FullCatalogGateway> in (FullCatalogAdministrationService.java:0)\
-    - Field <application.GlobalDataRefreshService.gateway> has type <sync.GlobalDataRefreshGateway> in (GlobalDataRefreshService.java:0)\
-    - Field <application.ScopedAccountRefreshCoordinator.fetcherFactory> has generic type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Field <application.TradingPostPriceRefreshService.gateway> has type <sync.TradingPostPriceRefreshGateway> in (TradingPostPriceRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshAll(model.AccountScope, sync.AccountSync$AuthFetcher)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshSources(model.AccountScope, java.util.Set, sync.AccountSync$AuthFetcher)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshSources(model.AccountScope, java.util.Set, sync.AccountSync$AuthFetcher, application.AccountRefreshService$SourceOutcomes)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.CalculationInputVersions$DatabasePriceCoverageReader.map(sync.tp.relevance.CraftingProfitItemCollector$Coverage)> has parameter of type <sync.tp.relevance.CraftingProfitItemCollector$Coverage> in (CalculationInputVersions.java:0)\
-    - Method <application.ScopedAccountRefreshCoordinator$Credential.fetcher(java.util.function.Function, java.util.function.Predicate)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Method <application.ScopedAccountRefreshCoordinator$Credential.fetcher(java.util.function.Function, java.util.function.Predicate)> has return type <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.TradingPostPriceRefreshService.<init>()> calls constructor <sync.TradingPostPriceRefreshGateway.<init>()> in (TradingPostPriceRefreshService.java:16)\
-    - Constructor <application.ItemReadService.<init>()> references method <sync.IconSync.syncItemMetadataByIds(java.util.Set)> in (ItemReadService.java:20)\
-    (41 further dependencies have been omitted...)\
-  2. Dependencies of Slice sync\
-    - Method <sync.IconSync.main([Ljava.lang.String;)> calls method <infra.db.SchemaInitializer.initializeRuntimeDatabase()> in (IconSync.java:45)\
-    - Method <sync.IconSync.repairItemIconMetadata(java.sql.Connection, sync.IconSync$ItemMetadataSource)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:235)\
-    - Method <sync.IconSync.completeIds(java.sql.Connection, java.util.Collection)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:316)\
-  3. Dependencies of Slice infra\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_URL> in (SchemaInitializer.java:246)\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_USER> in (SchemaInitializer.java:247)\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_PASS> in (SchemaInitializer.java:248)\
-  4. Dependencies of Slice repo\
-    - Class <repo.DatabaseSizeRepository> implements interface <application.ops.DatabaseSizeService$Measurement> in (DatabaseSizeRepository.java:0)\
-    - Method <repo.CharacterInventoryLayoutRepository.metadata(java.sql.Connection, java.util.Set)> calls method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> in (CharacterInventoryLayoutRepository.java:137)
-Cycle detected: Slice application -> \
-                Slice sync -> \
-                Slice repo -> \
-                Slice application\
-  1. Dependencies of Slice application\
-    - Constructor <application.AccountRefreshService.<init>(sync.AccountRefreshGateway)> has parameter of type <sync.AccountRefreshGateway> in (AccountRefreshService.java:0)\
-    - Constructor <application.FullCatalogAdministrationService.<init>(sync.FullCatalogGateway, application.CraftingGraphRebuildService, java.util.function.Supplier)> has parameter of type <sync.FullCatalogGateway> in (FullCatalogAdministrationService.java:0)\
-    - Constructor <application.GlobalDataRefreshService.<init>(sync.GlobalDataRefreshGateway, application.CraftingGraphRebuildService)> has parameter of type <sync.GlobalDataRefreshGateway> in (GlobalDataRefreshService.java:0)\
-    - Constructor <application.ScopedAccountRefreshCoordinator.<init>(application.AccountRefreshService, application.BackgroundTasks, application.access.AccountAccessService, java.util.function.Function)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.ScopedAccountRefreshCoordinator.<init>(application.AccountRefreshService, application.BackgroundTasks, application.access.AccountAccessService, java.util.function.Function, java.util.function.Predicate)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.TradingPostPriceRefreshService.<init>(sync.TradingPostPriceRefreshGateway)> has parameter of type <sync.TradingPostPriceRefreshGateway> in (TradingPostPriceRefreshService.java:0)\
-    - Field <application.AccountRefreshService.gateway> has type <sync.AccountRefreshGateway> in (AccountRefreshService.java:0)\
-    - Field <application.CalculationInputVersions$DatabasePriceCoverageReader.collector> has type <sync.tp.relevance.CraftingProfitItemCollector> in (CalculationInputVersions.java:0)\
-    - Field <application.FullCatalogAdministrationService.gateway> has type <sync.FullCatalogGateway> in (FullCatalogAdministrationService.java:0)\
-    - Field <application.GlobalDataRefreshService.gateway> has type <sync.GlobalDataRefreshGateway> in (GlobalDataRefreshService.java:0)\
-    - Field <application.ScopedAccountRefreshCoordinator.fetcherFactory> has generic type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Field <application.TradingPostPriceRefreshService.gateway> has type <sync.TradingPostPriceRefreshGateway> in (TradingPostPriceRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshAll(model.AccountScope, sync.AccountSync$AuthFetcher)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshSources(model.AccountScope, java.util.Set, sync.AccountSync$AuthFetcher)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshSources(model.AccountScope, java.util.Set, sync.AccountSync$AuthFetcher, application.AccountRefreshService$SourceOutcomes)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.CalculationInputVersions$DatabasePriceCoverageReader.map(sync.tp.relevance.CraftingProfitItemCollector$Coverage)> has parameter of type <sync.tp.relevance.CraftingProfitItemCollector$Coverage> in (CalculationInputVersions.java:0)\
-    - Method <application.ScopedAccountRefreshCoordinator$Credential.fetcher(java.util.function.Function, java.util.function.Predicate)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Method <application.ScopedAccountRefreshCoordinator$Credential.fetcher(java.util.function.Function, java.util.function.Predicate)> has return type <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.TradingPostPriceRefreshService.<init>()> calls constructor <sync.TradingPostPriceRefreshGateway.<init>()> in (TradingPostPriceRefreshService.java:16)\
-    - Constructor <application.ItemReadService.<init>()> references method <sync.IconSync.syncItemMetadataByIds(java.util.Set)> in (ItemReadService.java:20)\
-    (41 further dependencies have been omitted...)\
-  2. Dependencies of Slice sync\
-    - Field <sync.BuildMetadataRepair.repo> has type <repo.BuildMetadataRepository> in (BuildMetadataRepair.java:0)\
-    - Method <sync.AccountSync.publication(java.time.Clock)> has return type <repo.AccountSourcePublication> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishBank(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishLuck(java.sql.Connection, model.AccountScope, long, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishMaterials(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishRecipes(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishWallet(java.sql.Connection, model.AccountScope, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.BuildMetadataRepair.repair(repo.BuildMetadataRepository$Refs)> has parameter of type <repo.BuildMetadataRepository$Refs> in (BuildMetadataRepair.java:0)\
-    - Method <sync.CharacterBuildTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterBuildTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterBuildTabsSync.java:0)\
-    - Method <sync.CharacterEquipmentTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterEquipmentTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterEquipmentTabsSync.java:0)\
-    - Method <sync.CharacterSync.publishRoster(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterSync.java:0)\
-    - Method <sync.AccountSync.publication(java.time.Clock)> calls constructor <repo.AccountSourcePublication.<init>(java.time.Clock)> in (AccountSync.java:23)\
-    - Method <sync.CurrencySync.syncCurrencies(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (CurrencySync.java:28)\
-    - Method <sync.MaterialCategorySync.syncMaterialCategories(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (MaterialCategorySync.java:28)\
-    - Method <sync.ItemSync.syncItemsByIds(java.util.Set)> calls method <repo.Db.open()> in (ItemSync.java:43)\
-    - Method <sync.RecipeSync.syncAllRecipesGlobalSafe()> calls method <repo.Db.open()> in (RecipeSync.java:46)\
-    - Method <sync.IconSync.reportCoverage()> calls method <repo.Db.open()> in (IconSync.java:58)\
-    - Constructor <sync.BuildMetadataRepair.<init>(sync.BuildMetadataRepair$Source, java.time.Clock)> calls constructor <repo.BuildMetadataRepository.<init>()> in (BuildMetadataRepair.java:59)\
-    - Method <sync.AccountRefreshGateway.repairItemMetadata(java.util.Collection)> calls method <repo.Db.open()> in (AccountRefreshGateway.java:65)\
-    - Method <sync.AccountSync.syncAccountBankImpl(model.AccountScope, sync.AccountSync$AuthFetcher, sync.IconSync$ItemMetadataRepair)> calls method <repo.Db.open()> in (AccountSync.java:65)\
-    (97 further dependencies have been omitted...)\
-  3. Dependencies of Slice repo\
-    - Class <repo.DatabaseSizeRepository> implements interface <application.ops.DatabaseSizeService$Measurement> in (DatabaseSizeRepository.java:0)\
-    - Method <repo.CharacterInventoryLayoutRepository.metadata(java.sql.Connection, java.util.Set)> calls method <application.icons.ItemIconUrls.iconUrlFor(java.lang.Integer, java.lang.String)> in (CharacterInventoryLayoutRepository.java:137)
-Cycle detected: Slice application -> \
-                Slice sync -> \
-                Slice repo -> \
-                Slice infra -> \
-                Slice application\
-  1. Dependencies of Slice application\
-    - Constructor <application.AccountRefreshService.<init>(sync.AccountRefreshGateway)> has parameter of type <sync.AccountRefreshGateway> in (AccountRefreshService.java:0)\
-    - Constructor <application.FullCatalogAdministrationService.<init>(sync.FullCatalogGateway, application.CraftingGraphRebuildService, java.util.function.Supplier)> has parameter of type <sync.FullCatalogGateway> in (FullCatalogAdministrationService.java:0)\
-    - Constructor <application.GlobalDataRefreshService.<init>(sync.GlobalDataRefreshGateway, application.CraftingGraphRebuildService)> has parameter of type <sync.GlobalDataRefreshGateway> in (GlobalDataRefreshService.java:0)\
-    - Constructor <application.ScopedAccountRefreshCoordinator.<init>(application.AccountRefreshService, application.BackgroundTasks, application.access.AccountAccessService, java.util.function.Function)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.ScopedAccountRefreshCoordinator.<init>(application.AccountRefreshService, application.BackgroundTasks, application.access.AccountAccessService, java.util.function.Function, java.util.function.Predicate)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.TradingPostPriceRefreshService.<init>(sync.TradingPostPriceRefreshGateway)> has parameter of type <sync.TradingPostPriceRefreshGateway> in (TradingPostPriceRefreshService.java:0)\
-    - Field <application.AccountRefreshService.gateway> has type <sync.AccountRefreshGateway> in (AccountRefreshService.java:0)\
-    - Field <application.CalculationInputVersions$DatabasePriceCoverageReader.collector> has type <sync.tp.relevance.CraftingProfitItemCollector> in (CalculationInputVersions.java:0)\
-    - Field <application.FullCatalogAdministrationService.gateway> has type <sync.FullCatalogGateway> in (FullCatalogAdministrationService.java:0)\
-    - Field <application.GlobalDataRefreshService.gateway> has type <sync.GlobalDataRefreshGateway> in (GlobalDataRefreshService.java:0)\
-    - Field <application.ScopedAccountRefreshCoordinator.fetcherFactory> has generic type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Field <application.TradingPostPriceRefreshService.gateway> has type <sync.TradingPostPriceRefreshGateway> in (TradingPostPriceRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshAll(model.AccountScope, sync.AccountSync$AuthFetcher)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshSources(model.AccountScope, java.util.Set, sync.AccountSync$AuthFetcher)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.AccountRefreshService.refreshSources(model.AccountScope, java.util.Set, sync.AccountSync$AuthFetcher, application.AccountRefreshService$SourceOutcomes)> has parameter of type <sync.AccountSync$AuthFetcher> in (AccountRefreshService.java:0)\
-    - Method <application.CalculationInputVersions$DatabasePriceCoverageReader.map(sync.tp.relevance.CraftingProfitItemCollector$Coverage)> has parameter of type <sync.tp.relevance.CraftingProfitItemCollector$Coverage> in (CalculationInputVersions.java:0)\
-    - Method <application.ScopedAccountRefreshCoordinator$Credential.fetcher(java.util.function.Function, java.util.function.Predicate)> has generic parameter type <java.util.function.Function<java.lang.String, sync.AccountSync$AuthFetcher>> with type argument depending on <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Method <application.ScopedAccountRefreshCoordinator$Credential.fetcher(java.util.function.Function, java.util.function.Predicate)> has return type <sync.AccountSync$AuthFetcher> in (ScopedAccountRefreshCoordinator.java:0)\
-    - Constructor <application.TradingPostPriceRefreshService.<init>()> calls constructor <sync.TradingPostPriceRefreshGateway.<init>()> in (TradingPostPriceRefreshService.java:16)\
-    - Constructor <application.ItemReadService.<init>()> references method <sync.IconSync.syncItemMetadataByIds(java.util.Set)> in (ItemReadService.java:20)\
-    (41 further dependencies have been omitted...)\
-  2. Dependencies of Slice sync\
-    - Field <sync.BuildMetadataRepair.repo> has type <repo.BuildMetadataRepository> in (BuildMetadataRepair.java:0)\
-    - Method <sync.AccountSync.publication(java.time.Clock)> has return type <repo.AccountSourcePublication> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishBank(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishLuck(java.sql.Connection, model.AccountScope, long, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishMaterials(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishRecipes(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.AccountSync.publishWallet(java.sql.Connection, model.AccountScope, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (AccountSync.java:0)\
-    - Method <sync.BuildMetadataRepair.repair(repo.BuildMetadataRepository$Refs)> has parameter of type <repo.BuildMetadataRepository$Refs> in (BuildMetadataRepair.java:0)\
-    - Method <sync.CharacterBuildTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterBuildTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterBuildTabsSync.java:0)\
-    - Method <sync.CharacterEquipmentTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterEquipmentTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterEquipmentTabsSync.java:0)\
-    - Method <sync.CharacterSync.publishRoster(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterSync.java:0)\
-    - Method <sync.AccountSync.publication(java.time.Clock)> calls constructor <repo.AccountSourcePublication.<init>(java.time.Clock)> in (AccountSync.java:23)\
-    - Method <sync.CurrencySync.syncCurrencies(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (CurrencySync.java:28)\
-    - Method <sync.MaterialCategorySync.syncMaterialCategories(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (MaterialCategorySync.java:28)\
-    - Method <sync.ItemSync.syncItemsByIds(java.util.Set)> calls method <repo.Db.open()> in (ItemSync.java:43)\
-    - Method <sync.RecipeSync.syncAllRecipesGlobalSafe()> calls method <repo.Db.open()> in (RecipeSync.java:46)\
-    - Method <sync.IconSync.reportCoverage()> calls method <repo.Db.open()> in (IconSync.java:58)\
-    - Constructor <sync.BuildMetadataRepair.<init>(sync.BuildMetadataRepair$Source, java.time.Clock)> calls constructor <repo.BuildMetadataRepository.<init>()> in (BuildMetadataRepair.java:59)\
-    - Method <sync.AccountRefreshGateway.repairItemMetadata(java.util.Collection)> calls method <repo.Db.open()> in (AccountRefreshGateway.java:65)\
-    - Method <sync.AccountSync.syncAccountBankImpl(model.AccountScope, sync.AccountSync$AuthFetcher, sync.IconSync$ItemMetadataRepair)> calls method <repo.Db.open()> in (AccountSync.java:65)\
-    (97 further dependencies have been omitted...)\
-  3. Dependencies of Slice repo\
-    - Method <repo.CharacterEquipmentTabsRepository.metadata(java.sql.Connection, java.util.Set)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (CharacterEquipmentTabsRepository.java:429)\
-    - Method <repo.CharacterEquipmentTabsRepository.metadata(java.sql.Connection, java.util.Set)> references method <infra.icons.IconSource.canonicalUrl()> in (CharacterEquipmentTabsRepository.java:429)\
-  4. Dependencies of Slice infra\
     - Class <infra.access.FixtureAccountProofAdapter> implements interface <application.access.AccountProofPort> in (FixtureAccountProofAdapter.java:0)\
     - Class <infra.access.Gw2AccountProofAdapter> implements interface <application.access.AccountProofPort> in (Gw2AccountProofAdapter.java:0)\
     - Class <infra.ops.SparseActivityStore> implements interface <application.ops.HistoryStore> in (SparseActivityStore.java:0)\
@@ -432,16 +146,6 @@ Cycle detected: Slice application -> \
     (118 further dependencies have been omitted...)
 Cycle detected: Slice infra -> \
                 Slice repo -> \
-                Slice infra\
-  1. Dependencies of Slice infra\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_URL> in (SchemaInitializer.java:246)\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_USER> in (SchemaInitializer.java:247)\
-    - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_PASS> in (SchemaInitializer.java:248)\
-  2. Dependencies of Slice repo\
-    - Method <repo.CharacterEquipmentTabsRepository.metadata(java.sql.Connection, java.util.Set)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (CharacterEquipmentTabsRepository.java:429)\
-    - Method <repo.CharacterEquipmentTabsRepository.metadata(java.sql.Connection, java.util.Set)> references method <infra.icons.IconSource.canonicalUrl()> in (CharacterEquipmentTabsRepository.java:429)
-Cycle detected: Slice infra -> \
-                Slice repo -> \
                 Slice sync -> \
                 Slice infra\
   1. Dependencies of Slice infra\
@@ -449,21 +153,17 @@ Cycle detected: Slice infra -> \
     - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_USER> in (SchemaInitializer.java:247)\
     - Method <infra.db.SchemaInitializer.runtimeDataSource()> gets field <repo.AppConfig.DB_PASS> in (SchemaInitializer.java:248)\
   2. Dependencies of Slice repo\
-    - Method <repo.tp.TpPriceRepository.cacheStatus()> gets field <sync.tp.TpPriceFreshness.STALE_SQL_PREDICATE> in (TpPriceRepository.java:21)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:37)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:37)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:36)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:36)\
     - Method <repo.ItemRepository.incompleteMetadataIds(java.util.Set)> calls method <sync.IconSync.incompleteIds(java.sql.Connection, java.util.Collection)> in (ItemRepository.java:68)\
   3. Dependencies of Slice sync\
-    - Method <sync.IconSync.main([Ljava.lang.String;)> calls method <infra.db.SchemaInitializer.initializeRuntimeDatabase()> in (IconSync.java:45)\
-    - Method <sync.IconSync.repairItemIconMetadata(java.sql.Connection, sync.IconSync$ItemMetadataSource)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:235)\
-    - Method <sync.IconSync.completeIds(java.sql.Connection, java.util.Collection)> calls method <infra.icons.IconSourcePolicy.accept(java.lang.String)> in (IconSync.java:316)
+    - Method <sync.IconSync.main([Ljava.lang.String;)> calls method <infra.db.SchemaInitializer.initializeRuntimeDatabase()> in (IconSync.java:45)
 Cycle detected: Slice repo -> \
                 Slice sync -> \
                 Slice repo\
   1. Dependencies of Slice repo\
-    - Method <repo.tp.TpPriceRepository.cacheStatus()> gets field <sync.tp.TpPriceFreshness.STALE_SQL_PREDICATE> in (TpPriceRepository.java:21)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:37)\
-    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:37)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls constructor <sync.tp.relevance.CraftingProfitItemCollector.<init>()> in (TpPriceRepository.java:36)\
+    - Method <repo.tp.TpPriceRepository.staleOrMissingTradeable(java.util.Set)> calls method <sync.tp.relevance.CraftingProfitItemCollector.collectExplicit(java.sql.Connection, java.util.Set)> in (TpPriceRepository.java:36)\
     - Method <repo.ItemRepository.incompleteMetadataIds(java.util.Set)> calls method <sync.IconSync.incompleteIds(java.sql.Connection, java.util.Collection)> in (ItemRepository.java:68)\
   2. Dependencies of Slice sync\
     - Field <sync.BuildMetadataRepair.repo> has type <repo.BuildMetadataRepository> in (BuildMetadataRepair.java:0)\
@@ -477,6 +177,7 @@ Cycle detected: Slice repo -> \
     - Method <sync.CharacterBuildTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterBuildTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterBuildTabsSync.java:0)\
     - Method <sync.CharacterEquipmentTabsSync.publish(java.sql.Connection, model.AccountScope, sync.CharacterEquipmentTabsSync$Capture, java.util.Map, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterEquipmentTabsSync.java:0)\
     - Method <sync.CharacterSync.publishRoster(java.sql.Connection, model.AccountScope, java.util.List, java.time.Clock)> has return type <repo.AccountSourcePublication$Published> in (CharacterSync.java:0)\
+    - Static Initializer <sync.tp.relevance.DiscoveryItemCollector.<clinit>()> gets field <repo.tp.TpPriceFreshnessSql.STALE_PREDICATE> in (DiscoveryItemCollector.java:12)\
     - Method <sync.AccountSync.publication(java.time.Clock)> calls constructor <repo.AccountSourcePublication.<init>(java.time.Clock)> in (AccountSync.java:23)\
     - Method <sync.CurrencySync.syncCurrencies(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (CurrencySync.java:28)\
     - Method <sync.MaterialCategorySync.syncMaterialCategories(sync.PublicArrayFetcher)> calls method <repo.Db.open()> in (MaterialCategorySync.java:28)\
@@ -485,5 +186,4 @@ Cycle detected: Slice repo -> \
     - Method <sync.IconSync.reportCoverage()> calls method <repo.Db.open()> in (IconSync.java:58)\
     - Constructor <sync.BuildMetadataRepair.<init>(sync.BuildMetadataRepair$Source, java.time.Clock)> calls constructor <repo.BuildMetadataRepository.<init>()> in (BuildMetadataRepair.java:59)\
     - Method <sync.AccountRefreshGateway.repairItemMetadata(java.util.Collection)> calls method <repo.Db.open()> in (AccountRefreshGateway.java:65)\
-    - Method <sync.AccountSync.syncAccountBankImpl(model.AccountScope, sync.AccountSync$AuthFetcher, sync.IconSync$ItemMetadataRepair)> calls method <repo.Db.open()> in (AccountSync.java:65)\
-    (97 further dependencies have been omitted...)
+    (99 further dependencies have been omitted...)

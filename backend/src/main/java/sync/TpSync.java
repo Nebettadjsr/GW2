@@ -94,7 +94,7 @@ public final class TpSync {
 
         // Fetches exactly the IDs it is given, in ascending order, one committed batch at a time.
         // Relevance and the ten-minute freshness filter are applied by the callers' collectors
-        // (TpPriceFreshness.STALE_SQL_PREDICATE) before this point; only the full-catalog operation
+        // (TpPriceFreshnessSql.STALE_PREDICATE) before this point; only the full-catalog operation
         // bypasses them. Each batch is fetched and validated outside its transaction, so a later
         // failure leaves earlier committed batches in place.
 

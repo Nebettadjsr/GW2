@@ -1,6 +1,6 @@
 package web;
 
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import craft.CraftResult;
 import craft.PriceQuote;
 import craft.Recipe;

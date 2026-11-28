@@ -1,4 +1,4 @@
-package infra.icons;
+package domain.icons;
 
 import org.junit.jupiter.api.Test;
 

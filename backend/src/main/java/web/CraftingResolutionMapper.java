@@ -1,7 +1,7 @@
 package web;
 
 import application.CraftingResolutionDetail;
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import craft.AcquisitionMethod;
 import craft.BlockedReason;
 import craft.CraftTraceNode;

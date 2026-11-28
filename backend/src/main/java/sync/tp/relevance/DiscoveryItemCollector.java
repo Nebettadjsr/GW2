@@ -5,7 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.HashSet;
 import java.util.Set;
-import sync.tp.TpPriceFreshness;
+import repo.tp.TpPriceFreshnessSql;
 
 public final class DiscoveryItemCollector {
 
@@ -37,7 +37,7 @@ public final class DiscoveryItemCollector {
         JOIN tp_tradeable_items t ON t.item_id = i.item_id
         LEFT JOIN tp_prices tp ON tp.item_id = i.item_id
         WHERE
-        """ + TpPriceFreshness.STALE_SQL_PREDICATE;
+        """ + TpPriceFreshnessSql.STALE_PREDICATE;
 
     /** One account's unlocks; two bind parameters, both that account's GUID. */
     private static final String SCOPED_UNLOCKS = """

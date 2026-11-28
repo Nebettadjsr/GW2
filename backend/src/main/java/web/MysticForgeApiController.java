@@ -189,7 +189,7 @@ public class MysticForgeApiController {
                 : "EXPECTED".equals(outcome) || "REFERENCE_RANDOM".equals(outcome) || "CraftingMaterial".equals(type)
                 ? "MATERIALS"
                 : "Weapon".equals(type) ? "WEAPONS" : "Armor".equals(type) ? "ARMOR" : "OTHER";
-        return new RecipeRow(recipeId, out, it == null ? null : it.name, it == null ? null : application.icons.ItemIconUrls.iconUrlFor(out, it.iconUrl), type,
+        return new RecipeRow(recipeId, out, it == null ? null : it.name, it == null ? null : domain.icons.ItemIconUrls.iconUrlFor(out, it.iconUrl), type,
                 it == null ? null : it.subtype, category, outcome, count, mean, max,
                 q == null || q.buyUnit == null || q.buyUnit <= 0 ? null : q.buyUnit,
                 q == null || q.sellUnit == null || q.sellUnit <= 0 ? null : q.sellUnit,
@@ -462,6 +462,6 @@ public class MysticForgeApiController {
         ItemRepository.ItemInfo it = info.get(id);
         // Same-origin icon route only; the retained ArenaNet source is never forwarded to the browser.
         return new Item(id, it == null ? null : it.name,
-                it == null ? null : application.icons.ItemIconUrls.iconUrlFor(id, it.iconUrl), wiki(it == null ? null : it.name));
+                it == null ? null : domain.icons.ItemIconUrls.iconUrlFor(id, it.iconUrl), wiki(it == null ? null : it.name));
     }
 }

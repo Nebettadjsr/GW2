@@ -1,7 +1,7 @@
 package application;
 
 import api.tp.EctoLivePriceGateway;
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import craft.PriceQuote;
 import repo.ItemRepository;
 import sync.IconSync;

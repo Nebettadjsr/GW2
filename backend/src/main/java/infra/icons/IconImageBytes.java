@@ -1,5 +1,6 @@
 package infra.icons;
 
+import domain.icons.IconSourcePolicy;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
