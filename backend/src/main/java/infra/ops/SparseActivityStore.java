@@ -1,14 +1,14 @@
 package infra.ops;
 
-import application.ops.ForegroundAccounts;
-import application.ops.HistoryStore;
-import application.ops.HourBucket;
-import application.ops.LatencyHistogram;
-import application.ops.MinuteBucket;
-import application.ops.OperationalPeriodStore;
-import application.ops.PeriodDescriptor;
-import application.ops.RouteGroup;
-import application.ops.RouteGroupAggregate;
+import domain.ops.ForegroundAccounts;
+import domain.ops.HistoryStore;
+import domain.ops.HourBucket;
+import domain.ops.LatencyHistogram;
+import domain.ops.MinuteBucket;
+import domain.ops.OperationalPeriodStore;
+import domain.ops.PeriodDescriptor;
+import domain.ops.RouteGroup;
+import domain.ops.RouteGroupAggregate;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;

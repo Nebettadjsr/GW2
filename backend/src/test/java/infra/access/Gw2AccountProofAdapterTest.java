@@ -1,9 +1,9 @@
 package infra.access;
 
-import application.access.AccountProof;
-import application.access.InvalidCredentialException;
-import application.access.MalformedProofException;
-import application.access.ProofUnavailableException;
+import domain.access.AccountProof;
+import domain.access.InvalidCredentialException;
+import domain.access.MalformedProofException;
+import domain.access.ProofUnavailableException;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,5 +1,6 @@
 package application.ops;
 
+import domain.ops.LatencyHistogram;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 

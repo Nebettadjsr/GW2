@@ -1,5 +1,7 @@
 package application.access;
 
+import domain.access.AccountProof;
+import domain.access.AccountGrant;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;

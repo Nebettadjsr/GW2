@@ -61,9 +61,9 @@ class GlobalSyncApiControllerTest {
         refreshService = new ControlledGlobalDataRefreshService();
         taskService = new BackgroundTaskService();
         var sessions = new application.access.AccountSessions(java.time.Clock.systemUTC(), 4);
-        var access = new application.access.AccountAccessService(key -> { throw new application.access.InvalidCredentialException("no"); }, sessions);
-        var issued = sessions.establish(new application.access.AccountProof(OWNER_GUID,
-                java.util.Set.of(application.access.AccountGrant.ACCOUNT), java.util.Set.of(), null));
+        var access = new application.access.AccountAccessService(key -> { throw new domain.access.InvalidCredentialException("no"); }, sessions);
+        var issued = sessions.establish(new domain.access.AccountProof(OWNER_GUID,
+                java.util.Set.of(domain.access.AccountGrant.ACCOUNT), java.util.Set.of(), null));
         var ownerAccess = new web.access.OwnerAccess(access, new application.access.OwnerPolicy(OWNER_GUID));
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new GlobalSyncApiController(refreshService, taskService, ownerAccess),

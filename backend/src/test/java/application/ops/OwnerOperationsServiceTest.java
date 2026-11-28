@@ -1,6 +1,11 @@
 package application.ops;
 
+import domain.ops.HistoryStore;
+import domain.ops.MinuteBucket;
+import domain.ops.OperationalPeriodStore;
+import domain.ops.PeriodDescriptor;
 import application.access.*;
+import domain.access.*;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;

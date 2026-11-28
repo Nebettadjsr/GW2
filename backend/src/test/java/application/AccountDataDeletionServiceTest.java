@@ -1,9 +1,9 @@
 package application;
 
 import application.access.AccountAccessService;
-import application.access.AccountGrant;
+import domain.access.AccountGrant;
 import application.access.AccountLifecycleGate;
-import application.access.AccountProof;
+import domain.access.AccountProof;
 import application.access.AccountSessions;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;

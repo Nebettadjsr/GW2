@@ -1,9 +1,9 @@
 package support.fixture;
 
-import application.access.AccountGrant;
-import application.access.AccountProof;
-import application.access.AccountProofPort;
-import application.access.InvalidCredentialException;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
+import domain.access.AccountProofPort;
+import domain.access.InvalidCredentialException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterAll;

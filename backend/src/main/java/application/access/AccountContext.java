@@ -1,5 +1,6 @@
 package application.access;
 
+import domain.access.AccountGrant;
 import java.time.Instant;
 import java.util.Set;
 

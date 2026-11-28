@@ -1,10 +1,10 @@
 package application;
 
 import application.access.AccountAccessService;
-import application.access.AccountGrant;
-import application.access.AccountProof;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
 import application.access.AccountSessions;
-import application.access.InvalidCredentialException;
+import domain.access.InvalidCredentialException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import model.AccountScope;

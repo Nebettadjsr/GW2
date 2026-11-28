@@ -2,8 +2,8 @@ package application;
 
 import api.Gw2ApiClient;
 import application.access.AccountAccessService;
-import application.access.AccountGrant;
-import application.access.AccountProof;
+import domain.access.AccountGrant;
+import domain.access.AccountProof;
 import application.access.AccountSessions;
 import com.fasterxml.jackson.databind.node.TextNode;
 import model.AccountScope;
