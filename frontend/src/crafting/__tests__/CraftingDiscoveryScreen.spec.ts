@@ -432,11 +432,24 @@ describe('CraftingDiscoveryScreen', () => {
     expect(normalized(wrapper, '[data-test="discovery-summary"]')).toContain('Showing 1 of 1 matching recipe')
     expect(normalized(wrapper, '[data-test="discovery-summary"]')).toContain('5 returned by the backend')
 
-    // A recipe level and the words a state is called are both searchable.
+    // A recipe level is searchable; the words a state is called, and its raw code, are shown
+    // nowhere, so they find nothing.
     await wrapper.find('[data-test="discovery-search"]').setValue('225')
     expect(recipeNames(wrapper)).toEqual([lossRow.outputName])
-    await wrapper.find('[data-test="discovery-search"]').setValue('Price missing')
-    expect(recipeNames(wrapper)).toEqual([priceUnavailableRow.outputName])
+    for (const unseen of ['Price missing', 'PRICE_UNAVAILABLE', 'No result', 'Not blocked']) {
+      await wrapper.find('[data-test="discovery-search"]').setValue(unseen)
+      expect(recipeNames(wrapper)).toEqual([])
+    }
+    // Discovery has no column visibility control; every searched value is rendered in the table or detail.
+    for (const [text, row] of [
+      [String(priceUnavailableRow.recipeId), priceUnavailableRow],
+      [String(priceUnavailableRow.outputItemId), priceUnavailableRow],
+      [priceUnavailableRow.outputName ?? '', priceUnavailableRow],
+      [priceUnavailableRow.disciplines, priceUnavailableRow]
+    ] as const) {
+      await wrapper.find('[data-test="discovery-search"]').setValue(text)
+      expect(recipeNames(wrapper)).toContain(row.outputName)
+    }
 
     await wrapper.find('[data-test="discovery-search"]').setValue('no such recipe')
 

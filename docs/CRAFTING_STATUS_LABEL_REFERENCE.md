@@ -4,7 +4,7 @@ A practical reference for understanding the status codes returned by the GW2 cra
 
 **Authoritative specification:** [`DOMAIN_SPEC.md` §42](DOMAIN_SPEC.md) (blocking reasons), §2.1.1 (Profit presentation), §2.2.2 (Discovery), §44 (resolution tree)  
 **Backend definitions:** [`craft/BlockedReason.java`](../backend/src/main/java/craft/BlockedReason.java), [`craft/ResolutionState.java`](../backend/src/main/java/craft/ResolutionState.java)  
-**Frontend wording:** [`rowState.ts`](../frontend/src/crafting/rowState.ts), [`resolutionPresentation.ts`](../frontend/src/crafting/resolutionPresentation.ts)
+**Frontend wording:** [`resolutionPresentation.ts`](../frontend/src/crafting/resolutionPresentation.ts)
 
 ## 1. Three different things to distinguish
 
@@ -207,7 +207,6 @@ A node can also say **how** the supplied portion was obtained: `INVENTORY` (“F
 | Which blocking reasons can the backend return? | [`backend/src/main/java/craft/BlockedReason.java`](../backend/src/main/java/craft/BlockedReason.java) |
 | What do those reasons mean by contract? | [`docs/DOMAIN_SPEC.md` §42](DOMAIN_SPEC.md) |
 | Which requirement-level states exist? | [`backend/src/main/java/craft/ResolutionState.java`](../backend/src/main/java/craft/ResolutionState.java) |
-| What text does a row-level reason generate? | [`frontend/src/crafting/rowState.ts`](../frontend/src/crafting/rowState.ts) |
 | How do tree nodes get their labels? | [`frontend/src/crafting/resolutionPresentation.ts`](../frontend/src/crafting/resolutionPresentation.ts) |
 | How is the Discovery detail assembled? | [`frontend/src/crafting/SelectedDiscoveryDetail.vue`](../frontend/src/crafting/SelectedDiscoveryDetail.vue) |
 | How is the Profit detail assembled? | [`frontend/src/crafting/SelectedResultDetail.vue`](../frontend/src/crafting/SelectedResultDetail.vue) |
