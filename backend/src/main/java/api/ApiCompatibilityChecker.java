@@ -386,6 +386,8 @@ public class ApiCompatibilityChecker {
     /** Real production parser expectations for a legacy recipe; {@code null} when readable. */
     static String recipeProblem(JsonNode n) {
         if (n == null || !n.isObject()) return "recipe";
+        // A known upstream placeholder is skipped by the production refresh, so it is not an API failure.
+        if (PayloadValidators.isIngredientlessItemRecipe(n)) return null;
         String m = missing(n, intField("id"), textField("type"), intField("output_item_id"),
                 intField("output_item_count"), arrayField("disciplines"), arrayField("ingredients"));
         if (m != null) return m;

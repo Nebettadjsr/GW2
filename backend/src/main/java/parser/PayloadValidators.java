@@ -64,8 +64,28 @@ public final class PayloadValidators {
      * non-negative rating and craft time; typed optional fields; and well-formed, distinct,
      * positive-quantity ingredients (a missing array is only legitimate for a guild upgrade recipe).
      * Malformed ingredients are rejected rather than skipped, so no incomplete recipe is published.
+     * An item recipe with a missing, null or empty ingredient list is rejected here as well; the one
+     * record that is accepted for skipping instead is {@link #isIngredientlessItemRecipe(JsonNode)}, which
+     * callers must test first and then skip (never publish) so the output cannot look free.
      */
     public static JsonNode requireRecipe(JsonNode n) {
+        if (!validRecipe(n, false)) throw new IllegalStateException("recipes detail batch contains a malformed record");
+        return n;
+    }
+
+    /**
+     * The skip rule for a known unusable record: an item recipe that is valid in every other respect but has
+     * a missing, null or empty ingredient list (an upstream placeholder such as recipes 13373 and 13390).
+     * It is skipped and recorded, never published and never fatal. Any other malformed record is not matched.
+     */
+    public static boolean isIngredientlessItemRecipe(JsonNode n) {
+        if (n == null || !n.isObject() || !n.has("output_item_id")) return false;
+        JsonNode ing = n.get("ingredients");
+        boolean noIngredients = ing == null || ing.isNull() || ing.isArray() && ing.isEmpty();
+        return noIngredients && validRecipe(n, true);
+    }
+
+    private static boolean validRecipe(JsonNode n, boolean allowIngredientlessItem) {
         boolean ok = n != null && n.isObject() && intAbove(n, "id", 1)
                 && n.hasNonNull("type") && n.get("type").isTextual()
                 && intAbove(n, "min_rating", 0) && intAbove(n, "time_to_craft_ms", 0)
@@ -81,13 +101,12 @@ public final class PayloadValidators {
         if (ok) {
             JsonNode ing = n.get("ingredients");
             if (ing == null || ing.isNull()) {
-                ok = !itemOutput;
+                ok = !itemOutput || allowIngredientlessItem;
             } else {
-                ok = validIngredients(ing) && !(itemOutput && ing.isEmpty());
+                ok = validIngredients(ing) && (allowIngredientlessItem || !(itemOutput && ing.isEmpty()));
             }
         }
-        if (!ok) throw new IllegalStateException("recipes detail batch contains a malformed record");
-        return n;
+        return ok;
     }
 
     /** A quote needs a positive id and either both null sides or both well-formed non-negative sides. */

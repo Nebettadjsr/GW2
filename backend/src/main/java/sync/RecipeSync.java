@@ -109,6 +109,15 @@ public final class RecipeSync {
                         continue;
                     }
 
+                    if (PayloadValidators.isIngredientlessItemRecipe(r)) {
+                        // Known upstream placeholder: skipped and recorded like an unsupported kind, a complete
+                        // (not unfinished) publication, so an unchanged catalog still takes the fast path.
+                        System.out.println("Skipping recipe " + rr.recipeId() + ": item recipe without ingredients");
+                        remoteIds.remove(rr.recipeId());
+                        skippedIds.add(rr.recipeId());
+                        continue;
+                    }
+
                     try {
                         // Same strict ingredient validation as the full refresh: a recipe whose requirement is
                         // malformed (missing/nonpositive/overflowing id or count) is quarantined whole.
@@ -217,7 +226,7 @@ public final class RecipeSync {
                 JsonNode root = fetcher.get(detailUrl(BatchUtils.idsParam(batch)));
                 deadline.check();
                 List<RecipeParser.RecipeRow> rows = FullCatalogSupport.parseExact(
-                        root, batch, n -> RecipeParser.parseRecipe(PayloadValidators.requireRecipe(n)),
+                        root, batch, n -> RecipeParser.parseRecipe(PayloadValidators.isIngredientlessItemRecipe(n) ? n : PayloadValidators.requireRecipe(n)),
                         RecipeParser.RecipeRow::recipeId, "recipes");
                 List<RecipeParser.IngredientRow> ingredientRows = new ArrayList<>();
                 List<RecipeParser.RequirementRow> requirementRows = new ArrayList<>();
@@ -226,6 +235,12 @@ public final class RecipeSync {
                 Set<Integer> unsupportedIds = new HashSet<>();
                 for (JsonNode r : root) {
                     if (RecipeParser.hasUnsupportedRequirement(r)) {
+                        System.out.println("Skipping recipe " + r.path("id").asInt() + ": unsupported ingredient type");
+                        unsupportedIds.add(r.path("id").asInt());
+                        continue;
+                    }
+                    if (PayloadValidators.isIngredientlessItemRecipe(r)) {
+                        System.out.println("Skipping recipe " + r.path("id").asInt() + ": item recipe without ingredients");
                         unsupportedIds.add(r.path("id").asInt());
                         continue;
                     }

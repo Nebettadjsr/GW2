@@ -200,6 +200,15 @@ class ApiCompatibilityCheckerTest {
     }
 
     @Test
+    void aSkippedIngredientlessPlaceholderIsNotAnApiFailureButOtherMalformedRecipesStillAre() {
+        String placeholder = RECIPE.replace("[{\"type\":\"Item\",\"id\":19721,\"count\":1}]", "[]");
+        ok(RECIPE_URL, placeholder);
+        assertEquals(Status.OK, probe(run(), "recipe").status());
+        ok(RECIPE_URL, placeholder.replace("\"min_rating\":400", "\"min_rating\":-1"));
+        assertEquals(Status.MISMATCH, probe(run(), "recipe").status());
+    }
+
+    @Test
     void aRecipeWithAnUnreadableIngredientIsNotCompatible() {
         ok(RECIPE_URL, RECIPE.replace("\"count\":1}]", "\"count\":1},{\"type\":\"Currency\",\"id\":0,\"count\":1}]"));
         assertEquals(Status.MISMATCH, probe(run(), "recipe").status());

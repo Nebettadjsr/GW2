@@ -234,6 +234,40 @@ class SyncFetchPublicationTest {
         assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"));
     }
 
+    @Test
+    void recipeSync_ingredientlessItemPlaceholdersAreSkippedAsCompleteAndAnUnchangedCatalogIsNotResynced() throws Exception {
+        String placeholder = "{\"id\":13373,\"type\":\"Component\",\"output_item_id\":94257,\"output_item_count\":1,"
+                + "\"time_to_craft_ms\":1000,\"disciplines\":[],\"min_rating\":400,\"flags\":[\"LearnedFromItem\"],"
+                + "\"ingredients\":[],\"chat_link\":\"[&CT00AAA=]\"}";
+        String plain = "{\"id\":1,\"type\":\"Refinement\",\"output_item_id\":20,\"output_item_count\":1,\"min_rating\":0,"
+                + "\"time_to_craft_ms\":1000,\"disciplines\":[\"Chef\"],\"flags\":[],\"chat_link\":\"[&A]\","
+                + "\"ingredients\":[{\"type\":\"Item\",\"id\":10,\"count\":1}]}";
+        exec("INSERT INTO recipes (recipe_id, type) VALUES (13373, 'stale')");
+        RecipeSync.fetcher = url -> {
+            urls.add(url);
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1, 13373]");
+            if (url.contains("/v2/recipes?ids=")) return json("[" + plain + "," + placeholder + "]");
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        ItemSync.fetcher = RecipeSync.fetcher::get;
+
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe());
+        assertEquals("1", scalar("SELECT string_agg(recipe_id::text, ',') FROM recipes"), "placeholder is never published");
+        assertEquals("t", scalar("SELECT complete FROM recipe_catalog_publication"), "skipped, not an unfinished publication");
+        assertEquals("13373", scalar("SELECT skipped_recipe_ids[1] FROM recipe_catalog_publication"));
+
+        urls.clear();
+        assertFalse(RecipeSync.syncAllRecipesGlobalSafe(), "unchanged catalog with a placeholder is skipped next run");
+        assertEquals(List.of(RecipeSync.CATALOG_URL), urls);
+
+        RecipeSync.fetcher = url -> {
+            if (url.equals(RecipeSync.CATALOG_URL)) return json("[1, 13373, 13390]");
+            if (url.contains("/v2/recipes?ids=")) return json("[" + plain + "," + placeholder + "]");
+            return json("[" + itemJson(10) + "," + itemJson(20) + "]");
+        };
+        assertTrue(RecipeSync.syncAllRecipesGlobalSafe(), "a changed catalog still syncs");
+    }
+
     private static final String GUILD_AND_PLAIN = """
             [{"id":1,"type":"Refinement","output_item_id":20,"output_item_count":1,"min_rating":0,"time_to_craft_ms":1000,
               "disciplines":["Chef"],"flags":[],"chat_link":"[&A]","ingredients":[{"type":"Item","id":10,"count":1}]},
