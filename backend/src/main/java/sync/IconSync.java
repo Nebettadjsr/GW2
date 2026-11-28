@@ -302,31 +302,13 @@ public final class IconSync {
         return failed;
     }
 
-    /** The subset of {@code wanted} whose stored row already carries every canonical metadata field and an accepted icon. */
     private static Set<Integer> completeIds(Connection con, Collection<Integer> wanted) throws SQLException {
-        Set<Integer> complete = new HashSet<>();
-        try (PreparedStatement ps = con.prepareStatement(
-                "SELECT item_id, icon_url FROM items WHERE item_id = ANY(?) AND icon_url IS NOT NULL"
-                        + " AND btrim(coalesce(name, '')) <> '' AND btrim(coalesce(type, '')) <> ''"
-                        + " AND btrim(coalesce(rarity, '')) <> '' AND no_mystic_forge IS NOT NULL"
-                        + " AND (type NOT IN ('Weapon', 'Armor') OR btrim(coalesce(subtype, '')) <> '')")) {
-            ps.setArray(1, con.createArrayOf("int", wanted.toArray()));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    if (IconSourcePolicy.accept(rs.getString(2)).isPresent()) complete.add(rs.getInt(1));
-                }
-            }
-        }
-        return complete;
+        return repo.ItemRepository.completeMetadataIds(con, wanted);
     }
 
-    /** The positive ids of {@code itemIds} whose stored metadata row is missing or incomplete (read-only, one short query). */
+    /** The positive ids of {@code itemIds} whose stored metadata row is missing or incomplete (see {@link repo.ItemRepository#incompleteIds}). */
     public static Set<Integer> incompleteIds(Connection con, Collection<Integer> itemIds) throws SQLException {
-        Set<Integer> wanted = new java.util.TreeSet<>();
-        for (Integer id : itemIds) if (id != null && id > 0) wanted.add(id);
-        if (wanted.isEmpty()) return wanted;
-        wanted.removeAll(completeIds(con, wanted));
-        return wanted;
+        return repo.ItemRepository.incompleteIds(con, itemIds);
     }
 
     /**

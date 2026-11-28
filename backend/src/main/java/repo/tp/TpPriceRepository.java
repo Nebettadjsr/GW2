@@ -33,8 +33,38 @@ public class TpPriceRepository {
      */
     public Set<Integer> staleOrMissingTradeable(Set<Integer> itemIds) throws Exception {
         try (Connection con = repo.Db.open()) {
-            return new sync.tp.relevance.CraftingProfitItemCollector().collectExplicit(con, itemIds);
+            return staleOrMissingExplicit(con, itemIds);
         }
+    }
+
+    /** Explicit positive ids that are tradeable, as the {@code relevant_tradeable} CTE with each id's stored quote. */
+    public static final String EXPLICIT_ITEMS_CTE = """
+WITH relevant_tradeable AS (
+  SELECT DISTINCT i.item_id, tp.fetched_at,
+         tp.buy_quantity, tp.buy_unit_price, tp.sell_quantity, tp.sell_unit_price
+  FROM unnest(?::int[]) AS i(item_id)
+  JOIN tp_tradeable_items t ON t.item_id = i.item_id
+  LEFT JOIN tp_prices tp ON tp.item_id = i.item_id
+  WHERE i.item_id > 0
+)
+""";
+
+    /**
+     * Stale or missing quote ids among exactly the explicit positive {@code itemIds} (a selected Forge project's own
+     * public path; never the ordinary or whole-catalogue set), under the same ten-minute policy and tradeable filter.
+     */
+    public static Set<Integer> staleOrMissingExplicit(Connection con, Set<Integer> itemIds) throws SQLException {
+        Set<Integer> ids = new java.util.HashSet<>();
+        if (itemIds.isEmpty()) return ids;
+        String sql = EXPLICIT_ITEMS_CTE + "SELECT item_id FROM relevant_tradeable tp\nWHERE\n"
+                + TpPriceFreshnessSql.STALE_PREDICATE;
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setArray(1, con.createArrayOf("integer", new java.util.TreeSet<>(itemIds).toArray()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
     }
 
     /**
