@@ -1,5 +1,7 @@
 package infra.icons;
 
+import domain.icons.IconSource;
+
 /**
  * Acquires the image bytes of one accepted canonical source.
  *

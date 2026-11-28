@@ -1,7 +1,7 @@
 package repo.tp;
 
 import craft.PriceQuote;
-import sync.tp.TpPriceFreshness;
+import domain.tp.TpPriceFreshness;
 
 import java.sql.*;
 import java.util.HashMap;

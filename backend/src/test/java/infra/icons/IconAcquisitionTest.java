@@ -1,5 +1,7 @@
 package infra.icons;
 
+import domain.icons.IconSource;
+import domain.icons.IconSourcePolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

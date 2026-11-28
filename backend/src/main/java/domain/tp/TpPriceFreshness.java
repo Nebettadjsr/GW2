@@ -1,4 +1,4 @@
-package sync.tp;
+package domain.tp;
 
 import java.time.Duration;
 import java.time.Instant;

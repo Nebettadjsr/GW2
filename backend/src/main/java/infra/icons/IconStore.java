@@ -1,5 +1,6 @@
 package infra.icons;
 
+import domain.icons.IconSourcePolicy;
 import java.util.Optional;
 
 /**

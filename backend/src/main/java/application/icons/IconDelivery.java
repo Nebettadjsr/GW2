@@ -1,10 +1,11 @@
 package application.icons;
 
+import domain.icons.IconSource;
+import domain.icons.IconSourcePolicy;
+import domain.icons.ItemIconUrls;
 import infra.icons.IconAcquisition;
 import infra.icons.IconAcquisitionResult;
 import infra.icons.IconCacheBounds;
-import infra.icons.IconSource;
-import infra.icons.IconSourcePolicy;
 import infra.icons.IconStorageException;
 import infra.icons.IconStore;
 import infra.icons.StoredIcon;

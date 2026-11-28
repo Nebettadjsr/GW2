@@ -134,7 +134,7 @@ public class CharacterInventoryLayoutRepository {
                     while (rs.next()) {
                         String name = rs.getString(2);
                         boolean ok = name != null && !name.isBlank();
-                        String icon = application.icons.ItemIconUrls.iconUrlFor(rs.getInt(1), rs.getString(3));
+                        String icon = domain.icons.ItemIconUrls.iconUrlFor(rs.getInt(1), rs.getString(3));
                         refs.put(rs.getInt(1), new ItemRef(rs.getInt(1), ok, ok ? name : null, icon));
                     }
                 }

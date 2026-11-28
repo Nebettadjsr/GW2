@@ -68,6 +68,6 @@ public record CharacterEquipmentTabsResponse(String state, String reason, String
 
     private static ItemDto item(ItemRef i) {
         return new ItemDto(i.itemId(), i.resolved(), i.name(), i.type(), i.rarity(),
-                application.icons.ItemIconUrls.iconUrlFor(i.itemId(), i.icon()), i.details());
+                domain.icons.ItemIconUrls.iconUrlFor(i.itemId(), i.icon()), i.details());
     }
 }

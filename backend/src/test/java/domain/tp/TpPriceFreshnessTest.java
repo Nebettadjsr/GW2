@@ -1,7 +1,6 @@
-package sync;
+package domain.tp;
 
 import org.junit.jupiter.api.Test;
-import sync.tp.TpPriceFreshness;
 
 import java.time.Instant;
 

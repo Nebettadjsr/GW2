@@ -5,7 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.HashSet;
 import java.util.Set;
-import sync.tp.TpPriceFreshness;
+import domain.tp.TpPriceFreshness;
 
 public final class DiscoveryItemCollector {
 

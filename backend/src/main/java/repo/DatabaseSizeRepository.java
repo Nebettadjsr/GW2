@@ -1,6 +1,6 @@
 package repo;
 
-import application.ops.DatabaseSizeService;
+import domain.ops.DatabaseSizeMeasurement;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -8,7 +8,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 /** The one narrow size query; it reads no account rows and makes no GW2 call. */
-public final class DatabaseSizeRepository implements DatabaseSizeService.Measurement {
+public final class DatabaseSizeRepository implements DatabaseSizeMeasurement {
     static final String SQL = "SELECT pg_database_size(current_database())";
 
     public interface Opener { Connection open() throws SQLException; }

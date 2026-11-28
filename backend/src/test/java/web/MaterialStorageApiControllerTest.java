@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import repo.MaterialStorageRepository.MaterialStorageRow;
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 
 import java.sql.SQLException;
 import java.util.ArrayList;

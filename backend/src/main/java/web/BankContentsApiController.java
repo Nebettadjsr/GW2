@@ -1,7 +1,7 @@
 package web;
 
 import application.BankContentsService;
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;

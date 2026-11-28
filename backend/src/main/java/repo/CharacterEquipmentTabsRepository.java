@@ -1,7 +1,7 @@
 package repo;
 
 import domain.EquipmentTotals;
-import infra.icons.IconSourcePolicy;
+import domain.icons.IconSourcePolicy;
 import model.AccountScope;
 
 import java.sql.Array;
@@ -426,7 +426,7 @@ public class CharacterEquipmentTabsRepository {
                     while (rs.next()) {
                         String name = rs.getString(2);
                         refs.put(rs.getInt(1), new ItemRef(rs.getInt(1), complete(name, rs.getString(3), rs.getString(4)), name, rs.getString(3),
-                                rs.getString(4), IconSourcePolicy.accept(rs.getString(5)).map(infra.icons.IconSource::canonicalUrl).orElse(null)));
+                                rs.getString(4), IconSourcePolicy.accept(rs.getString(5)).map(domain.icons.IconSource::canonicalUrl).orElse(null)));
                     }
                 }
             }

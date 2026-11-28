@@ -3,7 +3,7 @@ package web;
 import application.ItemReadService;
 import application.ItemReadService.PriceSourceUnavailableException;
 import application.ItemReadService.MetadataSourceUnavailableException;
-import application.icons.ItemIconUrls;
+import domain.icons.ItemIconUrls;
 import craft.PriceQuote;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;

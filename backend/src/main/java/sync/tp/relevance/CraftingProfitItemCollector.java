@@ -8,7 +8,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
-import sync.tp.TpPriceFreshness;
+import domain.tp.TpPriceFreshness;
 
 /**
  * Collects TP-relevant item ids for CraftingProfitView:
