@@ -45,6 +45,16 @@ Evidence: `repo/CraftingGraphCache.loadForSnapshot`, `application/CraftingProfit
 
 Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFull`).
 
+## KP-34 Owner refresh of all recipes fails in production
+
+**Observed (owner report, production, 28 Nov 2026 around 07:12):** starting the refresh of all recipes from the owner's System Status view fails; the owner reports that it fails every time. The cause is not yet established, and no log or task detail has been analysed for this entry.
+
+**Risk:** the full recipe catalogue cannot be refreshed by the owner, so new or changed recipes only arrive through the incremental safe sync, whose limits KP-32 describes.
+
+**Follow-up:** reproduce with the failing task's details and the production log of that run (task status, error text, upstream responses), find the failing step, then decide the fix. Check first whether the strict validation of the full sync rejects a current upstream record (see `FullCatalogSupport.requireRecipe`) or the run hits a deadline.
+
+Evidence: `application/FullCatalogAdministrationService`, `sync/FullCatalogGateway`, `sync/RecipeSync.syncAllRecipesFull`.
+
 ## Further performance opportunities
 
 - **Bound ordinary upstream waits and release database leases.** Authenticated
@@ -68,6 +78,7 @@ Evidence: `sync/RecipeSync.java` (`syncAllRecipesGlobalSafe`, `syncAllRecipesFul
 
 ## Other open follow-ups
 
+- **Timestamps in the task details of System Status are shown in the technical format.** They read like `2026-11-28T07:12:03Z`. Show them in a form that is friendly to the user (local date and time, with the technical value still available, for example as the tooltip). Cosmetic; found by the owner on the production site.
 - **Authenticated account endpoint payloads are not live-verified.** The API compatibility check samples a small fixed set of public endpoints only; an upstream change to an account endpoint would show up at refresh time, not in the check.
 - **Legacy branding images are packaged without a runtime caller.**
   `backend/src/main/resources/images` includes originals (for example the two
