@@ -33,7 +33,8 @@ at `http://127.0.0.1:8088`; see [Docker setup](../docker/README.md).
 Enter the key on System Status. `sessionStorage` retains it across navigation/reload; restoration
 proves it before account reads. Disconnect/invalid-key rejection removes it. Browser workflows
 need no server `GW2_API_KEY`; scoped routes never use it as fallback. Reservation preferences
-are secret-free, per-verified-GUID `localStorage`.
+are secret-free, per-verified-GUID `localStorage` (`gw2.materialProtection.v1.<GUID>`); the six Mystic Forge
+calculation choices likewise (`gw2.mysticForge.settings.v1.<GUID>`). Delete cached data removes both for that GUID.
 
 Owner controls use `GW2_OWNER_ACCOUNT_GUID` in the backend **process environment** or Spring
 property `gw2.owner.account-guid`. Blank grants nobody; malformed values fail startup.
